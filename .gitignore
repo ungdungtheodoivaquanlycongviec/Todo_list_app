@@ -40,3 +40,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+backend/TESTING_GUIDE.md
+backend/FIX_LOG.md
+backend/PHASE1_STATUS.md

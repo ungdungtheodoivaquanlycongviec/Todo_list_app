@@ -43,9 +43,6 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API Routes (sẽ thêm sau)
-// app.use('/api', require('./routes'));
-
 // Root endpoint
 app.get('/', (req, res) => {
   res.status(200).json({
@@ -56,6 +53,9 @@ app.get('/', (req, res) => {
   });
 });
 
+// API Routes
+app.use('/api', require('./routes'));
+
 // 404 Handler - Must be after all routes
 app.use((req, res, next) => {
   res.status(404).json({
@@ -65,15 +65,7 @@ app.use((req, res, next) => {
   });
 });
 
-// Error Handler Middleware (sẽ thêm chi tiết sau)
-app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  
-  res.status(err.statusCode || 500).json({
-    success: false,
-    message: err.message || 'Internal Server Error',
-    ...(env.nodeEnv === 'development' && { stack: err.stack })
-  });
-});
+// Error Handler Middleware
+app.use(require('./middlewares/errorHandler'));
 
 module.exports = app;
