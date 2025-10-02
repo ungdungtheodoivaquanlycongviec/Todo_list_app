@@ -1,4 +1,6 @@
 const { TASK_STATUS, PRIORITY_LEVELS, ERROR_MESSAGES } = require('../config/constants');
+const validator = require('validator');
+const authService = require('../services/auth.service');
 
 /**
  * Validation middleware cho Task endpoints
@@ -166,7 +168,149 @@ const validateUpdateTask = (req, res, next) => {
   next();
 };
 
+/**
+ * ==========================================
+ * Authentication & User Validators
+ * ==========================================
+ */
+
+/**
+ * Validate user registration data
+ */
+const validateRegister = (req, res, next) => {
+  const { email, password, name } = req.body;
+  const errors = [];
+
+  // Validate email
+  if (!email) {
+    errors.push({ field: 'email', message: 'Email là bắt buộc' });
+  } else if (!validator.isEmail(email)) {
+    errors.push({ field: 'email', message: 'Email không hợp lệ' });
+  }
+
+  // Validate password
+  if (!password) {
+    errors.push({ field: 'password', message: 'Mật khẩu là bắt buộc' });
+  } else {
+    const passwordValidation = authService.validatePasswordStrength(password);
+    if (!passwordValidation.isValid) {
+      errors.push({ 
+        field: 'password', 
+        message: passwordValidation.errors.join(', ') 
+      });
+    }
+  }
+
+  // Validate name
+  if (!name || name.trim() === '') {
+    errors.push({ field: 'name', message: 'Tên là bắt buộc' });
+  } else if (name.length > 100) {
+    errors.push({ field: 'name', message: 'Tên không được vượt quá 100 ký tự' });
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Dữ liệu đăng ký không hợp lệ',
+      errors
+    });
+  }
+
+  next();
+};
+
+/**
+ * Validate login data
+ */
+const validateLogin = (req, res, next) => {
+  const { email, password } = req.body;
+  const errors = [];
+
+  if (!email) {
+    errors.push({ field: 'email', message: 'Email là bắt buộc' });
+  }
+
+  if (!password) {
+    errors.push({ field: 'password', message: 'Mật khẩu là bắt buộc' });
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Dữ liệu đăng nhập không hợp lệ',
+      errors
+    });
+  }
+
+  next();
+};
+
+/**
+ * Validate profile update data
+ */
+const validateUpdateProfile = (req, res, next) => {
+  const { name } = req.body;
+  const errors = [];
+
+  // Name is optional, but validate if provided
+  if (name !== undefined) {
+    if (name.trim() === '') {
+      errors.push({ field: 'name', message: 'Tên không được để trống' });
+    } else if (name.length > 100) {
+      errors.push({ field: 'name', message: 'Tên không được vượt quá 100 ký tự' });
+    }
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Dữ liệu cập nhật không hợp lệ',
+      errors
+    });
+  }
+
+  next();
+};
+
+/**
+ * Validate change password data
+ */
+const validateChangePassword = (req, res, next) => {
+  const { oldPassword, newPassword } = req.body;
+  const errors = [];
+
+  if (!oldPassword) {
+    errors.push({ field: 'oldPassword', message: 'Mật khẩu cũ là bắt buộc' });
+  }
+
+  if (!newPassword) {
+    errors.push({ field: 'newPassword', message: 'Mật khẩu mới là bắt buộc' });
+  } else {
+    const passwordValidation = authService.validatePasswordStrength(newPassword);
+    if (!passwordValidation.isValid) {
+      errors.push({ 
+        field: 'newPassword', 
+        message: passwordValidation.errors.join(', ') 
+      });
+    }
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Dữ liệu đổi mật khẩu không hợp lệ',
+      errors
+    });
+  }
+
+  next();
+};
+
 module.exports = {
   validateCreateTask,
-  validateUpdateTask
+  validateUpdateTask,
+  validateRegister,
+  validateLogin,
+  validateUpdateProfile,
+  validateChangePassword
 };

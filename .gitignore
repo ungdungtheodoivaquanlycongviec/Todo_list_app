@@ -2,3 +2,9 @@ backend/PHASE1_STATUS.md
 backend/FIX_LOG.md
 backend/TESTING_GUIDE.md
 backend/BACKEND_DEVELOPMENT_PLAN.md
+backend/tests/QUICK_TEST_PHASE3.md
+backend/PHASE3_COMPLETION_SUMMARY.md
+backend/tests/postman/Phase3_Multiple_Views_Tests.md
+backend/PHASE4_AUTH_IMPLEMENTATION_GUIDE.md
+backend/PHASE4_COMPLETION_SUMMARY.md
+backend/test_phase4_auth.ps1

@@ -6,6 +6,8 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const cookieParser = require('cookie-parser');
+// const mongoSanitize = require('express-mongo-sanitize'); // Không tương thích với Express v5
 const env = require('./config/environment');
 
 // Create Express app
@@ -32,6 +34,14 @@ if (env.nodeEnv === 'development') {
 // Body parser middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Cookie parser
+app.use(cookieParser());
+
+// Data sanitization against NoSQL injection
+// NOTE: express-mongo-sanitize không tương thích với Express v5
+// TODO: Chờ update hoặc downgrade Express về v4 cho production
+// app.use(mongoSanitize());
 
 // Health check endpoint
 app.get('/health', (req, res) => {
