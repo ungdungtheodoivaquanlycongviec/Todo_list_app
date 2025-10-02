@@ -10,10 +10,15 @@ const {
   getKanbanView
 } = require('../controllers/task.controller');
 const { validateCreateTask, validateUpdateTask } = require('../middlewares/validator');
+const { authenticate } = require('../middlewares/auth');
 
 /**
  * Task Routes
+ * All routes require authentication
  */
+
+// Apply authentication to all task routes
+router.use(authenticate);
 
 // GET routes - List views
 router.get('/calendar', getCalendarView);  // Phải đặt trước /:id
