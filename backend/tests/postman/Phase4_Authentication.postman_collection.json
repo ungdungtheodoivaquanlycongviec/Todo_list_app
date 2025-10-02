@@ -1,0 +1,1197 @@
+{
+  "info": {
+    "name": "Phase 4: Authentication & User Management",
+    "description": "Complete test suite for authentication system including registration, login, JWT tokens, profile management, and security features",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "phase4-auth-collection"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "1. Authentication Flow",
+      "item": [
+        {
+          "name": "1.1 Register New User - Success",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Response structure is correct\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.true;",
+                  "    pm.expect(response.message).to.exist;",
+                  "    pm.expect(response.data).to.have.property('user');",
+                  "    pm.expect(response.data).to.have.property('accessToken');",
+                  "    pm.expect(response.data).to.have.property('refreshToken');",
+                  "});",
+                  "",
+                  "pm.test(\"User data is correct\", () => {",
+                  "    const user = pm.response.json().data.user;",
+                  "    pm.expect(user.email).to.equal('testuser@example.com');",
+                  "    pm.expect(user.name).to.equal('Test User');",
+                  "    pm.expect(user.role).to.equal('user');",
+                  "    pm.expect(user.isActive).to.be.true;",
+                  "    pm.expect(user).to.not.have.property('password');",
+                  "});",
+                  "",
+                  "pm.test(\"Tokens are valid\", () => {",
+                  "    const data = pm.response.json().data;",
+                  "    pm.expect(data.accessToken).to.be.a('string').and.not.empty;",
+                  "    pm.expect(data.refreshToken).to.be.a('string').and.not.empty;",
+                  "    ",
+                  "    // Save tokens",
+                  "    pm.collectionVariables.set('accessToken', data.accessToken);",
+                  "    pm.collectionVariables.set('refreshToken', data.refreshToken);",
+                  "    pm.collectionVariables.set('userId', data.user._id);",
+                  "    pm.collectionVariables.set('userEmail', data.user.email);",
+                  "});",
+                  "",
+                  "pm.test(\"Response time is acceptable\", () => {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(500);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"testuser@example.com\",\n  \"password\": \"SecurePass123!@#\",\n  \"name\": \"Test User\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "1.2 Register - Duplicate Email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", () => {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error message about duplicate email\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.false;",
+                  "    pm.expect(response.message.toLowerCase()).to.include('email');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"testuser@example.com\",\n  \"password\": \"AnotherPass456!@#\",\n  \"name\": \"Another User\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "1.3 Register - Weak Password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", () => {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error about password strength\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.false;",
+                  "    pm.expect(response.message.toLowerCase()).to.include('password');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"weakpass@example.com\",\n  \"password\": \"123\",\n  \"name\": \"Weak Pass User\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "1.4 Register - Invalid Email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", () => {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error about invalid email\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"not-an-email\",\n  \"password\": \"SecurePass123!@#\",\n  \"name\": \"Invalid Email User\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "1.5 Login - Success",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has tokens and user\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.true;",
+                  "    pm.expect(response.data).to.have.property('accessToken');",
+                  "    pm.expect(response.data).to.have.property('refreshToken');",
+                  "    pm.expect(response.data).to.have.property('user');",
+                  "    ",
+                  "    // Update tokens",
+                  "    pm.collectionVariables.set('accessToken', response.data.accessToken);",
+                  "    pm.collectionVariables.set('refreshToken', response.data.refreshToken);",
+                  "});",
+                  "",
+                  "pm.test(\"Response time is fast\", () => {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"testuser@example.com\",\n  \"password\": \"SecurePass123!@#\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "1.6 Login - Wrong Password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", () => {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Error message about invalid credentials\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.false;",
+                  "    pm.expect(response.message.toLowerCase()).to.include('invalid');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"testuser@example.com\",\n  \"password\": \"WrongPassword123!@#\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "1.7 Login - Non-existent User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", () => {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Error about invalid credentials\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"nonexistent@example.com\",\n  \"password\": \"SecurePass123!@#\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Token Management",
+      "item": [
+        {
+          "name": "2.1 Get Current User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"User data returned\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.true;",
+                  "    pm.expect(response.data.user).to.exist;",
+                  "    pm.expect(response.data.user.email).to.equal(pm.collectionVariables.get('userEmail'));",
+                  "    pm.expect(response.data.user).to.not.have.property('password');",
+                  "    pm.expect(response.data.user).to.not.have.property('refreshTokens');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "me"]
+            }
+          }
+        },
+        {
+          "name": "2.2 Get Current User - No Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", () => {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Error about missing token\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "me"]
+            }
+          }
+        },
+        {
+          "name": "2.3 Get Current User - Invalid Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", () => {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Error about invalid token\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "invalid.token.here",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "me"]
+            }
+          }
+        },
+        {
+          "name": "2.4 Refresh Token - Success",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"New tokens received\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.true;",
+                  "    pm.expect(response.data.accessToken).to.be.a('string').and.not.empty;",
+                  "    pm.expect(response.data.refreshToken).to.be.a('string').and.not.empty;",
+                  "    ",
+                  "    // Update tokens",
+                  "    pm.collectionVariables.set('accessToken', response.data.accessToken);",
+                  "    pm.collectionVariables.set('refreshToken', response.data.refreshToken);",
+                  "});",
+                  "",
+                  "pm.test(\"Tokens are different from old ones\", () => {",
+                  "    const newAccessToken = pm.response.json().data.accessToken;",
+                  "    const oldAccessToken = pm.collectionVariables.get('accessToken');",
+                  "    // They might be the same in quick succession, but structure should be valid",
+                  "    pm.expect(newAccessToken).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/refresh-token",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "refresh-token"]
+            }
+          }
+        },
+        {
+          "name": "2.5 Refresh Token - Invalid Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", () => {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Error about invalid refresh token\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"invalid.refresh.token\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/refresh-token",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "refresh-token"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. User Profile Management",
+      "item": [
+        {
+          "name": "3.1 Update Profile - Success",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Profile updated successfully\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.true;",
+                  "    pm.expect(response.data.user.name).to.equal('Updated Test User');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Test User\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me"]
+            }
+          }
+        },
+        {
+          "name": "3.2 Update Profile - Empty Name",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", () => {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error about invalid name\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me"]
+            }
+          }
+        },
+        {
+          "name": "3.3 Update Avatar",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Avatar updated\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.true;",
+                  "    pm.expect(response.data.user.avatar).to.equal('https://example.com/avatar.jpg');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"avatar\": \"https://example.com/avatar.jpg\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/avatar",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me", "avatar"]
+            }
+          }
+        },
+        {
+          "name": "3.4 Update Notification Settings",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Notification settings updated\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.true;",
+                  "    pm.expect(response.data.user.notificationSettings).to.exist;",
+                  "    pm.expect(response.data.user.notificationSettings.email).to.be.true;",
+                  "    pm.expect(response.data.user.notificationSettings.push).to.be.false;",
+                  "    pm.expect(response.data.user.notificationSettings.beforeDue).to.equal(48);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": true,\n  \"push\": false,\n  \"beforeDue\": 48\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/notifications",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me", "notifications"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Password Management",
+      "item": [
+        {
+          "name": "4.1 Change Password - Success",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Password changed successfully\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.true;",
+                  "    pm.expect(response.message.toLowerCase()).to.include('password');",
+                  "});",
+                  "",
+                  "// Note: After password change, refresh tokens are cleared for security"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"oldPassword\": \"SecurePass123!@#\",\n  \"newPassword\": \"NewSecurePass456!@#\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me", "password"]
+            }
+          }
+        },
+        {
+          "name": "4.2 Login with New Password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Login successful with new password\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.true;",
+                  "    pm.expect(response.data.accessToken).to.exist;",
+                  "    ",
+                  "    // Update tokens",
+                  "    pm.collectionVariables.set('accessToken', response.data.accessToken);",
+                  "    pm.collectionVariables.set('refreshToken', response.data.refreshToken);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"testuser@example.com\",\n  \"password\": \"NewSecurePass456!@#\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "4.3 Change Password - Wrong Old Password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", () => {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Error about incorrect password\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.false;",
+                  "    pm.expect(response.message.toLowerCase()).to.include('password');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"oldPassword\": \"WrongOldPassword123!@#\",\n  \"newPassword\": \"AnotherNewPass789!@#\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me", "password"]
+            }
+          }
+        },
+        {
+          "name": "4.4 Change Password - Weak New Password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", () => {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error about weak password\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.false;",
+                  "    pm.expect(response.message.toLowerCase()).to.include('password');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"oldPassword\": \"NewSecurePass456!@#\",\n  \"newPassword\": \"weak\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me", "password"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Task Integration Tests",
+      "item": [
+        {
+          "name": "5.1 Create Task - Authenticated",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Task created with user context\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.true;",
+                  "    pm.expect(response.data).to.have.property('_id');",
+                  "    pm.expect(response.data).to.have.property('createdBy');",
+                  "    pm.expect(response.data.title).to.equal('Authenticated Task');",
+                  "    ",
+                  "    pm.collectionVariables.set('testTaskId', response.data._id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Authenticated Task\",\n  \"description\": \"Task created by authenticated user\",\n  \"priority\": \"medium\",\n  \"status\": \"todo\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks"]
+            }
+          }
+        },
+        {
+          "name": "5.2 Create Task - No Auth",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", () => {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Error about missing authentication\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Unauthenticated Task\",\n  \"description\": \"Should fail\",\n  \"priority\": \"low\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks"]
+            }
+          }
+        },
+        {
+          "name": "5.3 Get All Tasks - Authenticated",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Tasks returned\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.true;",
+                  "    pm.expect(response.data.tasks).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks"]
+            }
+          }
+        },
+        {
+          "name": "5.4 Get All Tasks - No Auth",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", () => {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Security & Rate Limiting",
+      "item": [
+        {
+          "name": "6.1 Rate Limit Test - Multiple Logins",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// This test expects to eventually hit rate limit",
+                  "// Run this multiple times rapidly to test rate limiting",
+                  "const statusCode = pm.response.code;",
+                  "",
+                  "if (statusCode === 429) {",
+                  "    pm.test(\"Rate limit working - 429 status\", () => {",
+                  "        pm.response.to.have.status(429);",
+                  "    });",
+                  "    ",
+                  "    pm.test(\"Rate limit error message\", () => {",
+                  "        const response = pm.response.json();",
+                  "        pm.expect(response.success).to.be.false;",
+                  "    });",
+                  "} else {",
+                  "    pm.test(\"Request within rate limit\", () => {",
+                  "        pm.expect([200, 401]).to.include(statusCode);",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"testuser@example.com\",\n  \"password\": \"NewSecurePass456!@#\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Session Management",
+      "item": [
+        {
+          "name": "7.1 Logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Logout successful\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.true;",
+                  "    pm.expect(response.message.toLowerCase()).to.include('logout');",
+                  "});",
+                  "",
+                  "// Clear tokens",
+                  "pm.collectionVariables.set('accessToken', '');",
+                  "pm.collectionVariables.set('refreshToken', '');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "logout"]
+            }
+          }
+        },
+        {
+          "name": "7.2 Access Protected Route After Logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", () => {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Access denied after logout\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "me"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "userEmail",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "testTaskId",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

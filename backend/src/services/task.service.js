@@ -46,52 +46,76 @@ class TaskService {
    * @returns {Promise<Object>} { tasks, pagination }
    */
   async getAllTasks(filters = {}, options = {}) {
-    const {
-      status,
-      priority,
-      search,
-      sortBy = 'createdAt',
-      order = 'desc',
-      page = 1,
-      limit = 20
-    } = { ...filters, ...options };
+    const { status, priority, search } = filters;
+    const { sortBy, order, page, limit } = options;
+
+    // Validate và sanitize pagination
+    const paginationValidation = validatePagination(page, limit);
+    const sanitizedPage = paginationValidation.sanitizedPage;
+    const sanitizedLimit = paginationValidation.sanitizedLimit;
+
+    // Validate và sanitize sort
+    const allowedSortFields = ['createdAt', 'updatedAt', 'dueDate', 'priority', 'title', 'status'];
+    const sortValidation = validateSort(sortBy, order, allowedSortFields);
+    
+    if (!sortValidation.isValid) {
+      throw new Error(sortValidation.error);
+    }
+    
+    const sanitizedSortBy = sortValidation.sanitizedSortBy;
+    const sanitizedOrder = sortValidation.sanitizedOrder;
 
     // Build filter object
     const query = {};
 
-    if (status) query.status = status;
-    if (priority) query.priority = priority;
+    if (status) {
+      if (!TASK_STATUS.includes(status)) {
+        throw new Error(`Invalid status. Allowed values: ${TASK_STATUS.join(', ')}`);
+      }
+      query.status = status;
+    }
+    
+    if (priority) {
+      const validPriorities = ['low', 'medium', 'high', 'urgent'];
+      if (!validPriorities.includes(priority)) {
+        throw new Error(`Invalid priority. Allowed values: ${validPriorities.join(', ')}`);
+      }
+      query.priority = priority;
+    }
 
     // Text search
-    if (search) {
-      query.$text = { $search: search };
+    if (search && search.trim()) {
+      query.$or = [
+        { title: { $regex: search.trim(), $options: 'i' } },
+        { description: { $regex: search.trim(), $options: 'i' } }
+      ];
     }
 
     // Sorting
     const sortOption = {};
-    sortOption[sortBy] = order === 'asc' ? 1 : -1;
+    sortOption[sanitizedSortBy] = sanitizedOrder === 'asc' ? 1 : -1;
 
     // Pagination
-    const skip = (page - 1) * limit;
+    const skip = (sanitizedPage - 1) * sanitizedLimit;
 
     // Execute query
     const [tasks, total] = await Promise.all([
       Task.find(query)
         .sort(sortOption)
         .skip(skip)
-        .limit(parseInt(limit))
+        .limit(sanitizedLimit)
         .lean(),
       Task.countDocuments(query)
     ]);
 
-    const totalPages = Math.ceil(total / limit);
+    const totalPages = Math.ceil(total / sanitizedLimit);
 
     return {
       tasks,
       pagination: {
         total,
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: sanitizedPage,
+        limit: sanitizedLimit,
         totalPages
       }
     };
@@ -126,7 +150,7 @@ class TaskService {
    * Lấy tasks theo calendar view (group by date)
    * @param {Number} year - Năm
    * @param {Number} month - Tháng (1-12)
-   * @returns {Promise<Object>} { year, month, tasks }
+   * @returns {Promise<Object>} { year, month, tasksByDate }
    */
   async getCalendarView(year, month) {
     // Validate params
@@ -137,13 +161,21 @@ class TaskService {
     const yearNum = parseInt(year);
     const monthNum = parseInt(month);
 
+    if (isNaN(yearNum) || isNaN(monthNum)) {
+      throw new Error('Year và month phải là số hợp lệ');
+    }
+
     if (monthNum < 1 || monthNum > 12) {
       throw new Error('Month phải từ 1 đến 12');
     }
 
-    // Calculate date range
-    const startDate = new Date(yearNum, monthNum - 1, 1);
-    const endDate = new Date(yearNum, monthNum, 0, 23, 59, 59);
+    if (yearNum < 2000 || yearNum > 2100) {
+      throw new Error('Year phải từ 2000 đến 2100');
+    }
+
+    // Calculate date range using dateHelper
+    const startDate = getFirstDayOfMonth(yearNum, monthNum);
+    const endDate = getLastDayOfMonth(yearNum, monthNum);
 
     // Query tasks
     const tasks = await Task.find({
@@ -152,59 +184,106 @@ class TaskService {
         $lte: endDate
       }
     })
-      .sort({ dueDate: 1 })
+      .sort({ dueDate: 1, priority: -1 })
       .lean();
 
     // Group by date
-    const groupedByDate = {};
+    const tasksByDate = {};
+    
     tasks.forEach(task => {
-      const dateKey = task.dueDate.toISOString().split('T')[0]; // YYYY-MM-DD
-      if (!groupedByDate[dateKey]) {
-        groupedByDate[dateKey] = [];
+      if (task.dueDate) {
+        const dateKey = task.dueDate.toISOString().split('T')[0]; // YYYY-MM-DD
+        if (!tasksByDate[dateKey]) {
+          tasksByDate[dateKey] = [];
+        }
+        tasksByDate[dateKey].push(task);
       }
-      groupedByDate[dateKey].push(task);
     });
 
     return {
       year: yearNum,
       month: monthNum,
-      tasks: groupedByDate
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+      totalTasks: tasks.length,
+      tasksByDate
     };
   }
 
   /**
    * Lấy tasks theo kanban view (group by status)
-   * @param {Object} filters - { priority, groupId }
+   * @param {Object} filters - { priority, groupId, search }
    * @returns {Promise<Object>} Kanban board object
    */
   async getKanbanView(filters = {}) {
-    const { priority, groupId } = filters;
+    const { priority, groupId, search } = filters;
 
     // Build filter
     const query = {};
-    if (priority) query.priority = priority;
-    if (groupId) query.groupId = groupId;
+    
+    if (priority) {
+      const validPriorities = ['low', 'medium', 'high', 'urgent'];
+      if (!validPriorities.includes(priority)) {
+        throw new Error(`Invalid priority. Allowed values: ${validPriorities.join(', ')}`);
+      }
+      query.priority = priority;
+    }
+    
+    if (groupId) {
+      if (!isValidObjectId(groupId)) {
+        throw new Error('Invalid groupId format');
+      }
+      query.groupId = groupId;
+    }
+
+    if (search && search.trim()) {
+      query.$or = [
+        { title: { $regex: search.trim(), $options: 'i' } },
+        { description: { $regex: search.trim(), $options: 'i' } }
+      ];
+    }
 
     // Query all tasks
     const tasks = await Task.find(query)
-      .sort({ createdAt: -1 })
+      .sort({ priority: -1, dueDate: 1, createdAt: -1 })
       .lean();
 
-    // Group by status
+    // Group by status với count
     const kanbanBoard = {
-      todo: [],
-      in_progress: [],
-      completed: [],
-      archived: []
+      todo: {
+        tasks: [],
+        count: 0
+      },
+      in_progress: {
+        tasks: [],
+        count: 0
+      },
+      completed: {
+        tasks: [],
+        count: 0
+      },
+      archived: {
+        tasks: [],
+        count: 0
+      }
     };
 
     tasks.forEach(task => {
       if (kanbanBoard[task.status]) {
-        kanbanBoard[task.status].push(task);
+        kanbanBoard[task.status].tasks.push(task);
+        kanbanBoard[task.status].count++;
       }
     });
 
-    return kanbanBoard;
+    return {
+      kanbanBoard,
+      totalTasks: tasks.length,
+      filters: {
+        priority: priority || 'all',
+        groupId: groupId || null,
+        search: search || null
+      }
+    };
   }
 
   /**

@@ -1,0 +1,520 @@
+{
+  "info": {
+    "name": "Phase 3: Multiple Views",
+    "description": "Test cases for List View, Calendar View, and Kanban View (Updated with Authentication)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Check if we have an access token, if not, skip this request",
+          "if (!pm.collectionVariables.get('accessToken')) {",
+          "    console.log('No access token found. Please login first.');",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "List View",
+      "item": [
+        {
+          "name": "Get All Tasks - No Filter",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has tasks array\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.data.tasks).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test(\"Response has pagination\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.data.pagination).to.have.property('total');",
+                  "    pm.expect(response.data.pagination).to.have.property('page');",
+                  "    pm.expect(response.data.pagination).to.have.property('limit');",
+                  "    pm.expect(response.data.pagination).to.have.property('totalPages');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks"]
+            }
+          }
+        },
+        {
+          "name": "Filter by Status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"All tasks have status 'todo'\", () => {",
+                  "    const response = pm.response.json();",
+                  "    response.data.tasks.forEach(task => {",
+                  "        pm.expect(task.status).to.equal('todo');",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks?status=todo",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "todo"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Filter by Priority",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"All tasks have priority 'high'\", () => {",
+                  "    const response = pm.response.json();",
+                  "    response.data.tasks.forEach(task => {",
+                  "        pm.expect(task.priority).to.equal('high');",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks?priority=high",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks"],
+              "query": [
+                {
+                  "key": "priority",
+                  "value": "high"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Multiple Filters + Sort",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Tasks are filtered correctly\", () => {",
+                  "    const response = pm.response.json();",
+                  "    response.data.tasks.forEach(task => {",
+                  "        pm.expect(task.status).to.equal('todo');",
+                  "        pm.expect(task.priority).to.equal('high');",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test(\"Tasks are sorted by dueDate ascending\", () => {",
+                  "    const response = pm.response.json();",
+                  "    const tasks = response.data.tasks;",
+                  "    for (let i = 0; i < tasks.length - 1; i++) {",
+                  "        if (tasks[i].dueDate && tasks[i+1].dueDate) {",
+                  "            pm.expect(new Date(tasks[i].dueDate) <= new Date(tasks[i+1].dueDate)).to.be.true;",
+                  "        }",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks?status=todo&priority=high&sortBy=dueDate&order=asc",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks"],
+              "query": [
+                {"key": "status", "value": "todo"},
+                {"key": "priority", "value": "high"},
+                {"key": "sortBy", "value": "dueDate"},
+                {"key": "order", "value": "asc"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Search in Title/Description",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Search results contain keyword\", () => {",
+                  "    const response = pm.response.json();",
+                  "    response.data.tasks.forEach(task => {",
+                  "        const titleMatch = task.title.toLowerCase().includes('Task');",
+                  "        const descMatch = task.description ? task.description.toLowerCase().includes('Task') : false;",
+                  "        pm.expect(titleMatch || descMatch).to.be.true;",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks?search=Task",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks"],
+              "query": [
+                {"key": "search", "value": "Task"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Pagination",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Returns correct number of items\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.data.tasks.length).to.be.at.most(2);",
+                  "    pm.expect(response.data.pagination.limit).to.equal(2);",
+                  "    pm.expect(response.data.pagination.page).to.equal(1);",
+                  "});",
+                  "",
+                  "pm.test(\"Pagination math is correct\", () => {",
+                  "    const response = pm.response.json();",
+                  "    const { total, limit, totalPages } = response.data.pagination;",
+                  "    pm.expect(totalPages).to.equal(Math.ceil(total / limit));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks?page=1&limit=2",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "2"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Calendar View",
+      "item": [
+        {
+          "name": "Get Calendar - Valid Month",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has correct year and month\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.data.year).to.equal(2025);",
+                  "    pm.expect(response.data.month).to.equal(10);",
+                  "});",
+                  "",
+                  "pm.test(\"tasksByDate is grouped correctly\", () => {",
+                  "    const response = pm.response.json();",
+                  "    const tasksByDate = response.data.tasksByDate;",
+                  "    ",
+                  "    for (const date in tasksByDate) {",
+                  "        pm.expect(date).to.match(/^\\d{4}-\\d{2}-\\d{2}$/);",
+                  "        pm.expect(tasksByDate[date]).to.be.an('array');",
+                  "        ",
+                  "        tasksByDate[date].forEach(task => {",
+                  "            const taskDate = new Date(task.dueDate).toISOString().split('T')[0];",
+                  "            pm.expect(taskDate).to.equal(date);",
+                  "        });",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/calendar?year=2025&month=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks", "calendar"],
+              "query": [
+                {"key": "year", "value": "2025"},
+                {"key": "month", "value": "10"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Calendar - Empty Month",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Empty month returns empty tasksByDate\", () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.data.totalTasks).to.equal(0);",
+                  "    pm.expect(Object.keys(response.data.tasksByDate).length).to.equal(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/calendar?year=2025&month=12",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks", "calendar"],
+              "query": [
+                {"key": "year", "value": "2025"},
+                {"key": "month", "value": "12"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Calendar - Invalid Month",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Returns error for invalid month\", () => {",
+                  "    pm.response.to.have.status(500);",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/calendar?year=2025&month=13",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks", "calendar"],
+              "query": [
+                {"key": "year", "value": "2025"},
+                {"key": "month", "value": "13"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Kanban View",
+      "item": [
+        {
+          "name": "Get Kanban - All Tasks",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"All status columns exist\", () => {",
+                  "    const response = pm.response.json();",
+                  "    const board = response.data.kanbanBoard;",
+                  "    ",
+                  "    pm.expect(board).to.have.property('todo');",
+                  "    pm.expect(board).to.have.property('In Progress');",
+                  "    pm.expect(board).to.have.property('Completed');",
+                  "    pm.expect(board).to.have.property('Archived');",
+                  "});",
+                  "",
+                  "pm.test(\"Each column has tasks and count\", () => {",
+                  "    const response = pm.response.json();",
+                  "    const board = response.data.kanbanBoard;",
+                  "    ",
+                  "    for (const status in board) {",
+                  "        pm.expect(board[status]).to.have.property('tasks');",
+                  "        pm.expect(board[status]).to.have.property('count');",
+                  "        pm.expect(board[status].tasks).to.be.an('array');",
+                  "        pm.expect(board[status].count).to.equal(board[status].tasks.length);",
+                  "    }",
+                  "});",
+                  "",
+                  "pm.test(\"Tasks are in correct columns\", () => {",
+                  "    const response = pm.response.json();",
+                  "    const board = response.data.kanbanBoard;",
+                  "    ",
+                  "    for (const status in board) {",
+                  "        board[status].tasks.forEach(task => {",
+                  "            pm.expect(task.status).to.equal(status);",
+                  "        });",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/kanban",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks", "kanban"]
+            }
+          }
+        },
+        {
+          "name": "Kanban - Filter by Priority",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"All tasks have high priority\", () => {",
+                  "    const response = pm.response.json();",
+                  "    const board = response.data.kanbanBoard;",
+                  "    ",
+                  "    for (const status in board) {",
+                  "        board[status].tasks.forEach(task => {",
+                  "            pm.expect(task.priority).to.equal('high');",
+                  "        });",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/kanban?priority=high",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks", "kanban"],
+              "query": [
+                {"key": "priority", "value": "high"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Kanban - Search",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Search results in kanban format\", () => {",
+                  "    const response = pm.response.json();",
+                  "    const board = response.data.kanbanBoard;",
+                  "    ",
+                  "    for (const status in board) {",
+                  "        board[status].tasks.forEach(task => {",
+                  "            const titleMatch = task.title.toLowerCase().includes('test');",
+                  "            const descMatch = task.description ? task.description.toLowerCase().includes('test') : false;",
+                  "            pm.expect(titleMatch || descMatch).to.be.true;",
+                  "        });",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/kanban?search=test",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks", "kanban"],
+              "query": [
+                {"key": "search", "value": "test"}
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

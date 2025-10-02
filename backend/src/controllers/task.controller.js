@@ -12,11 +12,11 @@ const { SUCCESS_MESSAGES, ERROR_MESSAGES, HTTP_STATUS } = require('../config/con
 /**
  * @desc    Tạo task mới
  * @route   POST /api/tasks
- * @access  Private (sau khi có auth)
+ * @access  Private
  */
 const createTask = asyncHandler(async (req, res) => {
-  // TODO: Sau khi có authentication, lấy userId từ req.user._id
-  const createdBy = req.body.createdBy || '507f1f77bcf86cd799439011';
+  // Get userId from authenticated user
+  const createdBy = req.user._id;
 
   const taskData = {
     ...req.body,
@@ -131,13 +131,14 @@ const getCalendarView = asyncHandler(async (req, res) => {
 const getKanbanView = asyncHandler(async (req, res) => {
   const filters = {
     priority: req.query.priority,
-    groupId: req.query.groupId
+    groupId: req.query.groupId,
+    search: req.query.search
   };
 
   // Call service
-  const kanbanBoard = await taskService.getKanbanView(filters);
+  const result = await taskService.getKanbanView(filters);
 
-  sendSuccess(res, kanbanBoard, 'Lấy kanban view thành công');
+  sendSuccess(res, result, 'Lấy kanban view thành công');
 });
 
 module.exports = {

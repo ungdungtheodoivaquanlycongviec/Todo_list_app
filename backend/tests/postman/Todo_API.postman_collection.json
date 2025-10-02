@@ -1,11 +1,340 @@
 {
   "info": {
     "name": "Todo List API",
-    "description": "API endpoints cho Todo List System",
+    "description": "API endpoints cho Todo List System - Phase 0-4 (Updated with Authentication)",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_postman_id": "todo-api-collection-001"
   },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
   "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Register User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has user and tokens\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(true);",
+                  "    pm.expect(jsonData.data).to.have.property('user');",
+                  "    pm.expect(jsonData.data).to.have.property('accessToken');",
+                  "    pm.expect(jsonData.data).to.have.property('refreshToken');",
+                  "    ",
+                  "    // Save tokens",
+                  "    pm.collectionVariables.set(\"accessToken\", jsonData.data.accessToken);",
+                  "    pm.collectionVariables.set(\"refreshToken\", jsonData.data.refreshToken);",
+                  "    pm.collectionVariables.set(\"userId\", jsonData.data.user._id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"testuser@example.com\",\n  \"password\": \"SecurePass123!@#\",\n  \"name\": \"Test User\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has tokens\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data).to.have.property('accessToken');",
+                  "    pm.expect(jsonData.data).to.have.property('refreshToken');",
+                  "    ",
+                  "    // Update tokens",
+                  "    pm.collectionVariables.set(\"accessToken\", jsonData.data.accessToken);",
+                  "    pm.collectionVariables.set(\"refreshToken\", jsonData.data.refreshToken);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"testuser@example.com\",\n  \"password\": \"SecurePass123!@#\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Get Current User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has user data\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.user).to.have.property('email');",
+                  "    pm.expect(jsonData.data.user).to.have.property('name');",
+                  "    pm.expect(jsonData.data.user).to.not.have.property('password');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "me"]
+            }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"New tokens received\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data).to.have.property('accessToken');",
+                  "    pm.expect(jsonData.data).to.have.property('refreshToken');",
+                  "    ",
+                  "    // Update tokens",
+                  "    pm.collectionVariables.set(\"accessToken\", jsonData.data.accessToken);",
+                  "    pm.collectionVariables.set(\"refreshToken\", jsonData.data.refreshToken);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/refresh-token",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "refresh-token"]
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "// Clear tokens after logout",
+                  "pm.collectionVariables.set(\"accessToken\", \"\");",
+                  "pm.collectionVariables.set(\"refreshToken\", \"\");"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "logout"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "User Management",
+      "item": [
+        {
+          "name": "Update Profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Profile updated\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.user.name).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Name\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me"]
+            }
+          }
+        },
+        {
+          "name": "Update Notification Settings",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Settings updated\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.user.notificationSettings).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": true,\n  \"push\": false,\n  \"beforeDue\": 48\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/notifications",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me", "notifications"]
+            }
+          }
+        },
+        {
+          "name": "Change Password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"oldPassword\": \"SecurePass123!@#\",\n  \"newPassword\": \"NewSecurePass456!@#\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me", "password"]
+            }
+          }
+        }
+      ]
+    },
     {
       "name": "Tasks",
       "item": [
@@ -25,8 +354,9 @@
                   "    pm.expect(jsonData.success).to.eql(true);",
                   "    pm.expect(jsonData.data).to.have.property('_id');",
                   "    pm.expect(jsonData.data).to.have.property('title');",
+                  "    pm.expect(jsonData.data).to.have.property('createdBy');",
                   "    ",
-                  "    // Save task ID for other tests - QUAN TRỌNG!",
+                  "    // Save task ID for other tests",
                   "    pm.collectionVariables.set(\"taskId\", jsonData.data._id);",
                   "    console.log(\"Task ID saved:\", jsonData.data._id);",
                   "});",
@@ -51,7 +381,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Hoàn thành báo cáo dự án\",\n  \"description\": \"Viết báo cáo chi tiết về tiến độ dự án Todo List\",\n  \"priority\": \"high\",\n  \"status\": \"todo\",\n  \"dueDate\": \"2025-10-15T17:00:00.000Z\",\n  \"tags\": [\"báo cáo\", \"dự án\", \"quan trọng\"],\n  \"category\": \"Công việc\",\n  \"createdBy\": \"507f1f77bcf86cd799439011\"\n}"
+              "raw": "{\n  \"title\": \"Hoàn thành báo cáo dự án\",\n  \"description\": \"Viết báo cáo chi tiết về tiến độ dự án Todo List\",\n  \"priority\": \"high\",\n  \"status\": \"todo\",\n  \"dueDate\": \"2025-10-15T17:00:00.000Z\",\n  \"tags\": [\"báo cáo\", \"dự án\", \"quan trọng\"],\n  \"category\": \"Công việc\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/tasks",
@@ -92,7 +422,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"description\": \"Task không có title\",\n  \"priority\": \"medium\",\n  \"createdBy\": \"507f1f77bcf86cd799439011\"\n}"
+              "raw": "{\n  \"description\": \"Task không có title\",\n  \"priority\": \"medium\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/tasks",
@@ -132,7 +462,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Task với dueDate quá khứ\",\n  \"dueDate\": \"2020-01-01T00:00:00.000Z\",\n  \"createdBy\": \"507f1f77bcf86cd799439011\"\n}"
+              "raw": "{\n  \"title\": \"Task với dueDate quá khứ\",\n  \"dueDate\": \"2020-01-01T00:00:00.000Z\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/tasks",
@@ -172,7 +502,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Task với priority không hợp lệ\",\n  \"priority\": \"super-urgent\",\n  \"createdBy\": \"507f1f77bcf86cd799439011\"\n}"
+              "raw": "{\n  \"title\": \"Task với priority không hợp lệ\",\n  \"priority\": \"super-urgent\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/tasks",
@@ -212,7 +542,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Task tối giản\",\n  \"createdBy\": \"507f1f77bcf86cd799439011\"\n}"
+              "raw": "{\n  \"title\": \"Task tối giản\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/tasks",
@@ -366,6 +696,21 @@
     },
     {
       "key": "taskId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "userId",
       "value": "",
       "type": "string"
     }
