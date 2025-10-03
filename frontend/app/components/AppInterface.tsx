@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import MainLayout from './layouts/MainLayout';
-import TasksView from './views/TasksView';
+import TasksView from './views/TasksView/TasksView';
 import CalendarView from './views/CalendarView';
 import NotesView from './views/NotesView';
 import { useAuth } from '../contexts/AuthContext';

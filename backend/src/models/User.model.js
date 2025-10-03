@@ -41,6 +41,12 @@ const userSchema = new mongoose.Schema({
     enum: ['user', 'admin'],
     default: 'user'
   },
+
+  theme: {
+    type: String,
+    enum: ['light', 'dark', 'auto'],
+    default: 'light'
+  },
   
   isActive: {
     type: Boolean,

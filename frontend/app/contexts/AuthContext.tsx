@@ -85,34 +85,43 @@ const applyTheme = (theme: string) => {
   console.log('HTML classes:', root.classList.toString());
 };
 
-  const login = async (credentials: LoginRequest) => {
-    try {
-      setLoading(true);
-      const authData: AuthResponse = await authService.login(credentials);
-      
-      // Save tokens
-      authService.saveTokens(authData.accessToken, authData.refreshToken);
-      
-      // Set user state
-      setUser(authData.user);
-      
-      // Apply user's theme preference
-      applyTheme(authData.user.theme);
-      
-      // Save user to localStorage
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('user', JSON.stringify(authData.user));
-      }
-      
-      // Redirect to dashboard
-      router.push('/dashboard');
-    } catch (error) {
-      console.error('Login failed:', error);
-      throw error;
-    } finally {
-      setLoading(false);
+  // Trong hàm login
+const login = async (credentials: LoginRequest) => {
+  try {
+    setLoading(true);
+    const authData: AuthResponse = await authService.login(credentials);
+    
+    // Save tokens - ĐẢM BẢO LƯU ĐÚNG KEY
+    authService.saveTokens(authData.accessToken, authData.refreshToken);
+    
+    // THÊM: Lưu token vào localStorage để taskService có thể đọc
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('token', authData.accessToken);
+      localStorage.setItem('accessToken', authData.accessToken); // Lưu cả 2 key để chắc chắn
     }
-  };
+    
+    // Set user state
+    setUser(authData.user);
+    
+    // Apply user's theme preference
+    applyTheme(authData.user.theme);
+    
+    // Save user to localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('user', JSON.stringify(authData.user));
+    }
+    
+    console.log('Login successful, token saved:', authData.accessToken);
+    
+    // Redirect to dashboard
+    router.push('/dashboard');
+  } catch (error) {
+    console.error('Login failed:', error);
+    throw error;
+  } finally {
+    setLoading(false);
+  }
+};
 
   const register = async (userData: RegisterRequest) => {
     try {

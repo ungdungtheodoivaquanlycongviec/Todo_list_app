@@ -19,5 +19,6 @@ router.put('/me/password', validateChangePassword, userController.changePassword
 router.put('/me/avatar', userController.updateAvatar);
 router.put('/me/notifications', userController.updateNotificationSettings);
 router.delete('/me', userController.deactivateAccount);
+router.patch('/theme', authenticate, userController.updateTheme);
 
 module.exports = router;

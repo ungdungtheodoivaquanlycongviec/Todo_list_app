@@ -7,6 +7,26 @@ const { sendSuccess, sendError } = require('../utils/response');
  * @desc    Update user profile (name, avatar)
  * @access  Private
  */
+
+const updateTheme = asyncHandler(async (req, res) => {
+  const { theme } = req.body;
+  
+  // Validate theme
+  const validThemes = ['light', 'dark', 'auto'];
+  if (!validThemes.includes(theme)) {
+    return sendError(res, 'Invalid theme. Must be one of: light, dark, auto', 400);
+  }
+  
+  try {
+    const updatedUser = await userService.updateUserTheme(req.user._id, theme);
+    
+    sendSuccess(res, { user: updatedUser }, 'Theme updated successfully');
+  } catch (error) {
+    console.error('Update theme error:', error);
+    sendError(res, 'Failed to update theme', 500);
+  }
+});
+
 const updateProfile = asyncHandler(async (req, res) => {
   const { name, avatar } = req.body;
   
@@ -98,5 +118,6 @@ module.exports = {
   changePassword,
   updateAvatar,
   updateNotificationSettings,
-  deactivateAccount
+  deactivateAccount,
+  updateTheme
 };

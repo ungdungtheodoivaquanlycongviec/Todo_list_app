@@ -3,6 +3,26 @@ const authService = require('./auth.service');
 
 class UserService {
   /**
+   * Update user theme preference
+   * @param {String} userId
+   * @param {String} theme - 'light', 'dark', or 'auto'
+   * @returns {Object} - Updated user
+   */
+  async updateUserTheme(userId, theme) {
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { theme },
+      { new: true, runValidators: true }
+    );
+    
+    if (!user) {
+      throw new Error('User not found');
+    }
+    
+    return user.toSafeObject();
+  }
+  
+  /**
    * Get user by ID
    * @param {String} userId
    * @returns {Object} - User object without sensitive data
