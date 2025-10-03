@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Globe } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function AuthPages() {
   const [currentPage, setCurrentPage] = useState('login'); // 'login' or 'signup'
@@ -12,6 +12,7 @@ export default function AuthPages() {
       {/* Logo */}
       <div className="mb-8">
         <div className="flex items-center gap-2">
+          {/* Your logo here */}
         </div>
       </div>
 
@@ -36,35 +37,44 @@ export default function AuthPages() {
   );
 }
 
-function LoginForm({ onSwitchToSignup }) {
+function LoginForm({ onSwitchToSignup }: { onSwitchToSignup: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [errors, setErrors] = useState({});
+  const [errors, setErrors] = useState<{ email?: string; password?: string; submit?: string }>({});
+  const [isLoading, setIsLoading] = useState(false);
+  
+  const { login } = useAuth();
 
   const handleGoogleLogin = () => {
-    // TODO: FR-08 - Implement Google OAuth login
-    console.log('API Call: Google OAuth login');
+    // TODO: Implement Google OAuth login
+    console.log('Google OAuth login - to be implemented');
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsLoading(true);
     
     // Frontend validation
-    const newErrors = {};
+    const newErrors: { email?: string; password?: string } = {};
     if (!email) newErrors.email = 'Email is required';
     if (!password) newErrors.password = 'Password is required';
     
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
+      setIsLoading(false);
       return;
     }
 
-    // TODO: FR-08 - Backend API call to login
-    // POST /api/auth/login
-    console.log('API Call: POST /api/auth/login', { email, password });
-    
-    // On success, redirect to main app
-    // window.location.href = '/dashboard';
+    try {
+      await login({ email, password });
+      // Redirect happens automatically in the auth context
+    } catch (error: any) {
+      setErrors({ 
+        submit: error.message || 'Login failed. Please check your credentials and try again.' 
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleReset = () => {
@@ -106,6 +116,7 @@ function LoginForm({ onSwitchToSignup }) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={isLoading}
           />
           {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
         </div>
@@ -117,15 +128,30 @@ function LoginForm({ onSwitchToSignup }) {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={isLoading}
           />
           {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
         </div>
 
+        {errors.submit && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-red-600 text-sm text-center">{errors.submit}</p>
+          </div>
+        )}
+
         <button
           type="submit"
-          className="w-full bg-[#5DADE2] hover:bg-[#4FA3D8] text-white font-medium py-3 rounded-full transition-colors mb-4"
+          disabled={isLoading}
+          className="w-full bg-[#5DADE2] hover:bg-[#4FA3D8] disabled:bg-gray-400 text-white font-medium py-3 rounded-full transition-colors mb-4 flex items-center justify-center"
         >
-          Log in
+          {isLoading ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+              Logging in...
+            </>
+          ) : (
+            'Log in'
+          )}
         </button>
 
         <div className="text-center text-sm">
@@ -154,7 +180,7 @@ function LoginForm({ onSwitchToSignup }) {
   );
 }
 
-function SignupForm({ onSwitchToLogin }) {
+function SignupForm({ onSwitchToLogin }: { onSwitchToLogin: () => void }) {
   const [formData, setFormData] = useState({
     email: '',
     firstName: '',
@@ -162,18 +188,51 @@ function SignupForm({ onSwitchToLogin }) {
     password: '',
     agreeToTerms: false
   });
-  const [errors, setErrors] = useState({});
+  const [errors, setErrors] = useState<{ [key: string]: string }>({});
+  const [isLoading, setIsLoading] = useState(false);
+  
+  const { register } = useAuth();
 
-  const handleChange = (field, value) => {
+  const handleChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     // Clear error when user starts typing
     if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: null }));
+      setErrors(prev => ({ ...prev, [field]: '' }));
     }
   };
 
+  // Password validation function
+  const validatePassword = (password: string) => {
+    const errors: string[] = [];
+    
+    if (password.length < 8) {
+      errors.push('Password must be at least 8 characters');
+    }
+    
+    if (!/[A-Z]/.test(password)) {
+      errors.push('Password must contain at least one uppercase letter');
+    }
+    
+    if (!/[a-z]/.test(password)) {
+      errors.push('Password must contain at least one lowercase letter');
+    }
+    
+    if (!/[0-9]/.test(password)) {
+      errors.push('Password must contain at least one number');
+    }
+    
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+      errors.push('Password must contain at least one special character');
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  };
+
   const validateForm = () => {
-    const newErrors = {};
+    const newErrors: { [key: string]: string } = {};
     
     if (!formData.email) {
       newErrors.email = 'Email is required';
@@ -186,8 +245,11 @@ function SignupForm({ onSwitchToLogin }) {
     
     if (!formData.password) {
       newErrors.password = 'Password is required';
-    } else if (formData.password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters';
+    } else {
+      const passwordValidation = validatePassword(formData.password);
+      if (!passwordValidation.isValid) {
+        newErrors.password = passwordValidation.errors.join(', ');
+      }
     }
     
     if (!formData.agreeToTerms) {
@@ -197,27 +259,39 @@ function SignupForm({ onSwitchToLogin }) {
     return newErrors;
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsLoading(true);
     
     // Frontend validation
     const newErrors = validateForm();
     
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
+      setIsLoading(false);
       return;
     }
 
-    // TODO: FR-07 - Backend API call to register
-    // POST /api/auth/register
-    console.log('API Call: POST /api/auth/register', {
-      email: formData.email,
-      name: `${formData.firstName} ${formData.lastName}`,
-      password: formData.password
-    });
-    
-    // On success, redirect to main app or show success message
-    // window.location.href = '/dashboard';
+    try {
+      // Prepare data for backend
+      const registerData = {
+        email: formData.email,
+        password: formData.password,
+        name: `${formData.firstName} ${formData.lastName}`.trim()
+      };
+
+      console.log('Sending registration data:', registerData);
+      
+      await register(registerData);
+      // Redirect happens automatically in the auth context
+    } catch (error: any) {
+      console.error('Registration error:', error);
+      setErrors({ 
+        submit: error.message || 'Registration failed. Please try again.' 
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -244,6 +318,7 @@ function SignupForm({ onSwitchToLogin }) {
             value={formData.email}
             onChange={(e) => handleChange('email', e.target.value)}
             className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={isLoading}
           />
           {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
         </div>
@@ -255,6 +330,7 @@ function SignupForm({ onSwitchToLogin }) {
             value={formData.firstName}
             onChange={(e) => handleChange('firstName', e.target.value)}
             className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={isLoading}
           />
           {errors.firstName && <p className="text-red-500 text-xs mt-1">{errors.firstName}</p>}
         </div>
@@ -266,6 +342,7 @@ function SignupForm({ onSwitchToLogin }) {
             value={formData.lastName}
             onChange={(e) => handleChange('lastName', e.target.value)}
             className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={isLoading}
           />
           {errors.lastName && <p className="text-red-500 text-xs mt-1">{errors.lastName}</p>}
         </div>
@@ -273,12 +350,16 @@ function SignupForm({ onSwitchToLogin }) {
         <div className="mb-4">
           <input
             type="password"
-            placeholder="Enter a strong password"
+            placeholder="Enter a strong password (min 8 chars with uppercase, lowercase, number, special character)"
             value={formData.password}
             onChange={(e) => handleChange('password', e.target.value)}
             className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={isLoading}
           />
           {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
+          <p className="text-xs text-gray-500 mt-1">
+            Password must contain at least 8 characters, including uppercase, lowercase, number, and special character
+          </p>
         </div>
 
         <div className="mb-6">
@@ -288,6 +369,7 @@ function SignupForm({ onSwitchToLogin }) {
               checked={formData.agreeToTerms}
               onChange={(e) => handleChange('agreeToTerms', e.target.checked)}
               className="mt-1 w-4 h-4 text-blue-500 rounded border-gray-300 focus:ring-2 focus:ring-blue-500"
+              disabled={isLoading}
             />
             <span className="text-sm text-gray-600">
               I agree with{' '}
@@ -299,11 +381,25 @@ function SignupForm({ onSwitchToLogin }) {
           {errors.agreeToTerms && <p className="text-red-500 text-xs mt-1">{errors.agreeToTerms}</p>}
         </div>
 
+        {errors.submit && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-red-600 text-sm text-center">{errors.submit}</p>
+          </div>
+        )}
+
         <button
           type="submit"
-          className="w-full bg-[#5DADE2] hover:bg-[#4FA3D8] text-white font-medium py-3 rounded-full transition-colors"
+          disabled={isLoading}
+          className="w-full bg-[#5DADE2] hover:bg-[#4FA3D8] disabled:bg-gray-400 text-white font-medium py-3 rounded-full transition-colors flex items-center justify-center"
         >
-          Sign up for free
+          {isLoading ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+              Creating account...
+            </>
+          ) : (
+            'Sign up for free'
+          )}
         </button>
       </form>
     </div>
