@@ -109,7 +109,6 @@ export default function TasksView() {
               <div>Priority</div>
               <div>Assignee</div>
               <div>Estimated time</div>
-              {/* Sport time column removed as per design */}
             </div>
 
             {/* Create Task Row */}
@@ -262,12 +261,7 @@ export default function TasksView() {
         )}
       </div>
 
-      {/* Timer Deletion Message */}
-      <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-        <p className="text-sm text-green-700 text-center">
-          The timer has been successfully deleted
-        </p>
-      </div>
+      {/* ĐÃ XÓA DÒNG "The timer has been successfully deleted" */}
     </div>
   );
 }

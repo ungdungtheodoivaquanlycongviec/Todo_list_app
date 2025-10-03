@@ -33,3 +33,17 @@ export interface ApiResponse<T> {
   data: T;
   message: string;
 }
+
+export interface User {
+  _id: string;
+  email: string;
+  name: string;
+  avatar: string | null;
+  role: 'user' | 'admin';
+  theme: 'light' | 'dark' | 'auto'; // THÊM FIELD THEME
+  isActive: boolean;
+  isEmailVerified: boolean;
+  lastLogin?: string;
+  createdAt: string;
+  updatedAt: string;
+}

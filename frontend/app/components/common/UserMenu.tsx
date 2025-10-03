@@ -1,16 +1,15 @@
 "use client"
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Settings, LogOut, Sun, Moon, Monitor } from 'lucide-react';
+import { Settings, LogOut, Sun, Moon, Monitor, ChevronDown } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { User } from '../../services/types/auth.types';
 
-// Cập nhật interface để bao gồm tất cả props
 interface UserMenuProps {
   currentUser: User;
-  onLogout: () => void;           // Thêm dòng này
-  theme: string;                  // Thêm dòng này
-  onThemeChange: (theme: string) => void; // Thêm dòng này
+  onLogout: () => void;
+  theme: string;
+  onThemeChange: (theme: string) => void;
 }
 
 export default function UserMenu({ 
@@ -20,6 +19,7 @@ export default function UserMenu({
   onThemeChange 
 }: UserMenuProps) {
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showThemeOptions, setShowThemeOptions] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -27,6 +27,7 @@ export default function UserMenu({
     const handleClickOutside = (event: MouseEvent) => {
       if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
         setShowUserMenu(false);
+        setShowThemeOptions(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -35,6 +36,29 @@ export default function UserMenu({
 
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+  };
+
+  const getThemeIcon = () => {
+    switch (theme) {
+      case 'light': return <Sun className="w-4 h-4" />;
+      case 'dark': return <Moon className="w-4 h-4" />;
+      case 'auto': return <Monitor className="w-4 h-4" />;
+      default: return <Monitor className="w-4 h-4" />;
+    }
+  };
+
+  const getThemeLabel = () => {
+    switch (theme) {
+      case 'light': return 'Light';
+      case 'dark': return 'Dark';
+      case 'auto': return 'Auto';
+      default: return 'Theme';
+    }
+  };
+
+  const handleThemeChange = (newTheme: string) => {
+    onThemeChange(newTheme);
+    setShowThemeOptions(false);
   };
 
   return (
@@ -68,72 +92,96 @@ export default function UserMenu({
             </div>
           </div>
 
-          {/* Menu Items */}
-          <div className="py-2">
+          {/* Menu Items - TẤT CẢ CÙNG CẤU TRÚC */}
+          <div className="py-1">
+            {/* Profile Settings */}
             <button
               onClick={() => {
                 setShowUserMenu(false);
                 router.push('/profile');
               }}
-              className="w-full px-4 py-2 text-left flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+              className="w-full px-4 py-2 flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-left"
             >
-              <Settings className="w-4 h-4" />
-              <span className="text-sm">Profile settings</span>
+              <Settings className="w-4 h-4 flex-shrink-0" />
+              <span className="text-sm flex-1">Profile settings</span>
             </button>
 
-            {/* Theme Submenu */}
-            <div className="px-4 py-2">
-              <div className="flex items-center gap-3 text-gray-700 dark:text-gray-300 mb-2">
-                {theme === 'light' && <Sun className="w-4 h-4" />}
-                {theme === 'dark' && <Moon className="w-4 h-4" />}
-                {theme === 'auto' && <Monitor className="w-4 h-4" />}
-                <span className="text-sm">Theme</span>
-              </div>
-              <div className="ml-7 space-y-1">
-                <button
-                  onClick={() => onThemeChange('light')}
-                  className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                    theme === 'light' 
-                      ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' 
-                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  Light
-                </button>
-                <button
-                  onClick={() => onThemeChange('dark')}
-                  className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                    theme === 'dark' 
-                      ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' 
-                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  Dark
-                </button>
-                <button
-                  onClick={() => onThemeChange('auto')}
-                  className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                    theme === 'auto' 
-                      ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' 
-                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  Auto
-                </button>
-              </div>
+            {/* Divider */}
+            <div className="border-t border-gray-200 dark:border-gray-700 my-1"></div>
+
+            {/* Theme Toggle - CÙNG CẤU TRÚC VỚI SETTINGS */}
+            <div className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
+              <button
+                onClick={() => setShowThemeOptions(!showThemeOptions)}
+                className="w-full flex items-center justify-between text-gray-700 dark:text-gray-300 text-left"
+              >
+                <div className="flex items-center gap-3 flex-1">
+                  {getThemeIcon()}
+                  <span className="text-sm">Theme</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">{getThemeLabel()}</span>
+                  <ChevronDown 
+                    className={`w-4 h-4 transition-transform flex-shrink-0 ${
+                      showThemeOptions ? 'rotate-180' : ''
+                    }`} 
+                  />
+                </div>
+              </button>
+
+              {/* Theme Options - CĂN CHỈNH HOÀN HẢO */}
+              {showThemeOptions && (
+                <div className="mt-2 space-y-1 ml-7">
+                  <button
+                    onClick={() => handleThemeChange('light')}
+                    className={`w-full px-3 py-1.5 rounded text-sm flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 ${
+                      theme === 'light' 
+                        ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' 
+                        : 'text-gray-600 dark:text-gray-400'
+                    }`}
+                  >
+                    <Sun className="w-4 h-4 flex-shrink-0" />
+                    <span className="flex-1 text-left">Light</span>
+                  </button>
+                  <button
+                    onClick={() => handleThemeChange('dark')}
+                    className={`w-full px-3 py-1.5 rounded text-sm flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 ${
+                      theme === 'dark' 
+                        ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' 
+                        : 'text-gray-600 dark:text-gray-400'
+                    }`}
+                  >
+                    <Moon className="w-4 h-4 flex-shrink-0" />
+                    <span className="flex-1 text-left">Dark</span>
+                  </button>
+                  <button
+                    onClick={() => handleThemeChange('auto')}
+                    className={`w-full px-3 py-1.5 rounded text-sm flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 ${
+                      theme === 'auto' 
+                        ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' 
+                        : 'text-gray-600 dark:text-gray-400'
+                    }`}
+                  >
+                    <Monitor className="w-4 h-4 flex-shrink-0" />
+                    <span className="flex-1 text-left">Auto</span>
+                  </button>
+                </div>
+              )}
             </div>
 
-            <div className="border-t border-gray-200 dark:border-gray-700 my-2"></div>
+            {/* Divider */}
+            <div className="border-t border-gray-200 dark:border-gray-700 my-1"></div>
 
+            {/* Logout - CÙNG CẤU TRÚC VỚI SETTINGS */}
             <button
               onClick={() => {
                 setShowUserMenu(false);
                 onLogout();
               }}
-              className="w-full px-4 py-2 text-left flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 text-red-600 dark:text-red-400"
+              className="w-full px-4 py-2 flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 text-red-600 dark:text-red-400 text-left"
             >
-              <LogOut className="w-4 h-4" />
-              <span className="text-sm">Log out</span>
+              <LogOut className="w-4 h-4 flex-shrink-0" />
+              <span className="text-sm flex-1">Log out</span>
             </button>
           </div>
         </div>

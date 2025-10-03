@@ -12,10 +12,205 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Dark mode styles - MÀU MỚI THEO YÊU CẦU */
+.dark {
+  --background: #1A1A1A;     /* Main layout màu #1A1A1A */
+  --foreground: #f1f5f9;     /* Chữ sáng dễ đọc */
+}
+
+/* Sidebar và Tools - MÀU #1F1F1F */
+.dark .bg-\[\#0F1D40\] {
+  background-color: #1F1F1F !important; /* Sidebar màu #1F1F1F */
+}
+
+.dark .bg-white {
+  background-color: #1F1F1F !important; /* Tools sidebar màu #1F1F1F */
+}
+
+/* Main content background */
+.dark .bg-gray-100 {
+  background-color: #1A1A1A !important; /* Main layout màu #1A1A1A */
+}
+
+.dark .bg-gray-50 {
+  background-color: #1A1A1A !important; /* Main layout màu #1A1A1A */
+}
+
+/* Hover effects - MÀU #2E2E2E */
+.dark .hover\:bg-gray-50:hover,
+.dark .hover\:bg-gray-100:hover,
+.dark .hover\:bg-\[\#243152\]:hover,
+.dark .hover\:bg-\[\#1a2847\]:hover {
+  background-color: #2E2E2E !important;
+}
+
+/* Các hover states cụ thể */
+.dark .bg-\[\#1a2847\]:hover {
+  background-color: #2E2E2E !important;
+}
+
+.dark .hover\:bg-gray-700:hover {
+  background-color: #2E2E2E !important;
+}
+
+/* Text colors trong dark mode */
+.dark .text-\[\#FFFFE6\] {
+  color: #FFFFFF !important; /* Chữ trắng trên sidebar */
+}
+
+.dark .text-gray-900 {
+  color: #FFFFFF !important; /* Chữ trắng */
+}
+
+.dark .text-gray-800 {
+  color: #E5E5E5 !important; /* Chữ trắng nhẹ */
+}
+
+.dark .text-gray-700 {
+  color: #D4D4D4 !important; /* Chữ xám sáng */
+}
+
+.dark .text-gray-600 {
+  color: #A3A3A3 !important; /* Chữ xám */
+}
+
+.dark .text-gray-500 {
+  color: #737373 !important; /* Chữ xám đậm */
+}
+
+.dark .text-gray-400 {
+  color: #525252 !important; /* Chữ xám rất đậm */
+}
+
+/* Border colors */
+.dark .border-gray-200 {
+  border-color: #404040 !important; /* Border xám đậm */
+}
+
+.dark .border-gray-300 {
+  border-color: #525252 !important; /* Border xám */
+}
+
+.dark .border-\[\#2D4071\] {
+  border-color: #404040 !important; /* Border sidebar */
+}
+
+/* Input fields */
+.dark input,
+.dark select,
+.dark textarea {
+  background-color: #2E2E2E !important;
+  color: #FFFFFF !important;
+  border-color: #404040 !important;
+}
+
+.dark input::placeholder {
+  color: #737373 !important;
+}
+
+/* Table styles */
+.dark table {
+  background-color: #1A1A1A !important;
+}
+
+.dark thead {
+  background-color: #2E2E2E !important;
+}
+
+.dark th {
+  color: #FFFFFF !important;
+}
+
+.dark td {
+  color: #D4D4D4 !important;
+  border-color: #404040 !important;
+}
+
+/* Button styles */
+.dark .bg-blue-500 {
+  background-color: #2563eb !important; /* blue-600 */
+}
+
+.dark .bg-blue-600:hover {
+  background-color: #1d4ed8 !important; /* blue-700 */
+}
+
+/* Calendar events */
+.dark .bg-red-100 {
+  background-color: #7f1d1d !important; /* red-900 */
+  color: #fecaca !important; /* red-200 */
+}
+
+.dark .bg-blue-100 {
+  background-color: #1e3a8a !important; /* blue-900 */
+  color: #bfdbfe !important; /* blue-200 */
+}
+
+/* User menu */
+.dark .bg-gray-800 {
+  background-color: #1F1F1F !important;
+}
+
+.dark .border-gray-700 {
+  border-color: #404040 !important;
+}
+
+/* Task priority colors */
+.dark .text-red-600 { color: #f87171 !important; } /* red-400 */
+.dark .bg-red-50 { background-color: #7f1d1d !important; } /* red-900 */
+
+.dark .text-orange-600 { color: #fb923c !important; } /* orange-400 */
+.dark .bg-orange-50 { background-color: #9a3412 !important; } /* orange-900 */
+
+.dark .text-blue-600 { color: #60a5fa !important; } /* blue-400 */
+.dark .bg-blue-50 { background-color: #1e3a8a !important; } /* blue-900 */
+
+/* Task type colors */
+.dark .bg-yellow-100 { background-color: #713f12 !important; } /* yellow-900 */
+.dark .text-yellow-800 { color: #fde047 !important; } /* yellow-300 */
+
+.dark .bg-green-100 { background-color: #14532d !important; } /* green-900 */
+.dark .text-green-800 { color: #86efac !important; } /* green-300 */
+
+.dark .bg-blue-100 { background-color: #1e3a8a !important; } /* blue-900 */
+.dark .text-blue-800 { color: #93c5fd !important; } /* blue-300 */
+
+/* Loading spinner */
+.dark .border-blue-500 {
+  border-color: #3b82f6 !important; /* blue-500 */
+}
+
+/* Search input trong sidebar */
+.dark .bg-\[\#1a2847\] {
+  background-color: #2E2E2E !important;
+}
+
+.dark .placeholder-\[\#839399\]::placeholder {
+  color: #737373 !important;
+}
+
+/* Active states */
+.dark .bg-blue-50 {
+  background-color: #1e3a8a !important; /* blue-900 */
+}
+
+.dark .border-blue-500 {
+  border-color: #3b82f6 !important; /* blue-500 */
+}
+
+.dark .text-blue-500 {
+  color: #60a5fa !important; /* blue-400 */
+}
+
+/* Notification bell */
+.dark .hover\:bg-gray-100:hover {
+  background-color: #2E2E2E !important;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #1A1A1A;
+    --foreground: #f1f5f9;
   }
 }
 
@@ -23,4 +218,5 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }

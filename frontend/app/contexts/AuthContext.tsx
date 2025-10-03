@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { authService } from '../services/auth.service';
+import { userService } from '../services/user.service'; // THÊM IMPORT
 import { User, LoginRequest, RegisterRequest, AuthResponse } from '../services/types/auth.types';
 
 interface AuthContextType {
@@ -11,6 +12,7 @@ interface AuthContextType {
   login: (credentials: LoginRequest) => Promise<void>;
   register: (userData: RegisterRequest) => Promise<void>;
   logout: () => Promise<void>;
+  updateUserTheme: (theme: string) => Promise<void>; // THÊM FUNCTION MỚI
   isAuthenticated: boolean;
 }
 
@@ -34,6 +36,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const userData = await authService.getCurrentUser();
         setUser(userData);
         
+        // Apply user's theme preference
+        if (userData.theme) {
+          applyTheme(userData.theme);
+        }
+        
         // Save user to localStorage for persistence
         if (typeof window !== 'undefined') {
           localStorage.setItem('user', JSON.stringify(userData));
@@ -47,6 +54,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Helper function to apply theme
+  // Helper function to apply theme - ĐÃ SỬA
+const applyTheme = (theme: string) => {
+  console.log('Applying theme:', theme);
+  const root = document.documentElement;
+  
+  // Xóa cả class light và dark trước
+  root.classList.remove('light', 'dark');
+  
+  if (theme === 'auto') {
+    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    console.log('System prefers dark:', systemPrefersDark);
+    if (systemPrefersDark) {
+      root.classList.add('dark');
+    } else {
+      root.classList.add('light');
+    }
+  } else if (theme === 'dark') {
+    console.log('Setting dark theme');
+    root.classList.add('dark');
+  } else {
+    console.log('Setting light theme');
+    root.classList.add('light');
+  }
+  
+  // Lưu vào localStorage
+  localStorage.setItem('theme', theme);
+  console.log('Theme saved to localStorage:', theme);
+  console.log('HTML classes:', root.classList.toString());
+};
+
   const login = async (credentials: LoginRequest) => {
     try {
       setLoading(true);
@@ -57,6 +95,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       // Set user state
       setUser(authData.user);
+      
+      // Apply user's theme preference
+      applyTheme(authData.user.theme);
       
       // Save user to localStorage
       if (typeof window !== 'undefined') {
@@ -84,6 +125,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Set user state
       setUser(authData.user);
       
+      // Apply user's theme preference
+      applyTheme(authData.user.theme);
+      
       // Save user to localStorage
       if (typeof window !== 'undefined') {
         localStorage.setItem('user', JSON.stringify(authData.user));
@@ -96,6 +140,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw error;
     } finally {
       setLoading(false);
+    }
+  };
+
+  // THÊM FUNCTION UPDATE THEME
+  const updateUserTheme = async (theme: string) => {
+    if (!user) return;
+    
+    try {
+      // Update on server
+      const updatedUser = await userService.updateTheme(theme);
+      
+      // Update local state
+      setUser(updatedUser);
+      
+      // Apply theme
+      applyTheme(theme);
+      
+      // Update localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+        localStorage.setItem('theme', theme);
+      }
+    } catch (error) {
+      console.error('Failed to update theme:', error);
+      throw error;
     }
   };
 
@@ -112,6 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (typeof window !== 'undefined') {
         localStorage.removeItem('user');
+        // Giữ theme preference trong localStorage để dùng cho lần sau
       }
       
       // Redirect to login page
@@ -126,6 +196,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login,
     register,
     logout,
+    updateUserTheme, // THÊM VÀO CONTEXT
     isAuthenticated: !!user,
   };
 
