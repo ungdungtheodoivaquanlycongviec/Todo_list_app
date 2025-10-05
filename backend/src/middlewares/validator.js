@@ -306,11 +306,78 @@ const validateChangePassword = (req, res, next) => {
   next();
 };
 
+/**
+ * Validate thêm comment vào task
+ */
+const validateAddComment = (req, res, next) => {
+  const { content } = req.body;
+  const errors = [];
+
+  // Validate content (required)
+  if (!content || content.trim() === '') {
+    errors.push({ field: 'content', message: 'Nội dung comment là bắt buộc' });
+  } else if (content.length > 2000) {
+    errors.push({ field: 'content', message: 'Comment không được vượt quá 2000 ký tự' });
+  }
+
+  // Validate task ID from params
+  const { id } = req.params;
+  if (!id || !id.match(/^[0-9a-fA-F]{24}$/)) {
+    errors.push({ field: 'taskId', message: 'Task ID không hợp lệ' });
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Dữ liệu comment không hợp lệ',
+      errors
+    });
+  }
+
+  next();
+};
+
+/**
+ * Validate cập nhật comment
+ */
+const validateUpdateComment = (req, res, next) => {
+  const { content } = req.body;
+  const errors = [];
+
+  // Validate content (required)
+  if (!content || content.trim() === '') {
+    errors.push({ field: 'content', message: 'Nội dung comment là bắt buộc' });
+  } else if (content.length > 2000) {
+    errors.push({ field: 'content', message: 'Comment không được vượt quá 2000 ký tự' });
+  }
+
+  // Validate task ID and comment ID from params
+  const { id, commentId } = req.params;
+  if (!id || !id.match(/^[0-9a-fA-F]{24}$/)) {
+    errors.push({ field: 'taskId', message: 'Task ID không hợp lệ' });
+  }
+  if (!commentId || !commentId.match(/^[0-9a-fA-F]{24}$/)) {
+    errors.push({ field: 'commentId', message: 'Comment ID không hợp lệ' });
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Dữ liệu cập nhật comment không hợp lệ',
+      errors
+    });
+  }
+
+  next();
+};
+
 module.exports = {
   validateCreateTask,
   validateUpdateTask,
   validateRegister,
   validateLogin,
   validateUpdateProfile,
-  validateChangePassword
+  validateChangePassword,
+  validateAddComment,
+  validateUpdateComment
 };

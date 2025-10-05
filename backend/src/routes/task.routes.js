@@ -7,10 +7,23 @@ const {
   deleteTask,
   getAllTasks,
   getCalendarView,
-  getKanbanView
+  getKanbanView,
+  addComment,
+  updateComment,
+  deleteComment,
+  getComments,
+  uploadAttachments,
+  deleteAttachment,
+  addCommentWithFile
 } = require('../controllers/task.controller');
-const { validateCreateTask, validateUpdateTask } = require('../middlewares/validator');
+const { 
+  validateCreateTask, 
+  validateUpdateTask,
+  validateAddComment,
+  validateUpdateComment
+} = require('../middlewares/validator');
 const { authenticate } = require('../middlewares/auth');
+const { uploadMultiple, uploadSingle } = require('../middlewares/upload');
 
 /**
  * Task Routes
@@ -37,5 +50,16 @@ router.patch('/:id', validateUpdateTask, updateTask);
 
 // DELETE routes
 router.delete('/:id', deleteTask);
+
+// Comment routes
+router.post('/:id/comments', validateAddComment, addComment);
+router.post('/:id/comments/with-file', uploadSingle, addCommentWithFile);
+router.get('/:id/comments', getComments);
+router.put('/:id/comments/:commentId', validateUpdateComment, updateComment);
+router.delete('/:id/comments/:commentId', deleteComment);
+
+// Attachment routes
+router.post('/:id/attachments', uploadMultiple, uploadAttachments);
+router.delete('/:id/attachments/:attachmentId', deleteAttachment);
 
 module.exports = router;
