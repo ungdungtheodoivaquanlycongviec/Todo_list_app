@@ -24,7 +24,8 @@ class FileService {
       // Generate unique filename
       const timestamp = Date.now();
       const extension = getFileExtension(mimetype);
-      const publicId = `${folder}/${timestamp}_${this.sanitizeFilename(originalname)}`;
+      const sanitizedName = this.sanitizeFilename(originalname, true); // Keep extension
+      const publicId = `${folder}/${timestamp}_${sanitizedName}`;
       
       // Upload to Cloudinary
       return new Promise((resolve, reject) => {
@@ -136,17 +137,33 @@ class FileService {
   /**
    * Sanitize filename to be URL-safe
    * @param {String} filename - Original filename
+   * @param {Boolean} keepExtension - Keep file extension (default: false)
    * @returns {String} Sanitized filename
    */
-  sanitizeFilename(filename) {
-    // Remove extension
-    const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
-    
-    // Replace special characters with underscore
-    return nameWithoutExt
-      .replace(/[^a-zA-Z0-9]/g, '_')
-      .replace(/_+/g, '_')
-      .substring(0, 50); // Limit length
+  sanitizeFilename(filename, keepExtension = false) {
+    if (keepExtension) {
+      // Extract extension
+      const extMatch = filename.match(/\.[^/.]+$/);
+      const extension = extMatch ? extMatch[0] : '';
+      const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
+      
+      // Sanitize name and add extension back
+      const sanitizedName = nameWithoutExt
+        .replace(/[^a-zA-Z0-9]/g, '_')
+        .replace(/_+/g, '_')
+        .substring(0, 50); // Limit length
+      
+      return sanitizedName + extension.toLowerCase();
+    } else {
+      // Remove extension
+      const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
+      
+      // Replace special characters with underscore
+      return nameWithoutExt
+        .replace(/[^a-zA-Z0-9]/g, '_')
+        .replace(/_+/g, '_')
+        .substring(0, 50); // Limit length
+    }
   }
   
   /**
