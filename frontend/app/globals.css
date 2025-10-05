@@ -207,12 +207,13 @@
   background-color: #2E2E2E !important;
 }
 
-@media (prefers-color-scheme: dark) {
+/*Tat tam di vi d doc duoc gi ca
+/* @media (prefers-color-scheme: dark) {
   :root {
     --background: #1A1A1A;
     --foreground: #f1f5f9;
   }
-}
+} */
 
 body {
   background: var(--background);

@@ -49,12 +49,12 @@ const taskSchema = new mongoose.Schema(
     },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'users',
+      ref: 'User',
       required: [true, 'Người tạo công việc là bắt buộc']
     },
     assignedTo: [
       {
-        userId: { type: mongoose.Schema.Types.ObjectId, ref: 'users' },
+        userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
         assignedAt: { type: Date, default: Date.now }
       }
     ],
@@ -75,24 +75,71 @@ const taskSchema = new mongoose.Schema(
       ref: 'groups',
       default: null
     },
-    attachments: [
-      {
-        fileName: { type: String, required: true },
-        fileUrl: { type: String, required: true },
-        fileSize: { type: Number, required: true },
-        fileType: { type: String, required: true },
-        uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'users' },
-        uploadedAt: { type: Date, default: Date.now }
-      }
-    ],
-    comments: [
-      {
-        userId: { type: mongoose.Schema.Types.ObjectId, ref: 'users', required: true },
-        content: { type: String, required: true, maxlength: 2000 },
-        createdAt: { type: Date, default: Date.now },
-        updatedAt: { type: Date, default: Date.now }
-      }
-    ]
+    attachments: {
+      type: [
+        {
+          filename: { type: String, required: true },
+          url: { type: String, required: true },
+          size: { type: Number, required: true },
+          mimetype: { type: String, required: true },
+          publicId: { type: String, required: true }, // Cloudinary public_id for deletion
+          resourceType: { type: String, default: 'raw' }, // 'image' or 'raw'
+          uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+          uploadedAt: { type: Date, default: Date.now }
+        }
+      ],
+      validate: {
+        validator: function(attachments) {
+          return attachments.length <= 20;
+        },
+        message: 'Số lượng attachments không được vượt quá 20'
+      },
+      default: []
+    },
+    comments: {
+      type: [
+        {
+          user: { 
+            type: mongoose.Schema.Types.ObjectId, 
+            ref: 'User', 
+            required: [true, 'User comment là bắt buộc'] 
+          },
+          content: { 
+            type: String, 
+            default: '', // Không bắt buộc nếu có attachment
+            maxlength: [2000, 'Comment không được vượt quá 2000 ký tự'],
+            trim: true
+          },
+          // Comment attachment (image/file)
+          attachment: {
+            filename: { type: String },
+            url: { type: String },
+            size: { type: Number },
+            mimetype: { type: String },
+            publicId: { type: String },
+            resourceType: { type: String, default: 'image' }
+          },
+          createdAt: { 
+            type: Date, 
+            default: Date.now 
+          },
+          updatedAt: { 
+            type: Date 
+          },
+          isEdited: {
+            type: Boolean,
+            default: false
+          }
+        }
+      ],
+      validate: {
+        validator: function(comments) {
+          return comments.length <= 200;
+        },
+        message: 'Số lượng comments không được vượt quá 200'
+      },
+      default: []
+    }
   },
   {
     timestamps: true, // Tự động tạo createdAt và updatedAt

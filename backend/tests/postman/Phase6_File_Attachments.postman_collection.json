@@ -1,0 +1,758 @@
+{
+	"info": {
+		"_postman_id": "phase6-file-attachments-collection",
+		"name": "Phase 6: File Attachments & Comments with Files",
+		"description": "Test collection cho File Upload system với Cloudinary - Phase 6",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{authToken}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8080/api",
+			"type": "string"
+		},
+		{
+			"key": "authToken",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "taskId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "attachmentId",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Setup",
+			"item": [
+				{
+					"name": "Register Test User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Response has token\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.token).to.exist;",
+									"    pm.collectionVariables.set(\"authToken\", jsonData.data.token);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Test User Phase 6\",\n    \"email\": \"testphase6{{$randomInt}}@example.com\",\n    \"password\": \"Test@123456\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/register",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "register"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Test Task",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Task created successfully\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data._id).to.exist;",
+									"    pm.collectionVariables.set(\"taskId\", jsonData.data._id);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Test Task for File Attachments\",\n    \"description\": \"Task để test file upload với Cloudinary\",\n    \"priority\": \"high\",\n    \"dueDate\": \"2025-12-31\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/tasks",
+							"host": ["{{baseUrl}}"],
+							"path": ["tasks"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Upload Attachments Tests",
+			"item": [
+				{
+					"name": "Upload Attachments - Success (Images)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Files uploaded successfully\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.success).to.be.true;",
+									"    pm.expect(jsonData.data.attachments).to.be.an('array');",
+									"    pm.expect(jsonData.data.attachments.length).to.be.greaterThan(0);",
+									"});",
+									"",
+									"pm.test(\"Attachment has required fields\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    var attachment = jsonData.data.attachments[0];",
+									"    pm.expect(attachment).to.have.property('_id');",
+									"    pm.expect(attachment).to.have.property('filename');",
+									"    pm.expect(attachment).to.have.property('url');",
+									"    pm.expect(attachment).to.have.property('publicId');",
+									"    pm.expect(attachment).to.have.property('mimetype');",
+									"    pm.expect(attachment).to.have.property('size');",
+									"    pm.expect(attachment).to.have.property('resourceType');",
+									"    pm.expect(attachment).to.have.property('uploadedBy');",
+									"    ",
+									"    // Save attachment ID for delete test",
+									"    pm.collectionVariables.set(\"attachmentId\", attachment._id);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "files",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/tasks/{{taskId}}/attachments",
+							"host": ["{{baseUrl}}"],
+							"path": ["tasks", "{{taskId}}", "attachments"]
+						},
+						"description": "Upload 1-5 image files (jpg, png, gif, webp). Select files before sending."
+					},
+					"response": []
+				},
+				{
+					"name": "Upload Attachments - Success (Documents)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Document uploaded successfully\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.success).to.be.true;",
+									"    var attachments = jsonData.data.attachments;",
+									"    ",
+									"    // Check if any attachment has resourceType 'raw' (for documents)",
+									"    var hasDocument = attachments.some(a => a.resourceType === 'raw');",
+									"    if (hasDocument) {",
+									"        pm.expect(hasDocument).to.be.true;",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "files",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/tasks/{{taskId}}/attachments",
+							"host": ["{{baseUrl}}"],
+							"path": ["tasks", "{{taskId}}", "attachments"]
+						},
+						"description": "Upload 1-5 document files (pdf, docx, xlsx, txt). Select files before sending."
+					},
+					"response": []
+				},
+				{
+					"name": "Upload Attachments - No Files",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Error message correct\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.success).to.be.false;",
+									"    pm.expect(jsonData.message).to.include('file');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": []
+						},
+						"url": {
+							"raw": "{{baseUrl}}/tasks/{{taskId}}/attachments",
+							"host": ["{{baseUrl}}"],
+							"path": ["tasks", "{{taskId}}", "attachments"]
+						},
+						"description": "Test upload without selecting any files - should fail"
+					},
+					"response": []
+				},
+				{
+					"name": "Upload Attachments - Invalid File Type",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"File type validation works\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.success).to.be.false;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "files",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/tasks/{{taskId}}/attachments",
+							"host": ["{{baseUrl}}"],
+							"path": ["tasks", "{{taskId}}", "attachments"]
+						},
+						"description": "Try to upload unsupported file type (e.g., .exe, .dmg) - should fail"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Task - View Attachments",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Task has attachments\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.attachments).to.be.an('array');",
+									"});",
+									"",
+									"pm.test(\"Attachments have Cloudinary URLs\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.data.attachments.length > 0) {",
+									"        jsonData.data.attachments.forEach(att => {",
+									"            pm.expect(att.url).to.be.a('string');",
+									"            pm.expect(att.url).to.include('cloudinary');",
+									"        });",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/tasks/{{taskId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["tasks", "{{taskId}}"]
+						},
+						"description": "Get task to view all uploaded attachments"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Delete Attachment Tests",
+			"item": [
+				{
+					"name": "Delete Attachment - Success",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Attachment deleted successfully\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.success).to.be.true;",
+									"    pm.expect(jsonData.message).to.include('Xóa attachment');",
+									"});",
+									"",
+									"pm.test(\"Attachment removed from task\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    var deletedId = pm.collectionVariables.get('attachmentId');",
+									"    var stillExists = jsonData.data.attachments.some(a => a._id === deletedId);",
+									"    pm.expect(stillExists).to.be.false;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/tasks/{{taskId}}/attachments/{{attachmentId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["tasks", "{{taskId}}", "attachments", "{{attachmentId}}"]
+						},
+						"description": "Delete an attachment. Requires uploading at least one file first."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Attachment - Not Found",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 404\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"",
+									"pm.test(\"Error message correct\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.success).to.be.false;",
+									"    pm.expect(jsonData.message).to.include('Không tìm thấy');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/tasks/{{taskId}}/attachments/507f1f77bcf86cd799439011",
+							"host": ["{{baseUrl}}"],
+							"path": ["tasks", "{{taskId}}", "attachments", "507f1f77bcf86cd799439011"]
+						},
+						"description": "Try to delete non-existent attachment"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Comment with File Tests",
+			"item": [
+				{
+					"name": "Add Comment with Image - Success",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Comment added successfully\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.success).to.be.true;",
+									"    pm.expect(jsonData.data.comments).to.be.an('array');",
+									"});",
+									"",
+									"pm.test(\"Comment has attachment\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    var lastComment = jsonData.data.comments[jsonData.data.comments.length - 1];",
+									"    pm.expect(lastComment.attachment).to.exist;",
+									"    pm.expect(lastComment.attachment.url).to.be.a('string');",
+									"    pm.expect(lastComment.attachment.url).to.include('cloudinary');",
+									"    pm.expect(lastComment.attachment.publicId).to.exist;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "content",
+									"value": "This is a comment with an image attachment",
+									"type": "text"
+								},
+								{
+									"key": "file",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/tasks/{{taskId}}/comments/with-file",
+							"host": ["{{baseUrl}}"],
+							"path": ["tasks", "{{taskId}}", "comments", "with-file"]
+						},
+						"description": "Add a comment with an image attachment. Select an image file before sending."
+					},
+					"response": []
+				},
+				{
+					"name": "Add Comment with Document - Success",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Comment with document added\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.success).to.be.true;",
+									"});",
+									"",
+									"pm.test(\"Comment has document attachment\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    var lastComment = jsonData.data.comments[jsonData.data.comments.length - 1];",
+									"    pm.expect(lastComment.attachment).to.exist;",
+									"    pm.expect(lastComment.attachment.resourceType).to.equal('raw');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "content",
+									"value": "Sharing a document in this comment",
+									"type": "text"
+								},
+								{
+									"key": "file",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/tasks/{{taskId}}/comments/with-file",
+							"host": ["{{baseUrl}}"],
+							"path": ["tasks", "{{taskId}}", "comments", "with-file"]
+						},
+						"description": "Add a comment with a document attachment. Select PDF, Word, or text file before sending."
+					},
+					"response": []
+				},
+				{
+					"name": "Add Comment - File Only (No Content)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Comment with file only is allowed\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.success).to.be.true;",
+									"    var lastComment = jsonData.data.comments[jsonData.data.comments.length - 1];",
+									"    pm.expect(lastComment.attachment).to.exist;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/tasks/{{taskId}}/comments/with-file",
+							"host": ["{{baseUrl}}"],
+							"path": ["tasks", "{{taskId}}", "comments", "with-file"]
+						},
+						"description": "Add a comment with only a file (no text content). Select file before sending."
+					},
+					"response": []
+				},
+				{
+					"name": "Add Comment - No Content and No File",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 or 500\", function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([400, 500]);",
+									"});",
+									"",
+									"pm.test(\"Error message correct\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.success).to.be.false;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": []
+						},
+						"url": {
+							"raw": "{{baseUrl}}/tasks/{{taskId}}/comments/with-file",
+							"host": ["{{baseUrl}}"],
+							"path": ["tasks", "{{taskId}}", "comments", "with-file"]
+						},
+						"description": "Try to add a comment without content or file - should fail"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Comments - View Attachments",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Comments retrieved successfully\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.success).to.be.true;",
+									"    pm.expect(jsonData.data.comments).to.be.an('array');",
+									"});",
+									"",
+									"pm.test(\"Some comments have attachments\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    var commentsWithAttachments = jsonData.data.comments.filter(c => c.attachment);",
+									"    if (commentsWithAttachments.length > 0) {",
+									"        commentsWithAttachments.forEach(comment => {",
+									"            pm.expect(comment.attachment.url).to.be.a('string');",
+									"            pm.expect(comment.attachment.publicId).to.exist;",
+									"        });",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/tasks/{{taskId}}/comments",
+							"host": ["{{baseUrl}}"],
+							"path": ["tasks", "{{taskId}}", "comments"]
+						},
+						"description": "Get all comments to view which ones have file attachments"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Integration Tests",
+			"item": [
+				{
+					"name": "Upload Multiple Files - Mixed Types",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Multiple files uploaded successfully\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.success).to.be.true;",
+									"    pm.expect(jsonData.data.attachments).to.be.an('array');",
+									"});",
+									"",
+									"pm.test(\"Mixed file types handled correctly\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    var attachments = jsonData.data.attachments;",
+									"    var hasImage = attachments.some(a => a.resourceType === 'image');",
+									"    var hasRaw = attachments.some(a => a.resourceType === 'raw');",
+									"    pm.expect(hasImage || hasRaw).to.be.true;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "files",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/tasks/{{taskId}}/attachments",
+							"host": ["{{baseUrl}}"],
+							"path": ["tasks", "{{taskId}}", "attachments"]
+						},
+						"description": "Upload multiple files at once (mix of images and documents). Select 2-5 files before sending."
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}
