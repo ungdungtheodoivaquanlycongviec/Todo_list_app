@@ -7,6 +7,18 @@ import { Task } from '../../../services/types/task.types';
 import CreateTaskModal from './CreateTaskModal';
 import TaskContextMenu from './TaskContextMenu';
 
+const estimatedOptions = [
+  '15 min',
+  '30 min',
+  '45 min',
+  '1 hour',
+  '1.5 hours',
+  '2 hours',
+  '3 hours',
+  '4 hours',
+  '1 day'
+];
+
 export default function TasksView() {
   const [activeTasksExpanded, setActiveTasksExpanded] = useState(true);
   const [completedTasksExpanded, setCompletedTasksExpanded] = useState(true);
@@ -156,6 +168,20 @@ export default function TasksView() {
     }
   };
 
+  // Thêm hàm cập nhật 1 trường cho task trong state
+  const handleUpdateTaskField = async (taskId: string, field: string, value: any) => {
+    try {
+      await taskService.updateTask(taskId, { [field]: value });
+      setActiveTasks(prev =>
+        prev.map(task =>
+          task._id === taskId ? { ...task, [field]: value } : task
+        )
+      );
+    } catch (error) {
+      console.error('Error updating task:', error);
+    }
+  };
+
   if (loading) {
     return (
       <div className="p-6 flex items-center justify-center">
@@ -238,9 +264,7 @@ export default function TasksView() {
                     value={task.status}
                     onChange={(e) => {
                       e.stopPropagation();
-                      taskService.updateTask(task._id, { status: e.target.value })
-                        .then(() => fetchTasks())
-                        .catch(console.error);
+                      handleUpdateTaskField(task._id, 'status', e.target.value);
                     }}
                     onClick={(e) => e.stopPropagation()}
                   >
@@ -261,17 +285,26 @@ export default function TasksView() {
                     value={task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : ''}
                     onChange={(e) => {
                       e.stopPropagation();
-                      taskService.updateTask(task._id, { dueDate: e.target.value })
-                        .then(() => fetchTasks())
-                        .catch(console.error);
+                      handleUpdateTaskField(task._id, 'dueDate', e.target.value);
                     }}
                     onClick={(e) => e.stopPropagation()}
                   />
                 </div>
                 <div>
-                  <span className={`text-xs px-2 py-1 rounded ${getPriorityColor(task.priority)}`}>
-                    {task.priority}
-                  </span>
+                  <select
+                    className="text-xs text-gray-600 border border-gray-200 rounded px-2 py-1 bg-white cursor-pointer hover:border-gray-300"
+                    value={task.priority}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      handleUpdateTaskField(task._id, 'priority', e.target.value);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
@@ -286,13 +319,29 @@ export default function TasksView() {
                 <div>
                   <input
                     type="text"
+                    className={`
+                      text-xs border rounded px-2 py-1 w-28
+                      bg-white dark:bg-neutral-900
+                      text-gray-600 dark:text-gray-200
+                      border-gray-200 dark:border-neutral-700
+                      hover:border-gray-300 dark:hover:border-neutral-500
+                      transition-colors
+                    `}
+                    value={task.estimatedTime || ''}
+                    onChange={e => {
+                      handleUpdateTaskField(task._id, 'estimatedTime', e.target.value);
+                    }}
+                    onClick={e => e.stopPropagation()}
+                    list={`estimated-options-${task._id}`}
+                    style={{ minWidth: 90, maxWidth: 120 }}
                     placeholder="—"
-                    className="text-xs text-gray-600 border border-gray-200 rounded px-2 py-1 w-20 hover:border-gray-300"
-                    // TODO: Add estimated time field to backend model
-                    value={''}
-                    onChange={(e) => e.stopPropagation()}
-                    onClick={(e) => e.stopPropagation()}
+                    autoComplete="off"
                   />
+                  <datalist id={`estimated-options-${task._id}`}>
+                    {estimatedOptions.map(opt => (
+                      <option key={opt} value={opt} />
+                    ))}
+                  </datalist>
                 </div>
               </div>
             ))}
