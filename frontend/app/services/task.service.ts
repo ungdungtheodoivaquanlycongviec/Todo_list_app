@@ -15,6 +15,25 @@ const getAuthToken = (): string | null => {
   return null;
 };
 
+// Helper để normalize response từ backend
+const normalizeTaskResponse = (data: any): Task => {
+  // Backend có thể trả về nhiều dạng:
+  // 1. { data: { task: {...} } }
+  // 2. { task: {...} }
+  // 3. Trực tiếp object task
+  
+  if (data.data?.task) {
+    return data.data.task;
+  }
+  if (data.task) {
+    return data.task;
+  }
+  if (data.data && !data.task) {
+    return data.data;
+  }
+  return data;
+};
+
 // Định nghĩa interface cho API response
 interface TasksResponse {
   tasks: Task[];
@@ -29,16 +48,13 @@ export const taskService = {
       'Content-Type': 'application/json',
     };
 
-    console.log('Current token:', token);
-
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     } else {
       console.warn('No authentication token found');
     }
 
-    console.log('Sending request to:', `${API_BASE_URL}/tasks`);
-    console.log('With data:', taskData);
+    console.log('Creating task with data:', taskData);
 
     const response = await fetch(`${API_BASE_URL}/tasks`, {
       method: 'POST',
@@ -50,32 +66,31 @@ export const taskService = {
     if (!response.ok) {
       if (response.status === 401) {
         if (typeof window !== 'undefined') {
-          localStorage.removeItem('token');
-          localStorage.removeItem('accessToken');
-          sessionStorage.removeItem('token');
-          sessionStorage.removeItem('accessToken');
+          localStorage.clear();
+          sessionStorage.clear();
         }
         throw new Error('Authentication failed. Please login again.');
       }
       
       const errorText = await response.text();
       console.error('Error response:', errorText);
-      let errorMessage = `Failed to create task: ${response.status} ${response.statusText}`;
+      let errorMessage = `Failed to create task: ${response.status}`;
       
       try {
         const errorData = JSON.parse(errorText);
         errorMessage = errorData.message || errorMessage;
       } catch {
-        // Nếu không parse được JSON, dùng text
+        errorMessage = errorText || errorMessage;
       }
       
       throw new Error(errorMessage);
     }
     
-    return response.json();
+    const data = await response.json();
+    return normalizeTaskResponse(data);
   },
 
-  // Lấy danh sách tasks
+  // Lấy tất cả tasks
   getAllTasks: async (filters?: any, options?: any): Promise<TasksResponse> => {
     const token = getAuthToken();
     const headers: HeadersInit = {};
@@ -116,33 +131,21 @@ export const taskService = {
     if (!response.ok) {
       if (response.status === 401) {
         if (typeof window !== 'undefined') {
-          localStorage.removeItem('token');
-          localStorage.removeItem('accessToken');
-          sessionStorage.removeItem('token');
-          sessionStorage.removeItem('accessToken');
+          localStorage.clear();
+          sessionStorage.clear();
         }
         throw new Error('Authentication failed. Please login again.');
       }
       
       const errorText = await response.text();
       console.error('Error response:', errorText);
-      let errorMessage = `Failed to fetch tasks: ${response.status} ${response.statusText}`;
-      
-      try {
-        const errorData = JSON.parse(errorText);
-        errorMessage = errorData.message || errorMessage;
-      } catch {
-        // Nếu không parse được JSON, dùng text
-      }
-      
-      throw new Error(errorMessage);
+      throw new Error(`Failed to fetch tasks: ${response.status}`);
     }
     
     const responseData = await response.json();
-    console.log('Raw API response:', responseData);
+    console.log('Raw API response for getAllTasks:', responseData);
     
-    // Chuẩn hóa response structure - chỉ trả về tasks và pagination
-    // Dựa trên controller của bạn, response có thể có nhiều dạng
+    // Normalize response structure
     let tasks: Task[] = [];
     let pagination = {};
     
@@ -161,12 +164,12 @@ export const taskService = {
     }
     
     return {
-      tasks,
+      tasks: tasks || [],
       pagination
     };
   },
 
-  // Các method khác giữ nguyên...
+  // Lấy task theo ID - FIXED
   getTaskById: async (id: string): Promise<Task> => {
     const token = getAuthToken();
     const headers: HeadersInit = {};
@@ -175,6 +178,8 @@ export const taskService = {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
+    console.log('Fetching task by ID:', id);
+
     const response = await fetch(`${API_BASE_URL}/tasks/${id}`, {
       headers,
       credentials: 'include',
@@ -183,31 +188,28 @@ export const taskService = {
     if (!response.ok) {
       if (response.status === 401) {
         if (typeof window !== 'undefined') {
-          localStorage.removeItem('token');
-          localStorage.removeItem('accessToken');
-          sessionStorage.removeItem('token');
-          sessionStorage.removeItem('accessToken');
+          localStorage.clear();
+          sessionStorage.clear();
         }
         throw new Error('Authentication failed. Please login again.');
       }
       
       const errorText = await response.text();
       console.error('Error response:', errorText);
-      let errorMessage = `Failed to fetch task: ${response.status} ${response.statusText}`;
-      
-      try {
-        const errorData = JSON.parse(errorText);
-        errorMessage = errorData.message || errorMessage;
-      } catch {
-        // Nếu không parse được JSON, dùng text
-      }
-      
-      throw new Error(errorMessage);
+      throw new Error(`Failed to fetch task: ${response.status}`);
     }
     
-    return response.json();
+    const data = await response.json();
+    console.log('Raw task data from API:', data);
+    
+    // Normalize response
+    const task = normalizeTaskResponse(data);
+    console.log('Normalized task:', task);
+    
+    return task;
   },
 
+  // Update task - FIXED
   updateTask: async (id: string, updateData: any): Promise<Task> => {
     const token = getAuthToken();
     const headers: HeadersInit = {
@@ -215,44 +217,55 @@ export const taskService = {
     };
     
     if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+      headers['Authorization'] = `Bearer ${token}`
     }
+
+    // QUAN TRỌNG: Đảm bảo không gửi _id trong body
+    const { _id, __v, createdAt, updatedAt, createdBy, ...cleanData } = updateData;
+
+    console.log('=== UPDATE TASK DEBUG ===');
+    console.log('Task ID:', id);
+    console.log('Original data:', updateData);
+    console.log('Clean data to send:', cleanData);
 
     const response = await fetch(`${API_BASE_URL}/tasks/${id}`, {
       method: 'PUT',
       headers,
       credentials: 'include',
-      body: JSON.stringify(updateData),
+      body: JSON.stringify(cleanData),
     });
     
+    console.log('Update response status:', response.status);
+    
     if (!response.ok) {
+      if (response.status === 304) {
+        console.log('No changes detected (304)');
+        return taskService.getTaskById(id);
+      }
+      
       if (response.status === 401) {
         if (typeof window !== 'undefined') {
-          localStorage.removeItem('token');
-          localStorage.removeItem('accessToken');
-          sessionStorage.removeItem('token');
-          sessionStorage.removeItem('accessToken');
+          localStorage.clear();
+          sessionStorage.clear();
         }
         throw new Error('Authentication failed. Please login again.');
       }
       
       const errorText = await response.text();
       console.error('Error response:', errorText);
-      let errorMessage = `Failed to update task: ${response.status} ${response.statusText}`;
-      
-      try {
-        const errorData = JSON.parse(errorText);
-        errorMessage = errorData.message || errorMessage;
-      } catch {
-        // Nếu không parse được JSON, dùng text
-      }
-      
-      throw new Error(errorMessage);
+      throw new Error(`Failed to update task: ${response.status}`);
     }
     
-    return response.json();
+    const data = await response.json();
+    console.log('Update response data:', data);
+    
+    const task = normalizeTaskResponse(data);
+    console.log('Normalized updated task:', task);
+    
+    return task;
   },
 
+  // Delete task
   deleteTask: async (id: string): Promise<void> => {
     const token = getAuthToken();
     const headers: HeadersInit = {};
@@ -270,26 +283,69 @@ export const taskService = {
     if (!response.ok) {
       if (response.status === 401) {
         if (typeof window !== 'undefined') {
-          localStorage.removeItem('token');
-          localStorage.removeItem('accessToken');
-          sessionStorage.removeItem('token');
-          sessionStorage.removeItem('accessToken');
+          localStorage.clear();
+          sessionStorage.clear();
         }
         throw new Error('Authentication failed. Please login again.');
       }
       
       const errorText = await response.text();
       console.error('Error response:', errorText);
-      let errorMessage = `Failed to delete task: ${response.status} ${response.statusText}`;
-      
-      try {
-        const errorData = JSON.parse(errorText);
-        errorMessage = errorData.message || errorMessage;
-      } catch {
-        // Nếu không parse được JSON, dùng text
-      }
-      
-      throw new Error(errorMessage);
+      throw new Error(`Failed to delete task: ${response.status}`);
     }
+  },
+
+  // Add comment
+  addComment: async (taskId: string, content: string): Promise<Task> => {
+    const token = getAuthToken();
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/comments`, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify({ content }),
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to add comment: ${errorText}`);
+    }
+    
+    const data = await response.json();
+    return normalizeTaskResponse(data);
+  },
+
+  // Upload attachment
+  uploadAttachment: async (taskId: string, file: File): Promise<Task> => {
+    const token = getAuthToken();
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const headers: HeadersInit = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/attachments`, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      body: formData,
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to upload attachment: ${errorText}`);
+    }
+    
+    const data = await response.json();
+    return normalizeTaskResponse(data);
   },
 };

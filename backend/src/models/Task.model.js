@@ -96,6 +96,11 @@ const taskSchema = new mongoose.Schema(
       },
       default: []
     },
+    estimatedTime: {
+      type: String,
+      default: null,
+      trim: true
+    },
     comments: {
       type: [
         {
