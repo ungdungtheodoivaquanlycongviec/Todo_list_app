@@ -6,18 +6,7 @@ import { taskService } from '../../../services/task.service';
 import { Task } from '../../../services/types/task.types';
 import CreateTaskModal from './CreateTaskModal';
 import TaskContextMenu from './TaskContextMenu';
-
-const estimatedOptions = [
-  '15 min',
-  '30 min',
-  '45 min',
-  '1 hour',
-  '1.5 hours',
-  '2 hours',
-  '3 hours',
-  '4 hours',
-  '1 day'
-];
+import { useRouter } from 'next/navigation';
 
 export default function TasksView() {
   const [activeTasksExpanded, setActiveTasksExpanded] = useState(true);
@@ -27,26 +16,54 @@ export default function TasksView() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; task: Task } | null>(null);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
-  // Fetch tasks từ API
-  const fetchTasks = async () => {
-    try {
-      setLoading(true);
-      const response = await taskService.getAllTasks();
-      const tasks = response.tasks;
-
-      // Phân loại tasks: active (chưa completed) và completed
-      const active = tasks.filter(task => task.status !== 'completed');
-      const completed = tasks.filter(task => task.status === 'completed');
-
-      setActiveTasks(active);
-      setCompletedTasks(completed);
-    } catch (error) {
-      console.error('Error fetching tasks:', error);
-    } finally {
-      setLoading(false);
+const getErrorMessage = (error: unknown): string => {
+    if (error instanceof Error) {
+      return error.message;
+    } else if (typeof error === 'string') {
+      return error;
+    } else if (error && typeof error === 'object' && 'message' in error) {
+      return String(error.message);
+    } else {
+      return 'An unknown error occurred';
     }
   };
+
+  // Sửa lại hàm fetchTasks
+const fetchTasks = async () => {
+  try {
+    setLoading(true);
+    const response = await taskService.getAllTasks();
+    
+    console.log('=== DEBUG API RESPONSE ===');
+    console.log('Full response:', response);
+    
+    // Sử dụng trực tiếp response.tasks vì service đã chuẩn hóa
+    const tasks = response.tasks || [];
+    
+    console.log('Tasks count:', tasks.length);
+    console.log('Sample task:', tasks[0]);
+
+    // Phân loại tasks: active (chưa completed) và completed
+    const active = tasks.filter(task => task.status !== 'completed');
+    const completed = tasks.filter(task => task.status === 'completed');
+
+    setActiveTasks(active);
+    setCompletedTasks(completed);
+  } catch (error) {
+    const errorMessage = getErrorMessage(error);
+    console.error('Error fetching tasks:', errorMessage);
+    
+    // SỬA Ở ĐÂY: Sử dụng errorMessage thay vì error.message
+    if (errorMessage.includes('Authentication failed')) {
+      alert('Session expired. Please login again.');
+      router.push('/'); // Redirect to login page
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
     fetchTasks();
@@ -67,7 +84,6 @@ export default function TasksView() {
         priority: mapPriorityToBackend(taskData.priority),
         dueDate: taskData.dueDate ? new Date(taskData.dueDate) : null,
         tags: taskData.tags || [],
-        // Thêm các trường required khác nếu backend yêu cầu
       };
 
       console.log('Creating task with data:', backendTaskData);
@@ -88,6 +104,7 @@ export default function TasksView() {
 
   const handleContextMenu = (event: React.MouseEvent, task: Task) => {
     event.preventDefault();
+    event.stopPropagation();
     setContextMenu({ x: event.clientX, y: event.clientY, task });
   };
 
@@ -95,25 +112,20 @@ export default function TasksView() {
     setContextMenu(null);
     switch (action) {
       case 'complete':
-        // Gọi API để đánh dấu task là completed
         taskService.updateTask(task._id, { status: 'completed' })
           .then(() => fetchTasks())
           .catch(console.error);
         break;
       case 'start_timer':
-        // TODO: Start timer for the task
         console.log('Start timer for task:', task._id);
         break;
       case 'change_type':
-        // TODO: Change type of the task
         console.log('Change type for task:', task._id);
         break;
       case 'repeat':
-        // TODO: Repeat the task
         console.log('Repeat task:', task._id);
         break;
       case 'move_to':
-        // TODO: Move the task to another group
         console.log('Move task:', task._id);
         break;
       case 'delete':
@@ -140,16 +152,6 @@ export default function TasksView() {
     return priorityMap[frontendPriority] || 'medium';
   };
 
-  // Helper function để map status (nếu cần)
-  const mapStatusToBackend = (frontendStatus: string): string => {
-    const statusMap: { [key: string]: string } = {
-      'New task': 'todo',
-      'In Progress': 'in_progress',
-      'Completed': 'completed'
-    };
-    return statusMap[frontendStatus] || 'todo';
-  };
-
   const getPriorityColor = (priority: string) => {
     switch(priority) {
       case 'high': return 'text-red-600 bg-red-50';
@@ -168,19 +170,19 @@ export default function TasksView() {
     }
   };
 
-  // Thêm hàm cập nhật 1 trường cho task trong state
-  const handleUpdateTaskField = async (taskId: string, field: string, value: any) => {
-    try {
-      await taskService.updateTask(taskId, { [field]: value });
-      setActiveTasks(prev =>
-        prev.map(task =>
-          task._id === taskId ? { ...task, [field]: value } : task
-        )
-      );
-    } catch (error) {
-      console.error('Error updating task:', error);
+  // Đóng context menu khi click ra ngoài
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setContextMenu(null);
+    };
+
+    if (contextMenu) {
+      document.addEventListener('click', handleClickOutside);
+      return () => {
+        document.removeEventListener('click', handleClickOutside);
+      };
     }
-  };
+  }, [contextMenu]);
 
   if (loading) {
     return (
@@ -264,7 +266,9 @@ export default function TasksView() {
                     value={task.status}
                     onChange={(e) => {
                       e.stopPropagation();
-                      handleUpdateTaskField(task._id, 'status', e.target.value);
+                      taskService.updateTask(task._id, { status: e.target.value })
+                        .then(() => fetchTasks())
+                        .catch(console.error);
                     }}
                     onClick={(e) => e.stopPropagation()}
                   >
@@ -285,26 +289,17 @@ export default function TasksView() {
                     value={task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : ''}
                     onChange={(e) => {
                       e.stopPropagation();
-                      handleUpdateTaskField(task._id, 'dueDate', e.target.value);
+                      taskService.updateTask(task._id, { dueDate: e.target.value })
+                        .then(() => fetchTasks())
+                        .catch(console.error);
                     }}
                     onClick={(e) => e.stopPropagation()}
                   />
                 </div>
                 <div>
-                  <select
-                    className="text-xs text-gray-600 border border-gray-200 rounded px-2 py-1 bg-white cursor-pointer hover:border-gray-300"
-                    value={task.priority}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      handleUpdateTaskField(task._id, 'priority', e.target.value);
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="urgent">Urgent</option>
-                  </select>
+                  <span className={`text-xs px-2 py-1 rounded ${getPriorityColor(task.priority)}`}>
+                    {task.priority}
+                  </span>
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
@@ -319,29 +314,12 @@ export default function TasksView() {
                 <div>
                   <input
                     type="text"
-                    className={`
-                      text-xs border rounded px-2 py-1 w-28
-                      bg-white dark:bg-neutral-900
-                      text-gray-600 dark:text-gray-200
-                      border-gray-200 dark:border-neutral-700
-                      hover:border-gray-300 dark:hover:border-neutral-500
-                      transition-colors
-                    `}
-                    value={task.estimatedTime || ''}
-                    onChange={e => {
-                      handleUpdateTaskField(task._id, 'estimatedTime', e.target.value);
-                    }}
-                    onClick={e => e.stopPropagation()}
-                    list={`estimated-options-${task._id}`}
-                    style={{ minWidth: 90, maxWidth: 120 }}
                     placeholder="—"
-                    autoComplete="off"
+                    className="text-xs text-gray-600 border border-gray-200 rounded px-2 py-1 w-20 hover:border-gray-300"
+                    value={''}
+                    onChange={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
                   />
-                  <datalist id={`estimated-options-${task._id}`}>
-                    {estimatedOptions.map(opt => (
-                      <option key={opt} value={opt} />
-                    ))}
-                  </datalist>
                 </div>
               </div>
             ))}

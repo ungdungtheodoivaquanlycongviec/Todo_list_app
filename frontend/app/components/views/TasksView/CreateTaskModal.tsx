@@ -82,14 +82,15 @@ export default function CreateTaskModal({ isOpen, onClose, onCreateTask }: Creat
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+    // THAY ĐỔI Ở ĐÂY: Sử dụng backdrop-blur thay vì bg-black
+    <div className="fixed inset-0 bg-black/20 dark:bg-black/30 backdrop-blur-[0.5px]-sm flex items-center justify-center z-50">
+      <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto shadow-xl border border-gray-200 dark:border-gray-700">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white">
-          <h2 className="text-xl font-semibold">Create task</h2>
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Create task</h2>
           <button
             onClick={onClose}
-            className="p-1 hover:bg-gray-100 rounded-full"
+            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full text-gray-500 dark:text-gray-400"
           >
             <X className="w-5 h-5" />
           </button>
@@ -100,13 +101,13 @@ export default function CreateTaskModal({ isOpen, onClose, onCreateTask }: Creat
           <div className="p-6 space-y-4">
             {/* Task Name */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Task name *
               </label>
               <input
                 type="text"
                 required
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 placeholder="Enter task name"
                 value={taskData.title}
                 onChange={(e) => setTaskData({ ...taskData, title: e.target.value })}
@@ -115,11 +116,11 @@ export default function CreateTaskModal({ isOpen, onClose, onCreateTask }: Creat
 
             {/* Task Description */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Task description
               </label>
               <textarea
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 rows={3}
                 placeholder="Enter task description"
                 value={taskData.description}
@@ -131,7 +132,7 @@ export default function CreateTaskModal({ isOpen, onClose, onCreateTask }: Creat
             <div className="flex gap-2">
               <button
                 type="button"
-                className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-md"
+                className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md"
               >
                 <Paperclip className="w-4 h-4" />
                 Attach file
@@ -139,14 +140,14 @@ export default function CreateTaskModal({ isOpen, onClose, onCreateTask }: Creat
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-md"
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md"
                 >
                   <Tag className="w-4 h-4" />
                   Add tag
                 </button>
                 <input
                   type="text"
-                  className="border border-gray-300 rounded-md px-2 py-1 text-sm w-24"
+                  className="border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1 text-sm w-24 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   placeholder="Add tag"
                   value={currentTag}
                   onChange={(e) => setCurrentTag(e.target.value)}
@@ -168,13 +169,13 @@ export default function CreateTaskModal({ isOpen, onClose, onCreateTask }: Creat
                 {taskData.tags.map(tag => (
                   <span
                     key={tag}
-                    className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 text-sm rounded-md"
+                    className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-sm rounded-md"
                   >
                     {tag}
                     <button
                       type="button"
                       onClick={() => removeTag(tag)}
-                      className="hover:text-blue-600"
+                      className="hover:text-blue-600 dark:hover:text-blue-400"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -187,11 +188,11 @@ export default function CreateTaskModal({ isOpen, onClose, onCreateTask }: Creat
             <div className="grid grid-cols-2 gap-4">
               {/* Create in */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Create in
                 </label>
                 <select
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   value={taskData.category}
                   onChange={(e) => setTaskData({ ...taskData, category: e.target.value })}
                 >
@@ -203,11 +204,11 @@ export default function CreateTaskModal({ isOpen, onClose, onCreateTask }: Creat
 
               {/* Type */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Type
                 </label>
                 <select
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   value={taskData.type}
                   onChange={(e) => setTaskData({ ...taskData, type: e.target.value })}
                 >
@@ -219,11 +220,11 @@ export default function CreateTaskModal({ isOpen, onClose, onCreateTask }: Creat
 
               {/* Status */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Status
                 </label>
                 <select
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   value={taskData.status}
                   onChange={(e) => setTaskData({ ...taskData, status: e.target.value })}
                 >
@@ -235,11 +236,11 @@ export default function CreateTaskModal({ isOpen, onClose, onCreateTask }: Creat
 
               {/* Assignee */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Assignee
                 </label>
                 <select
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   value={taskData.assignee}
                   onChange={(e) => setTaskData({ ...taskData, assignee: e.target.value })}
                 >
@@ -250,11 +251,11 @@ export default function CreateTaskModal({ isOpen, onClose, onCreateTask }: Creat
 
               {/* Schedule */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Schedule this task for
                 </label>
                 <select
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   value={taskData.schedule}
                   onChange={(e) => setTaskData({ ...taskData, schedule: e.target.value })}
                 >
@@ -266,12 +267,12 @@ export default function CreateTaskModal({ isOpen, onClose, onCreateTask }: Creat
 
               {/* Estimated Time */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Estimated time
                 </label>
                 <input
                   type="text"
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   placeholder="0h"
                   value={taskData.estimatedTime}
                   onChange={(e) => setTaskData({ ...taskData, estimatedTime: e.target.value })}
@@ -280,12 +281,12 @@ export default function CreateTaskModal({ isOpen, onClose, onCreateTask }: Creat
 
               {/* Due Date */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Due date
                 </label>
                 <input
                   type="date"
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   value={taskData.dueDate}
                   onChange={(e) => setTaskData({ ...taskData, dueDate: e.target.value })}
                 />
@@ -293,11 +294,11 @@ export default function CreateTaskModal({ isOpen, onClose, onCreateTask }: Creat
 
               {/* Priority */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Priority
                 </label>
                 <select
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   value={taskData.priority}
                   onChange={(e) => setTaskData({ ...taskData, priority: e.target.value })}
                 >
@@ -312,11 +313,11 @@ export default function CreateTaskModal({ isOpen, onClose, onCreateTask }: Creat
 
             {/* Reporter */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Reporter
               </label>
               <select
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 value={taskData.reporter}
                 onChange={(e) => setTaskData({ ...taskData, reporter: e.target.value })}
               >
@@ -326,11 +327,11 @@ export default function CreateTaskModal({ isOpen, onClose, onCreateTask }: Creat
           </div>
 
           {/* Footer */}
-          <div className="flex justify-end gap-3 p-6 border-t border-gray-200 sticky bottom-0 bg-white">
+          <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-700 sticky bottom-0 bg-white dark:bg-gray-800">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-md"
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md"
             >
               Cancel
             </button>

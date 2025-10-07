@@ -27,8 +27,8 @@ export default function CalendarView() {
   const [events, setEvents] = useState<CalendarEvent[]>([
     {
       id: 1,
-      title: "Sóc lọ",
-      project: "gym",
+      title: "Learning English",
+      project: "Ngoai Ngu",
       date: "2023-10-02",
       time: "24h",
       status: "Exp. yesterday"
