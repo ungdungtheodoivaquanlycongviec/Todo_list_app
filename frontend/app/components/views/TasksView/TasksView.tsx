@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from 'react';
-import { Plus, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, ChevronDown, ChevronRight, List, Layout } from 'lucide-react';
 import { taskService } from '../../../services/task.service';
 import { Task } from '../../../services/types/task.types';
 import CreateTaskModal from './CreateTaskModal';
@@ -21,6 +21,8 @@ export default function TasksView() {
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
   const [showTaskDetail, setShowTaskDetail] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list'); // Thêm state cho chế độ xem
+  const [kanbanData, setKanbanData] = useState<any>(null); // Thêm state cho dữ liệu kanban
   const router = useRouter();
 
   // Estimated time options
@@ -38,7 +40,7 @@ export default function TasksView() {
     return 'An unknown error occurred';
   };
 
-  // Helper để hiển thị assignee - ĐÃ SỬA: Hiển thị tên user cụ thể
+  // Helper để hiển thị assignee
   const getAssigneeInfo = (task: Task) => {
     if (!task.assignedTo || task.assignedTo.length === 0) {
       return { 
@@ -48,7 +50,6 @@ export default function TasksView() {
       };
     }
 
-    // Kiểm tra xem task có được assign cho current user không
     const isCurrentUserAssigned = currentUser && 
       task.assignedTo.some(assignment => assignment.userId === currentUser._id);
 
@@ -60,7 +61,6 @@ export default function TasksView() {
       };
     }
 
-    // Nếu được assign cho user khác
     return { 
       displayName: 'Assigned to others', 
       initial: 'O',
@@ -68,7 +68,7 @@ export default function TasksView() {
     };
   };
 
-  // Fetch tasks from API
+  // Fetch tasks từ API (chế độ list)
   const fetchTasks = async () => {
     try {
       setLoading(true);
@@ -80,7 +80,6 @@ export default function TasksView() {
       const tasks = response?.tasks || [];
       console.log('Total tasks:', tasks.length);
 
-      // Phân loại tasks
       const active: Task[] = [];
       const completed: Task[] = [];
 
@@ -91,9 +90,6 @@ export default function TasksView() {
           active.push(task);
         }
       });
-
-      console.log('Active tasks:', active.length);
-      console.log('Completed tasks:', completed.length);
 
       setActiveTasks(active);
       setCompletedTasks(completed);
@@ -113,9 +109,39 @@ export default function TasksView() {
     }
   };
 
+  // Fetch kanban data từ API
+  const fetchKanbanData = async () => {
+    try {
+      setLoading(true);
+      const response = await taskService.getKanbanView();
+      
+      console.log('=== FETCH KANBAN DEBUG ===');
+      console.log('Kanban response:', response);
+      
+      setKanbanData(response);
+    } catch (error) {
+      const errorMessage = getErrorMessage(error);
+      console.error('Error fetching kanban data:', errorMessage);
+      
+      if (errorMessage.includes('Authentication failed')) {
+        alert('Session expired. Please login again.');
+        router.push('/');
+      }
+      
+      setKanbanData(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Gọi API tương ứng khi chuyển chế độ
   useEffect(() => {
-    fetchTasks();
-  }, []);
+    if (viewMode === 'list') {
+      fetchTasks();
+    } else {
+      fetchKanbanData();
+    }
+  }, [viewMode]);
 
   const handleAddTask = () => {
     setShowCreateModal(true);
@@ -123,7 +149,6 @@ export default function TasksView() {
 
   const handleCreateTask = async (taskData: any) => {
     try {
-      // Tự động assign task cho user hiện tại
       const assignedTo = currentUser ? [{ userId: currentUser._id }] : [];
 
       const backendTaskData = {
@@ -141,7 +166,13 @@ export default function TasksView() {
       console.log('Creating task with data:', backendTaskData);
       await taskService.createTask(backendTaskData);
       setShowCreateModal(false);
-      fetchTasks();
+      
+      // Refresh data based on current view mode
+      if (viewMode === 'list') {
+        fetchTasks();
+      } else {
+        fetchKanbanData();
+      }
     } catch (error) {
       console.error('Error creating task:', error);
       alert('Failed to create task: ' + getErrorMessage(error));
@@ -157,21 +188,28 @@ export default function TasksView() {
     console.log('=== HANDLE TASK UPDATE ===');
     console.log('Updated task:', updatedTask);
 
-    // Xóa task khỏi cả 2 list
-    setActiveTasks(prev => prev.filter(task => task._id !== updatedTask._id));
-    setCompletedTasks(prev => prev.filter(task => task._id !== updatedTask._id));
+    if (viewMode === 'list') {
+      setActiveTasks(prev => prev.filter(task => task._id !== updatedTask._id));
+      setCompletedTasks(prev => prev.filter(task => task._id !== updatedTask._id));
 
-    // Thêm vào đúng list
-    if (updatedTask.status === 'completed') {
-      setCompletedTasks(prev => [...prev, updatedTask]);
+      if (updatedTask.status === 'completed') {
+        setCompletedTasks(prev => [...prev, updatedTask]);
+      } else {
+        setActiveTasks(prev => [...prev, updatedTask]);
+      }
     } else {
-      setActiveTasks(prev => [...prev, updatedTask]);
+      // Refresh kanban data khi có update
+      fetchKanbanData();
     }
   };
 
   const handleTaskDelete = (taskId: string) => {
-    setActiveTasks(prev => prev.filter(task => task._id !== taskId));
-    setCompletedTasks(prev => prev.filter(task => task._id !== taskId));
+    if (viewMode === 'list') {
+      setActiveTasks(prev => prev.filter(task => task._id !== taskId));
+      setCompletedTasks(prev => prev.filter(task => task._id !== taskId));
+    } else {
+      fetchKanbanData();
+    }
     setShowTaskDetail(false);
     setSelectedTask(null);
   };
@@ -243,14 +281,23 @@ export default function TasksView() {
     }
   };
 
-  // Inline update handlers - ĐÃ SỬA: Thêm log để debug estimatedTime
+  const getStatusColor = (status: string) => {
+    switch(status) {
+      case 'todo': return 'bg-gray-100 text-gray-800';
+      case 'in_progress': return 'bg-blue-100 text-blue-800';
+      case 'completed': return 'bg-green-100 text-green-800';
+      case 'archived': return 'bg-purple-100 text-purple-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  // Inline update handlers
   const handleInlineUpdate = async (task: Task, field: string, value: any) => {
     try {
       console.log(`=== INLINE UPDATE: ${field} ===`);
       console.log('Task ID:', task._id);
       console.log('Field:', field);
       console.log('Value:', value);
-      console.log('Full task:', task);
 
       const updateData = { [field]: value };
       console.log('Update data:', updateData);
@@ -279,6 +326,106 @@ export default function TasksView() {
     }
   }, [contextMenu]);
 
+  // Component cho Kanban View
+  const KanbanView = () => {
+    if (!kanbanData || !kanbanData.kanbanBoard) {
+      return (
+        <div className="p-8 text-center text-gray-500">
+          No kanban data available
+        </div>
+      );
+    }
+
+    const statusColumns = [
+      { key: 'todo', title: 'To Do' },
+      { key: 'in_progress', title: 'In Progress' },
+      { key: 'completed', title: 'Completed' },
+      { key: 'archived', title: 'Archived' }
+    ];
+
+    return (
+      <div className="flex gap-4 overflow-x-auto pb-4">
+        {statusColumns.map(column => {
+          const columnData = kanbanData.kanbanBoard[column.key];
+          return (
+            <div key={column.key} className="flex-1 min-w-80 bg-gray-50 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-gray-700">
+                  {column.title} 
+                  <span className="ml-2 text-sm text-gray-500 bg-white px-2 py-1 rounded">
+                    {columnData?.count || 0}
+                  </span>
+                </h3>
+                <button 
+                  onClick={handleAddTask}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+              
+              <div className="space-y-3">
+                {columnData?.tasks?.map((task: Task) => {
+                  const assigneeInfo = getAssigneeInfo(task);
+                  return (
+                    <div 
+                      key={task._id}
+                      className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                      onClick={() => handleTaskClick(task._id)}
+                      onContextMenu={(e) => handleContextMenu(e, task)}
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <h4 className="font-medium text-sm text-gray-900 flex-1">
+                          {task.title || 'Untitled Task'}
+                        </h4>
+                        <span className={`text-xs px-2 py-1 rounded ${getPriorityColor(task.priority || 'medium')}`}>
+                          {task.priority || 'medium'}
+                        </span>
+                      </div>
+                      
+                      {task.description && (
+                        <p className="text-xs text-gray-600 mb-3 line-clamp-2">
+                          {task.description}
+                        </p>
+                      )}
+                      
+                      <div className="flex items-center justify-between text-xs text-gray-500">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
+                            assigneeInfo.isCurrentUser 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-gray-300 text-gray-700'
+                          }`}>
+                            {assigneeInfo.initial}
+                          </div>
+                          {task.estimatedTime && (
+                            <span>⏱️ {task.estimatedTime}</span>
+                          )}
+                        </div>
+                        
+                        {task.dueDate && (
+                          <span>
+                            {new Date(task.dueDate).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                
+                {(!columnData?.tasks || columnData.tasks.length === 0) && (
+                  <div className="text-center py-8 text-gray-400 text-sm">
+                    No tasks
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="p-6 flex items-center justify-center">
@@ -295,311 +442,332 @@ export default function TasksView() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold">Tasks</h1>
         <div className="flex gap-2">
+          {/* Toggle button cho chế độ xem */}
           <div className="flex border border-gray-300 rounded-lg overflow-hidden">
-            <button className="px-4 py-2 text-sm bg-blue-500 text-white">
+            <button 
+              className={`px-4 py-2 text-sm flex items-center gap-2 ${
+                viewMode === 'list' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+              onClick={() => setViewMode('list')}
+            >
+              <List className="w-4 h-4" />
               List
             </button>
-            <button className="px-4 py-2 text-sm bg-white text-gray-700 hover:bg-gray-50">
-              Section board
+            <button 
+              className={`px-4 py-2 text-sm flex items-center gap-2 ${
+                viewMode === 'kanban' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+              onClick={() => setViewMode('kanban')}
+            >
+              <Layout className="w-4 h-4" />
+              Kanban
             </button>
           </div>
         </div>
       </div>
 
-      {/* Active Tasks Section */}
-      <div className="bg-white rounded-lg border border-gray-200 mb-6">
-        <div className="p-4 border-b border-gray-200">
-          <div 
-            className="flex items-center gap-2 cursor-pointer"
-            onClick={() => setActiveTasksExpanded(!activeTasksExpanded)}
-          >
-            {activeTasksExpanded ? (
-              <ChevronDown className="w-5 h-5 text-gray-600" />
-            ) : (
-              <ChevronRight className="w-5 h-5 text-gray-600" />
-            )}
-            <h2 className="font-medium">Active tasks</h2>
-            <span className="text-sm text-gray-500">{activeTasks.length}</span>
-          </div>
-        </div>
-
-        {activeTasksExpanded && (
-          <>
-            <div className="grid grid-cols-8 gap-4 p-4 border-b border-gray-200 bg-gray-50 text-xs font-medium text-gray-600">
-              <div className="col-span-2">Active tasks</div>
-              <div>Status</div>
-              <div>Type</div>
-              <div>Due date</div>
-              <div>Priority</div>
-              <div>Assignee</div>
-              <div>Estimated time</div>
-            </div>
-
-            <div 
-              className="p-4 border-b border-gray-200 hover:bg-gray-50 cursor-pointer flex items-center gap-2 text-blue-600"
-              onClick={handleAddTask}
-            >
-              <Plus className="w-4 h-4" />
-              <span className="text-sm">Create task</span>
-            </div>
-
-            {activeTasks.length > 0 ? (
-              activeTasks.map((task) => {
-                const assigneeInfo = getAssigneeInfo(task);
-                return (
-                  <div 
-                    key={task._id}
-                    className="grid grid-cols-8 gap-4 p-4 border-b border-gray-200 hover:bg-gray-50 cursor-pointer"
-                    onClick={() => handleTaskClick(task._id)}
-                    onContextMenu={(e) => handleContextMenu(e, task)}
-                  >
-                    <div className="col-span-2 text-sm">{task.title || 'Untitled Task'}</div>
-                    
-                    {/* Status */}
-                    <div>
-                      <select 
-                        className="text-xs text-gray-600 border border-gray-200 rounded px-2 py-1 bg-white cursor-pointer hover:border-gray-300"
-                        value={task.status || 'todo'}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          handleInlineUpdate(task, 'status', e.target.value);
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <option value="todo">To Do</option>
-                        <option value="in_progress">In Progress</option>
-                        <option value="completed">Completed</option>
-                      </select>
-                    </div>
-                    
-                    {/* Type */}
-                    <div>
-                      <span className={`text-xs px-2 py-1 rounded ${getTypeColor(task.category || '')}`}>
-                        {task.category || 'No type'}
-                      </span>
-                    </div>
-                    
-                    {/* Due Date */}
-                    <div>
-                      <input
-                        type="date"
-                        className="text-xs text-gray-600 border border-gray-200 rounded px-2 py-1 cursor-pointer hover:border-gray-300"
-                        value={task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : ''}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          handleInlineUpdate(task, 'dueDate', e.target.value);
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    </div>
-                    
-                    {/* Priority */}
-                    <div>
-                      <select
-                        className={`text-xs border rounded px-2 py-1 cursor-pointer hover:border-gray-300 ${getPriorityColor(task.priority || 'medium')}`}
-                        value={task.priority || 'medium'}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          handleInlineUpdate(task, 'priority', e.target.value);
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <option value="low">Low</option>
-                        <option value="medium">Medium</option>
-                        <option value="high">High</option>
-                        <option value="urgent">Urgent</option>
-                      </select>
-                    </div>
-                    
-                    {/* Assignee - ĐÃ SỬA: Hiển thị tên user cụ thể */}
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
-                          assigneeInfo.isCurrentUser 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-gray-300 text-gray-700'
-                        }`}>
-                          {assigneeInfo.initial}
-                        </div>
-                        <span className={`text-sm ${
-                          assigneeInfo.isCurrentUser 
-                            ? 'text-green-700 font-medium' 
-                            : 'text-gray-600'
-                        }`}>
-                          {assigneeInfo.displayName}
-                        </span>
-                      </div>
-                    </div>
-                    
-                    {/* Estimated Time - ĐÃ SỬA: Sửa input để update đúng cách */}
-                    <div>
-                      <div className="flex gap-1 w-full">
-                        <input
-                          type="text"
-                          placeholder="—"
-                          className="text-xs text-gray-600 border border-gray-200 rounded px-2 py-1 flex-1 min-w-0 hover:border-gray-300"
-                          value={task.estimatedTime || ''}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            // Không gọi API ngay lập tức, chỉ update local state
-                            const updatedTasks = activeTasks.map(t => 
-                              t._id === task._id ? { ...t, estimatedTime: e.target.value } : t
-                            );
-                            setActiveTasks(updatedTasks);
-                          }}
-                          onBlur={(e) => {
-                            // Gọi API khi blur khỏi input
-                            if (e.target.value !== task.estimatedTime) {
-                              handleInlineUpdate(task, 'estimatedTime', e.target.value);
-                            }
-                          }}
-                          onKeyDown={(e) => {
-                            // Gọi API khi nhấn Enter
-                            if (e.key === 'Enter') {
-                              e.currentTarget.blur();
-                            }
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                        <select
-                          className="text-xs border border-gray-200 rounded px-1 py-1 w-16 hover:border-gray-300"
-                          value=""
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            if (e.target.value) {
-                              handleInlineUpdate(task, 'estimatedTime', e.target.value);
-                            }
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <option value="">⏱️</option>
-                          {estimatedTimeOptions.map(opt => (
-                            <option key={opt} value={opt}>{opt}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <div className="p-8 text-center text-gray-500">
-                No active tasks
+      {/* Hiển thị theo chế độ đã chọn */}
+      {viewMode === 'list' ? (
+        <>
+          {/* Active Tasks Section */}
+          <div className="bg-white rounded-lg border border-gray-200 mb-6">
+            <div className="p-4 border-b border-gray-200">
+              <div 
+                className="flex items-center gap-2 cursor-pointer"
+                onClick={() => setActiveTasksExpanded(!activeTasksExpanded)}
+              >
+                {activeTasksExpanded ? (
+                  <ChevronDown className="w-5 h-5 text-gray-600" />
+                ) : (
+                  <ChevronRight className="w-5 h-5 text-gray-600" />
+                )}
+                <h2 className="font-medium">Active tasks</h2>
+                <span className="text-sm text-gray-500">{activeTasks.length}</span>
               </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Completed Tasks Section */}
-      <div className="bg-white rounded-lg border border-gray-200">
-        <div className="p-4 border-b border-gray-200">
-          <div 
-            className="flex items-center gap-2 cursor-pointer"
-            onClick={() => setCompletedTasksExpanded(!completedTasksExpanded)}
-          >
-            {completedTasksExpanded ? (
-              <ChevronDown className="w-5 h-5 text-gray-600" />
-            ) : (
-              <ChevronRight className="w-5 h-5 text-gray-600" />
-            )}
-            <h2 className="font-medium">Completed tasks</h2>
-            <span className="text-sm text-gray-500">{completedTasks.length}</span>
-          </div>
-        </div>
-
-        {completedTasksExpanded && (
-          <>
-            <div className="grid grid-cols-8 gap-4 p-4 border-b border-gray-200 bg-gray-50 text-xs font-medium text-gray-600">
-              <div className="col-span-2">Completed tasks</div>
-              <div>Status</div>
-              <div>Type</div>
-              <div>Due date</div>
-              <div>Priority</div>
-              <div>Assignee</div>
-              <div>Estimated time</div>
             </div>
 
-            {completedTasks.length === 0 ? (
-              <div className="p-8 text-center text-gray-500">
-                No completed tasks yet
-              </div>
-            ) : (
-              completedTasks.map((task) => {
-                const assigneeInfo = getAssigneeInfo(task);
-                return (
-                  <div 
-                    key={task._id}
-                    className="grid grid-cols-8 gap-4 p-4 border-b border-gray-200 hover:bg-gray-50 cursor-pointer"
-                    onClick={() => handleTaskClick(task._id)}
-                    onContextMenu={(e) => handleContextMenu(e, task)}
-                  >
-                    <div className="col-span-2 text-sm text-gray-600 line-through">{task.title || 'Untitled Task'}</div>
-                    
-                    <div>
-                      <select 
-                        className="text-xs text-gray-600 border border-gray-200 rounded px-2 py-1 bg-white cursor-pointer hover:border-gray-300"
-                        value={task.status || 'completed'}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          handleInlineUpdate(task, 'status', e.target.value);
-                        }}
-                        onClick={(e) => e.stopPropagation()}
+            {activeTasksExpanded && (
+              <>
+                <div className="grid grid-cols-8 gap-4 p-4 border-b border-gray-200 bg-gray-50 text-xs font-medium text-gray-600">
+                  <div className="col-span-2">Active tasks</div>
+                  <div>Status</div>
+                  <div>Type</div>
+                  <div>Due date</div>
+                  <div>Priority</div>
+                  <div>Assignee</div>
+                  <div>Estimated time</div>
+                </div>
+
+                <div 
+                  className="p-4 border-b border-gray-200 hover:bg-gray-50 cursor-pointer flex items-center gap-2 text-blue-600"
+                  onClick={handleAddTask}
+                >
+                  <Plus className="w-4 h-4" />
+                  <span className="text-sm">Create task</span>
+                </div>
+
+                {activeTasks.length > 0 ? (
+                  activeTasks.map((task) => {
+                    const assigneeInfo = getAssigneeInfo(task);
+                    return (
+                      <div 
+                        key={task._id}
+                        className="grid grid-cols-8 gap-4 p-4 border-b border-gray-200 hover:bg-gray-50 cursor-pointer"
+                        onClick={() => handleTaskClick(task._id)}
+                        onContextMenu={(e) => handleContextMenu(e, task)}
                       >
-                        <option value="completed">Completed</option>
-                        <option value="todo">To Do</option>
-                        <option value="in_progress">In Progress</option>
-                      </select>
-                    </div>
-                    
-                    <div>
-                      <span className={`text-xs px-2 py-1 rounded ${getTypeColor(task.category || '')}`}>
-                        {task.category || 'No type'}
-                      </span>
-                    </div>
-                    
-                    <div>
-                      <span className="text-xs text-gray-500">
-                        {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : '—'}
-                      </span>
-                    </div>
-                    
-                    <div>
-                      <span className={`text-xs px-2 py-1 rounded ${getPriorityColor(task.priority || 'medium')}`}>
-                        {task.priority || 'medium'}
-                      </span>
-                    </div>
-                    
-                    {/* Assignee - ĐÃ SỬA: Hiển thị tên user cụ thể */}
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
-                          assigneeInfo.isCurrentUser 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-gray-300 text-gray-700'
-                        }`}>
-                          {assigneeInfo.initial}
+                        <div className="col-span-2 text-sm">{task.title || 'Untitled Task'}</div>
+                        
+                        {/* Status */}
+                        <div>
+                          <select 
+                            className="text-xs text-gray-600 border border-gray-200 rounded px-2 py-1 bg-white cursor-pointer hover:border-gray-300"
+                            value={task.status || 'todo'}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleInlineUpdate(task, 'status', e.target.value);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <option value="todo">To Do</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="completed">Completed</option>
+                          </select>
                         </div>
-                        <span className={`text-sm ${
-                          assigneeInfo.isCurrentUser 
-                            ? 'text-green-700 font-medium' 
-                            : 'text-gray-600'
-                        }`}>
-                          {assigneeInfo.displayName}
-                        </span>
+                        
+                        {/* Type */}
+                        <div>
+                          <span className={`text-xs px-2 py-1 rounded ${getTypeColor(task.category || '')}`}>
+                            {task.category || 'No type'}
+                          </span>
+                        </div>
+                        
+                        {/* Due Date */}
+                        <div>
+                          <input
+                            type="date"
+                            className="text-xs text-gray-600 border border-gray-200 rounded px-2 py-1 cursor-pointer hover:border-gray-300"
+                            value={task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : ''}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleInlineUpdate(task, 'dueDate', e.target.value);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </div>
+                        
+                        {/* Priority */}
+                        <div>
+                          <select
+                            className={`text-xs border rounded px-2 py-1 cursor-pointer hover:border-gray-300 ${getPriorityColor(task.priority || 'medium')}`}
+                            value={task.priority || 'medium'}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleInlineUpdate(task, 'priority', e.target.value);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                            <option value="urgent">Urgent</option>
+                          </select>
+                        </div>
+                        
+                        {/* Assignee */}
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
+                              assigneeInfo.isCurrentUser 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-gray-300 text-gray-700'
+                            }`}>
+                              {assigneeInfo.initial}
+                            </div>
+                            <span className={`text-sm ${
+                              assigneeInfo.isCurrentUser 
+                                ? 'text-green-700 font-medium' 
+                                : 'text-gray-600'
+                            }`}>
+                              {assigneeInfo.displayName}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        {/* Estimated Time */}
+                        <div>
+                          <div className="flex gap-1 w-full">
+                            <input
+                              type="text"
+                              placeholder="—"
+                              className="text-xs text-gray-600 border border-gray-200 rounded px-2 py-1 flex-1 min-w-0 hover:border-gray-300"
+                              value={task.estimatedTime || ''}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                const updatedTasks = activeTasks.map(t => 
+                                  t._id === task._id ? { ...t, estimatedTime: e.target.value } : t
+                                );
+                                setActiveTasks(updatedTasks);
+                              }}
+                              onBlur={(e) => {
+                                if (e.target.value !== task.estimatedTime) {
+                                  handleInlineUpdate(task, 'estimatedTime', e.target.value);
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.currentTarget.blur();
+                                }
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <select
+                              className="text-xs border border-gray-200 rounded px-1 py-1 w-16 hover:border-gray-300"
+                              value=""
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                if (e.target.value) {
+                                  handleInlineUpdate(task, 'estimatedTime', e.target.value);
+                                }
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <option value="">⏱️</option>
+                              {estimatedTimeOptions.map(opt => (
+                                <option key={opt} value={opt}>{opt}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    
-                    <div>
-                      <span className="text-xs text-gray-500">{task.estimatedTime || '—'}</span>
-                    </div>
+                    );
+                  })
+                ) : (
+                  <div className="p-8 text-center text-gray-500">
+                    No active tasks
                   </div>
-                );
-              })
+                )}
+              </>
             )}
-          </>
-        )}
-      </div>
+          </div>
+
+          {/* Completed Tasks Section */}
+          <div className="bg-white rounded-lg border border-gray-200">
+            <div className="p-4 border-b border-gray-200">
+              <div 
+                className="flex items-center gap-2 cursor-pointer"
+                onClick={() => setCompletedTasksExpanded(!completedTasksExpanded)}
+              >
+                {completedTasksExpanded ? (
+                  <ChevronDown className="w-5 h-5 text-gray-600" />
+                ) : (
+                  <ChevronRight className="w-5 h-5 text-gray-600" />
+                )}
+                <h2 className="font-medium">Completed tasks</h2>
+                <span className="text-sm text-gray-500">{completedTasks.length}</span>
+              </div>
+            </div>
+
+            {completedTasksExpanded && (
+              <>
+                <div className="grid grid-cols-8 gap-4 p-4 border-b border-gray-200 bg-gray-50 text-xs font-medium text-gray-600">
+                  <div className="col-span-2">Completed tasks</div>
+                  <div>Status</div>
+                  <div>Type</div>
+                  <div>Due date</div>
+                  <div>Priority</div>
+                  <div>Assignee</div>
+                  <div>Estimated time</div>
+                </div>
+
+                {completedTasks.length === 0 ? (
+                  <div className="p-8 text-center text-gray-500">
+                    No completed tasks yet
+                  </div>
+                ) : (
+                  completedTasks.map((task) => {
+                    const assigneeInfo = getAssigneeInfo(task);
+                    return (
+                      <div 
+                        key={task._id}
+                        className="grid grid-cols-8 gap-4 p-4 border-b border-gray-200 hover:bg-gray-50 cursor-pointer"
+                        onClick={() => handleTaskClick(task._id)}
+                        onContextMenu={(e) => handleContextMenu(e, task)}
+                      >
+                        <div className="col-span-2 text-sm text-gray-600 line-through">{task.title || 'Untitled Task'}</div>
+                        
+                        <div>
+                          <select 
+                            className="text-xs text-gray-600 border border-gray-200 rounded px-2 py-1 bg-white cursor-pointer hover:border-gray-300"
+                            value={task.status || 'completed'}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleInlineUpdate(task, 'status', e.target.value);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <option value="completed">Completed</option>
+                            <option value="todo">To Do</option>
+                            <option value="in_progress">In Progress</option>
+                          </select>
+                        </div>
+                        
+                        <div>
+                          <span className={`text-xs px-2 py-1 rounded ${getTypeColor(task.category || '')}`}>
+                            {task.category || 'No type'}
+                          </span>
+                        </div>
+                        
+                        <div>
+                          <span className="text-xs text-gray-500">
+                            {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : '—'}
+                          </span>
+                        </div>
+                        
+                        <div>
+                          <span className={`text-xs px-2 py-1 rounded ${getPriorityColor(task.priority || 'medium')}`}>
+                            {task.priority || 'medium'}
+                          </span>
+                        </div>
+                        
+                        {/* Assignee */}
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
+                              assigneeInfo.isCurrentUser 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-gray-300 text-gray-700'
+                            }`}>
+                              {assigneeInfo.initial}
+                            </div>
+                            <span className={`text-sm ${
+                              assigneeInfo.isCurrentUser 
+                                ? 'text-green-700 font-medium' 
+                                : 'text-gray-600'
+                            }`}>
+                              {assigneeInfo.displayName}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <span className="text-xs text-gray-500">{task.estimatedTime || '—'}</span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </>
+            )}
+          </div>
+        </>
+      ) : (
+        <KanbanView />
+      )}
 
       {/* Create Task Modal */}
       {showCreateModal && (

@@ -7,10 +7,10 @@ console.log('API_BASE_URL:', API_BASE_URL);
 // Hàm helper để lấy token
 const getAuthToken = (): string | null => {
   if (typeof window !== 'undefined') {
-    return localStorage.getItem('token') || 
-           localStorage.getItem('accessToken') ||
-           sessionStorage.getItem('token') ||
-           sessionStorage.getItem('accessToken');
+    return localStorage.getItem('token') ||
+      localStorage.getItem('accessToken') ||
+      sessionStorage.getItem('token') ||
+      sessionStorage.getItem('accessToken');
   }
   return null;
 };
@@ -21,7 +21,7 @@ const normalizeTaskResponse = (data: any): Task => {
   // 1. { data: { task: {...} } }
   // 2. { task: {...} }
   // 3. Trực tiếp object task
-  
+
   if (data.data?.task) {
     return data.data.task;
   }
@@ -62,7 +62,7 @@ export const taskService = {
       credentials: 'include',
       body: JSON.stringify(taskData),
     });
-    
+
     if (!response.ok) {
       if (response.status === 401) {
         if (typeof window !== 'undefined') {
@@ -71,21 +71,21 @@ export const taskService = {
         }
         throw new Error('Authentication failed. Please login again.');
       }
-      
+
       const errorText = await response.text();
       console.error('Error response:', errorText);
       let errorMessage = `Failed to create task: ${response.status}`;
-      
+
       try {
         const errorData = JSON.parse(errorText);
         errorMessage = errorData.message || errorMessage;
       } catch {
         errorMessage = errorText || errorMessage;
       }
-      
+
       throw new Error(errorMessage);
     }
-    
+
     const data = await response.json();
     return normalizeTaskResponse(data);
   },
@@ -94,7 +94,7 @@ export const taskService = {
   getAllTasks: async (filters?: any, options?: any): Promise<TasksResponse> => {
     const token = getAuthToken();
     const headers: HeadersInit = {};
-    
+
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     } else {
@@ -102,7 +102,7 @@ export const taskService = {
     }
 
     const queryParams = new URLSearchParams();
-    
+
     if (filters) {
       Object.keys(filters).forEach(key => {
         if (filters[key] !== undefined && filters[key] !== null && filters[key] !== '') {
@@ -110,7 +110,7 @@ export const taskService = {
         }
       });
     }
-    
+
     if (options) {
       Object.keys(options).forEach(key => {
         if (options[key] !== undefined && options[key] !== null && options[key] !== '') {
@@ -120,14 +120,14 @@ export const taskService = {
     }
 
     const url = `${API_BASE_URL}/tasks${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-    
+
     console.log('Fetching tasks from:', url);
-    
+
     const response = await fetch(url, {
       headers,
       credentials: 'include',
     });
-    
+
     if (!response.ok) {
       if (response.status === 401) {
         if (typeof window !== 'undefined') {
@@ -136,19 +136,19 @@ export const taskService = {
         }
         throw new Error('Authentication failed. Please login again.');
       }
-      
+
       const errorText = await response.text();
       console.error('Error response:', errorText);
       throw new Error(`Failed to fetch tasks: ${response.status}`);
     }
-    
+
     const responseData = await response.json();
     console.log('Raw API response for getAllTasks:', responseData);
-    
+
     // Normalize response structure
     let tasks: Task[] = [];
     let pagination = {};
-    
+
     if (Array.isArray(responseData.tasks)) {
       tasks = responseData.tasks;
       pagination = responseData.pagination || {};
@@ -162,7 +162,7 @@ export const taskService = {
       tasks = responseData;
       pagination = { total: responseData.length, page: 1, limit: responseData.length, totalPages: 1 };
     }
-    
+
     return {
       tasks: tasks || [],
       pagination
@@ -173,7 +173,7 @@ export const taskService = {
   getTaskById: async (id: string): Promise<Task> => {
     const token = getAuthToken();
     const headers: HeadersInit = {};
-    
+
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
@@ -184,7 +184,7 @@ export const taskService = {
       headers,
       credentials: 'include',
     });
-    
+
     if (!response.ok) {
       if (response.status === 401) {
         if (typeof window !== 'undefined') {
@@ -193,19 +193,19 @@ export const taskService = {
         }
         throw new Error('Authentication failed. Please login again.');
       }
-      
+
       const errorText = await response.text();
       console.error('Error response:', errorText);
       throw new Error(`Failed to fetch task: ${response.status}`);
     }
-    
+
     const data = await response.json();
     console.log('Raw task data from API:', data);
-    
+
     // Normalize response
     const task = normalizeTaskResponse(data);
     console.log('Normalized task:', task);
-    
+
     return task;
   },
 
@@ -215,7 +215,7 @@ export const taskService = {
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };
-    
+
     if (token) {
       headers['Authorization'] = `Bearer ${token}`
     }
@@ -234,15 +234,15 @@ export const taskService = {
       credentials: 'include',
       body: JSON.stringify(cleanData),
     });
-    
+
     console.log('Update response status:', response.status);
-    
+
     if (!response.ok) {
       if (response.status === 304) {
         console.log('No changes detected (304)');
         return taskService.getTaskById(id);
       }
-      
+
       if (response.status === 401) {
         if (typeof window !== 'undefined') {
           localStorage.clear();
@@ -250,18 +250,18 @@ export const taskService = {
         }
         throw new Error('Authentication failed. Please login again.');
       }
-      
+
       const errorText = await response.text();
       console.error('Error response:', errorText);
       throw new Error(`Failed to update task: ${response.status}`);
     }
-    
+
     const data = await response.json();
     console.log('Update response data:', data);
-    
+
     const task = normalizeTaskResponse(data);
     console.log('Normalized updated task:', task);
-    
+
     return task;
   },
 
@@ -269,7 +269,7 @@ export const taskService = {
   deleteTask: async (id: string): Promise<void> => {
     const token = getAuthToken();
     const headers: HeadersInit = {};
-    
+
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
@@ -279,7 +279,7 @@ export const taskService = {
       headers,
       credentials: 'include',
     });
-    
+
     if (!response.ok) {
       if (response.status === 401) {
         if (typeof window !== 'undefined') {
@@ -288,7 +288,7 @@ export const taskService = {
         }
         throw new Error('Authentication failed. Please login again.');
       }
-      
+
       const errorText = await response.text();
       console.error('Error response:', errorText);
       throw new Error(`Failed to delete task: ${response.status}`);
@@ -301,7 +301,7 @@ export const taskService = {
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };
-    
+
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
@@ -312,12 +312,12 @@ export const taskService = {
       credentials: 'include',
       body: JSON.stringify({ content }),
     });
-    
+
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(`Failed to add comment: ${errorText}`);
     }
-    
+
     const data = await response.json();
     return normalizeTaskResponse(data);
   },
@@ -339,13 +339,173 @@ export const taskService = {
       credentials: 'include',
       body: formData,
     });
-    
+
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(`Failed to upload attachment: ${errorText}`);
     }
-    
+
     const data = await response.json();
     return normalizeTaskResponse(data);
+  },
+
+  getKanbanView: async (filters?: any): Promise<any> => {
+    const token = getAuthToken();
+    const headers: HeadersInit = {};
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const queryParams = new URLSearchParams();
+
+    if (filters) {
+      Object.keys(filters).forEach(key => {
+        if (filters[key] !== undefined && filters[key] !== null && filters[key] !== '') {
+          queryParams.append(key, filters[key]);
+        }
+      });
+    }
+
+    const url = `${API_BASE_URL}/tasks/kanban${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+
+    console.log('Fetching kanban view from:', url);
+
+    const response = await fetch(url, {
+      headers,
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        if (typeof window !== 'undefined') {
+          localStorage.clear();
+          sessionStorage.clear();
+        }
+        throw new Error('Authentication failed. Please login again.');
+      }
+
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      throw new Error(`Failed to fetch kanban view: ${response.status}`);
+    }
+
+    const responseData = await response.json();
+    console.log('Raw kanban API response:', responseData);
+
+    return responseData.data || responseData;
+  },
+
+  // Get calendar view
+  getCalendarView: async (year: number, month: number): Promise<any> => {
+    const token = getAuthToken();
+    const headers: HeadersInit = {};
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const url = `${API_BASE_URL}/tasks/calendar?year=${year}&month=${month}`;
+
+    console.log('Fetching calendar view from:', url);
+
+    const response = await fetch(url, {
+      headers,
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        if (typeof window !== 'undefined') {
+          localStorage.clear();
+          sessionStorage.clear();
+        }
+        throw new Error('Authentication failed. Please login again.');
+      }
+
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      throw new Error(`Failed to fetch calendar view: ${response.status}`);
+    }
+
+    const responseData = await response.json();
+    console.log('Raw calendar API response:', responseData);
+
+    return responseData.data || responseData;
+  },
+
+  // Update comment
+  updateComment: async (taskId: string, commentId: string, userId: string, content: string): Promise<any> => {
+    const token = getAuthToken();
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    console.log('Updating comment:', { taskId, commentId, content });
+
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/comments/${commentId}`, {
+      method: 'PUT',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify({ content }),
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        if (typeof window !== 'undefined') {
+          localStorage.clear();
+          sessionStorage.clear();
+        }
+        throw new Error('Authentication failed. Please login again.');
+      }
+
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      throw new Error(`Failed to update comment: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('Update comment response:', data);
+    return data;
+  },
+
+  // Delete comment
+  deleteComment: async (taskId: string, commentId: string, userId: string): Promise<any> => {
+    const token = getAuthToken();
+    const headers: HeadersInit = {};
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    console.log('Deleting comment:', { taskId, commentId });
+
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/comments/${commentId}`, {
+      method: 'DELETE',
+      headers,
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        if (typeof window !== 'undefined') {
+          localStorage.clear();
+          sessionStorage.clear();
+        }
+        throw new Error('Authentication failed. Please login again.');
+      }
+
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      throw new Error(`Failed to delete comment: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('Delete comment response:', data);
+    return data;
   },
 };
