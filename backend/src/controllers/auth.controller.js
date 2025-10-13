@@ -100,10 +100,30 @@ const getMe = asyncHandler(async (req, res) => {
   sendSuccess(res, { user }, 'Lấy thông tin người dùng thành công');
 });
 
+/**
+ * @route   POST /api/auth/google
+ * @desc    Login/Register via Google ID token
+ * @access  Public
+ */
+const loginWithGoogle = asyncHandler(async (req, res) => {
+  const { idToken } = req.body;
+  if (!idToken) {
+    return sendError(res, 'Thiếu Google ID token', 400);
+  }
+
+  try {
+    const result = await authService.loginWithGoogle(idToken);
+    sendSuccess(res, result, 'Đăng nhập Google thành công');
+  } catch (error) {
+    return sendError(res, error.message || 'Xác thực Google thất bại', 401);
+  }
+});
+
 module.exports = {
   register,
   login,
   logout,
   refreshToken,
-  getMe
+  getMe,
+  loginWithGoogle
 };

@@ -17,6 +17,15 @@ class AuthService {
     return response.data;
   }
 
+  // Google login using ID token from Firebase
+  async loginWithGoogle(idToken: string): Promise<AuthResponse> {
+    const response = await apiClient.post<ApiResponse<AuthResponse>>(
+      '/auth/google',
+      { idToken }
+    );
+    return response.data;
+  }
+
   // Register new user
   async register(userData: RegisterRequest): Promise<AuthResponse> {
     const response = await apiClient.post<ApiResponse<AuthResponse>>(

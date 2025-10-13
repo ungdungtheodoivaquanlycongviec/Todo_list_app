@@ -14,6 +14,7 @@ const { authLimiter } = require('../middlewares/rateLimiter');
 router.post('/register', authLimiter, validateRegister, authController.register);
 router.post('/login', authLimiter, validateLogin, authController.login);
 router.post('/refresh-token', authController.refreshToken);
+router.post('/google', authLimiter, authController.loginWithGoogle);
 
 // Protected routes
 router.post('/logout', authenticate, authController.logout);

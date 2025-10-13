@@ -43,11 +43,10 @@ function LoginForm({ onSwitchToSignup }: { onSwitchToSignup: () => void }) {
   const [errors, setErrors] = useState<{ email?: string; password?: string; submit?: string }>({});
   const [isLoading, setIsLoading] = useState(false);
   
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
 
-  const handleGoogleLogin = () => {
-    // TODO: Implement Google OAuth login
-    console.log('Google OAuth login - to be implemented');
+  const handleGoogleLogin = async () => {
+    await loginWithGoogle();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

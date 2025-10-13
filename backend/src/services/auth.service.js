@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User.model');
 const { JWT_SECRET, JWT_REFRESH_SECRET } = require('../config/environment');
+const admin = require('../config/firebaseAdmin');
 
 class AuthService {
   /**
@@ -104,6 +105,69 @@ class AuthService {
     return { message: 'Logged out successfully' };
   }
   
+  /**
+   * Login or register via Google ID token
+   * @param {String} idToken - Google ID token from client
+   * @returns {Object} - { user, accessToken, refreshToken }
+   */
+  async loginWithGoogle(idToken) {
+    if (!idToken) {
+      throw new Error('Google ID token is required');
+    }
+
+    // Verify token with Firebase Admin
+    let decoded;
+    try {
+      decoded = await admin.auth().verifyIdToken(idToken);
+    } catch (err) {
+      throw new Error('Invalid Google ID token');
+    }
+
+    const email = decoded?.email;
+    const name = decoded?.name || decoded?.given_name || 'Google User';
+    const picture = decoded?.picture || null;
+
+    if (!email) {
+      throw new Error('Google account has no email');
+    }
+
+    // Find or create user
+    let user = await User.findOne({ email }).select('+refreshToken');
+    if (!user) {
+      // Create a stub password because schema requires it; it will never be used
+      const randomPassword = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}A!`;
+      user = await User.create({
+        email,
+        password: randomPassword,
+        name,
+        avatar: picture,
+        isEmailVerified: true
+      });
+    }
+
+    if (!user.isActive) {
+      throw new Error('Account has been deactivated');
+    }
+
+    // Update profile picture if changed
+    if (picture && user.avatar !== picture) {
+      user.avatar = picture;
+    }
+
+    // Issue tokens
+    const accessToken = user.generateAccessToken();
+    const refreshToken = user.generateRefreshToken();
+    user.refreshToken = refreshToken;
+    user.lastLogin = new Date();
+    await user.save();
+
+    return {
+      user: user.toSafeObject(),
+      accessToken,
+      refreshToken
+    };
+  }
+
   /**
    * Refresh access token using refresh token
    * @param {String} refreshToken

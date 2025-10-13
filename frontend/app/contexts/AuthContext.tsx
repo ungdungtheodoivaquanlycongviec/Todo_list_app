@@ -14,6 +14,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   updateUserTheme: (theme: string) => Promise<void>; // THÊM FUNCTION MỚI
   isAuthenticated: boolean;
+  loginWithGoogle: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -84,6 +85,37 @@ const applyTheme = (theme: string) => {
   console.log('Theme saved to localStorage:', theme);
   console.log('HTML classes:', root.classList.toString());
 };
+
+  // Google login
+  const loginWithGoogle = async () => {
+    try {
+      setLoading(true);
+      const { getAuth, signInWithPopup, GoogleAuthProvider } = await import('firebase/auth');
+      const { app } = await import('../firebase');
+
+      const auth = getAuth(app);
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const idToken = await result.user.getIdToken();
+
+      const authData: AuthResponse = await authService.loginWithGoogle(idToken);
+
+      authService.saveTokens(authData.accessToken, authData.refreshToken);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('user', JSON.stringify(authData.user));
+        localStorage.setItem('accessToken', authData.accessToken);
+      }
+
+      setUser(authData.user);
+      applyTheme(authData.user.theme);
+      router.push('/dashboard');
+    } catch (error) {
+      console.error('Google login failed:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Trong hàm login
 const login = async (credentials: LoginRequest) => {
@@ -207,6 +239,7 @@ const login = async (credentials: LoginRequest) => {
     logout,
     updateUserTheme, // THÊM VÀO CONTEXT
     isAuthenticated: !!user,
+    loginWithGoogle
   };
 
   return (
