@@ -1,6 +1,9 @@
-const { TASK_STATUS, PRIORITY_LEVELS, ERROR_MESSAGES } = require('../config/constants');
+const { TASK_STATUS, PRIORITY_LEVELS, ERROR_MESSAGES, LIMITS } = require('../config/constants');
 const validator = require('validator');
 const authService = require('../services/auth.service');
+const asyncHandler = require('./asyncHandler');
+const User = require('../models/User.model');
+const { isValidObjectId } = require('../utils/validationHelper');
 
 /**
  * Validation middleware cho Task endpoints
@@ -371,6 +374,101 @@ const validateUpdateComment = (req, res, next) => {
   next();
 };
 
+/**
+ * Validate danh sách userIds khi gán task
+ */
+const validateAssignTask = asyncHandler(async (req, res, next) => {
+  const { userIds } = req.body;
+  const errors = [];
+
+  if (!Array.isArray(userIds)) {
+    errors.push({ field: 'userIds', message: 'userIds phải là một mảng' });
+  } else {
+    const normalizedIds = userIds
+      .map(id => (typeof id === 'string' ? id.trim() : (id ? String(id) : '')))
+      .filter(Boolean);
+
+    if (normalizedIds.length === 0) {
+      errors.push({ field: 'userIds', message: 'userIds không được rỗng' });
+    }
+
+    if (normalizedIds.length > LIMITS.MAX_ASSIGNEES_PER_TASK) {
+      errors.push({
+        field: 'userIds',
+        message: `Mỗi lần gán tối đa ${LIMITS.MAX_ASSIGNEES_PER_TASK} users`
+      });
+    }
+
+    const invalidIds = normalizedIds.filter(id => !isValidObjectId(id));
+    if (invalidIds.length > 0) {
+      errors.push({
+        field: 'userIds',
+        message: 'Danh sách userIds chứa giá trị không hợp lệ',
+        invalidIds
+      });
+    }
+
+    const uniqueIds = [...new Set(normalizedIds)];
+    if (uniqueIds.length !== normalizedIds.length) {
+      errors.push({
+        field: 'userIds',
+        message: 'userIds không được chứa giá trị trùng lặp'
+      });
+    }
+
+    if (errors.length === 0) {
+      const users = await User.find({ _id: { $in: uniqueIds }, isActive: true })
+        .select('_id')
+        .lean();
+
+      const foundIds = new Set(users.map(user => user._id.toString()));
+      const missingIds = uniqueIds.filter(id => !foundIds.has(id));
+
+      if (missingIds.length > 0) {
+        errors.push({
+          field: 'userIds',
+          message: 'Một hoặc nhiều user không tồn tại hoặc đã bị vô hiệu hóa',
+          invalidUserIds: missingIds
+        });
+      } else {
+        req.body.userIds = uniqueIds;
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: ERROR_MESSAGES.VALIDATION_ERROR,
+      errors
+    });
+  }
+
+  next();
+});
+
+/**
+ * Validate userId khi bỏ gán task
+ */
+const validateUnassignUser = (req, res, next) => {
+  const { userId } = req.params;
+
+  if (!userId || !isValidObjectId(userId)) {
+    return res.status(400).json({
+      success: false,
+      message: ERROR_MESSAGES.VALIDATION_ERROR,
+      errors: [
+        {
+          field: 'userId',
+          message: 'userId không hợp lệ'
+        }
+      ]
+    });
+  }
+
+  next();
+};
+
 module.exports = {
   validateCreateTask,
   validateUpdateTask,
@@ -379,5 +477,7 @@ module.exports = {
   validateUpdateProfile,
   validateChangePassword,
   validateAddComment,
-  validateUpdateComment
+  validateUpdateComment,
+  validateAssignTask,
+  validateUnassignUser
 };

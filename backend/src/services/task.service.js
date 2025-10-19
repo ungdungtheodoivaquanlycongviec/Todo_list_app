@@ -1,5 +1,6 @@
 const Task = require('../models/Task.model');
-const { ERROR_MESSAGES, TASK_STATUS } = require('../config/constants');
+const User = require('../models/User.model');
+const { ERROR_MESSAGES, TASK_STATUS, LIMITS, SUCCESS_MESSAGES, HTTP_STATUS, PRIORITY_LEVELS } = require('../config/constants');
 const { 
   isValidObjectId, 
   validateTaskDates,
@@ -295,6 +296,420 @@ class TaskService {
   async taskExists(taskId) {
     const count = await Task.countDocuments({ _id: taskId });
     return count > 0;
+  }
+
+  /**
+   * Gán nhiều user vào task
+   * @param {String} taskId
+   * @param {Array<String>} userIds
+   * @param {String} assignerId - Người thực hiện hành động (phải là task owner)
+   * @returns {Promise<Object>} Kết quả xử lý
+   */
+  async assignUsersToTask(taskId, userIds = [], assignerId) {
+    if (!isValidObjectId(taskId)) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: ERROR_MESSAGES.INVALID_TASK_ID
+      };
+    }
+
+    const task = await Task.findById(taskId);
+    if (!task) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.NOT_FOUND,
+        message: ERROR_MESSAGES.TASK_NOT_FOUND
+      };
+    }
+
+    const normalizedAssignerId = assignerId?.toString();
+    if (!normalizedAssignerId || task.createdBy.toString() !== normalizedAssignerId) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.FORBIDDEN,
+        message: 'Chỉ người tạo task mới có thể gán người dùng'
+      };
+    }
+
+    const existingAssigneeIds = new Set(
+      task.assignedTo.map(assignee => assignee.userId?.toString() || assignee.userId)
+    );
+
+    const ignoredSelf = [];
+    const alreadyAssigned = [];
+    const invalidIds = [];
+
+    const sanitizedIds = Array.isArray(userIds)
+      ? [...new Set(userIds.map(id => (id ? id.toString().trim() : '')).filter(Boolean))]
+      : [];
+
+    const filteredIds = [];
+
+    sanitizedIds.forEach(id => {
+      if (!isValidObjectId(id)) {
+        invalidIds.push(id);
+        return;
+      }
+
+      if (id === normalizedAssignerId) {
+        ignoredSelf.push(id);
+        return;
+      }
+
+      if (existingAssigneeIds.has(id)) {
+        alreadyAssigned.push(id);
+        return;
+      }
+
+      filteredIds.push(id);
+    });
+
+    if (invalidIds.length > 0) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: 'Danh sách userIds chứa giá trị không hợp lệ',
+        errors: { invalidIds }
+      };
+    }
+
+    if (filteredIds.length === 0) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: 'Không có user hợp lệ để gán',
+        errors: {
+          alreadyAssigned,
+          ignoredSelf
+        }
+      };
+    }
+
+    const users = await User.find({ _id: { $in: filteredIds }, isActive: true })
+      .select('_id')
+      .lean();
+
+    const activeIds = new Set(users.map(user => user._id.toString()));
+    const inactiveOrMissing = filteredIds.filter(id => !activeIds.has(id));
+
+    if (activeIds.size === 0) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: 'Không có user hợp lệ để gán',
+        errors: {
+          alreadyAssigned,
+          ignoredSelf,
+          inactiveOrMissing
+        }
+      };
+    }
+
+    const availableSlots = LIMITS.MAX_ASSIGNEES_PER_TASK - task.assignedTo.length;
+    if (availableSlots <= 0) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: `Task đã đạt giới hạn ${LIMITS.MAX_ASSIGNEES_PER_TASK} assignees`
+      };
+    }
+
+    const assignableIds = filteredIds.filter(id => activeIds.has(id));
+    let finalAssignableIds = assignableIds.slice(0, availableSlots);
+    const skippedDueToLimit = assignableIds.slice(availableSlots);
+
+    if (finalAssignableIds.length === 0) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: 'Không có user hợp lệ để gán',
+        errors: {
+          alreadyAssigned,
+          ignoredSelf,
+          inactiveOrMissing,
+          skippedDueToLimit
+        }
+      };
+    }
+
+    finalAssignableIds.forEach(userId => {
+      task.assignedTo.push({ userId, assignedAt: new Date() });
+    });
+
+    await task.save();
+
+    const populatedTask = await Task.findById(task._id)
+      .populate('createdBy', 'name email avatar')
+      .populate('assignedTo.userId', 'name email avatar');
+
+    return {
+      success: true,
+      statusCode: HTTP_STATUS.OK,
+      message: `${SUCCESS_MESSAGES.TASK_ASSIGNED}. Đã gán ${finalAssignableIds.length} user(s) mới.`,
+      task: populatedTask,
+      assignedUserIds: finalAssignableIds,
+      meta: {
+        alreadyAssigned,
+        ignoredSelf,
+        inactiveOrMissing,
+        skippedDueToLimit
+      }
+    };
+  }
+
+  /**
+   * Bỏ gán một user khỏi task
+   * @param {String} taskId
+   * @param {String} userId
+   * @param {String} requesterId
+   * @returns {Promise<Object>} Kết quả xử lý
+   */
+  async unassignUserFromTask(taskId, userId, requesterId) {
+    if (!isValidObjectId(taskId) || !isValidObjectId(userId)) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: ERROR_MESSAGES.INVALID_ID
+      };
+    }
+
+    const task = await Task.findById(taskId);
+    if (!task) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.NOT_FOUND,
+        message: ERROR_MESSAGES.TASK_NOT_FOUND
+      };
+    }
+
+    const requesterIdStr = requesterId?.toString();
+    if (!requesterIdStr || task.createdBy.toString() !== requesterIdStr) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.FORBIDDEN,
+        message: 'Chỉ người tạo task mới có thể bỏ gán người dùng'
+      };
+    }
+
+    if (requesterIdStr === userId.toString()) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: 'Không thể bỏ gán chính bạn khỏi task này'
+      };
+    }
+
+    const assigneeIndex = task.assignedTo.findIndex(
+      assignee => assignee.userId?.toString() === userId.toString()
+    );
+
+    if (assigneeIndex === -1) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.NOT_FOUND,
+        message: 'User không được gán cho task này'
+      };
+    }
+
+    task.assignedTo.splice(assigneeIndex, 1);
+    await task.save();
+
+    const populatedTask = await Task.findById(task._id)
+      .populate('createdBy', 'name email avatar')
+      .populate('assignedTo.userId', 'name email avatar');
+
+    return {
+      success: true,
+      statusCode: HTTP_STATUS.OK,
+      message: SUCCESS_MESSAGES.TASK_UNASSIGNED,
+      task: populatedTask,
+      removedUserId: userId.toString()
+    };
+  }
+
+  /**
+   * Lấy danh sách task được gán cho một user (kèm filter + pagination)
+   * @param {String} userId
+   * @param {Object} filters
+   * @param {Object} options
+   * @returns {Promise<Object>} { success, tasks, pagination }
+   */
+  async getTasksAssignedToUser(userId, filters = {}, options = {}) {
+    if (!isValidObjectId(userId)) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: ERROR_MESSAGES.INVALID_ID
+      };
+    }
+
+    const { status, priority, search, groupId } = filters;
+    const { sortBy, order, page, limit } = options;
+
+    const query = {
+      'assignedTo.userId': userId
+    };
+
+    if (status) {
+      if (!TASK_STATUS.includes(status)) {
+        return {
+          success: false,
+          statusCode: HTTP_STATUS.BAD_REQUEST,
+          message: `Invalid status. Allowed values: ${TASK_STATUS.join(', ')}`
+        };
+      }
+      query.status = status;
+    }
+
+    if (priority) {
+      if (!PRIORITY_LEVELS.includes(priority)) {
+        return {
+          success: false,
+          statusCode: HTTP_STATUS.BAD_REQUEST,
+          message: `Invalid priority. Allowed values: ${PRIORITY_LEVELS.join(', ')}`
+        };
+      }
+      query.priority = priority;
+    }
+
+    if (groupId) {
+      if (!isValidObjectId(groupId)) {
+        return {
+          success: false,
+          statusCode: HTTP_STATUS.BAD_REQUEST,
+          message: 'Invalid groupId format'
+        };
+      }
+      query.groupId = groupId;
+    }
+
+    if (search && search.trim()) {
+      query.$or = [
+        { title: { $regex: search.trim(), $options: 'i' } },
+        { description: { $regex: search.trim(), $options: 'i' } }
+      ];
+    }
+
+    const pagination = validatePagination(page, limit);
+    const sanitizedPage = pagination.sanitizedPage;
+    const sanitizedLimit = pagination.sanitizedLimit;
+
+    const allowedSortFields = ['createdAt', 'updatedAt', 'dueDate', 'priority', 'title', 'status'];
+    const sortValidation = validateSort(sortBy, order, allowedSortFields);
+
+    if (!sortValidation.isValid) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: sortValidation.error
+      };
+    }
+
+    const sortOption = {
+      [sortValidation.sanitizedSortBy]: sortValidation.sanitizedOrder === 'asc' ? 1 : -1
+    };
+
+    const skip = (sanitizedPage - 1) * sanitizedLimit;
+
+    const [tasks, total] = await Promise.all([
+      Task.find(query)
+        .sort(sortOption)
+        .skip(skip)
+        .limit(sanitizedLimit)
+        .populate('createdBy', 'name email avatar')
+        .populate('assignedTo.userId', 'name email avatar')
+        .lean(),
+      Task.countDocuments(query)
+    ]);
+
+    return {
+      success: true,
+      statusCode: HTTP_STATUS.OK,
+      message: 'Lấy danh sách tasks được gán thành công',
+      data: {
+        tasks,
+        pagination: {
+          total,
+          page: sanitizedPage,
+          limit: sanitizedLimit,
+          totalPages: Math.ceil(total / sanitizedLimit)
+        }
+      }
+    };
+  }
+
+  /**
+   * Lấy danh sách assignees của task
+   * @param {String} taskId
+   * @returns {Promise<Object>} { success, assignees, count }
+   */
+  async getTaskAssignees(taskId) {
+    if (!isValidObjectId(taskId)) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: ERROR_MESSAGES.INVALID_TASK_ID
+      };
+    }
+
+    const task = await Task.findById(taskId)
+      .select('assignedTo createdBy')
+      .populate('assignedTo.userId', 'name email avatar');
+
+    if (!task) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.NOT_FOUND,
+        message: ERROR_MESSAGES.TASK_NOT_FOUND
+      };
+    }
+
+    const assignees = task.assignedTo.map(assignee => ({
+      _id: assignee._id,
+      assignedAt: assignee.assignedAt,
+      user: assignee.userId
+        ? {
+            _id: assignee.userId._id,
+            name: assignee.userId.name,
+            email: assignee.userId.email,
+            avatar: assignee.userId.avatar
+          }
+        : null
+    }));
+
+    const inactiveCount = assignees.filter(item => item.user === null).length;
+
+    return {
+      success: true,
+      statusCode: HTTP_STATUS.OK,
+      message: 'Lấy danh sách assignees thành công',
+      data: {
+        taskId: task._id,
+        total: assignees.length,
+        inactiveCount,
+        assignees
+      }
+    };
+  }
+
+  /**
+   * Kiểm tra user có được gán vào task hay không
+   * @param {String} taskId
+   * @param {String} userId
+   * @returns {Promise<Boolean>}
+   */
+  async isUserAssigned(taskId, userId) {
+    if (!isValidObjectId(taskId) || !isValidObjectId(userId)) {
+      return false;
+    }
+
+    const exists = await Task.exists({
+      _id: taskId,
+      'assignedTo.userId': userId
+    });
+
+    return Boolean(exists);
   }
 
   /**
@@ -862,7 +1277,7 @@ class TaskService {
     await task.save();
 
     // Populate user info
-    await task.populate('comments.user', 'username email');
+    await task.populate('comments.user', 'name email avatar');
 
     return task;
   }
