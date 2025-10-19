@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
   X,
   Calendar,
@@ -18,6 +18,9 @@ import {
   MoreVertical,
   Check,
   CloverIcon as CloseIcon,
+  Plus,
+  User,
+  RefreshCw,
 } from "lucide-react"
 import type { Task } from "../../../services/types/task.types"
 import { taskService } from "../../../services/task.service"
@@ -42,82 +45,122 @@ interface Comment {
   attachment?: any
 }
 
+interface TimeEntry {
+  _id?: string
+  user?: any
+  date: string
+  hours: number
+  minutes: number
+  description?: string
+  billable: boolean
+  startTime?: string
+  endTime?: string
+  createdAt?: string
+}
+
+interface ScheduledWork {
+  _id?: string
+  user?: any
+  scheduledDate: string
+  estimatedHours: number
+  estimatedMinutes: number
+  description?: string
+  status: string
+  createdAt?: string
+}
+
 export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate, onTaskDelete }: TaskDetailModalProps) {
   const [task, setTask] = useState<Task | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [editing, setEditing] = useState(false)
   const [description, setDescription] = useState("")
   const [comment, setComment] = useState("")
   const [comments, setComments] = useState<Comment[]>([])
   const [estimatedTime, setEstimatedTime] = useState("")
+  
+  // State for editable fields
+  const [editingField, setEditingField] = useState<string | null>(null)
+  const [tempValue, setTempValue] = useState("")
+  
+  // Task properties state
+  const [taskProperties, setTaskProperties] = useState({
+    title: "",
+    status: "todo",
+    dueDate: "",
+    estimatedTime: "",
+    type: "Operational",
+    priority: "medium",
+    description: ""
+  })
+
+  // Existing state for time entries and scheduled work
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([])
+  const [scheduledWork, setScheduledWork] = useState<ScheduledWork[]>([])
+  const [showTimeEntryForm, setShowTimeEntryForm] = useState(false)
+  const [newTimeEntry, setNewTimeEntry] = useState({
+    date: new Date().toISOString().split('T')[0],
+    hours: 0,
+    minutes: 0,
+    description: "",
+    billable: true
+  })
+  const [showScheduledWorkForm, setShowScheduledWorkForm] = useState(false)
+  const [newScheduledWork, setNewScheduledWork] = useState({
+    scheduledDate: new Date().toISOString().split('T')[0],
+    estimatedHours: 0,
+    estimatedMinutes: 0,
+    description: "",
+    status: "scheduled"
+  })
+
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editingCommentContent, setEditingCommentContent] = useState("")
   const [showCommentMenu, setShowCommentMenu] = useState<string | null>(null)
+
   const { user: currentUser } = useAuth()
 
   const estimatedTimeOptions = ["15m", "30m", "1h", "2h", "4h", "1d", "2d", "1w"]
+  const taskTypeOptions = ["Operational", "Strategic", "Financial", "Technical", "Other"]
+  const priorityOptions = ["low", "medium", "high", "critical", "urgent"]
+  const statusOptions = ["todo", "in_progress", "completed", "archived"]
 
-  useEffect(() => {
-    if (isOpen && taskId) {
-      console.log("Fetching task details for ID:", taskId)
-      fetchTaskDetails()
-    }
-  }, [isOpen, taskId])
+  const fetchTaskDetails = useCallback(async () => {
+    if (!isOpen || !taskId) return
 
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose()
-    }
-
-    if (isOpen) {
-      document.addEventListener("keydown", handleEscape)
-      return () => document.removeEventListener("keydown", handleEscape)
-    }
-  }, [isOpen, onClose])
-
-  useEffect(() => {
-    const handleClickOutside = () => {
-      setShowCommentMenu(null)
-    }
-
-    if (showCommentMenu) {
-      document.addEventListener("click", handleClickOutside)
-      return () => {
-        document.removeEventListener("click", handleClickOutside)
-      }
-    }
-  }, [showCommentMenu])
-
-  const handleEstimatedTimeChange = async (newEstimatedTime: string) => {
-    if (!task) return
-
-    try {
-      console.log("Updating estimated time to:", newEstimatedTime)
-      const updatedTask = await taskService.updateTask(taskId, {
-        estimatedTime: newEstimatedTime,
-      })
-      setTask(updatedTask)
-      setEstimatedTime(newEstimatedTime)
-      onTaskUpdate(updatedTask)
-    } catch (error) {
-      console.error("Error updating estimated time:", error)
-      alert("Failed to update estimated time: " + (error as Error).message)
-    }
-  }
-
-  const fetchTaskDetails = async () => {
     try {
       setLoading(true)
       const taskData = await taskService.getTaskById(taskId)
-      console.log("Task data received:", taskData)
 
       setTask(taskData)
       setDescription(taskData.description || "")
       setEstimatedTime(taskData.estimatedTime || "")
+      
+      // Initialize task properties
+      setTaskProperties({
+        title: taskData.title || "",
+        status: taskData.status || "todo",
+        dueDate: taskData.dueDate ? new Date(taskData.dueDate).toISOString().split('T')[0] : "",
+        estimatedTime: taskData.estimatedTime || "",
+        type: (taskData as any).type || "Operational",
+        priority: taskData.priority || "medium",
+        description: taskData.description || ""
+      })
+
+      // Set time entries
+      if ((taskData as any).timeEntries && Array.isArray((taskData as any).timeEntries)) {
+        setTimeEntries((taskData as any).timeEntries)
+      } else {
+        setTimeEntries([])
+      }
+
+      // Set scheduled work
+      if ((taskData as any).scheduledWork && Array.isArray((taskData as any).scheduledWork)) {
+        setScheduledWork((taskData as any).scheduledWork)
+      } else {
+        setScheduledWork([])
+      }
 
       if (taskData.comments && Array.isArray(taskData.comments)) {
-        console.log("Raw comments:", taskData.comments)
         const formattedComments: Comment[] = taskData.comments.map((comment: any) => ({
           _id: comment._id || comment.userId,
           userId: comment.userId || comment.user?._id || comment.user,
@@ -138,41 +181,239 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
     } finally {
       setLoading(false)
     }
-  }
+  }, [isOpen, taskId])
 
-  const handleSave = async () => {
+  useEffect(() => {
+    fetchTaskDetails()
+  }, [fetchTaskDetails])
+
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) onClose()
+    }
+
+    document.addEventListener("keydown", handleEscape)
+    return () => document.removeEventListener("keydown", handleEscape)
+  }, [isOpen, onClose])
+
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setShowCommentMenu(null)
+    }
+
+    if (showCommentMenu) {
+      document.addEventListener("click", handleClickOutside)
+      return () => {
+        document.removeEventListener("click", handleClickOutside)
+      }
+    }
+  }, [showCommentMenu])
+
+  // Save individual field to database
+  const saveFieldToDatabase = async (field: string, value: any) => {
     if (!task) return
 
     try {
       setSaving(true)
-
-      const updateData: any = {}
-
-      if (task.title !== undefined) updateData.title = task.title
-      if (description !== undefined) updateData.description = description
-      if (task.status !== undefined) updateData.status = task.status
-      if (task.priority !== undefined) updateData.priority = task.priority
-      if (task.dueDate !== undefined) updateData.dueDate = task.dueDate
-      if (task.category !== undefined) updateData.category = task.category
-      if (estimatedTime !== undefined) updateData.estimatedTime = estimatedTime
-
-      console.log("Sending update data:", updateData)
-
+      
+      const updateData = { [field]: value }
       const updatedTask = await taskService.updateTask(taskId, updateData)
-      console.log("Update response:", updatedTask)
-
+      
       setTask(updatedTask)
-      setEditing(false)
       onTaskUpdate(updatedTask)
+      
+      // Update local state
+      setTaskProperties(prev => ({
+        ...prev,
+        [field]: value
+      }))
+      
     } catch (error) {
-      console.error("Error updating task:", error)
-      alert("Failed to update task: " + (error as Error).message)
+      console.error(`Error updating ${field}:`, error)
+      alert(`Failed to update ${field}: ${(error as Error).message}`)
     } finally {
       setSaving(false)
     }
   }
 
-  const handleDelete = async () => {
+  // Start editing a field
+  const startEditing = (field: string, currentValue: string) => {
+    setEditingField(field)
+    setTempValue(currentValue)
+  }
+
+  // Save field changes
+  const saveField = (field: string) => {
+    if (tempValue !== taskProperties[field as keyof typeof taskProperties]) {
+      saveFieldToDatabase(field, tempValue)
+    }
+    setEditingField(null)
+    setTempValue("")
+  }
+
+  // Cancel editing
+  const cancelEditing = () => {
+    setEditingField(null)
+    setTempValue("")
+  }
+
+  // Handle key events for inputs
+  const handleKeyDown = (e: React.KeyboardEvent, field: string) => {
+    if (e.key === 'Enter') {
+      saveField(field)
+    } else if (e.key === 'Escape') {
+      cancelEditing()
+    }
+  }
+
+  // Handle quick time selection
+  const handleQuickTimeSelect = (time: string) => {
+    saveFieldToDatabase('estimatedTime', time)
+  }
+
+  // Get status color
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'bg-green-500'
+      case 'in_progress': return 'bg-yellow-500'
+      case 'archived': return 'bg-gray-500'
+      default: return 'bg-blue-500'
+    }
+  }
+
+  // Get status display text
+  const getStatusDisplay = (status: string) => {
+    return status.split('_').map(word => 
+      word.charAt(0).toUpperCase() + word.slice(1)
+    ).join(' ')
+  }
+
+  // Get priority color and style
+  const getPriorityStyle = (priority: string) => {
+    switch (priority) {
+      case 'critical':
+      case 'urgent':
+        return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+      case 'high':
+        return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300'
+      case 'medium':
+        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+      default:
+        return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+    }
+  }
+
+  // Existing handlers for time entries
+  const handleAddTimeEntry = useCallback(async () => {
+    if (!task) return
+
+    try {
+      const timeEntryToAdd = {
+        ...newTimeEntry,
+        user: currentUser?._id,
+        date: new Date(newTimeEntry.date).toISOString()
+      }
+
+      const updatedTask = await taskService.updateTask(taskId, {
+        timeEntries: [...timeEntries, timeEntryToAdd]
+      })
+
+      setTimeEntries((updatedTask as any).timeEntries || [])
+      setNewTimeEntry({
+        date: new Date().toISOString().split('T')[0],
+        hours: 0,
+        minutes: 0,
+        description: "",
+        billable: true
+      })
+      setShowTimeEntryForm(false)
+      onTaskUpdate(updatedTask)
+    } catch (error) {
+      console.error("Error adding time entry:", error)
+      alert("Failed to add time entry: " + (error as Error).message)
+    }
+  }, [task, newTimeEntry, timeEntries, currentUser, taskId, onTaskUpdate])
+
+  // Handler for adding scheduled work
+  const handleAddScheduledWork = useCallback(async () => {
+    if (!task) return
+
+    try {
+      const scheduledWorkToAdd = {
+        ...newScheduledWork,
+        user: currentUser?._id,
+        scheduledDate: new Date(newScheduledWork.scheduledDate).toISOString()
+      }
+
+      const updatedTask = await taskService.updateTask(taskId, {
+        scheduledWork: [...scheduledWork, scheduledWorkToAdd]
+      })
+
+      setScheduledWork((updatedTask as any).scheduledWork || [])
+      setNewScheduledWork({
+        scheduledDate: new Date().toISOString().split('T')[0],
+        estimatedHours: 0,
+        estimatedMinutes: 0,
+        description: "",
+        status: "scheduled"
+      })
+      setShowScheduledWorkForm(false)
+      onTaskUpdate(updatedTask)
+    } catch (error) {
+      console.error("Error adding scheduled work:", error)
+      alert("Failed to add scheduled work: " + (error as Error).message)
+    }
+  }, [task, newScheduledWork, scheduledWork, currentUser, taskId, onTaskUpdate])
+
+  // Handler for deleting time entry
+  const handleDeleteTimeEntry = useCallback(async (index: number) => {
+    if (!task || !confirm("Are you sure you want to delete this time entry?")) return
+
+    try {
+      const updatedTimeEntries = timeEntries.filter((_, i) => i !== index)
+      const updatedTask = await taskService.updateTask(taskId, {
+        timeEntries: updatedTimeEntries
+      })
+
+      setTimeEntries(updatedTimeEntries)
+      onTaskUpdate(updatedTask)
+    } catch (error) {
+      console.error("Error deleting time entry:", error)
+      alert("Failed to delete time entry: " + (error as Error).message)
+    }
+  }, [task, timeEntries, taskId, onTaskUpdate])
+
+  // Handler for deleting scheduled work
+  const handleDeleteScheduledWork = useCallback(async (index: number) => {
+    if (!task || !confirm("Are you sure you want to delete this scheduled work?")) return
+
+    try {
+      const updatedScheduledWork = scheduledWork.filter((_, i) => i !== index)
+      const updatedTask = await taskService.updateTask(taskId, {
+        scheduledWork: updatedScheduledWork
+      })
+
+      setScheduledWork(updatedScheduledWork)
+      onTaskUpdate(updatedTask)
+    } catch (error) {
+      console.error("Error deleting scheduled work:", error)
+      alert("Failed to delete scheduled work: " + (error as Error).message)
+    }
+  }, [task, scheduledWork, taskId, onTaskUpdate])
+
+  // Calculate total logged time
+  const getTotalLoggedTime = useCallback(() => {
+    const totalMinutes = timeEntries.reduce((total, entry) => {
+      return total + (entry.hours * 60) + (entry.minutes || 0)
+    }, 0)
+    
+    const hours = Math.floor(totalMinutes / 60)
+    const minutes = totalMinutes % 60
+    return `${hours}:${minutes.toString().padStart(2, '0')}h`
+  }, [timeEntries])
+
+  // Rest of your existing handlers
+  const handleDelete = useCallback(async () => {
     if (!task || !confirm("Are you sure you want to delete this task?")) return
 
     try {
@@ -183,13 +424,12 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       console.error("Error deleting task:", error)
       alert("Failed to delete task: " + (error as Error).message)
     }
-  }
+  }, [task, taskId, onTaskDelete, onClose])
 
-  const handleAddComment = async () => {
+  const handleAddComment = useCallback(async () => {
     if (!comment.trim() || !task) return
 
     try {
-      console.log("Adding comment:", comment)
       const updatedTask = await taskService.addComment(taskId, comment)
       setComment("")
 
@@ -210,9 +450,9 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       console.error("Error adding comment:", error)
       alert("Failed to add comment: " + (error as Error).message)
     }
-  }
+  }, [comment, task, taskId])
 
-  const handleUpdateComment = async (commentId: string) => {
+  const handleUpdateComment = useCallback(async (commentId: string) => {
     if (!editingCommentContent.trim() || !currentUser) {
       if (!currentUser) {
         alert("You must be logged in to update a comment")
@@ -247,9 +487,9 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       console.error("Error updating comment:", error)
       alert("Failed to update comment: " + (error as Error).message)
     }
-  }
+  }, [editingCommentContent, currentUser, taskId])
 
-  const handleDeleteComment = async (commentId: string) => {
+  const handleDeleteComment = useCallback(async (commentId: string) => {
     if (!confirm("Are you sure you want to delete this comment?") || !currentUser) {
       if (!currentUser) {
         alert("You must be logged in to delete a comment")
@@ -272,100 +512,21 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       console.error("Error deleting comment:", error)
       alert("Failed to delete comment: " + (error as Error).message)
     }
-  }
+  }, [currentUser, taskId])
 
-  const startEditingComment = (comment: Comment) => {
-    if (!currentUser) {
-      alert("You must be logged in to edit a comment")
-      return
-    }
-    setEditingCommentId(comment._id!)
-    setEditingCommentContent(comment.content)
-    setShowCommentMenu(null)
-  }
-
-  const cancelEditingComment = () => {
-    setEditingCommentId(null)
-    setEditingCommentContent("")
-  }
-
-  const handleStatusChange = async (newStatus: string) => {
-    if (!task) return
-
-    try {
-      console.log("Updating status to:", newStatus)
-      const updatedTask = await taskService.updateTask(taskId, {
-        status: newStatus,
-      })
-      setTask(updatedTask)
-      onTaskUpdate(updatedTask)
-    } catch (error) {
-      console.error("Error updating status:", error)
-      alert("Failed to update status: " + (error as Error).message)
-    }
-  }
-
-  const handlePriorityChange = async (newPriority: string) => {
-    if (!task) return
-
-    try {
-      console.log("Updating priority to:", newPriority)
-      const updatedTask = await taskService.updateTask(taskId, {
-        priority: newPriority,
-      })
-      setTask(updatedTask)
-      onTaskUpdate(updatedTask)
-    } catch (error) {
-      console.error("Error updating priority:", error)
-      alert("Failed to update priority: " + (error as Error).message)
-    }
-  }
-
-  const handleDueDateChange = async (newDueDate: string) => {
-    if (!task) return
-
-    try {
-      console.log("Updating due date to:", newDueDate)
-      const updatedTask = await taskService.updateTask(taskId, {
-        dueDate: newDueDate,
-      })
-      setTask(updatedTask)
-      onTaskUpdate(updatedTask)
-    } catch (error) {
-      console.error("Error updating due date:", error)
-      alert("Failed to update due date: " + (error as Error).message)
-    }
-  }
-
-  const handleCategoryChange = async (newCategory: string) => {
-    if (!task) return
-
-    try {
-      console.log("Updating category to:", newCategory)
-      const updatedTask = await taskService.updateTask(taskId, {
-        category: newCategory,
-      })
-      setTask(updatedTask)
-      onTaskUpdate(updatedTask)
-    } catch (error) {
-      console.error("Error updating category:", error)
-      alert("Failed to update category: " + (error as Error).message)
-    }
-  }
-
-  const getUserDisplayName = (comment: Comment): string => {
+  const getUserDisplayName = useCallback((comment: Comment): string => {
     if (comment.user && typeof comment.user === "object") {
       return comment.user.name || comment.user.email || "User"
     }
     return "User"
-  }
+  }, [])
 
-  const getUserInitial = (comment: Comment): string => {
+  const getUserInitial = useCallback((comment: Comment): string => {
     const name = getUserDisplayName(comment)
     return name.charAt(0).toUpperCase()
-  }
+  }, [getUserDisplayName])
 
-  const isCommentOwner = (comment: Comment): boolean => {
+  const isCommentOwner = useCallback((comment: Comment): boolean => {
     if (!currentUser) return false
 
     if (comment.userId && typeof comment.userId === "string") {
@@ -377,9 +538,24 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
     }
 
     return false
-  }
+  }, [currentUser])
 
-  const CommentMenu = ({
+  const startEditingComment = useCallback((comment: Comment) => {
+    if (!currentUser) {
+      alert("You must be logged in to edit a comment")
+      return
+    }
+    setEditingCommentId(comment._id!)
+    setEditingCommentContent(comment.content)
+    setShowCommentMenu(null)
+  }, [currentUser])
+
+  const cancelEditingComment = useCallback(() => {
+    setEditingCommentId(null)
+    setEditingCommentContent("")
+  }, [])
+
+  const CommentMenu = useCallback(({
     commentId,
     onEdit,
     onDelete,
@@ -402,9 +578,9 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
         Delete
       </button>
     </div>
-  )
+  ), [])
 
-  const CommentItem = ({ comment, index }: { comment: Comment; index: number }) => {
+  const CommentItem = useCallback(({ comment, index }: { comment: Comment; index: number }) => {
     const isEditing = editingCommentId === comment._id
     const isOwner = isCommentOwner(comment)
 
@@ -494,7 +670,151 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
         </div>
       </div>
     )
-  }
+  }, [editingCommentId, editingCommentContent, showCommentMenu, isCommentOwner, getUserInitial, getUserDisplayName, CommentMenu, startEditingComment, handleDeleteComment, handleUpdateComment, cancelEditingComment])
+
+  // Time Entry Form Component
+  const TimeEntryForm = () => (
+    <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 mt-2">
+      <h4 className="text-sm font-medium mb-3">Add Time Entry</h4>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-gray-600 dark:text-gray-400">Date</label>
+          <input
+            type="date"
+            value={newTimeEntry.date}
+            onChange={(e) => setNewTimeEntry({...newTimeEntry, date: e.target.value})}
+            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded text-sm"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-gray-600 dark:text-gray-400">Hours</label>
+          <input
+            type="number"
+            value={newTimeEntry.hours}
+            onChange={(e) => setNewTimeEntry({...newTimeEntry, hours: parseInt(e.target.value) || 0})}
+            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded text-sm"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-gray-600 dark:text-gray-400">Minutes</label>
+          <input
+            type="number"
+            value={newTimeEntry.minutes}
+            onChange={(e) => setNewTimeEntry({...newTimeEntry, minutes: parseInt(e.target.value) || 0})}
+            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded text-sm"
+          />
+        </div>
+        <div className="flex items-end">
+          <label className="flex items-center text-xs text-gray-600 dark:text-gray-400">
+            <input
+              type="checkbox"
+              checked={newTimeEntry.billable}
+              onChange={(e) => setNewTimeEntry({...newTimeEntry, billable: e.target.checked})}
+              className="mr-2"
+            />
+            Billable
+          </label>
+        </div>
+        <div className="col-span-2">
+          <label className="text-xs text-gray-600 dark:text-gray-400">Description</label>
+          <input
+            type="text"
+            value={newTimeEntry.description}
+            onChange={(e) => setNewTimeEntry({...newTimeEntry, description: e.target.value})}
+            placeholder="Optional description"
+            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded text-sm"
+          />
+        </div>
+      </div>
+      <div className="flex gap-2 mt-3">
+        <button
+          onClick={handleAddTimeEntry}
+          className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
+        >
+          Add Entry
+        </button>
+        <button
+          onClick={() => setShowTimeEntryForm(false)}
+          className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+
+  // Scheduled Work Form Component
+  const ScheduledWorkForm = () => (
+    <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 mt-2">
+      <h4 className="text-sm font-medium mb-3">Schedule Work</h4>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-gray-600 dark:text-gray-400">Date</label>
+          <input
+            type="date"
+            value={newScheduledWork.scheduledDate}
+            onChange={(e) => setNewScheduledWork({...newScheduledWork, scheduledDate: e.target.value})}
+            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded text-sm"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-gray-600 dark:text-gray-400">Estimated Hours</label>
+          <input
+            type="number"
+            value={newScheduledWork.estimatedHours}
+            onChange={(e) => setNewScheduledWork({...newScheduledWork, estimatedHours: parseInt(e.target.value) || 0})}
+            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded text-sm"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-gray-600 dark:text-gray-400">Estimated Minutes</label>
+          <input
+            type="number"
+            value={newScheduledWork.estimatedMinutes}
+            onChange={(e) => setNewScheduledWork({...newScheduledWork, estimatedMinutes: parseInt(e.target.value) || 0})}
+            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded text-sm"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-gray-600 dark:text-gray-400">Status</label>
+          <select
+            value={newScheduledWork.status}
+            onChange={(e) => setNewScheduledWork({...newScheduledWork, status: e.target.value})}
+            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded text-sm"
+          >
+            <option value="scheduled">Scheduled</option>
+            <option value="in-progress">In Progress</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+        <div className="col-span-2">
+          <label className="text-xs text-gray-600 dark:text-gray-400">Description</label>
+          <input
+            type="text"
+            value={newScheduledWork.description}
+            onChange={(e) => setNewScheduledWork({...newScheduledWork, description: e.target.value})}
+            placeholder="Optional description"
+            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded text-sm"
+          />
+        </div>
+      </div>
+      <div className="flex gap-2 mt-3">
+        <button
+          onClick={handleAddScheduledWork}
+          className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
+        >
+          Schedule Work
+        </button>
+        <button
+          onClick={() => setShowScheduledWorkForm(false)}
+          className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
 
   if (!currentUser) {
     return (
@@ -545,7 +865,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
   return (
     <>
-      {/* Backdrop hoàn toàn trong suốt - chỉ để bắt sự kiện click */}
+      {/* Backdrop */}
       <div
         className={`fixed inset-0 z-50 transition-all duration-300 ${
           isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
@@ -560,202 +880,153 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
         }`}
       >
         <div className="flex flex-col h-full">
-          {/* Close Button - Cùng màu với modal và gần hơn */}
-{/* --- Bắt đầu khối nút đóng tùy chỉnh --- */}
-<div
-    className="absolute top-6 left-0 w-9 h-9 z-10" // Đã sửa từ -left-8 thành left-0
-    style={{
-        /* Dòng này sẽ kéo component sang trái một khoảng bằng 50% chiều rộng của nó */
-        transform: "translateX(-50%)",
-    }}
->
-    <div className="relative w-full h-full">
-        {/* Lớp 1: Vòng tròn đầy đủ có viền và bóng */}
-        <div className="absolute inset-0 rounded-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 shadow-lg"></div>
-
-        {/* Lớp 2: Lớp che, có màu nền của modal, che đi nửa viền bên phải */}
-        <div className="absolute top-0 right-0 w-1/2 h-full bg-white dark:bg-gray-800"></div>
-
-        {/* Lớp 3: Nút bấm trong suốt chứa icon 'X' để nhận sự kiện click và hover */}
-        <button
-            onClick={onClose}
-            className="absolute inset-0 flex items-center justify-center rounded-full text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-50/75 dark:hover:bg-gray-700/75 transition-colors"
-            aria-label="Close"
-        >
-            <X className="w-5 h-5" />
-        </button>
-    </div>
-</div>
-{/* --- Kết thúc khối nút đóng tùy chỉnh --- */}
+          {/* Close Button */}
+          <div
+            className="absolute top-6 left-0 w-9 h-9 z-10"
+            style={{
+              transform: "translateX(-50%)",
+            }}
+          >
+            <div className="relative w-full h-full">
+              <div className="absolute inset-0 rounded-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 shadow-lg"></div>
+              <div className="absolute top-0 right-0 w-1/2 h-full bg-white dark:bg-gray-800"></div>
+              <button
+                onClick={onClose}
+                className="absolute inset-0 flex items-center justify-center rounded-full text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-50/75 dark:hover:bg-gray-700/75 transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
 
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center gap-3 flex-1">
-              {editing ? (
+              {editingField === 'title' ? (
                 <input
                   type="text"
-                  value={task.title || ""}
-                  onChange={(e) => setTask({ ...task, title: e.target.value })}
+                  value={tempValue}
+                  onChange={(e) => setTempValue(e.target.value)}
+                  onBlur={() => saveField('title')}
+                  onKeyDown={(e) => handleKeyDown(e, 'title')}
                   className="text-xl font-semibold bg-transparent border-b border-gray-300 focus:outline-none focus:border-blue-500 flex-1 text-gray-900 dark:text-gray-100"
                   autoFocus
                 />
               ) : (
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-                  {task.title || "Untitled Task"}
+                <h2 
+                  className="text-xl font-semibold text-gray-900 dark:text-gray-100 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 px-2 py-1 rounded"
+                  onClick={() => startEditing('title', taskProperties.title)}
+                >
+                  {taskProperties.title || "Untitled Task"}
                 </h2>
               )}
-            </div>
-            <div className="flex items-center gap-2">
-              {editing ? (
-                <>
-                  <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="flex items-center gap-2 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
-                  >
-                    <Save className="w-4 h-4" />
-                    {saving ? "Saving..." : "Save"}
-                  </button>
-                  <button
-                    onClick={() => setEditing(false)}
-                    className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    onClick={() => setEditing(true)}
-                    className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-                  >
-                    <Edit2 className="w-5 h-5" />
-                  </button>
-                  <button onClick={handleDelete} className="p-2 text-red-500 hover:text-red-700">
-                    <Trash2 className="w-5 h-5" />
-                  </button>
-                </>
+              {saving && (
+                <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
               )}
             </div>
+            <button onClick={handleDelete} className="p-2 text-red-500 hover:text-red-700">
+              <Trash2 className="w-5 h-5" />
+            </button>
           </div>
 
-          {/* Main Content - Split into 2/3 task details and 1/3 comments */}
+          {/* Main Content */}
           <div className="flex-1 overflow-hidden flex">
             {/* Task Details - 2/3 width */}
             <div className="w-2/3 border-r border-gray-200 dark:border-gray-700 overflow-auto">
               <div className="p-6 space-y-6">
-                {/* Description */}
-                <div>
-                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Description</h3>
-                  {editing ? (
-                    <textarea
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      rows={4}
-                      className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Add a description..."
-                    />
-                  ) : (
-                    <p className="text-gray-600 dark:text-gray-400 whitespace-pre-wrap">
-                      {description || "No description provided"}
-                    </p>
-                  )}
-                </div>
-
-                {/* Scheduled Work */}
-                <div>
-                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Scheduled work</h3>
-                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                    <div className="grid grid-cols-4 gap-4 text-sm text-gray-600 dark:text-gray-400 mb-2">
-                      <span>Date</span>
-                      <span>User</span>
-                      <span>Estimated time</span>
-                      <span>Time</span>
-                    </div>
-                    <div className="text-center py-4 text-gray-500">No scheduled work yet</div>
-                    <button className="text-blue-500 hover:text-blue-600 text-sm">+ Schedule more work</button>
-                  </div>
-                </div>
-
-                {/* Task Properties */}
-                <div className="space-y-4">
-                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Task Properties</h3>
-
+                {/* Task Properties - Interactive */}
+                <div className="space-y-3">
                   {/* Status */}
-                  <div>
-                    <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      <MessageSquare className="w-4 h-4" />
-                      Status
-                    </label>
-                    <select
-                      value={task.status || "todo"}
-                      onChange={(e) => handleStatusChange(e.target.value)}
-                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="todo">To Do</option>
-                      <option value="in_progress">In Progress</option>
-                      <option value="completed">Completed</option>
-                      <option value="archived">Archived</option>
-                    </select>
-                  </div>
-
-                  {/* Type/Category */}
-                  <div>
-                    <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      <Flag className="w-4 h-4" />
-                      Type
-                    </label>
-                    <select
-                      value={task.category || ""}
-                      onChange={(e) => handleCategoryChange(e.target.value)}
-                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">Select type</option>
-                      <option value="Financial">Financial</option>
-                      <option value="Strategic">Strategic</option>
-                      <option value="Operational">Operational</option>
-                    </select>
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer group">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <div className={`w-3 h-3 ${getStatusColor(taskProperties.status)} rounded-full flex-shrink-0`}></div>
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Status</span>
+                    </div>
+                    {editingField === 'status' ? (
+                      <select
+                        value={tempValue}
+                        onChange={(e) => setTempValue(e.target.value)}
+                        onBlur={() => saveField('status')}
+                        className="flex-1 max-w-32 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        autoFocus
+                      >
+                        {statusOptions.map(option => (
+                          <option key={option} value={option}>
+                            {option.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div 
+                        className="flex items-center gap-2 flex-1 justify-end"
+                        onClick={() => startEditing('status', taskProperties.status)}
+                      >
+                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                          {getStatusDisplay(taskProperties.status)}
+                        </span>
+                        <Edit2 className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    )}
                   </div>
 
                   {/* Due Date */}
-                  <div>
-                    <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      <Calendar className="w-4 h-4" />
-                      Due date
-                    </label>
-                    <input
-                      type="date"
-                      value={task.dueDate ? new Date(task.dueDate).toISOString().split("T")[0] : ""}
-                      onChange={(e) => handleDueDateChange(e.target.value)}
-                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer group">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <Calendar className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Due date</span>
+                    </div>
+                    {editingField === 'dueDate' ? (
+                      <input
+                        type="date"
+                        value={tempValue}
+                        onChange={(e) => setTempValue(e.target.value)}
+                        onBlur={() => saveField('dueDate')}
+                        onKeyDown={(e) => handleKeyDown(e, 'dueDate')}
+                        className="flex-1 max-w-32 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        autoFocus
+                      />
+                    ) : (
+                      <div 
+                        className="flex items-center gap-2 flex-1 justify-end"
+                        onClick={() => startEditing('dueDate', taskProperties.dueDate)}
+                      >
+                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                          {taskProperties.dueDate ? new Date(taskProperties.dueDate).toLocaleDateString('en-GB') : "—"}
+                        </span>
+                        <Edit2 className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    )}
                   </div>
 
                   {/* Estimated Time */}
-                  <div>
-                    <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      <Clock className="w-4 h-4" />
-                      Estimated time
-                    </label>
-                    {editing ? (
-                      <div className="flex gap-2">
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer group">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <Clock className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Estimated time</span>
+                    </div>
+                    {editingField === 'estimatedTime' ? (
+                      <div className="flex gap-1 flex-1 max-w-40">
                         <input
                           type="text"
-                          value={estimatedTime}
-                          onChange={(e) => setEstimatedTime(e.target.value)}
-                          className="flex-1 p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="e.g., 2h 30m"
+                          value={tempValue}
+                          onChange={(e) => setTempValue(e.target.value)}
+                          onBlur={() => saveField('estimatedTime')}
+                          onKeyDown={(e) => handleKeyDown(e, 'estimatedTime')}
+                          className="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="1h 30m"
+                          autoFocus
                         />
                         <select
                           value=""
                           onChange={(e) => {
                             if (e.target.value) {
-                              setEstimatedTime(e.target.value)
+                              handleQuickTimeSelect(e.target.value)
                             }
                           }}
-                          className="p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         >
-                          <option value="">Quick select</option>
+                          <option value="">Quick</option>
                           {estimatedTimeOptions.map((opt) => (
                             <option key={opt} value={opt}>
                               {opt}
@@ -764,56 +1035,300 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
                         </select>
                       </div>
                     ) : (
-                      <div
-                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 cursor-pointer hover:border-gray-400"
-                        onClick={() => setEditing(true)}
+                      <div 
+                        className="flex items-center gap-2 flex-1 justify-end"
+                        onClick={() => startEditing('estimatedTime', taskProperties.estimatedTime)}
                       >
-                        {estimatedTime || "—"}
+                        <span className="text-sm text-gray-600 dark:text-gray-400">{taskProperties.estimatedTime || "—"}</span>
+                        <Edit2 className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
                     )}
                   </div>
 
+                  {/* Type */}
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer group">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <Flag className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Type</span>
+                    </div>
+                    {editingField === 'type' ? (
+                      <select
+                        value={tempValue}
+                        onChange={(e) => setTempValue(e.target.value)}
+                        onBlur={() => saveField('type')}
+                        className="flex-1 max-w-32 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        autoFocus
+                      >
+                        {taskTypeOptions.map(option => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div 
+                        className="flex items-center gap-2 flex-1 justify-end"
+                        onClick={() => startEditing('type', taskProperties.type)}
+                      >
+                        <span className="text-sm text-gray-600 dark:text-gray-400">{taskProperties.type}</span>
+                        <Edit2 className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Assignees */}
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer group">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <User className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Assignees</span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-1 justify-end">
+                      <div className="flex items-center gap-1">
+                        <div className="w-6 h-6 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                          <span className="text-xs font-medium text-white">
+                            {currentUser?.name?.charAt(0)?.toUpperCase() || "U"}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="text-sm text-gray-600 dark:text-gray-400">Me</span>
+                      <Edit2 className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                  </div>
+
                   {/* Priority */}
-                  <div>
-                    <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      <Flag className="w-4 h-4" />
-                      Priority
-                    </label>
-                    <select
-                      value={task.priority || "medium"}
-                      onChange={(e) => handlePriorityChange(e.target.value)}
-                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
-                      <option value="urgent">Urgent</option>
-                    </select>
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer group">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <Flag className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Priority</span>
+                    </div>
+                    {editingField === 'priority' ? (
+                      <select
+                        value={tempValue}
+                        onChange={(e) => setTempValue(e.target.value)}
+                        onBlur={() => saveField('priority')}
+                        className="flex-1 max-w-32 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        autoFocus
+                      >
+                        {priorityOptions.map(option => (
+                          <option key={option} value={option}>
+                            {option.charAt(0).toUpperCase() + option.slice(1)}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div 
+                        className="flex items-center gap-2 flex-1 justify-end"
+                        onClick={() => startEditing('priority', taskProperties.priority)}
+                      >
+                        <div className={`px-2 py-1 rounded-full text-xs font-medium ${getPriorityStyle(taskProperties.priority)}`}>
+                          {taskProperties.priority.charAt(0).toUpperCase() + taskProperties.priority.slice(1)}
+                        </div>
+                        <Edit2 className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 {/* Action Buttons */}
                 <div className="flex flex-wrap gap-2 pt-4">
-                  <button className="flex items-center gap-2 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300">
-                    <MapPin className="w-4 h-4" />
-                    Add address
+                  <button className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors shadow-sm">
+                    <Plus className="w-4 h-4" />
+                    Add status
                   </button>
-                  <button className="flex items-center gap-2 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300">
-                    <Paperclip className="w-4 h-4" />
-                    Attach file
-                  </button>
-                  <button className="flex items-center gap-2 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300">
+                  <button className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors shadow-sm">
                     <PlayCircle className="w-4 h-4" />
-                    Start timer
+                    Start time
                   </button>
-                  <button className="flex items-center gap-2 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300">
+                  <button 
+                    onClick={() => setShowTimeEntryForm(!showTimeEntryForm)}
+                    className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors shadow-sm"
+                  >
                     <Timer className="w-4 h-4" />
                     Log time
                   </button>
+                  <button className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors shadow-sm">
+                    <Plus className="w-4 h-4" />
+                    Add tag
+                  </button>
+                  <button className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors shadow-sm">
+                    <RefreshCw className="w-4 h-4" />
+                    Repeat task
+                  </button>
+                </div>
+
+                {/* Time Entry Form */}
+                {showTimeEntryForm && <TimeEntryForm />}
+
+                {/* Description */}
+                <div>
+                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Description</h3>
+                  {editingField === 'description' ? (
+                    <textarea
+                      value={tempValue}
+                      onChange={(e) => setTempValue(e.target.value)}
+                      onBlur={() => saveField('description')}
+                      rows={4}
+                      className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Add a description..."
+                      autoFocus
+                    />
+                  ) : (
+                    <p 
+                      className="text-gray-600 dark:text-gray-400 whitespace-pre-wrap cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded"
+                      onClick={() => startEditing('description', taskProperties.description)}
+                    >
+                      {taskProperties.description || "Click to add a description..."}
+                    </p>
+                  )}
+                </div>
+
+                {/* Scheduled Work */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Scheduled work</h3>
+                    <button 
+                      onClick={() => setShowScheduledWorkForm(!showScheduledWorkForm)}
+                      className="text-blue-500 hover:text-blue-600 text-sm flex items-center gap-1"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Schedule work
+                    </button>
+                  </div>
+                  
+                  {/* Scheduled Work Form */}
+                  {showScheduledWorkForm && <ScheduledWorkForm />}
+
+                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                    {scheduledWork.length > 0 ? (
+                      <>
+                        <div className="grid grid-cols-4 gap-4 text-sm text-gray-600 dark:text-gray-400 mb-2">
+                          <span>Date</span>
+                          <span>User</span>
+                          <span>Estimated time</span>
+                          <span>Status</span>
+                        </div>
+                        {scheduledWork.map((work, index) => (
+                          <div key={index} className="grid grid-cols-4 gap-4 text-sm items-center py-2 border-b border-gray-200 dark:border-gray-600 last:border-0">
+                            <span className="text-gray-900 dark:text-gray-100">
+                              {new Date(work.scheduledDate).toLocaleDateString()}
+                            </span>
+                            <span className="text-gray-500">
+                              <User className="w-4 h-4 inline mr-1" />
+                              {work.user?.name || "Me"}
+                            </span>
+                            <span className="text-gray-900 dark:text-gray-100">
+                              {work.estimatedHours > 0 && `${work.estimatedHours}h `}
+                              {work.estimatedMinutes > 0 && `${work.estimatedMinutes}m`}
+                              {work.estimatedHours === 0 && work.estimatedMinutes === 0 && "—"}
+                            </span>
+                            <div className="flex items-center justify-between">
+                              <span className={`px-2 py-1 rounded text-xs ${
+                                work.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                                work.status === 'in-progress' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
+                                work.status === 'cancelled' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
+                                'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                              }`}>
+                                {work.status}
+                              </span>
+                              <button
+                                onClick={() => handleDeleteScheduledWork(index)}
+                                className="text-red-500 hover:text-red-700 ml-2"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </>
+                    ) : (
+                      <div className="text-center py-4 text-gray-500">No scheduled work yet</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Logged Time */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Logged time</h3>
+                    <button 
+                      onClick={() => setShowTimeEntryForm(!showTimeEntryForm)}
+                      className="text-blue-500 hover:text-blue-600 text-sm flex items-center gap-1"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Log time
+                    </button>
+                  </div>
+
+                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                    {timeEntries.length > 0 ? (
+                      <>
+                        <div className="grid grid-cols-6 gap-4 text-sm text-gray-600 dark:text-gray-400 mb-2">
+                          <span className="col-span-2">Date</span>
+                          <span>User</span>
+                          <span>Description</span>
+                          <span>Billable</span>
+                          <span>Time</span>
+                        </div>
+                        
+                        {/* Logged time entries */}
+                        <div className="space-y-3">
+                          {timeEntries.map((entry, index) => (
+                            <div key={index} className="grid grid-cols-6 gap-4 text-sm items-center py-2 border-b border-gray-200 dark:border-gray-600 last:border-0">
+                              <span className="col-span-2 text-gray-900 dark:text-gray-100">
+                                {new Date(entry.date).toLocaleDateString()}
+                              </span>
+                              <span className="text-gray-500">
+                                <User className="w-4 h-4 inline mr-1" />
+                                {entry.user?.name || "Me"}
+                              </span>
+                              <span className="text-gray-500 truncate" title={entry.description}>
+                                {entry.description || "-"}
+                              </span>
+                              <span className="text-gray-500">{entry.billable ? "$" : "-"}</span>
+                              <div className="flex items-center justify-between">
+                                <span className="font-medium text-gray-900 dark:text-gray-100">
+                                  {entry.hours > 0 && `${entry.hours}h `}
+                                  {entry.minutes > 0 && `${entry.minutes}m`}
+                                  {entry.hours === 0 && entry.minutes === 0 && "—"}
+                                </span>
+                                <button
+                                  onClick={() => handleDeleteTimeEntry(index)}
+                                  className="text-red-500 hover:text-red-700 ml-2"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+                          <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                            Total: {getTotalLoggedTime()}
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-center py-4 text-gray-500">No time entries yet</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Files Section */}
+                <div>
+                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                    <Paperclip className="w-4 h-4" />
+                    Files
+                  </h3>
+                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                    <button className="flex items-center gap-2 text-blue-500 hover:text-blue-600 text-sm">
+                      <Paperclip className="w-4 h-4" />
+                      Attach file
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
 
+            {/* Comments - 1/3 width */}
             <div className="w-1/3 overflow-auto flex flex-col">
               <div className="flex-1 p-6">
                 <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">

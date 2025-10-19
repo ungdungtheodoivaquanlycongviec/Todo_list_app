@@ -2,9 +2,15 @@
  * Application Constants
  */
 
-const PRIORITY_LEVELS = ['low', 'medium', 'high', 'urgent'];
+const PRIORITY_LEVELS = ['low', 'medium', 'high', 'critical', 'urgent'];
 
 const TASK_STATUS = ['todo', 'in_progress', 'completed', 'archived'];
+
+const TASK_TYPES = ['Operational', 'Strategic', 'Financial', 'Technical', 'Other'];
+
+const SCHEDULED_WORK_STATUS = ['scheduled', 'in-progress', 'completed', 'cancelled'];
+
+const TIME_ENTRY_BILLABLE_TYPES = ['billable', 'non-billable'];
 
 const GROUP_ROLES = ['admin', 'member'];
 
@@ -13,7 +19,9 @@ const NOTIFICATION_TYPES = [
   'task_assigned',
   'task_completed',
   'group_invite',
-  'comment_added'
+  'comment_added',
+  'time_logged',
+  'work_scheduled'
 ];
 
 // HTTP Status Codes
@@ -42,7 +50,11 @@ const ERROR_MESSAGES = {
   INTERNAL_ERROR: 'Internal server error',
   INVALID_CREDENTIALS: 'Invalid credentials',
   EMAIL_ALREADY_EXISTS: 'Email already exists',
-  INVALID_TOKEN: 'Invalid or expired token'
+  INVALID_TOKEN: 'Invalid or expired token',
+  TIME_ENTRY_NOT_FOUND: 'Time entry not found',
+  SCHEDULED_WORK_NOT_FOUND: 'Scheduled work not found',
+  INVALID_TIME_ENTRY: 'Invalid time entry data',
+  INVALID_SCHEDULED_WORK: 'Invalid scheduled work data'
 };
 
 // Success Messages
@@ -56,7 +68,16 @@ const SUCCESS_MESSAGES = {
   USER_REGISTERED: 'User registered successfully',
   USER_UPDATED: 'User updated successfully',
   LOGIN_SUCCESS: 'Login successful',
-  LOGOUT_SUCCESS: 'Logout successful'
+  LOGOUT_SUCCESS: 'Logout successful',
+  TIME_ENTRY_ADDED: 'Time entry added successfully',
+  TIME_ENTRY_UPDATED: 'Time entry updated successfully',
+  TIME_ENTRY_DELETED: 'Time entry deleted successfully',
+  SCHEDULED_WORK_ADDED: 'Scheduled work added successfully',
+  SCHEDULED_WORK_UPDATED: 'Scheduled work updated successfully',
+  SCHEDULED_WORK_DELETED: 'Scheduled work deleted successfully',
+  COMMENT_ADDED: 'Comment added successfully',
+  COMMENT_UPDATED: 'Comment updated successfully',
+  COMMENT_DELETED: 'Comment deleted successfully'
 };
 
 // Limits
@@ -68,16 +89,69 @@ const LIMITS = {
   MAX_TAGS_PER_TASK: 10,
   MAX_TAG_LENGTH: 30,
   MAX_FILE_SIZE: 10485760, // 10MB in bytes
-  NOTIFICATION_RETENTION_DAYS: 30
+  NOTIFICATION_RETENTION_DAYS: 30,
+  MAX_TIME_ENTRIES_PER_TASK: 1000,
+  MAX_SCHEDULED_WORK_PER_TASK: 500,
+  MAX_ESTIMATED_TIME_LENGTH: 50
+};
+
+// Time and Date Formats
+const TIME_FORMATS = {
+  DATE: 'YYYY-MM-DD',
+  DATETIME: 'YYYY-MM-DD HH:mm:ss',
+  TIME: 'HH:mm',
+  DISPLAY_DATE: 'MMM DD, YYYY',
+  DISPLAY_DATETIME: 'MMM DD, YYYY HH:mm'
+};
+
+// Task Properties
+const TASK_PROPERTIES = {
+  PRIORITY_COLORS: {
+    low: 'gray',
+    medium: 'blue',
+    high: 'orange',
+    critical: 'red',
+    urgent: 'red'
+  },
+  STATUS_COLORS: {
+    todo: 'gray',
+    in_progress: 'yellow',
+    completed: 'green',
+    archived: 'gray'
+  },
+  TYPE_COLORS: {
+    Operational: 'blue',
+    Strategic: 'purple',
+    Financial: 'green',
+    Technical: 'orange',
+    Other: 'gray'
+  }
+};
+
+// Default Values
+const DEFAULTS = {
+  TASK_ESTIMATED_TIME: '0h',
+  TASK_PRIORITY: 'medium',
+  TASK_STATUS: 'todo',
+  TASK_TYPE: 'Operational',
+  TIME_ENTRY_HOURS: 0,
+  TIME_ENTRY_MINUTES: 0,
+  SCHEDULED_WORK_STATUS: 'scheduled'
 };
 
 module.exports = {
   PRIORITY_LEVELS,
   TASK_STATUS,
+  TASK_TYPES,
+  SCHEDULED_WORK_STATUS,
+  TIME_ENTRY_BILLABLE_TYPES,
   GROUP_ROLES,
   NOTIFICATION_TYPES,
   HTTP_STATUS,
   ERROR_MESSAGES,
   SUCCESS_MESSAGES,
-  LIMITS
+  LIMITS,
+  TIME_FORMATS,
+  TASK_PROPERTIES,
+  DEFAULTS
 };

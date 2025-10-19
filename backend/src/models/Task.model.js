@@ -36,7 +36,6 @@ const taskSchema = new mongoose.Schema(
       default: null,
       validate: {
         validator: function(value) {
-          // Cho phép null hoặc ngày trong tương lai
           if (!value) return true;
           return value >= new Date();
         },
@@ -70,6 +69,12 @@ const taskSchema = new mongoose.Schema(
       default: null,
       trim: true
     },
+    // NEW: Task type (Operational, Strategic, Financial, etc.)
+    type: {
+      type: String,
+      enum: ['Operational', 'Strategic', 'Financial', 'Technical', 'Other'],
+      default: 'Operational'
+    },
     groupId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'groups',
@@ -82,8 +87,8 @@ const taskSchema = new mongoose.Schema(
           url: { type: String, required: true },
           size: { type: Number, required: true },
           mimetype: { type: String, required: true },
-          publicId: { type: String, required: true }, // Cloudinary public_id for deletion
-          resourceType: { type: String, default: 'raw' }, // 'image' or 'raw'
+          publicId: { type: String, required: true },
+          resourceType: { type: String, default: 'raw' },
           uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
           uploadedAt: { type: Date, default: Date.now }
         }
@@ -101,6 +106,45 @@ const taskSchema = new mongoose.Schema(
       default: null,
       trim: true
     },
+    // NEW: Time tracking fields
+    timeEntries: [
+      {
+        user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+        date: { type: Date, required: true, default: Date.now },
+        hours: { type: Number, required: true }, // Total hours spent
+        minutes: { type: Number, required: true }, // Additional minutes
+        description: { type: String, trim: true, maxlength: [500, 'Mô tả không được vượt quá 500 ký tự'] },
+        billable: { type: Boolean, default: true },
+        startTime: { type: Date }, // For timer functionality
+        endTime: { type: Date },
+        createdAt: { type: Date, default: Date.now }
+      }
+    ],
+    // NEW: Scheduled work
+    scheduledWork: [
+      {
+        user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+        scheduledDate: { type: Date, required: true },
+        estimatedHours: { type: Number, default: 0 },
+        estimatedMinutes: { type: Number, default: 0 },
+        description: { type: String, trim: true },
+        status: { type: String, enum: ['scheduled', 'in-progress', 'completed', 'cancelled'], default: 'scheduled' },
+        createdAt: { type: Date, default: Date.now }
+      }
+    ],
+    // NEW: Task repetition settings
+    repetition: {
+      isRepeating: { type: Boolean, default: false },
+      frequency: { type: String, enum: ['daily', 'weekly', 'monthly', 'yearly'], default: 'weekly' },
+      interval: { type: Number, default: 1 }, // Every X days/weeks/months
+      endDate: { type: Date }, // When to stop repeating
+      occurrences: { type: Number } // Number of times to repeat
+    },
+    // NEW: Start time for tasks
+    startTime: {
+      type: Date,
+      default: null
+    },
     comments: {
       type: [
         {
@@ -111,11 +155,10 @@ const taskSchema = new mongoose.Schema(
           },
           content: { 
             type: String, 
-            default: '', // Không bắt buộc nếu có attachment
+            default: '',
             maxlength: [2000, 'Comment không được vượt quá 2000 ký tự'],
             trim: true
           },
-          // Comment attachment (image/file)
           attachment: {
             filename: { type: String },
             url: { type: String },
@@ -147,10 +190,17 @@ const taskSchema = new mongoose.Schema(
     }
   },
   {
-    timestamps: true, // Tự động tạo createdAt và updatedAt
+    timestamps: true,
     collection: 'tasks'
   }
 );
+
+// Virtual for total logged time
+taskSchema.virtual('totalLoggedTime').get(function() {
+  return this.timeEntries.reduce((total, entry) => {
+    return total + (entry.hours || 0) + (entry.minutes || 0) / 60;
+  }, 0);
+});
 
 // Validate số lượng tags (max 10)
 taskSchema.path('tags').validate(function(value) {
@@ -167,10 +217,20 @@ taskSchema.path('attachments').validate(function(value) {
   return value.length <= 20;
 }, 'Số lượng file đính kèm không được vượt quá 20');
 
-// Validate số lượng assignees (max 50)
+// Validate số lượng assignedTo (max 50)
 taskSchema.path('assignedTo').validate(function(value) {
   return value.length <= 50;
 }, 'Số lượng người được gán không được vượt quá 50');
+
+// Validate số lượng timeEntries (max 1000)
+taskSchema.path('timeEntries').validate(function(value) {
+  return value.length <= 1000;
+}, 'Số lượng time entries không được vượt quá 1000');
+
+// Validate số lượng scheduledWork (max 500)
+taskSchema.path('scheduledWork').validate(function(value) {
+  return value.length <= 500;
+}, 'Số lượng scheduled work không được vượt quá 500');
 
 // Middleware: Auto-set completedAt khi status = 'completed'
 taskSchema.pre('save', function(next) {
@@ -184,13 +244,27 @@ taskSchema.pre('save', function(next) {
   next();
 });
 
-// Method: Populate user info cho createdBy
+// Method: Populate user info
 taskSchema.methods.populateUserInfo = function() {
   return this.populate('createdBy', 'name email avatar')
     .populate('assignedTo.userId', 'name email avatar')
-    .populate('comments.userId', 'name email avatar')
+    .populate('comments.user', 'name email avatar')
     .populate('attachments.uploadedBy', 'name email avatar')
+    .populate('timeEntries.user', 'name email avatar')
+    .populate('scheduledWork.user', 'name email avatar')
     .execPopulate();
+};
+
+// Method: Format total logged time
+taskSchema.methods.getFormattedTotalTime = function() {
+  const totalHours = this.totalLoggedTime;
+  const hours = Math.floor(totalHours);
+  const minutes = Math.round((totalHours - hours) * 60);
+  
+  if (hours === 0) {
+    return `${minutes}m`;
+  }
+  return `${hours}h ${minutes > 0 ? `${minutes}m` : ''}`.trim();
 };
 
 // Indexes cho performance
@@ -201,6 +275,9 @@ taskSchema.index({ dueDate: 1 });
 taskSchema.index({ priority: 1 });
 taskSchema.index({ status: 1 });
 taskSchema.index({ createdAt: -1 });
+taskSchema.index({ type: 1 });
+taskSchema.index({ 'timeEntries.date': 1 });
+taskSchema.index({ 'scheduledWork.scheduledDate': 1 });
 
 // Text search index
 taskSchema.index({ title: 'text', description: 'text' });
