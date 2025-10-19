@@ -14,13 +14,19 @@ const {
   getComments,
   uploadAttachments,
   deleteAttachment,
-  addCommentWithFile
+  addCommentWithFile,
+  assignTask,
+  unassignUser,
+  getAssignedToMe,
+  getTaskAssignees
 } = require('../controllers/task.controller');
 const { 
   validateCreateTask, 
   validateUpdateTask,
   validateAddComment,
-  validateUpdateComment
+  validateUpdateComment,
+  validateAssignTask,
+  validateUnassignUser
 } = require('../middlewares/validator');
 const { authenticate } = require('../middlewares/auth');
 const { uploadMultiple, uploadSingle } = require('../middlewares/upload');
@@ -34,6 +40,7 @@ const { uploadMultiple, uploadSingle } = require('../middlewares/upload');
 router.use(authenticate);
 
 // GET routes - List views
+router.get('/assigned-to-me', getAssignedToMe); // Phải đặt trước /:id
 router.get('/calendar', getCalendarView);  // Phải đặt trước /:id
 router.get('/kanban', getKanbanView);      // Phải đặt trước /:id
 router.get('/', getAllTasks);
@@ -42,11 +49,16 @@ router.get('/', getAllTasks);
 router.post('/', validateCreateTask, createTask);
 
 // GET single task
+router.get('/:id/assignees', getTaskAssignees);
 router.get('/:id', getTaskById);
 
 // PUT/PATCH routes
 router.put('/:id', validateUpdateTask, updateTask);
 router.patch('/:id', validateUpdateTask, updateTask);
+
+// Assignment routes
+router.post('/:id/assign', validateAssignTask, assignTask);
+router.delete('/:id/unassign/:userId', validateUnassignUser, unassignUser);
 
 // DELETE routes
 router.delete('/:id', deleteTask);

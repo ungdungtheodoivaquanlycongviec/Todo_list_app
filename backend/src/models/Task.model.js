@@ -186,11 +186,12 @@ taskSchema.pre('save', function(next) {
 
 // Method: Populate user info cho createdBy
 taskSchema.methods.populateUserInfo = function() {
-  return this.populate('createdBy', 'name email avatar')
-    .populate('assignedTo.userId', 'name email avatar')
-    .populate('comments.userId', 'name email avatar')
-    .populate('attachments.uploadedBy', 'name email avatar')
-    .execPopulate();
+  return this.populate([
+    { path: 'createdBy', select: 'name email avatar' },
+    { path: 'assignedTo.userId', select: 'name email avatar' },
+    { path: 'comments.user', select: 'name email avatar' },
+    { path: 'attachments.uploadedBy', select: 'name email avatar' }
+  ]);
 };
 
 // Indexes cho performance

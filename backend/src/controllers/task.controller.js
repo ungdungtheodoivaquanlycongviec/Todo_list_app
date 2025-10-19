@@ -264,6 +264,105 @@ const deleteAttachment = asyncHandler(async (req, res) => {
 });
 
 /**
+ * @desc    Assign users to a task
+ * @route   POST /api/tasks/:id/assign
+ * @access  Private (task owner)
+ */
+const assignTask = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { userIds } = req.body;
+  const assignerId = req.user._id;
+
+  const result = await taskService.assignUsersToTask(id, userIds, assignerId);
+
+  if (!result.success) {
+    return sendError(
+      res,
+      result.message,
+      result.statusCode || HTTP_STATUS.BAD_REQUEST,
+      result.errors || result.meta || null
+    );
+  }
+
+  const responsePayload = {
+    task: result.task,
+    assignedUserIds: result.assignedUserIds,
+    meta: result.meta
+  };
+
+  sendSuccess(res, responsePayload, result.message, result.statusCode || HTTP_STATUS.OK);
+});
+
+/**
+ * @desc    Unassign a user from task
+ * @route   DELETE /api/tasks/:id/unassign/:userId
+ * @access  Private (task owner)
+ */
+const unassignUser = asyncHandler(async (req, res) => {
+  const { id, userId } = req.params;
+  const requesterId = req.user._id;
+
+  const result = await taskService.unassignUserFromTask(id, userId, requesterId);
+
+  if (!result.success) {
+    return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);
+  }
+
+  const responsePayload = {
+    task: result.task,
+    removedUserId: result.removedUserId
+  };
+
+  sendSuccess(res, responsePayload, result.message, result.statusCode || HTTP_STATUS.OK);
+});
+
+/**
+ * @desc    Get tasks assigned to current user
+ * @route   GET /api/tasks/assigned-to-me
+ * @access  Private
+ */
+const getAssignedToMe = asyncHandler(async (req, res) => {
+  const filters = {
+    status: req.query.status,
+    priority: req.query.priority,
+    search: req.query.search,
+    groupId: req.query.groupId
+  };
+
+  const options = {
+    sortBy: req.query.sortBy || 'dueDate',
+    order: req.query.order || 'asc',
+    page: req.query.page || 1,
+    limit: req.query.limit || 20
+  };
+
+  const result = await taskService.getTasksAssignedToUser(req.user._id, filters, options);
+
+  if (!result.success) {
+    return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);
+  }
+
+  sendSuccess(res, result.data, result.message, result.statusCode || HTTP_STATUS.OK);
+});
+
+/**
+ * @desc    Get assignees of a task
+ * @route   GET /api/tasks/:id/assignees
+ * @access  Private
+ */
+const getTaskAssignees = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const result = await taskService.getTaskAssignees(id);
+
+  if (!result.success) {
+    return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);
+  }
+
+  sendSuccess(res, result.data, result.message, result.statusCode || HTTP_STATUS.OK);
+});
+
+/**
  * @desc    Add comment with optional attachment
  * @route   POST /api/tasks/:id/comments/with-file
  * @access  Private
@@ -298,5 +397,9 @@ module.exports = {
   getComments,
   uploadAttachments,
   deleteAttachment,
+  assignTask,
+  unassignUser,
+  getAssignedToMe,
+  getTaskAssignees,
   addCommentWithFile
 };
