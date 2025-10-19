@@ -567,18 +567,18 @@ export default function TasksView() {
     }
   };
 
- // Close dropdowns when clicking outside - Sửa lại
-useEffect(() => {
-  const handleClickOutside = (event: MouseEvent) => {
-    // Chỉ đóng context menu, không đóng sort dropdown ở đây
-    setContextMenu(null);
-  };
+  // Close dropdowns when clicking outside - Sửa lại
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      // Chỉ đóng context menu, không đóng sort dropdown ở đây
+      setContextMenu(null);
+    };
 
-  document.addEventListener('click', handleClickOutside);
-  return () => {
-    document.removeEventListener('click', handleClickOutside);
-  };
-}, []);
+    document.addEventListener("click", handleClickOutside);
+    return () => {
+      document.removeEventListener("click", handleClickOutside);
+    };
+  }, []);
 
   // Component cho Kanban View
   const KanbanView = () => {
@@ -991,90 +991,98 @@ useEffect(() => {
   };
 
   // Sort Dropdown Component
-const SortDropdown = () => {
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const SortDropdown = () => {
+    const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Handle click outside to close dropdown
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowSortDropdown(false);
-      }
-    };
+    // Handle click outside to close dropdown
+    useEffect(() => {
+      const handleClickOutside = (event: MouseEvent) => {
+        if (
+          dropdownRef.current &&
+          !dropdownRef.current.contains(event.target as Node)
+        ) {
+          setShowSortDropdown(false);
+        }
+      };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+      };
+    }, []);
 
-  return (
-    <div className="relative" ref={dropdownRef}>
-      <button
-        className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm text-gray-700 min-w-[120px] justify-between"
-        onClick={(e) => {
-          e.stopPropagation();
-          setShowSortDropdown(!showSortDropdown);
-        }}
-      >
-        <div className="flex items-center gap-2">
-          <ArrowUpDown className="w-4 h-4" />
-          <span className="truncate">{getCurrentSortText()}</span>
-        </div>
-        <ChevronDown 
-          className={`w-4 h-4 transition-transform flex-shrink-0 ${
-            showSortDropdown ? 'rotate-180' : ''
-          }`} 
-        />
-      </button>
-
-      {showSortDropdown && (
-        <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-          <div className="p-2">
-            <div className="text-xs font-medium text-gray-500 px-3 py-2 uppercase tracking-wide">
-              Sort by
-            </div>
-            
-            {sortOptions.map((option) => (
-              <div key={option.key} className="border-b border-gray-100 last:border-0">
-                <div className="px-3 py-1 text-sm font-medium text-gray-700">
-                  {option.label}
-                </div>
-                <button
-                  className="w-full text-left px-6 py-2 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between"
-                  onClick={() => handleSortSelect(option.key, 'asc')}
-                >
-                  <span>{option.asc}</span>
-                  {sortConfig?.key === option.key && sortConfig.direction === 'asc' && (
-                    <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                  )}
-                </button>
-                <button
-                  className="w-full text-left px-6 py-2 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between"
-                  onClick={() => handleSortSelect(option.key, 'desc')}
-                >
-                  <span>{option.desc}</span>
-                  {sortConfig?.key === option.key && sortConfig.direction === 'desc' && (
-                    <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                  )}
-                </button>
-              </div>
-            ))}
-            
-            {sortConfig && (
-              <button
-                className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 mt-2 border-t border-gray-100"
-                onClick={handleClearSort}
-              >
-                Clear sort
-              </button>
-            )}
+    return (
+      <div className="relative" ref={dropdownRef}>
+        <button
+          className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm text-gray-700 min-w-[120px] justify-between"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowSortDropdown(!showSortDropdown);
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <ArrowUpDown className="w-4 h-4" />
+            <span className="truncate">{getCurrentSortText()}</span>
           </div>
-        </div>
-  )}
-    </div>
-  );
-};
+          <ChevronDown
+            className={`w-4 h-4 transition-transform flex-shrink-0 ${
+              showSortDropdown ? "rotate-180" : ""
+            }`}
+          />
+        </button>
+
+        {showSortDropdown && (
+          <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+            <div className="p-2">
+              <div className="text-xs font-medium text-gray-500 px-3 py-2 uppercase tracking-wide">
+                Sort by
+              </div>
+
+              {sortOptions.map((option) => (
+                <div
+                  key={option.key}
+                  className="border-b border-gray-100 last:border-0"
+                >
+                  <div className="px-3 py-1 text-sm font-medium text-gray-700">
+                    {option.label}
+                  </div>
+                  <button
+                    className="w-full text-left px-6 py-2 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between"
+                    onClick={() => handleSortSelect(option.key, "asc")}
+                  >
+                    <span>{option.asc}</span>
+                    {sortConfig?.key === option.key &&
+                      sortConfig.direction === "asc" && (
+                        <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                      )}
+                  </button>
+                  <button
+                    className="w-full text-left px-6 py-2 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between"
+                    onClick={() => handleSortSelect(option.key, "desc")}
+                  >
+                    <span>{option.desc}</span>
+                    {sortConfig?.key === option.key &&
+                      sortConfig.direction === "desc" && (
+                        <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                      )}
+                  </button>
+                </div>
+              ))}
+
+              {sortConfig && (
+                <button
+                  className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 mt-2 border-t border-gray-100"
+                  onClick={handleClearSort}
+                >
+                  Clear sort
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   if (loading) {
     return (
@@ -1089,56 +1097,57 @@ const SortDropdown = () => {
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
-      // Trong phần return, sửa header section
-<div className="flex items-center justify-between mb-8">
-  <div>
-    <h1 className="text-2xl font-bold text-gray-900">Tasks</h1>
-    <p className="text-gray-600 mt-1">Manage your team's tasks and projects</p>
-  </div>
-  <div className="flex gap-3 items-center">
-    {/* Sort Button */}
-    {viewMode === "list" && (
-      <div className="relative">
-        <SortDropdown />
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Tasks</h1>
+          <p className="text-gray-600 mt-1">
+            Manage your team's tasks and projects
+          </p>
+        </div>
+        <div className="flex gap-3 items-center">
+          {/* Sort Button */}
+          {viewMode === "list" && (
+            <div className="relative">
+              <SortDropdown />
+            </div>
+          )}
+
+          {/* View Mode Toggle */}
+          <div className="flex bg-white border border-gray-300 rounded-lg overflow-hidden shadow-sm">
+            <button
+              className={`px-4 py-2 text-sm flex items-center gap-2 transition-colors ${
+                viewMode === "list"
+                  ? "bg-blue-500 text-white"
+                  : "bg-white text-gray-700 hover:bg-gray-50"
+              }`}
+              onClick={() => setViewMode("list")}
+            >
+              <List className="w-4 h-4" />
+              List
+            </button>
+            <button
+              className={`px-4 py-2 text-sm flex items-center gap-2 transition-colors ${
+                viewMode === "kanban"
+                  ? "bg-blue-500 text-white"
+                  : "bg-white text-gray-700 hover:bg-gray-50"
+              }`}
+              onClick={() => setViewMode("kanban")}
+            >
+              <Layout className="w-4 h-4" />
+              Kanban
+            </button>
+          </div>
+
+          {/* Add Task Button */}
+          <button
+            onClick={handleAddTask}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            Add Task
+          </button>
+        </div>
       </div>
-    )}
-
-    {/* View Mode Toggle */}
-    <div className="flex bg-white border border-gray-300 rounded-lg overflow-hidden shadow-sm">
-      <button
-        className={`px-4 py-2 text-sm flex items-center gap-2 transition-colors ${
-          viewMode === "list"
-            ? "bg-blue-500 text-white"
-            : "bg-white text-gray-700 hover:bg-gray-50"
-        }`}
-        onClick={() => setViewMode("list")}
-      >
-        <List className="w-4 h-4" />
-        List
-      </button>
-      <button
-        className={`px-4 py-2 text-sm flex items-center gap-2 transition-colors ${
-          viewMode === "kanban"
-            ? "bg-blue-500 text-white"
-            : "bg-white text-gray-700 hover:bg-gray-50"
-        }`}
-        onClick={() => setViewMode("kanban")}
-      >
-        <Layout className="w-4 h-4" />
-        Kanban
-      </button>
-    </div>
-
-    {/* Add Task Button */}
-    <button
-      onClick={handleAddTask}
-      className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors shadow-sm"
-    >
-      <Plus className="w-4 h-4" />
-      Add Task
-    </button>
-  </div>
-</div>
 
       {/* Main Content */}
       {viewMode === "list" ? (
