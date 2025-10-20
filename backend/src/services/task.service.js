@@ -28,7 +28,12 @@ class TaskService {
    */
   async createTask(taskData) {
     const task = await Task.create(taskData);
-    return task;
+    // Populate user data ngay sau khi tạo
+    const populatedTask = await Task.findById(task._id)
+      .populate('createdBy', 'name email avatar')
+      .populate('assignedTo.userId', 'name email avatar')
+      .populate('comments.user', 'name email avatar');
+    return populatedTask;
   }
 
   /**
@@ -37,7 +42,10 @@ class TaskService {
    * @returns {Promise<Object|null>} Task hoặc null
    */
   async getTaskById(taskId) {
-    const task = await Task.findById(taskId);
+    const task = await Task.findById(taskId)
+      .populate('createdBy', 'name email avatar')
+      .populate('assignedTo.userId', 'name email avatar')
+      .populate('comments.user', 'name email avatar');
     return task;
   }
 
@@ -100,9 +108,12 @@ class TaskService {
     // Pagination
     const skip = (sanitizedPage - 1) * sanitizedLimit;
 
-    // Execute query
+    // Execute query VỚI POPULATE
     const [tasks, total] = await Promise.all([
       Task.find(query)
+        .populate('createdBy', 'name email avatar')
+        .populate('assignedTo.userId', 'name email avatar')
+        .populate('comments.user', 'name email avatar')
         .sort(sortOption)
         .skip(skip)
         .limit(sanitizedLimit)
@@ -134,7 +145,10 @@ class TaskService {
       taskId,
       { $set: updateData },
       { new: true, runValidators: true }
-    );
+    )
+      .populate('createdBy', 'name email avatar')
+      .populate('assignedTo.userId', 'name email avatar')
+      .populate('comments.user', 'name email avatar');
     return task;
   }
 
@@ -179,13 +193,16 @@ class TaskService {
     const startDate = getFirstDayOfMonth(yearNum, monthNum);
     const endDate = getLastDayOfMonth(yearNum, monthNum);
 
-    // Query tasks
+    // Query tasks VỚI POPULATE
     const tasks = await Task.find({
       dueDate: {
         $gte: startDate,
         $lte: endDate
       }
     })
+      .populate('createdBy', 'name email avatar')
+      .populate('assignedTo.userId', 'name email avatar')
+      .populate('comments.user', 'name email avatar')
       .sort({ dueDate: 1, priority: -1 })
       .lean();
 
@@ -245,8 +262,11 @@ class TaskService {
       ];
     }
 
-    // Query all tasks
+    // Query all tasks VỚI POPULATE
     const tasks = await Task.find(query)
+      .populate('createdBy', 'name email avatar')
+      .populate('assignedTo.userId', 'name email avatar')
+      .populate('comments.user', 'name email avatar')
       .sort({ priority: -1, dueDate: 1, createdAt: -1 })
       .lean();
 
@@ -439,9 +459,11 @@ class TaskService {
 
     await task.save();
 
+    // POPULATE SAU KHI SAVE
     const populatedTask = await Task.findById(task._id)
       .populate('createdBy', 'name email avatar')
-      .populate('assignedTo.userId', 'name email avatar');
+      .populate('assignedTo.userId', 'name email avatar')
+      .populate('comments.user', 'name email avatar');
 
     return {
       success: true,
@@ -515,9 +537,11 @@ class TaskService {
     task.assignedTo.splice(assigneeIndex, 1);
     await task.save();
 
+    // POPULATE SAU KHI SAVE
     const populatedTask = await Task.findById(task._id)
       .populate('createdBy', 'name email avatar')
-      .populate('assignedTo.userId', 'name email avatar');
+      .populate('assignedTo.userId', 'name email avatar')
+      .populate('comments.user', 'name email avatar');
 
     return {
       success: true,
@@ -612,13 +636,15 @@ class TaskService {
 
     const skip = (sanitizedPage - 1) * sanitizedLimit;
 
+    // THÊM POPULATE VÀO QUERY
     const [tasks, total] = await Promise.all([
       Task.find(query)
+        .populate('createdBy', 'name email avatar')
+        .populate('assignedTo.userId', 'name email avatar')
+        .populate('comments.user', 'name email avatar')
         .sort(sortOption)
         .skip(skip)
         .limit(sanitizedLimit)
-        .populate('createdBy', 'name email avatar')
-        .populate('assignedTo.userId', 'name email avatar')
         .lean(),
       Task.countDocuments(query)
     ]);
@@ -766,7 +792,11 @@ class TaskService {
       query.createdBy = userId;
     }
 
+    // THÊM POPULATE
     const tasks = await Task.find(query)
+      .populate('createdBy', 'name email avatar')
+      .populate('assignedTo.userId', 'name email avatar')
+      .populate('comments.user', 'name email avatar')
       .sort({ dueDate: 1 })
       .lean();
 
@@ -790,7 +820,11 @@ class TaskService {
       query.createdBy = userId;
     }
 
+    // THÊM POPULATE
     const tasks = await Task.find(query)
+      .populate('createdBy', 'name email avatar')
+      .populate('assignedTo.userId', 'name email avatar')
+      .populate('comments.user', 'name email avatar')
       .sort({ dueDate: 1 })
       .lean();
 
@@ -812,7 +846,10 @@ class TaskService {
         }
       },
       { new: true }
-    );
+    )
+      .populate('createdBy', 'name email avatar')
+      .populate('assignedTo.userId', 'name email avatar')
+      .populate('comments.user', 'name email avatar');
     return task;
   }
 
@@ -826,7 +863,10 @@ class TaskService {
       taskId,
       { $set: { status: 'archived' } },
       { new: true }
-    );
+    )
+      .populate('createdBy', 'name email avatar')
+      .populate('assignedTo.userId', 'name email avatar')
+      .populate('comments.user', 'name email avatar');
     return task;
   }
 
@@ -889,8 +929,10 @@ class TaskService {
 
     await task.save();
 
-    // Populate user info
+    // POPULATE USER INFO SAU KHI SAVE
     await task.populate('comments.user', 'name email avatar');
+    await task.populate('assignedTo.userId', 'name email avatar');
+    await task.populate('createdBy', 'name email avatar');
 
     return task;
   }
@@ -949,8 +991,10 @@ class TaskService {
 
     await task.save();
 
-    // Populate user info
+    // POPULATE USER INFO SAU KHI SAVE
     await task.populate('comments.user', 'name email avatar');
+    await task.populate('assignedTo.userId', 'name email avatar');
+    await task.populate('createdBy', 'name email avatar');
 
     return {
       success: true,
@@ -1011,8 +1055,10 @@ class TaskService {
     task.comments.pull(commentId);
     await task.save();
 
-    // Populate user info
+    // POPULATE USER INFO SAU KHI SAVE
     await task.populate('comments.user', 'name email avatar');
+    await task.populate('assignedTo.userId', 'name email avatar');
+    await task.populate('createdBy', 'name email avatar');
 
     return {
       success: true,
@@ -1037,9 +1083,11 @@ class TaskService {
       };
     }
 
-    // Tìm task
+    // Tìm task VỚI POPULATE
     const task = await Task.findById(taskId)
-      .populate('comments.user', 'name email avatar');
+      .populate('comments.user', 'name email avatar')
+      .populate('assignedTo.userId', 'name email avatar')
+      .populate('createdBy', 'name email avatar');
 
     if (!task) {
       return {
@@ -1128,6 +1176,12 @@ class TaskService {
       task.attachments.push(...newAttachments);
       await task.save();
 
+      // POPULATE USER INFO SAU KHI SAVE
+      await task.populate('attachments.uploadedBy', 'name email avatar');
+      await task.populate('assignedTo.userId', 'name email avatar');
+      await task.populate('createdBy', 'name email avatar');
+      await task.populate('comments.user', 'name email avatar');
+
       return {
         success: true,
         task,
@@ -1196,6 +1250,12 @@ class TaskService {
       // Remove from task
       task.attachments.pull(attachmentId);
       await task.save();
+
+      // POPULATE USER INFO SAU KHI SAVE
+      await task.populate('attachments.uploadedBy', 'name email avatar');
+      await task.populate('assignedTo.userId', 'name email avatar');
+      await task.populate('createdBy', 'name email avatar');
+      await task.populate('comments.user', 'name email avatar');
 
       return {
         success: true,
@@ -1276,8 +1336,10 @@ class TaskService {
     task.comments.push(newComment);
     await task.save();
 
-    // Populate user info
+    // POPULATE USER INFO SAU KHI SAVE
     await task.populate('comments.user', 'name email avatar');
+    await task.populate('assignedTo.userId', 'name email avatar');
+    await task.populate('createdBy', 'name email avatar');
 
     return task;
   }

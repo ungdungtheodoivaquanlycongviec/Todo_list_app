@@ -10,11 +10,11 @@ interface CreateTaskModalProps {
   currentUser?: any;
 }
 
-export default function CreateTaskModal({ 
-  isOpen, 
-  onClose, 
+export default function CreateTaskModal({
+  isOpen,
+  onClose,
   onCreateTask,
-  currentUser 
+  currentUser
 }: CreateTaskModalProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -24,8 +24,8 @@ export default function CreateTaskModal({
   const [tags, setTags] = useState('');
   const [estimatedTime, setEstimatedTime] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errors, setErrors] = useState<{title?: string}>({});
-  
+  const [errors, setErrors] = useState<{ title?: string }>({});
+
   const modalRef = useRef<HTMLDivElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
 
@@ -106,19 +106,19 @@ export default function CreateTaskModal({
   };
 
   const validateForm = () => {
-    const newErrors: {title?: string} = {};
-    
+    const newErrors: { title?: string } = {};
+
     if (!title.trim()) {
       newErrors.title = 'Task title is required';
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!validateForm()) {
       return;
     }
@@ -138,7 +138,7 @@ export default function CreateTaskModal({
 
       console.log('Creating task with data:', taskData);
       await onCreateTask(taskData);
-      
+
       // Close modal after successful creation
       handleClose();
     } catch (error) {
@@ -162,7 +162,7 @@ export default function CreateTaskModal({
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-      <div 
+      <div
         ref={modalRef}
         className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-gray-200 dark:border-gray-700 animate-in slide-in-from-bottom-8 duration-300"
       >
@@ -208,14 +208,13 @@ export default function CreateTaskModal({
                 onChange={(e) => {
                   setTitle(e.target.value);
                   if (errors.title) {
-                    setErrors({...errors, title: undefined});
+                    setErrors({ ...errors, title: undefined });
                   }
                 }}
-                className={`w-full p-3 border rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all ${
-                  errors.title 
-                    ? 'border-red-300 dark:border-red-500' 
+                className={`w-full p-3 border rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all ${errors.title
+                    ? 'border-red-300 dark:border-red-500'
                     : 'border-gray-300 dark:border-gray-600 focus:border-blue-500'
-                }`}
+                  }`}
                 placeholder="What needs to be done?"
                 required
               />
@@ -248,11 +247,10 @@ export default function CreateTaskModal({
                   {categoryOptions.map(option => (
                     <label
                       key={option.value}
-                      className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer transition-all hover:scale-[1.02] ${
-                        category === option.value
+                      className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer transition-all hover:scale-[1.02] ${category === option.value
                           ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
                           : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                      }`}
+                        }`}
                     >
                       <input
                         type="radio"
@@ -262,11 +260,10 @@ export default function CreateTaskModal({
                         onChange={(e) => setCategory(e.target.value)}
                         className="hidden"
                       />
-                      <div className={`w-3 h-3 rounded-full border-2 ${
-                        category === option.value 
-                          ? 'border-blue-500 bg-blue-500' 
+                      <div className={`w-3 h-3 rounded-full border-2 ${category === option.value
+                          ? 'border-blue-500 bg-blue-500'
                           : 'border-gray-300 dark:border-gray-600'
-                      }`} />
+                        }`} />
                       <span className={`text-sm font-medium ${option.color} px-2 py-1 rounded-full`}>
                         {option.label}
                       </span>
@@ -285,11 +282,10 @@ export default function CreateTaskModal({
                   {priorityOptions.map(option => (
                     <label
                       key={option.value}
-                      className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer transition-all hover:scale-[1.02] ${
-                        priority === option.value
+                      className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer transition-all hover:scale-[1.02] ${priority === option.value
                           ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
                           : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                      }`}
+                        }`}
                     >
                       <input
                         type="radio"
@@ -299,11 +295,10 @@ export default function CreateTaskModal({
                         onChange={(e) => setPriority(e.target.value)}
                         className="hidden"
                       />
-                      <div className={`w-3 h-3 rounded-full border-2 ${
-                        priority === option.value 
-                          ? 'border-blue-500 bg-blue-500' 
+                      <div className={`w-3 h-3 rounded-full border-2 ${priority === option.value
+                          ? 'border-blue-500 bg-blue-500'
                           : 'border-gray-300 dark:border-gray-600'
-                      }`} />
+                        }`} />
                       <span className={`text-sm font-medium ${option.color} ${option.bgColor} px-3 py-1 rounded-full border`}>
                         {option.label}
                       </span>
@@ -402,10 +397,13 @@ export default function CreateTaskModal({
                   </div>
                   <div className="flex-1">
                     <p className="text-sm text-blue-800 dark:text-blue-200 font-semibold">
-                      This task will be assigned to you
+                      You will be assigned as the task creator
                     </p>
                     <p className="text-xs text-blue-600 dark:text-blue-300">
                       {currentUser.name} • {currentUser.email}
+                    </p>
+                    <p className="text-xs text-blue-500 dark:text-blue-400 mt-1">
+                      You can add or change assignees later in the task details
                     </p>
                   </div>
                 </div>

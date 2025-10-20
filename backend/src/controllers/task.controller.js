@@ -23,6 +23,19 @@ const createTask = asyncHandler(async (req, res) => {
     createdBy
   };
 
+  // Đảm bảo assignedTo bao gồm creator
+  if (!taskData.assignedTo || taskData.assignedTo.length === 0) {
+    taskData.assignedTo = [{ userId: createdBy }];
+  } else {
+    // Kiểm tra xem creator đã có trong assignedTo chưa
+    const creatorAlreadyAssigned = taskData.assignedTo.some(
+      assignee => assignee.userId && assignee.userId.toString() === createdBy.toString()
+    );
+    if (!creatorAlreadyAssigned) {
+      taskData.assignedTo.push({ userId: createdBy });
+    }
+  }
+
   // Call service
   const task = await taskService.createTask(taskData);
 

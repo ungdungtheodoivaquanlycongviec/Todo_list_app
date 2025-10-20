@@ -53,7 +53,7 @@ const taskSchema = new mongoose.Schema(
     },
     assignedTo: [
       {
-        userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true},
         assignedAt: { type: Date, default: Date.now }
       }
     ],

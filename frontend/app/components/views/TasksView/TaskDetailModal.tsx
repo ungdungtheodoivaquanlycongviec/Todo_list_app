@@ -26,6 +26,18 @@ import type { Task } from "../../../services/types/task.types"
 import { taskService } from "../../../services/task.service"
 import { useAuth } from "../../../contexts/AuthContext"
 
+interface MinimalUser {
+  _id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+}
+
+interface AssignedUser {
+  userId: string | MinimalUser;
+  assignedAt: string;
+}
+
 interface TaskDetailModalProps {
   taskId: string
   isOpen: boolean
@@ -123,6 +135,112 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const taskTypeOptions = ["Operational", "Strategic", "Financial", "Technical", "Other"]
   const priorityOptions = ["low", "medium", "high", "urgent"]
   const statusOptions = ["todo", "in_progress", "completed", "archived"]
+
+  // NEW: Helper để lấy danh sách assignees chi tiết
+  const getDetailedAssignees = (task: Task) => {
+  if (!task.assignedTo || task.assignedTo.length === 0) {
+    return {
+      hasAssignees: false,
+      assignees: [],
+      currentUserIsAssigned: false,
+      totalCount: 0
+    };
+  }
+
+  const assignees = (task.assignedTo as AssignedUser[])
+    .filter(assignment => assignment.userId && typeof assignment.userId === 'object')
+    .map(assignment => {
+      const user = assignment.userId as MinimalUser;
+      return {
+        _id: user._id,
+        name: user.name || 'Unknown User',
+        email: user.email,
+        avatar: user.avatar,
+        initial: (user.name?.charAt(0) || 'U').toUpperCase()
+      };
+    });
+
+  const currentUserIsAssigned = currentUser && 
+    assignees.some(assignee => assignee._id === currentUser._id);
+
+  return {
+    hasAssignees: assignees.length > 0,
+    assignees,
+    currentUserIsAssigned,
+    totalCount: assignees.length
+  };
+};
+
+  // NEW: Assignee Section Component
+  const AssigneeSection = ({ task }: { task: Task }) => {
+    const assigneeInfo = getDetailedAssignees(task);
+    
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Assigned to ({assigneeInfo.totalCount})
+          </h4>
+          <button className="text-blue-500 hover:text-blue-600 text-sm">
+            + Add assignee
+          </button>
+        </div>
+        
+        {assigneeInfo.assignees.length === 0 ? (
+          <div className="text-center py-4 text-gray-500 dark:text-gray-400 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+            <User className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+            <p className="text-sm">No one assigned</p>
+            <button className="text-blue-500 hover:text-blue-600 text-xs mt-1">
+              Assign someone
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {assigneeInfo.assignees.map((assignee) => (
+              <div
+                key={assignee._id}
+                className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${
+                  assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id
+                    ? "bg-green-100 text-green-800 border border-green-200"
+                    : "bg-blue-100 text-blue-800 border border-blue-200"
+                }`}>
+                  {assignee.avatar ? (
+                    <img 
+                      src={assignee.avatar} 
+                      alt={assignee.name}
+                      className="w-full h-full rounded-full object-cover"
+                    />
+                  ) : (
+                    assignee.initial
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                      {assignee.name}
+                    </span>
+                    {assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id && (
+                      <span className="bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded-full">
+                        You
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                    {assignee.email}
+                  </p>
+                </div>
+                <button className="text-gray-400 hover:text-red-500 transition-colors">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const fetchTaskDetails = useCallback(async () => {
     if (!isOpen || !taskId) return
@@ -515,30 +633,30 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   }, [currentUser, taskId])
 
   const getUserDisplayName = useCallback((comment: Comment): string => {
-    if (comment.user && typeof comment.user === "object") {
-      return comment.user.name || comment.user.email || "User"
-    }
-    return "User"
-  }, [])
+  if (comment.userId && typeof comment.userId === "object") {
+    return (comment.userId as MinimalUser).name || (comment.userId as MinimalUser).email || "User";
+  }
+  return "User";
+}, []);
 
-  const getUserInitial = useCallback((comment: Comment): string => {
-    const name = getUserDisplayName(comment)
-    return name.charAt(0).toUpperCase()
-  }, [getUserDisplayName])
+const getUserInitial = useCallback((comment: Comment): string => {
+  const name = getUserDisplayName(comment);
+  return name.charAt(0).toUpperCase();
+}, [getUserDisplayName]);
 
-  const isCommentOwner = useCallback((comment: Comment): boolean => {
-    if (!currentUser) return false
+const isCommentOwner = useCallback((comment: Comment): boolean => {
+  if (!currentUser) return false;
 
-    if (comment.userId && typeof comment.userId === "string") {
-      return comment.userId === currentUser._id
-    }
+  if (comment.userId && typeof comment.userId === "object") {
+    return (comment.userId as MinimalUser)._id === currentUser._id;
+  }
 
-    if (comment.user && typeof comment.user === "object") {
-      return comment.user._id === currentUser._id
-    }
+  if (typeof comment.userId === "string") {
+    return comment.userId === currentUser._id;
+  }
 
-    return false
-  }, [currentUser])
+  return false;
+}, [currentUser]);
 
   const startEditingComment = useCallback((comment: Comment) => {
     if (!currentUser) {
@@ -1074,23 +1192,9 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
                     )}
                   </div>
 
-                  {/* Assignees */}
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer group">
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <User className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Assignees</span>
-                    </div>
-                    <div className="flex items-center gap-2 flex-1 justify-end">
-                      <div className="flex items-center gap-1">
-                        <div className="w-6 h-6 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                          <span className="text-xs font-medium text-white">
-                            {currentUser?.name?.charAt(0)?.toUpperCase() || "U"}
-                          </span>
-                        </div>
-                      </div>
-                      <span className="text-sm text-gray-600 dark:text-gray-400">Me</span>
-                      <Edit2 className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
+                  {/* UPDATED: Assignees Section */}
+                  <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                    <AssigneeSection task={task} />
                   </div>
 
                   {/* Priority */}

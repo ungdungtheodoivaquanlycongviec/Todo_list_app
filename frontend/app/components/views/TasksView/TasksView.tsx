@@ -53,9 +53,16 @@ export default function TasksView() {
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const router = useRouter();
 
+  interface MinimalUser {
+    _id: string;
+    name: string;
+    email: string;
+    avatar?: string;
+  }
+
   // Estimated time options
   const estimatedTimeOptions = ["15m", "30m", "1h", "2h", "4h", "1d"];
-  const priorityOptions = ["low", "medium", "high", "critical", "urgent"];
+  const priorityOptions = ["low", "medium", "high", "urgent"];
   const statusOptions = ["todo", "in_progress", "completed"];
   const typeOptions = [
     "Operational",
@@ -108,34 +115,113 @@ export default function TasksView() {
     return "An unknown error occurred";
   };
 
-  // Helper để hiển thị assignee
-  const getAssigneeInfo = (task: Task) => {
-    if (!task.assignedTo || task.assignedTo.length === 0) {
-      return {
-        displayName: "Unassigned",
-        initial: "U",
-        isCurrentUser: false,
-      };
-    }
-
-    const isCurrentUserAssigned =
-      currentUser &&
-      task.assignedTo.some(
-        (assignment) => assignment.userId === currentUser._id
-      );
-
-    if (isCurrentUserAssigned) {
-      return {
-        displayName: currentUser.name || "You",
-        initial: (currentUser.name?.charAt(0) || "Y").toUpperCase(),
-        isCurrentUser: true,
-      };
-    }
-
+  // NEW: Helper để lấy danh sách assignees chi tiết
+  // Type-safe helper to get detailed assignees
+  const getDetailedAssignees = (task: Task) => {
+  if (!task.assignedTo || task.assignedTo.length === 0) {
     return {
-      displayName: "Assigned to others",
-      initial: "O",
-      isCurrentUser: false,
+      hasAssignees: false,
+      assignees: [],
+      currentUserIsAssigned: false,
+      totalCount: 0
+    };
+  }
+
+  const assignees = task.assignedTo
+    .filter(assignment => assignment.userId)
+    .map(assignment => {
+      // Xử lý cả trường hợp userId là string hoặc object
+      let userData;
+      
+      if (typeof assignment.userId === 'string') {
+        // Nếu userId là string ID, tạo minimal user object
+        userData = {
+          _id: assignment.userId,
+          name: 'Loading...', // Tạm thời
+          email: '',
+          avatar: undefined
+        };
+        
+        // Nếu là currentUser, sử dụng thông tin currentUser
+        if (currentUser && assignment.userId === currentUser._id) {
+          userData = {
+            _id: currentUser._id,
+            name: currentUser.name || 'You',
+            email: currentUser.email,
+            avatar: currentUser.avatar
+          };
+        }
+      } else {
+        // Nếu userId là object (đã populated)
+        userData = {
+          _id: assignment.userId._id,
+          name: assignment.userId.name || 'Unknown User',
+          email: assignment.userId.email,
+          avatar: assignment.userId.avatar
+        };
+      }
+
+      return {
+        ...userData,
+        initial: (userData.name?.charAt(0) || 'U').toUpperCase()
+      };
+    });
+
+  const currentUserIsAssigned = currentUser && 
+    assignees.some(assignee => assignee._id === currentUser._id);
+
+  return {
+    hasAssignees: assignees.length > 0,
+    assignees,
+    currentUserIsAssigned,
+    totalCount: assignees.length
+  };
+};
+
+  // Type-safe helper to get assignee summary
+  const getAssigneeSummary = (task: Task) => {
+    const { hasAssignees, assignees, currentUserIsAssigned, totalCount } = getDetailedAssignees(task);
+
+    if (!hasAssignees) {
+      return {
+        displayText: "Unassigned",
+        tooltip: "No one assigned to this task",
+        isCurrentUser: false
+      };
+    }
+
+    if (currentUserIsAssigned && totalCount === 1) {
+      return {
+        displayText: "You",
+        tooltip: "Assigned to you",
+        isCurrentUser: true
+      };
+    }
+
+    if (currentUserIsAssigned && totalCount > 1) {
+      const othersCount = totalCount - 1;
+      return {
+        displayText: `You +${othersCount}`,
+        tooltip: `Assigned to you and ${othersCount} other${othersCount > 1 ? 's' : ''}`,
+        isCurrentUser: true
+      };
+    }
+
+    // Display assignee name
+    if (totalCount === 1) {
+      return {
+        displayText: assignees[0].name,
+        tooltip: `Assigned to ${assignees[0].name} (${assignees[0].email})`,
+        isCurrentUser: false
+      };
+    }
+
+    // Multiple assignees
+    const names = assignees.map(a => a.name).join(', ');
+    return {
+      displayText: `${totalCount} people`,
+      tooltip: `Assigned to: ${names}`,
+      isCurrentUser: false
     };
   };
 
@@ -166,6 +252,7 @@ export default function TasksView() {
       return false;
     }
   };
+
   // Fetch tasks từ API (chế độ list)
   const fetchTasks = async () => {
     try {
@@ -351,32 +438,40 @@ export default function TasksView() {
 
   const handleCreateTask = async (taskData: any) => {
     try {
-      const assignedTo = currentUser ? [{ userId: currentUser._id }] : [];
+      // Mặc định gán người tạo là assignee
+      const assignedTo = taskData.assignedTo && taskData.assignedTo.length > 0 
+      ? taskData.assignedTo 
+      : (currentUser ? [{ userId: currentUser._id }] : []);
 
       const backendTaskData = {
         title: taskData.title || "Untitled Task",
         description: taskData.description || "",
-        category: taskData.category || "general",
+        category: taskData.category || "Other",
         status: "todo",
         priority: mapPriorityToBackend(taskData.priority),
         dueDate: taskData.dueDate ? new Date(taskData.dueDate) : null,
         tags: taskData.tags || [],
-        assignedTo: assignedTo,
         estimatedTime: taskData.estimatedTime || "",
+        type: taskData.category || "Operational"
       };
 
-      console.log("Creating task with data:", backendTaskData);
-      await taskService.createTask(backendTaskData);
+      console.log('🎯 Creating task with data:', backendTaskData);
+      console.log('🎯 Current user:', currentUser);
+      console.log('🎯 AssignedTo array:', assignedTo);
+
+      const createdTask = await taskService.createTask(backendTaskData);
+      console.log('🎯 Created task response:', createdTask);
+
       setShowCreateModal(false);
 
-      // Refresh data based on current view mode
+      // Refresh data
       if (viewMode === "list") {
         fetchTasks();
       } else {
         fetchKanbanData();
       }
     } catch (error) {
-      console.error("Error creating task:", error);
+      console.error("❌ Error creating task:", error);
       alert("Failed to create task: " + getErrorMessage(error));
     }
   };
@@ -465,13 +560,13 @@ export default function TasksView() {
   // Helper functions
   const mapPriorityToBackend = (frontendPriority: string): string => {
     const priorityMap: { [key: string]: string } = {
-      None: "low",
-      Low: "low",
-      Medium: "medium",
-      High: "high",
-      Urgent: "urgent",
+      'None': 'low',
+      'Low': 'low',
+      'Medium': 'medium',
+      'High': 'high',
+      'Urgent': 'urgent'
     };
-    return priorityMap[frontendPriority] || "medium";
+    return priorityMap[frontendPriority] || 'medium';
   };
 
   const getPriorityColor = (priority: string) => {
@@ -623,17 +718,17 @@ export default function TasksView() {
 
               <div className="space-y-3">
                 {columnData?.tasks?.map((task: Task) => {
-                  const assigneeInfo = getAssigneeInfo(task);
+                  const assigneeInfo = getDetailedAssignees(task);
+                  const assigneeSummary = getAssigneeSummary(task);
                   const isOverdue = isTaskOverdue(task);
 
                   return (
                     <div
                       key={task._id}
-                      className={`bg-white rounded-lg border ${
-                        isOverdue
+                      className={`bg-white rounded-lg border ${isOverdue
                           ? "border-red-200 bg-red-50"
                           : "border-gray-200"
-                      } p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer`}
+                        } p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer`}
                       onClick={() => handleTaskClick(task._id)}
                       onContextMenu={(e) => handleContextMenu(e, task)}
                     >
@@ -663,15 +758,40 @@ export default function TasksView() {
 
                       <div className="flex items-center justify-between text-xs text-gray-500">
                         <div className="flex items-center gap-2">
-                          <div
-                            className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
-                              assigneeInfo.isCurrentUser
-                                ? "bg-green-100 text-green-800 border border-green-200"
-                                : "bg-gray-300 text-gray-700 border border-gray-400"
-                            }`}
-                          >
-                            {assigneeInfo.initial}
+                          {/* UPDATED: Assignee avatars */}
+                          <div className="flex -space-x-1">
+                            {assigneeInfo.assignees.slice(0, 2).map((assignee) => (
+                              <div
+                                key={assignee._id}
+                                className={`w-5 h-5 rounded-full flex items-center justify-center text-xs border border-white ${assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-blue-100 text-blue-800"
+                                  }`}
+                                title={assignee.name}
+                              >
+                                {assignee.avatar ? (
+                                  <img
+                                    src={assignee.avatar}
+                                    alt=""
+                                    className="w-full h-full rounded-full object-cover"
+                                  />
+                                ) : (
+                                  assignee.initial
+                                )}
+                              </div>
+                            ))}
+                            {assigneeInfo.totalCount > 2 && (
+                              <div className="w-5 h-5 bg-gray-100 text-gray-600 rounded-full flex items-center justify-center text-xs border border-white text-[10px]">
+                                +{assigneeInfo.totalCount - 2}
+                              </div>
+                            )}
                           </div>
+
+                          <span className={`text-xs ${assigneeSummary.isCurrentUser ? 'text-green-600 font-medium' : 'text-gray-600'
+                            }`}>
+                            {assigneeSummary.displayText}
+                          </span>
+
                           {task.estimatedTime && (
                             <span className="flex items-center gap-1">
                               <Clock className="w-3 h-3" />
@@ -682,9 +802,8 @@ export default function TasksView() {
 
                         {task.dueDate && (
                           <span
-                            className={`flex items-center gap-1 ${
-                              isOverdue ? "text-red-600 font-medium" : ""
-                            }`}
+                            className={`flex items-center gap-1 ${isOverdue ? "text-red-600 font-medium" : ""
+                              }`}
                           >
                             <Calendar className="w-3 h-3" />
                             {new Date(task.dueDate).toLocaleDateString()}
@@ -719,18 +838,18 @@ export default function TasksView() {
     isOverdue?: boolean;
     isCompleted?: boolean;
   }) => {
-    const assigneeInfo = getAssigneeInfo(task);
+    const assigneeInfo = getDetailedAssignees(task);
+    const assigneeSummary = getAssigneeSummary(task);
     const isEditing = editingTaskId === task._id;
 
     return (
       <div
-        className={`grid grid-cols-12 gap-4 p-4 border-b hover:bg-gray-50 transition-colors ${
-          isCompleted
+        className={`grid grid-cols-12 gap-4 p-4 border-b hover:bg-gray-50 transition-colors ${isCompleted
             ? "bg-gray-50 border-gray-100"
             : isOverdue
-            ? "bg-red-50 border-red-100"
-            : "bg-white border-gray-100"
-        }`}
+              ? "bg-red-50 border-red-100"
+              : "bg-white border-gray-100"
+          }`}
         onContextMenu={(e) => handleContextMenu(e, task)}
       >
         {/* Task Title - Clickable for task detail */}
@@ -743,24 +862,22 @@ export default function TasksView() {
               <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
             )}
             <div
-              className={`w-2 h-2 rounded-full ${
-                task.priority === "urgent" || task.priority === "critical"
+              className={`w-2 h-2 rounded-full ${task.priority === "urgent" || task.priority === "critical"
                   ? "bg-red-500"
                   : task.priority === "high"
-                  ? "bg-orange-500"
-                  : task.priority === "medium"
-                  ? "bg-yellow-500"
-                  : "bg-gray-400"
-              }`}
+                    ? "bg-orange-500"
+                    : task.priority === "medium"
+                      ? "bg-yellow-500"
+                      : "bg-gray-400"
+                }`}
             />
             <span
-              className={`text-sm font-medium ${
-                isCompleted
+              className={`text-sm font-medium ${isCompleted
                   ? "text-gray-500 line-through"
                   : isOverdue
-                  ? "text-red-700"
-                  : "text-gray-900"
-              } hover:text-blue-600 transition-colors`}
+                    ? "text-red-700"
+                    : "text-gray-900"
+                } hover:text-blue-600 transition-colors`}
             >
               {task.title || "Untitled Task"}
             </span>
@@ -768,7 +885,7 @@ export default function TasksView() {
         </div>
 
         {/* Status - Inline editable */}
-        <div className="col-span-2">
+        <div className="col-span-1">
           {isEditing && editingField === "status" ? (
             <select
               value={tempValue}
@@ -800,7 +917,7 @@ export default function TasksView() {
         </div>
 
         {/* Type - Inline editable */}
-        <div className="col-span-2">
+        <div className="col-span-1">
           {isEditing && editingField === "category" ? (
             <select
               value={tempValue}
@@ -845,9 +962,8 @@ export default function TasksView() {
             />
           ) : (
             <div
-              className={`text-xs cursor-pointer hover:bg-gray-100 px-2 py-1 rounded transition-colors flex items-center gap-1 ${
-                isOverdue ? "text-red-600 font-medium" : "text-gray-600"
-              }`}
+              className={`text-xs cursor-pointer hover:bg-gray-100 px-2 py-1 rounded transition-colors flex items-center gap-1 ${isOverdue ? "text-red-600 font-medium" : "text-gray-600"
+                }`}
               onClick={(e) => {
                 e.stopPropagation();
                 startEditing(
@@ -900,27 +1016,85 @@ export default function TasksView() {
           )}
         </div>
 
-        {/* Assignee */}
-        <div className="col-span-1">
-          <div className="flex items-center gap-2">
-            <div
-              className={`w-6 h-6 rounded-full flex items-center justify-center text-xs border ${
-                assigneeInfo.isCurrentUser
-                  ? "bg-green-100 text-green-800 border-green-200"
-                  : "bg-gray-300 text-gray-700 border-gray-400"
-              }`}
-            >
-              {assigneeInfo.initial}
+        {/* UPDATED: Assignee Column */}
+        <div className="col-span-2">
+          <div className="flex items-center gap-2 group relative">
+            {/* Avatar stack for multiple assignees */}
+            <div className="flex -space-x-2">
+              {assigneeInfo.assignees.slice(0, 3).map((assignee, index) => (
+                <div
+                  key={assignee._id}
+                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs border-2 border-white ${assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id
+                      ? "bg-green-100 text-green-800 border-green-200"
+                      : "bg-blue-100 text-blue-800 border-blue-200"
+                    }`}
+                  title={`${assignee.name}${assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id ? ' (You)' : ''}`}
+                >
+                  {assignee.avatar ? (
+                    <img
+                      src={assignee.avatar}
+                      alt={assignee.name}
+                      className="w-full h-full rounded-full object-cover"
+                    />
+                  ) : (
+                    assignee.initial
+                  )}
+                </div>
+              ))}
+              {assigneeInfo.totalCount > 3 && (
+                <div className="w-6 h-6 bg-gray-100 text-gray-600 rounded-full flex items-center justify-center text-xs border-2 border-white">
+                  +{assigneeInfo.totalCount - 3}
+                </div>
+              )}
             </div>
-            <span
-              className={`text-xs ${
-                assigneeInfo.isCurrentUser
-                  ? "text-green-700 font-medium"
-                  : "text-gray-600"
-              }`}
-            >
-              {assigneeInfo.displayName}
-            </span>
+
+            {/* Assignee text */}
+            <div className="flex flex-col min-w-0">
+              <span className={`text-xs font-medium truncate ${assigneeSummary.isCurrentUser
+                  ? "text-green-700"
+                  : "text-gray-700"
+                }`}>
+                {assigneeSummary.displayText}
+              </span>
+              {assigneeInfo.totalCount > 0 && (
+                <span className="text-xs text-gray-500 truncate">
+                  {assigneeInfo.currentUserIsAssigned ? 'Includes you' : `${assigneeInfo.totalCount} assigned`}
+                </span>
+              )}
+            </div>
+
+            {/* Detailed tooltip on hover */}
+            <div className="absolute left-0 top-full mt-2 hidden group-hover:block z-10 bg-gray-900 text-white text-xs rounded-lg p-3 shadow-lg min-w-48">
+              <div className="font-medium mb-2">Assigned to:</div>
+              {assigneeInfo.assignees.length === 0 ? (
+                <div className="text-gray-300">No one assigned</div>
+              ) : (
+                <div className="space-y-1">
+                  {assigneeInfo.assignees.map((assignee) => (
+                    <div key={assignee._id} className="flex items-center gap-2">
+                      <div className={`w-4 h-4 rounded-full flex items-center justify-center text-xs ${assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id
+                          ? "bg-green-500 text-white"
+                          : "bg-blue-500 text-white"
+                        }`}>
+                        {assignee.avatar ? (
+                          <img
+                            src={assignee.avatar}
+                            alt=""
+                            className="w-full h-full rounded-full object-cover"
+                          />
+                        ) : (
+                          assignee.initial
+                        )}
+                      </div>
+                      <span className={assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id ? "text-green-300" : ""}>
+                        {assignee.name}
+                        {assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id && ' (You)'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1025,9 +1199,8 @@ export default function TasksView() {
             <span className="truncate">{getCurrentSortText()}</span>
           </div>
           <ChevronDown
-            className={`w-4 h-4 transition-transform flex-shrink-0 ${
-              showSortDropdown ? "rotate-180" : ""
-            }`}
+            className={`w-4 h-4 transition-transform flex-shrink-0 ${showSortDropdown ? "rotate-180" : ""
+              }`}
           />
         </button>
 
@@ -1115,22 +1288,20 @@ export default function TasksView() {
           {/* View Mode Toggle */}
           <div className="flex bg-white border border-gray-300 rounded-lg overflow-hidden shadow-sm">
             <button
-              className={`px-4 py-2 text-sm flex items-center gap-2 transition-colors ${
-                viewMode === "list"
+              className={`px-4 py-2 text-sm flex items-center gap-2 transition-colors ${viewMode === "list"
                   ? "bg-blue-500 text-white"
                   : "bg-white text-gray-700 hover:bg-gray-50"
-              }`}
+                }`}
               onClick={() => setViewMode("list")}
             >
               <List className="w-4 h-4" />
               List
             </button>
             <button
-              className={`px-4 py-2 text-sm flex items-center gap-2 transition-colors ${
-                viewMode === "kanban"
+              className={`px-4 py-2 text-sm flex items-center gap-2 transition-colors ${viewMode === "kanban"
                   ? "bg-blue-500 text-white"
                   : "bg-white text-gray-700 hover:bg-gray-50"
-              }`}
+                }`}
               onClick={() => setViewMode("kanban")}
             >
               <Layout className="w-4 h-4" />
@@ -1173,14 +1344,14 @@ export default function TasksView() {
 
             {activeTasksExpanded && (
               <div>
-                {/* Header Row */}
+                {/* UPDATED: Header Row with adjusted columns */}
                 <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
                   <div className="col-span-3">Task</div>
-                  <div className="col-span-2">Status</div>
-                  <div className="col-span-2">Type</div>
+                  <div className="col-span-1">Status</div>
+                  <div className="col-span-1">Type</div>
                   <div className="col-span-1">Due Date</div>
                   <div className="col-span-1">Priority</div>
-                  <div className="col-span-1">Assignee</div>
+                  <div className="col-span-2">Assignee</div>
                   <div className="col-span-1">Time</div>
                   <div className="col-span-1"></div>
                 </div>
@@ -1207,6 +1378,7 @@ export default function TasksView() {
               </div>
             )}
           </div>
+
           {/* Completed Tasks Section */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             <div
@@ -1228,14 +1400,14 @@ export default function TasksView() {
 
             {completedTasksExpanded && (
               <div>
-                {/* Header Row */}
+                {/* UPDATED: Header Row with adjusted columns */}
                 <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
                   <div className="col-span-3">Task</div>
-                  <div className="col-span-2">Status</div>
-                  <div className="col-span-2">Type</div>
+                  <div className="col-span-1">Status</div>
+                  <div className="col-span-1">Type</div>
                   <div className="col-span-1">Due Date</div>
                   <div className="col-span-1">Priority</div>
-                  <div className="col-span-1">Assignee</div>
+                  <div className="col-span-2">Assignee</div>
                   <div className="col-span-1">Time</div>
                   <div className="col-span-1"></div>
                 </div>
@@ -1278,14 +1450,14 @@ export default function TasksView() {
 
             {uncompletedTasksExpanded && (
               <div>
-                {/* Header Row */}
+                {/* UPDATED: Header Row with adjusted columns */}
                 <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
                   <div className="col-span-3">Task</div>
-                  <div className="col-span-2">Status</div>
-                  <div className="col-span-2">Type</div>
+                  <div className="col-span-1">Status</div>
+                  <div className="col-span-1">Type</div>
                   <div className="col-span-1">Due Date</div>
                   <div className="col-span-1">Priority</div>
-                  <div className="col-span-1">Assignee</div>
+                  <div className="col-span-2">Assignee</div>
                   <div className="col-span-1">Time</div>
                   <div className="col-span-1"></div>
                 </div>

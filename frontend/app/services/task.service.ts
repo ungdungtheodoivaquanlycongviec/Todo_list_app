@@ -508,4 +508,114 @@ export const taskService = {
     console.log('Delete comment response:', data);
     return data;
   },
+
+  // NEW: Assign users to task
+  assignUsersToTask: async (taskId: string, userIds: string[]): Promise<any> => {
+    const token = getAuthToken();
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    console.log('Assigning users to task:', { taskId, userIds });
+
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/assign`, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify({ userIds }),
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        if (typeof window !== 'undefined') {
+          localStorage.clear();
+          sessionStorage.clear();
+        }
+        throw new Error('Authentication failed. Please login again.');
+      }
+
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      throw new Error(`Failed to assign users: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('Assign users response:', data);
+    return data;
+  },
+
+  // NEW: Unassign user from task
+  unassignUserFromTask: async (taskId: string, userId: string): Promise<any> => {
+    const token = getAuthToken();
+    const headers: HeadersInit = {};
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    console.log('Unassigning user from task:', { taskId, userId });
+
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/unassign/${userId}`, {
+      method: 'DELETE',
+      headers,
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        if (typeof window !== 'undefined') {
+          localStorage.clear();
+          sessionStorage.clear();
+        }
+        throw new Error('Authentication failed. Please login again.');
+      }
+
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      throw new Error(`Failed to unassign user: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('Unassign user response:', data);
+    return data;
+  },
+
+  // NEW: Get task assignees
+  getTaskAssignees: async (taskId: string): Promise<any> => {
+    const token = getAuthToken();
+    const headers: HeadersInit = {};
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    console.log('Getting task assignees:', taskId);
+
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/assignees`, {
+      headers,
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        if (typeof window !== 'undefined') {
+          localStorage.clear();
+          sessionStorage.clear();
+        }
+        throw new Error('Authentication failed. Please login again.');
+      }
+
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      throw new Error(`Failed to get task assignees: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('Task assignees response:', data);
+    return data;
+  }
 };

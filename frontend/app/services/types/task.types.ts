@@ -1,3 +1,22 @@
+export interface MinimalUser {
+  _id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+}
+
+export interface AssignedUser {
+  userId: string | MinimalUser;
+  assignedAt: string;
+}
+
+export interface CommentUser {
+  userId: string | MinimalUser;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface TimeEntry {
   _id?: string;
   user?: any;
@@ -38,11 +57,8 @@ export interface Task {
   priority: string;
   dueDate: string | null;
   completedAt: string | null;
-  createdBy: string;
-  assignedTo: Array<{
-    userId: string;
-    assignedAt: string;
-  }>;
+  createdBy: string | MinimalUser; // Can be string ID or populated user object
+  assignedTo: AssignedUser[];
   tags: string[];
   category: string | null;
   groupId: string | null;
@@ -55,12 +71,7 @@ export interface Task {
     uploadedBy: string;
     uploadedAt: string;
   }>;
-  comments: Array<{
-    userId: string;
-    content: string;
-    createdAt: string;
-    updatedAt: string;
-  }>;
+  comments: CommentUser[];
   
   // NEW FIELDS
   type?: string;
