@@ -1,0 +1,554 @@
+{
+  "info": {
+    "name": "Phase8 Groups Management",
+    "_postman_id": "7f9098f0-a074-4d50-9285-b7f208b6e5df",
+    "description": "Collection covering group creation, membership management, and group-aware task operations for Phase 8 backend features.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Setup",
+      "description": "Registers test users and seeds base variables for Phase 8 scenarios.",
+      "item": [
+        {
+          "name": "Register Group Owner",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const email = `group_owner_${Date.now()}@example.com`;",
+                  "pm.collectionVariables.set('groupOwnerEmail', email);",
+                  "pm.collectionVariables.set('groupOwnerPassword', 'OwnerPass123!');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Owner registration succeeded', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "  pm.expect(json.data).to.have.property('user');",
+                  "});",
+                  "if (json.data && json.data.user) {",
+                  "  pm.collectionVariables.set('groupOwnerId', json.data.user._id);",
+                  "  pm.collectionVariables.set('groupOwnerName', json.data.user.name || 'Group Owner');",
+                  "}",
+                  "if (json.data && json.data.accessToken) {",
+                  "  pm.collectionVariables.set('groupOwnerAccessToken', json.data.accessToken);",
+                  "}",
+                  "if (json.data && json.data.refreshToken) {",
+                  "  pm.collectionVariables.set('groupOwnerRefreshToken', json.data.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{groupOwnerEmail}}\",\n  \"password\": \"{{groupOwnerPassword}}\",\n  \"name\": \"Phase8 Owner\"\n}"
+            },
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/auth/register",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Register Member One",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const email = `group_member1_${Date.now()}@example.com`;",
+                  "pm.collectionVariables.set('memberOneEmail', email);",
+                  "pm.collectionVariables.set('memberOnePassword', 'MemberOne123!');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Member one registration succeeded', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "});",
+                  "if (json.data && json.data.user) {",
+                  "  pm.collectionVariables.set('memberOneId', json.data.user._id);",
+                  "  pm.collectionVariables.set('memberOneName', json.data.user.name || 'Member One');",
+                  "}",
+                  "if (json.data && json.data.accessToken) {",
+                  "  pm.collectionVariables.set('memberOneAccessToken', json.data.accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{memberOneEmail}}\",\n  \"password\": \"{{memberOnePassword}}\",\n  \"name\": \"Phase8 Member One\"\n}"
+            },
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/auth/register",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Register Member Two",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const email = `group_member2_${Date.now()}@example.com`;",
+                  "pm.collectionVariables.set('memberTwoEmail', email);",
+                  "pm.collectionVariables.set('memberTwoPassword', 'MemberTwo123!');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Member two registration succeeded', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "});",
+                  "if (json.data && json.data.user) {",
+                  "  pm.collectionVariables.set('memberTwoId', json.data.user._id);",
+                  "  pm.collectionVariables.set('memberTwoName', json.data.user.name || 'Member Two');",
+                  "}",
+                  "if (json.data && json.data.accessToken) {",
+                  "  pm.collectionVariables.set('memberTwoAccessToken', json.data.accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{memberTwoEmail}}\",\n  \"password\": \"{{memberTwoPassword}}\",\n  \"name\": \"Phase8 Member Two\"\n}"
+            },
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/auth/register",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Group Operations",
+      "description": "Covers CRUD-style group operations and group-aware task workflows.",
+      "item": [
+        {
+          "name": "Create Group With Member One",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Group created successfully', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "  pm.expect(json.data).to.have.property('_id');",
+                  "});",
+                  "if (json.data && json.data._id) {",
+                  "  pm.collectionVariables.set('groupId', json.data._id);",
+                  "  pm.collectionVariables.set('groupName', json.data.name || 'Phase8 Automation Group');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{groupOwnerAccessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Phase 8 Automation Group\",\n  \"description\": \"Group created during automated Phase 8 validation\",\n  \"memberIds\": [\n    \"{{memberOneId}}\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/groups",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "groups"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Add Member Two To Group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Member addition succeeded', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "  pm.expect(json.data.addedMemberIds || []).to.include(pm.collectionVariables.get('memberTwoId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{groupOwnerAccessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"memberIds\": [\n    \"{{memberTwoId}}\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/groups/{{groupId}}/members",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "groups",
+                "{{groupId}}",
+                "members"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Group Detail",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Group detail fetched', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "  pm.expect(json.data.members).to.be.an('array');",
+                  "  pm.expect(json.data.members.length).to.be.at.least(2);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{groupOwnerAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/groups/{{groupId}}",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "groups",
+                "{{groupId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Group Task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Group task created', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "  pm.expect(json.data).to.have.property('_id');",
+                  "  pm.expect(json.data.groupId && json.data.groupId._id ? json.data.groupId._id : json.data.groupId).to.eql(pm.collectionVariables.get('groupId'));",
+                  "});",
+                  "if (json.data && json.data._id) {",
+                  "  pm.collectionVariables.set('groupTaskId', json.data._id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{groupOwnerAccessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Phase 8 Group Task\",\n  \"description\": \"Task scoped to the automation group\",\n  \"dueDate\": \"2030-01-01T00:00:00.000Z\",\n  \"priority\": \"high\",\n  \"groupId\": \"{{groupId}}\",\n  \"assignedTo\": [\n    { \"userId\": \"{{memberOneId}}\" }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/tasks",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Group Tasks",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Group tasks fetched', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "  pm.expect(json.data.tasks).to.be.an('array');",
+                  "  if (json.data.tasks.length > 0) {",
+                  "    pm.expect(json.data.tasks[0].groupId).to.exist;",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{groupOwnerAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/groups/{{groupId}}/tasks",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "groups",
+                "{{groupId}}",
+                "tasks"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Member Two Leaves Group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Member two left group', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "  pm.expect(json.data.memberId).to.eql(pm.collectionVariables.get('memberTwoId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{memberTwoAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/groups/{{groupId}}/leave",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "groups",
+                "{{groupId}}",
+                "leave"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Owner Removes Member One",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Member removal succeeded', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "  pm.expect(json.data.removedMemberId).to.eql(pm.collectionVariables.get('memberOneId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{groupOwnerAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/groups/{{groupId}}/members/{{memberOneId}}",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "groups",
+                "{{groupId}}",
+                "members",
+                "{{memberOneId}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "apiBaseUrl",
+      "value": "http://localhost:5000"
+    }
+  ]
+}

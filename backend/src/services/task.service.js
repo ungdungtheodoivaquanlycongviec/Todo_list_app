@@ -1,4 +1,5 @@
 const Task = require('../models/Task.model');
+const Group = require('../models/Group.model');
 const User = require('../models/User.model');
 const { ERROR_MESSAGES, TASK_STATUS, LIMITS, SUCCESS_MESSAGES, HTTP_STATUS, PRIORITY_LEVELS } = require('../config/constants');
 const { 
@@ -14,6 +15,21 @@ const {
 } = require('../utils/dateHelper');
 const fileService = require('./file.service');
 
+const normalizeId = value => {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (value.toHexString) return value.toHexString();
+  if (value._id) return value._id.toString();
+  if (value.toString) return value.toString();
+  return null;
+};
+
+const raiseError = (message, statusCode = HTTP_STATUS.BAD_REQUEST) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  throw error;
+};
+
 /**
  * Task Service
  * Chứa toàn bộ business logic liên quan đến Task
@@ -27,12 +43,65 @@ class TaskService {
    * @returns {Promise<Object>} Task đã tạo
    */
   async createTask(taskData) {
+    const creatorId = normalizeId(taskData.createdBy);
+    if (!creatorId) {
+      raiseError(ERROR_MESSAGES.INVALID_ID);
+    }
+
+    let groupMemberIds = null;
+
+    if (taskData.groupId) {
+      const groupId = normalizeId(taskData.groupId);
+      if (!groupId || !isValidObjectId(groupId)) {
+        raiseError('Invalid groupId format');
+      }
+
+      const group = await Group.findById(groupId);
+      if (!group) {
+        raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+      }
+
+      if (!group.isAdmin(creatorId)) {
+        raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
+      }
+
+      groupMemberIds = new Set(
+        group.members.map(member => normalizeId(member.userId)).filter(Boolean)
+      );
+      taskData.groupId = groupId;
+    }
+
+    let assignedIds = [];
+    if (Array.isArray(taskData.assignedTo)) {
+      assignedIds = taskData.assignedTo
+        .map(assignee => normalizeId(assignee?.userId || assignee))
+        .filter(Boolean);
+    }
+
+    assignedIds.push(creatorId);
+    assignedIds = Array.from(new Set(assignedIds));
+
+    if (groupMemberIds) {
+      const outsideGroup = assignedIds.filter(id => !groupMemberIds.has(id));
+      if (outsideGroup.length > 0) {
+        raiseError(ERROR_MESSAGES.USER_NOT_IN_GROUP);
+      }
+    }
+
+    if (assignedIds.length > LIMITS.MAX_ASSIGNEES_PER_TASK) {
+      raiseError(`Task cannot have more than ${LIMITS.MAX_ASSIGNEES_PER_TASK} assignees`);
+    }
+
+    taskData.assignedTo = assignedIds.map(id => ({ userId: id }));
+
     const task = await Task.create(taskData);
-    // Populate user data ngay sau khi tạo
+
     const populatedTask = await Task.findById(task._id)
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
-      .populate('comments.user', 'name email avatar');
+      .populate('comments.user', 'name email avatar')
+      .populate('groupId', 'name description');
+
     return populatedTask;
   }
 
@@ -45,7 +114,8 @@ class TaskService {
     const task = await Task.findById(taskId)
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
-      .populate('comments.user', 'name email avatar');
+      .populate('comments.user', 'name email avatar')
+      .populate('groupId', 'name description');
     return task;
   }
 
@@ -55,8 +125,8 @@ class TaskService {
    * @param {Object} options - Options cho sort, pagination
    * @returns {Promise<Object>} { tasks, pagination }
    */
-  async getAllTasks(filters = {}, options = {}) {
-    const { status, priority, search } = filters;
+  async getAllTasks(filters = {}, options = {}, requesterId = null) {
+    const { status, priority, search, groupId } = filters;
     const { sortBy, order, page, limit } = options;
 
     // Validate và sanitize pagination
@@ -93,6 +163,24 @@ class TaskService {
       query.priority = priority;
     }
 
+    if (groupId) {
+      if (!isValidObjectId(groupId)) {
+        raiseError('Invalid groupId format');
+      }
+
+      const group = await Group.findById(groupId);
+      if (!group) {
+        raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+      }
+
+      const requesterIdStr = normalizeId(requesterId);
+      if (!requesterIdStr || !group.isMember(requesterIdStr)) {
+        raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
+      }
+
+      query.groupId = groupId;
+    }
+
     // Text search
     if (search && search.trim()) {
       query.$or = [
@@ -114,6 +202,7 @@ class TaskService {
         .populate('createdBy', 'name email avatar')
         .populate('assignedTo.userId', 'name email avatar')
         .populate('comments.user', 'name email avatar')
+        .populate('groupId', 'name description')
         .sort(sortOption)
         .skip(skip)
         .limit(sanitizedLimit)
@@ -140,16 +229,119 @@ class TaskService {
    * @param {Object} updateData - Dữ liệu cần update
    * @returns {Promise<Object|null>} Task đã update hoặc null
    */
-  async updateTask(taskId, updateData) {
-    const task = await Task.findByIdAndUpdate(
+  async updateTask(taskId, updateData = {}, requesterId = null) {
+    const taskDoc = await Task.findById(taskId);
+    if (!taskDoc) {
+      return null;
+    }
+
+    const requesterIdStr = normalizeId(requesterId);
+    const creatorIdStr = normalizeId(taskDoc.createdBy);
+
+    let finalGroupId = normalizeId(taskDoc.groupId);
+    let targetGroup = null;
+
+    if (updateData.groupId !== undefined) {
+      const requestedGroupId = updateData.groupId ? normalizeId(updateData.groupId) : null;
+
+      const isTaskOwner = requesterIdStr && requesterIdStr === creatorIdStr;
+
+      if (!isTaskOwner && (!requestedGroupId || !requesterIdStr)) {
+        raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
+      }
+
+      if (requestedGroupId === null) {
+        if (!isTaskOwner) {
+          raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
+        }
+        finalGroupId = null;
+      } else {
+        if (!isValidObjectId(requestedGroupId)) {
+          raiseError('Invalid groupId format');
+        }
+
+        targetGroup = await Group.findById(requestedGroupId);
+        if (!targetGroup) {
+          raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+        }
+
+        const allowedToBind = isTaskOwner ? targetGroup.isAdmin(creatorIdStr) : targetGroup.isAdmin(requesterIdStr);
+        if (!allowedToBind) {
+          raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
+        }
+
+        finalGroupId = requestedGroupId;
+      }
+    } else if (finalGroupId) {
+      targetGroup = await Group.findById(finalGroupId);
+    }
+
+    const groupMemberIds = targetGroup
+      ? new Set(targetGroup.members.map(member => normalizeId(member.userId)).filter(Boolean))
+      : null;
+
+    const currentAssignedIds = taskDoc.assignedTo
+      .map(assignee => normalizeId(assignee.userId))
+      .filter(Boolean);
+
+    let finalAssignedIds = [...currentAssignedIds];
+
+    if (updateData.assignedTo !== undefined) {
+      if (!Array.isArray(updateData.assignedTo)) {
+        raiseError('assignedTo must be an array');
+      }
+
+      finalAssignedIds = Array.from(
+        new Set(
+          updateData.assignedTo
+            .map(assignee => normalizeId(assignee?.userId || assignee))
+            .filter(Boolean)
+        )
+      );
+    }
+
+    if (!finalAssignedIds.includes(creatorIdStr)) {
+      finalAssignedIds.push(creatorIdStr);
+    }
+
+    if (finalAssignedIds.length > LIMITS.MAX_ASSIGNEES_PER_TASK) {
+      raiseError(`Task cannot have more than ${LIMITS.MAX_ASSIGNEES_PER_TASK} assignees`);
+    }
+
+    if (groupMemberIds) {
+      if (!groupMemberIds.has(creatorIdStr)) {
+        raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
+      }
+
+      const outsideGroup = finalAssignedIds.filter(id => !groupMemberIds.has(id));
+      if (outsideGroup.length > 0) {
+        raiseError(ERROR_MESSAGES.USER_NOT_IN_GROUP);
+      }
+    }
+
+    const updatePayload = { ...updateData };
+    delete updatePayload.assignedTo;
+    delete updatePayload.groupId;
+
+    if (updateData.assignedTo !== undefined || groupMemberIds) {
+      updatePayload.assignedTo = finalAssignedIds.map(id => ({ userId: id }));
+    }
+
+    if (updateData.groupId !== undefined) {
+      updatePayload.groupId = finalGroupId;
+    }
+
+    const updatedTask = await Task.findByIdAndUpdate(
       taskId,
-      { $set: updateData },
+      { $set: updatePayload },
       { new: true, runValidators: true }
     )
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
-      .populate('comments.user', 'name email avatar');
-    return task;
+      .populate('comments.user', 'name email avatar')
+      .populate('groupId', 'name description');
+
+    return updatedTask;
   }
 
   /**
@@ -203,6 +395,7 @@ class TaskService {
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
+      .populate('groupId', 'name description')
       .sort({ dueDate: 1, priority: -1 })
       .lean();
 
@@ -234,7 +427,7 @@ class TaskService {
    * @param {Object} filters - { priority, groupId, search }
    * @returns {Promise<Object>} Kanban board object
    */
-  async getKanbanView(filters = {}) {
+  async getKanbanView(filters = {}, requesterId = null) {
     const { priority, groupId, search } = filters;
 
     // Build filter
@@ -250,8 +443,19 @@ class TaskService {
     
     if (groupId) {
       if (!isValidObjectId(groupId)) {
-        throw new Error('Invalid groupId format');
+        raiseError('Invalid groupId format');
       }
+
+      const group = await Group.findById(groupId);
+      if (!group) {
+        raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+      }
+
+      const requesterIdStr = normalizeId(requesterId);
+      if (!requesterIdStr || !group.isMember(requesterIdStr)) {
+        raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
+      }
+
       query.groupId = groupId;
     }
 
@@ -267,6 +471,7 @@ class TaskService {
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
+      .populate('groupId', 'name description')
       .sort({ priority: -1, dueDate: 1, createdAt: -1 })
       .lean();
 
@@ -343,7 +548,30 @@ class TaskService {
       };
     }
 
-    const normalizedAssignerId = assignerId?.toString();
+    const normalizedAssignerId = normalizeId(assignerId);
+
+    let groupMemberIds = null;
+    if (task.groupId) {
+      const group = await Group.findById(task.groupId);
+      if (!group) {
+        return {
+          success: false,
+          statusCode: HTTP_STATUS.BAD_REQUEST,
+          message: ERROR_MESSAGES.GROUP_NOT_FOUND
+        };
+      }
+
+      if (!group.isAdmin(normalizedAssignerId)) {
+        return {
+          success: false,
+          statusCode: HTTP_STATUS.FORBIDDEN,
+          message: ERROR_MESSAGES.GROUP_ACCESS_DENIED
+        };
+      }
+
+      groupMemberIds = new Set(group.members.map(member => normalizeId(member.userId)).filter(Boolean));
+    }
+
     if (!normalizedAssignerId || task.createdBy.toString() !== normalizedAssignerId) {
       return {
         success: false,
@@ -384,6 +612,18 @@ class TaskService {
 
       filteredIds.push(id);
     });
+
+    if (groupMemberIds) {
+      const outsideGroup = filteredIds.filter(id => !groupMemberIds.has(id));
+      if (outsideGroup.length > 0) {
+        return {
+          success: false,
+          statusCode: HTTP_STATUS.BAD_REQUEST,
+          message: ERROR_MESSAGES.USER_NOT_IN_GROUP,
+          errors: { notInGroup: outsideGroup }
+        };
+      }
+    }
 
     if (invalidIds.length > 0) {
       return {
@@ -463,7 +703,8 @@ class TaskService {
     const populatedTask = await Task.findById(task._id)
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
-      .populate('comments.user', 'name email avatar');
+      .populate('comments.user', 'name email avatar')
+      .populate('groupId', 'name description');
 
     return {
       success: true,
@@ -541,7 +782,8 @@ class TaskService {
     const populatedTask = await Task.findById(task._id)
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
-      .populate('comments.user', 'name email avatar');
+      .populate('comments.user', 'name email avatar')
+      .populate('groupId', 'name description');
 
     return {
       success: true,
@@ -642,6 +884,7 @@ class TaskService {
         .populate('createdBy', 'name email avatar')
         .populate('assignedTo.userId', 'name email avatar')
         .populate('comments.user', 'name email avatar')
+        .populate('groupId', 'name description')
         .sort(sortOption)
         .skip(skip)
         .limit(sanitizedLimit)
@@ -797,6 +1040,7 @@ class TaskService {
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
+      .populate('groupId', 'name description')
       .sort({ dueDate: 1 })
       .lean();
 
@@ -825,6 +1069,7 @@ class TaskService {
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
+      .populate('groupId', 'name description')
       .sort({ dueDate: 1 })
       .lean();
 
@@ -849,7 +1094,8 @@ class TaskService {
     )
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
-      .populate('comments.user', 'name email avatar');
+      .populate('comments.user', 'name email avatar')
+      .populate('groupId', 'name description');
     return task;
   }
 
@@ -866,7 +1112,8 @@ class TaskService {
     )
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
-      .populate('comments.user', 'name email avatar');
+      .populate('comments.user', 'name email avatar')
+      .populate('groupId', 'name description');
     return task;
   }
 
@@ -933,6 +1180,7 @@ class TaskService {
     await task.populate('comments.user', 'name email avatar');
     await task.populate('assignedTo.userId', 'name email avatar');
     await task.populate('createdBy', 'name email avatar');
+    await task.populate('groupId', 'name description');
 
     return task;
   }
@@ -995,6 +1243,7 @@ class TaskService {
     await task.populate('comments.user', 'name email avatar');
     await task.populate('assignedTo.userId', 'name email avatar');
     await task.populate('createdBy', 'name email avatar');
+    await task.populate('groupId', 'name description');
 
     return {
       success: true,
@@ -1059,6 +1308,7 @@ class TaskService {
     await task.populate('comments.user', 'name email avatar');
     await task.populate('assignedTo.userId', 'name email avatar');
     await task.populate('createdBy', 'name email avatar');
+    await task.populate('groupId', 'name description');
 
     return {
       success: true,
@@ -1087,7 +1337,8 @@ class TaskService {
     const task = await Task.findById(taskId)
       .populate('comments.user', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
-      .populate('createdBy', 'name email avatar');
+      .populate('createdBy', 'name email avatar')
+      .populate('groupId', 'name description');
 
     if (!task) {
       return {
@@ -1181,6 +1432,7 @@ class TaskService {
       await task.populate('assignedTo.userId', 'name email avatar');
       await task.populate('createdBy', 'name email avatar');
       await task.populate('comments.user', 'name email avatar');
+    await task.populate('groupId', 'name description');
 
       return {
         success: true,
@@ -1256,6 +1508,7 @@ class TaskService {
       await task.populate('assignedTo.userId', 'name email avatar');
       await task.populate('createdBy', 'name email avatar');
       await task.populate('comments.user', 'name email avatar');
+    await task.populate('groupId', 'name description');
 
       return {
         success: true,

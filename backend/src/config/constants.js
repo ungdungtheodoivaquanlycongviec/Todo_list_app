@@ -42,6 +42,10 @@ const HTTP_STATUS = {
 const ERROR_MESSAGES = {
   TASK_NOT_FOUND: 'Task not found',
   GROUP_NOT_FOUND: 'Group not found',
+  GROUP_ACCESS_DENIED: 'You do not have permission to manage this group',
+  GROUP_MEMBER_EXISTS: 'User is already a member of this group',
+  GROUP_MEMBER_NOT_FOUND: 'Member not found in this group',
+  USER_NOT_IN_GROUP: 'One or more users are not members of this group',
   USER_NOT_FOUND: 'User not found',
   NOTIFICATION_NOT_FOUND: 'Notification not found',
   NOTE_NOT_FOUND: 'Note not found',
@@ -53,7 +57,8 @@ const ERROR_MESSAGES = {
   EMAIL_ALREADY_EXISTS: 'Email already exists',
   INVALID_TOKEN: 'Invalid or expired token',
   INVALID_ID: 'Invalid ID format',
-  INVALID_TASK_ID: 'Invalid task ID'
+  INVALID_TASK_ID: 'Invalid task ID',
+  GROUP_MEMBER_LIMIT_REACHED: 'Group has reached the maximum number of members'
 };
 
 // Success Messages
@@ -61,11 +66,18 @@ const SUCCESS_MESSAGES = {
   TASK_CREATED: 'Task created successfully',
   TASK_UPDATED: 'Task updated successfully',
   TASK_DELETED: 'Task deleted successfully',
+  TASK_FETCHED: 'Task fetched successfully',
+  TASKS_FETCHED: 'Tasks fetched successfully',
   TASK_ASSIGNED: 'Assignees updated successfully',
   TASK_UNASSIGNED: 'Assignee removed successfully',
   GROUP_CREATED: 'Group created successfully',
   GROUP_UPDATED: 'Group updated successfully',
   GROUP_DELETED: 'Group deleted successfully',
+  GROUP_FETCHED: 'Group fetched successfully',
+  GROUPS_FETCHED: 'Groups fetched successfully',
+  GROUP_MEMBER_ADDED: 'Member added to group successfully',
+  GROUP_MEMBER_REMOVED: 'Member removed from group successfully',
+  GROUP_LEFT: 'Left group successfully',
   USER_REGISTERED: 'User registered successfully',
   USER_UPDATED: 'User updated successfully',
   LOGIN_SUCCESS: 'Login successful',
@@ -92,6 +104,8 @@ const LIMITS = {
   MAX_ATTACHMENTS_PER_TASK: 20,
   MAX_ASSIGNEES_PER_TASK: 50,
   MAX_MEMBERS_PER_GROUP: 100,
+  MAX_GROUP_NAME_LENGTH: 120,
+  MAX_GROUP_DESCRIPTION_LENGTH: 500,
   MAX_TAGS_PER_TASK: 10,
   MAX_TAG_LENGTH: 30,
   MAX_FILE_SIZE: 10485760, // 10MB in bytes

@@ -452,7 +452,8 @@ export default function TasksView() {
         dueDate: taskData.dueDate ? new Date(taskData.dueDate) : null,
         tags: taskData.tags || [],
         estimatedTime: taskData.estimatedTime || "",
-        type: taskData.category || "Operational"
+        type: taskData.category || "Operational",
+        assignedTo
       };
 
       console.log('🎯 Creating task with data:', backendTaskData);
