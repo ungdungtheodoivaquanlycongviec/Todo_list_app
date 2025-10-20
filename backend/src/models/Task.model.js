@@ -77,7 +77,7 @@ const taskSchema = new mongoose.Schema(
     },
     groupId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'groups',
+      ref: 'Group',
       default: null
     },
     attachments: {
@@ -250,7 +250,8 @@ taskSchema.methods.populateUserInfo = function() {
     { path: 'createdBy', select: 'name email avatar' },
     { path: 'assignedTo.userId', select: 'name email avatar' },
     { path: 'comments.user', select: 'name email avatar' },
-    { path: 'attachments.uploadedBy', select: 'name email avatar' }
+    { path: 'attachments.uploadedBy', select: 'name email avatar' },
+    { path: 'groupId', select: 'name description members metadata' }
   ]);
 };
 

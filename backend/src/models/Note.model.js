@@ -33,19 +33,33 @@ noteSchema.index({ userId: 1, title: 'text', content: 'text' });
 
 // Virtual for formatted lastEdited
 noteSchema.virtual('formattedLastEdited').get(function() {
-  const now = new Date();
-  const diffTime = Math.abs(now - this.lastEdited);
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  
-  if (diffDays === 1) {
+  if (!this.lastEdited) {
     return 'Today';
-  } else if (diffDays === 2) {
-    return 'Yesterday';
-  } else if (diffDays <= 7) {
-    return `${diffDays - 1} days ago`;
-  } else {
-    return this.lastEdited.toLocaleDateString();
   }
+
+  const now = new Date();
+  const diffMs = now.getTime() - this.lastEdited.getTime();
+
+  if (diffMs <= 0) {
+    return 'Today';
+  }
+
+  const dayMs = 1000 * 60 * 60 * 24;
+  const diffDays = Math.floor(diffMs / dayMs);
+
+  if (diffDays === 0) {
+    return 'Today';
+  }
+
+  if (diffDays === 1) {
+    return 'Yesterday';
+  }
+
+  if (diffDays < 7) {
+    return `${diffDays} days ago`;
+  }
+
+  return this.lastEdited.toLocaleDateString();
 });
 
 // Update lastEdited before saving

@@ -469,6 +469,170 @@ const validateUnassignUser = (req, res, next) => {
   next();
 };
 
+/**
+ * ==========================================
+ * Group Validators
+ * ==========================================
+ */
+
+const sanitizeMemberIds = (memberIds = []) => {
+  const unique = new Set();
+  memberIds.forEach(id => {
+    if (!id) return;
+    const normalized = typeof id === 'string' ? id.trim() : String(id);
+    if (normalized) {
+      unique.add(normalized);
+    }
+  });
+  return Array.from(unique);
+};
+
+const validateCreateGroup = (req, res, next) => {
+  const errors = [];
+  const { name, description, memberIds } = req.body;
+
+  if (!name || !name.trim()) {
+    errors.push({ field: 'name', message: 'Group name is required' });
+  } else if (name.trim().length > LIMITS.MAX_GROUP_NAME_LENGTH) {
+    errors.push({
+      field: 'name',
+      message: `Group name must not exceed ${LIMITS.MAX_GROUP_NAME_LENGTH} characters`
+    });
+  }
+
+  if (description && description.trim().length > LIMITS.MAX_GROUP_DESCRIPTION_LENGTH) {
+    errors.push({
+      field: 'description',
+      message: `Description must not exceed ${LIMITS.MAX_GROUP_DESCRIPTION_LENGTH} characters`
+    });
+  }
+
+  if (memberIds !== undefined) {
+    if (!Array.isArray(memberIds)) {
+      errors.push({ field: 'memberIds', message: 'memberIds must be an array' });
+    } else {
+      const sanitized = sanitizeMemberIds(memberIds);
+
+      const invalidIds = sanitized.filter(id => !isValidObjectId(id));
+      if (invalidIds.length > 0) {
+        errors.push({ field: 'memberIds', message: 'memberIds contains invalid id(s)', invalidIds });
+      }
+
+      if (sanitized.length + 1 > LIMITS.MAX_MEMBERS_PER_GROUP) {
+        errors.push({
+          field: 'memberIds',
+          message: `Groups can have at most ${LIMITS.MAX_MEMBERS_PER_GROUP} members including the creator`
+        });
+      }
+
+      req.body.memberIds = sanitized;
+    }
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: ERROR_MESSAGES.VALIDATION_ERROR,
+      errors
+    });
+  }
+
+  req.body.name = name.trim();
+  if (description !== undefined) {
+    req.body.description = description ? description.trim() : '';
+  }
+
+  next();
+};
+
+const validateUpdateGroup = (req, res, next) => {
+  const errors = [];
+  const { name, description, metadata } = req.body;
+
+  if (name !== undefined) {
+    if (!name.trim()) {
+      errors.push({ field: 'name', message: 'Group name cannot be empty' });
+    } else if (name.trim().length > LIMITS.MAX_GROUP_NAME_LENGTH) {
+      errors.push({
+        field: 'name',
+        message: `Group name must not exceed ${LIMITS.MAX_GROUP_NAME_LENGTH} characters`
+      });
+    } else {
+      req.body.name = name.trim();
+    }
+  }
+
+  if (description !== undefined) {
+    if (description && description.trim().length > LIMITS.MAX_GROUP_DESCRIPTION_LENGTH) {
+      errors.push({
+        field: 'description',
+        message: `Description must not exceed ${LIMITS.MAX_GROUP_DESCRIPTION_LENGTH} characters`
+      });
+    } else {
+      req.body.description = description ? description.trim() : '';
+    }
+  }
+
+  if (metadata !== undefined && typeof metadata !== 'object') {
+    errors.push({ field: 'metadata', message: 'metadata must be an object' });
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: ERROR_MESSAGES.VALIDATION_ERROR,
+      errors
+    });
+  }
+
+  next();
+};
+
+const validateManageGroupMembers = (req, res, next) => {
+  const { memberIds } = req.body;
+  const errors = [];
+
+  if (!Array.isArray(memberIds) || memberIds.length === 0) {
+    errors.push({ field: 'memberIds', message: 'memberIds must be a non-empty array' });
+  } else {
+    const sanitized = sanitizeMemberIds(memberIds);
+
+    if (sanitized.length === 0) {
+      errors.push({ field: 'memberIds', message: 'memberIds must contain at least one valid id' });
+    }
+
+    const invalidIds = sanitized.filter(id => !isValidObjectId(id));
+    if (invalidIds.length > 0) {
+      errors.push({ field: 'memberIds', message: 'memberIds contains invalid id(s)', invalidIds });
+    }
+
+    req.body.memberIds = sanitized;
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: ERROR_MESSAGES.VALIDATION_ERROR,
+      errors
+    });
+  }
+
+  next();
+};
+
+const validateGroupMemberParam = (req, res, next) => {
+  const { memberId } = req.params;
+  if (!memberId || !isValidObjectId(memberId)) {
+    return res.status(400).json({
+      success: false,
+      message: ERROR_MESSAGES.VALIDATION_ERROR,
+      errors: [{ field: 'memberId', message: 'memberId is invalid' }]
+    });
+  }
+
+  next();
+};
+
 module.exports = {
   validateCreateTask,
   validateUpdateTask,
@@ -479,5 +643,9 @@ module.exports = {
   validateAddComment,
   validateUpdateComment,
   validateAssignTask,
-  validateUnassignUser
+  validateUnassignUser,
+  validateCreateGroup,
+  validateUpdateGroup,
+  validateManageGroupMembers,
+  validateGroupMemberParam
 };

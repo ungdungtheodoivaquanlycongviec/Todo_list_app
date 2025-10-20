@@ -70,7 +70,7 @@ const updateTask = asyncHandler(async (req, res) => {
   const updateData = req.body;
 
   // Call service
-  const task = await taskService.updateTask(id, updateData);
+  const task = await taskService.updateTask(id, updateData, req.user._id);
 
   if (!task) {
     return sendError(res, ERROR_MESSAGES.TASK_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
@@ -106,7 +106,8 @@ const getAllTasks = asyncHandler(async (req, res) => {
   const filters = {
     status: req.query.status,
     priority: req.query.priority,
-    search: req.query.search
+    search: req.query.search,
+    groupId: req.query.groupId
   };
 
   const options = {
@@ -117,7 +118,7 @@ const getAllTasks = asyncHandler(async (req, res) => {
   };
 
   // Call service
-  const result = await taskService.getAllTasks(filters, options);
+  const result = await taskService.getAllTasks(filters, options, req.user._id);
 
   sendSuccess(res, result, SUCCESS_MESSAGES.TASKS_FETCHED);
 });
@@ -149,7 +150,7 @@ const getKanbanView = asyncHandler(async (req, res) => {
   };
 
   // Call service
-  const result = await taskService.getKanbanView(filters);
+  const result = await taskService.getKanbanView(filters, req.user._id);
 
   sendSuccess(res, result, 'Lấy kanban view thành công');
 });
