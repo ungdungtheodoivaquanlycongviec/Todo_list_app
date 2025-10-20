@@ -44,6 +44,7 @@ const ERROR_MESSAGES = {
   GROUP_NOT_FOUND: 'Group not found',
   USER_NOT_FOUND: 'User not found',
   NOTIFICATION_NOT_FOUND: 'Notification not found',
+  NOTE_NOT_FOUND: 'Note not found',
   UNAUTHORIZED: 'Unauthorized access',
   FORBIDDEN: 'Forbidden access',
   VALIDATION_ERROR: 'Validation error',
@@ -77,7 +78,12 @@ const SUCCESS_MESSAGES = {
   SCHEDULED_WORK_DELETED: 'Scheduled work deleted successfully',
   COMMENT_ADDED: 'Comment added successfully',
   COMMENT_UPDATED: 'Comment updated successfully',
-  COMMENT_DELETED: 'Comment deleted successfully'
+  COMMENT_DELETED: 'Comment deleted successfully',
+  NOTES_FETCHED: 'Notes fetched successfully',
+  NOTE_CREATED: 'Note created successfully',
+  NOTE_UPDATED: 'Note updated successfully',
+  NOTE_DELETED: 'Note deleted successfully',
+  NOTE_FETCHED: 'Note fetched successfully'
 };
 
 // Limits
