@@ -29,7 +29,8 @@ export default function Sidebar() {
   };
 
   return (
-    <div className="w-[12.5%] bg-[#0F1D40] text-[#FFFFE6] flex flex-col">
+    // THAY ĐỔI: w-[12.5%] thành w-full vì grid đã xử lý width
+    <div className="w-full h-full bg-[#0F1D40] text-[#FFFFE6] flex flex-col">
       {/* Personal Workspace Title */}
       <div className="p-4 border-b border-[#2D4071]">
         <select 

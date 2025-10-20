@@ -16,7 +16,8 @@ export default function ToolsSidebar({ activeView, onViewChange }: ToolsSidebarP
   ];
 
   return (
-    <div className="w-[6.25%] bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col pt-4">
+    // THAY ĐỔI: w-[6.25%] thành w-full vì grid đã xử lý width
+    <div className="w-full h-full bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col pt-4">
       <h2 className="px-3 mb-3 text-xs font-medium text-gray-600 dark:text-gray-400">Tools</h2>
       
       {tools.map((tool) => {

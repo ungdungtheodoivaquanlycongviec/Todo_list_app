@@ -14,10 +14,32 @@ export const userService = {
 
   // Update user profile
   async updateProfile(userData: Partial<User>): Promise<User> {
-    const response = await apiClient.patch<ApiResponse<{ user: User }>>(
-      '/users/profile',
+    const response = await apiClient.put<ApiResponse<{ user: User }>>(
+      '/users/me',
       userData
     );
     return response.data.user;
   },
+
+  // Change password
+  async changePassword(oldPassword: string, newPassword: string): Promise<void> {
+    await apiClient.put<ApiResponse<void>>(
+      '/users/me/password',
+      { oldPassword, newPassword }
+    );
+  },
+
+  // Deactivate account
+  async deactivateAccount(): Promise<void> {
+    await apiClient.delete<ApiResponse<void>>('/users/me');
+  },
+
+  // Update avatar
+  async updateAvatar(avatar: string): Promise<User> {
+    const response = await apiClient.put<ApiResponse<{ user: User }>>(
+      '/users/me/avatar',
+      { avatar }
+    );
+    return response.data.user;
+  }
 };

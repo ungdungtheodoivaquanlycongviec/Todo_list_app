@@ -121,7 +121,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
   const estimatedTimeOptions = ["15m", "30m", "1h", "2h", "4h", "1d", "2d", "1w"]
   const taskTypeOptions = ["Operational", "Strategic", "Financial", "Technical", "Other"]
-  const priorityOptions = ["low", "medium", "high", "critical", "urgent"]
+  const priorityOptions = ["low", "medium", "high", "urgent"]
   const statusOptions = ["todo", "in_progress", "completed", "archived"]
 
   const fetchTaskDetails = useCallback(async () => {

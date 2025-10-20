@@ -10,16 +10,19 @@ interface UserMenuProps {
   onLogout: () => void;
   theme: string;
   onThemeChange: (theme: string) => void;
+  onProfileClick?: () => void;
 }
 
 export default function UserMenu({ 
   currentUser, 
   onLogout, 
   theme, 
-  onThemeChange 
+  onThemeChange,
+  onProfileClick
 }: UserMenuProps) {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showThemeOptions, setShowThemeOptions] = useState(false);
+  const [avatarError, setAvatarError] = useState(false); // THÊM STATE CHO AVATAR ERROR
   const userMenuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -33,6 +36,11 @@ export default function UserMenu({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // RESET AVATAR ERROR KHI USER THAY ĐỔI
+  useEffect(() => {
+    setAvatarError(false);
+  }, [currentUser.avatar]);
 
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
@@ -67,10 +75,20 @@ export default function UserMenu({
         onClick={() => setShowUserMenu(!showUserMenu)}
         className="flex items-center gap-2 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
       >
-        <div className="w-8 h-8 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center">
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {getInitials(currentUser.name)}
-          </span>
+        {/* AVATAR DISPLAY - SỬA LẠI ĐỂ HIỂN THỊ ĐÚNG */}
+        <div className="w-8 h-8 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center overflow-hidden">
+          {currentUser.avatar && !avatarError ? (
+            <img 
+              src={currentUser.avatar} 
+              alt="Avatar"
+              className="w-full h-full object-cover"
+              onError={() => setAvatarError(true)}
+            />
+          ) : (
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {getInitials(currentUser.name)}
+            </span>
+          )}
         </div>
       </button>
 
@@ -80,10 +98,19 @@ export default function UserMenu({
           {/* User Info */}
           <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center">
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {getInitials(currentUser.name)}
-                </span>
+              <div className="w-10 h-10 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center overflow-hidden">
+                {currentUser.avatar && !avatarError ? (
+                  <img 
+                    src={currentUser.avatar} 
+                    alt="Avatar"
+                    className="w-full h-full object-cover"
+                    onError={() => setAvatarError(true)}
+                  />
+                ) : (
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {getInitials(currentUser.name)}
+                  </span>
+                )}
               </div>
               <div>
                 <div className="font-medium text-sm text-gray-900 dark:text-gray-100">{currentUser.name}</div>
@@ -92,13 +119,13 @@ export default function UserMenu({
             </div>
           </div>
 
-          {/* Menu Items - TẤT CẢ CÙNG CẤU TRÚC */}
+          {/* Menu Items */}
           <div className="py-1">
             {/* Profile Settings */}
             <button
               onClick={() => {
                 setShowUserMenu(false);
-                router.push('/profile');
+                onProfileClick?.();
               }}
               className="w-full px-4 py-2 flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-left"
             >
@@ -109,7 +136,7 @@ export default function UserMenu({
             {/* Divider */}
             <div className="border-t border-gray-200 dark:border-gray-700 my-1"></div>
 
-            {/* Theme Toggle - CÙNG CẤU TRÚC VỚI SETTINGS */}
+            {/* Theme Toggle */}
             <div className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
               <button
                 onClick={() => setShowThemeOptions(!showThemeOptions)}
@@ -129,7 +156,7 @@ export default function UserMenu({
                 </div>
               </button>
 
-              {/* Theme Options - CĂN CHỈNH HOÀN HẢO */}
+              {/* Theme Options */}
               {showThemeOptions && (
                 <div className="mt-2 space-y-1 ml-7">
                   <button
@@ -172,7 +199,7 @@ export default function UserMenu({
             {/* Divider */}
             <div className="border-t border-gray-200 dark:border-gray-700 my-1"></div>
 
-            {/* Logout - CÙNG CẤU TRÚC VỚI SETTINGS */}
+            {/* Logout */}
             <button
               onClick={() => {
                 setShowUserMenu(false);

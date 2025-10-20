@@ -9,11 +9,13 @@ interface TopBarProps {
   onLogout: () => void;
   theme: string;
   onThemeChange: (theme: string) => void;
+  onProfileClick?: () => void;
 }
 
-export default function TopBar({ user, onLogout, theme, onThemeChange }: TopBarProps) {
+export default function TopBar({ user, onLogout, theme, onThemeChange, onProfileClick }: TopBarProps) {
   return (
-    <div className="h-16 border-b border-gray-200 dark:border-gray-700 flex items-center justify-end px-6 bg-white dark:bg-gray-800">
+    // LOẠI BỎ BORDER Ở TOPBAR
+    <div className="h-16 flex items-center justify-end px-6 bg-white dark:bg-gray-800">
       <div className="flex items-center gap-4">
         {/* Notifications */}
         <button className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg relative">
@@ -25,6 +27,7 @@ export default function TopBar({ user, onLogout, theme, onThemeChange }: TopBarP
           onLogout={onLogout}
           theme={theme}
           onThemeChange={onThemeChange}
+          onProfileClick={onProfileClick}
         />
       </div>
     </div>

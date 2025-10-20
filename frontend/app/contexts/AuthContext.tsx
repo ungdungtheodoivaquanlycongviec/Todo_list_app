@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { authService } from '../services/auth.service';
-import { userService } from '../services/user.service'; // THÊM IMPORT
+import { userService } from '../services/user.service';
 import { User, LoginRequest, RegisterRequest, AuthResponse } from '../services/types/auth.types';
 
 interface AuthContextType {
@@ -12,7 +12,8 @@ interface AuthContextType {
   login: (credentials: LoginRequest) => Promise<void>;
   register: (userData: RegisterRequest) => Promise<void>;
   logout: () => Promise<void>;
-  updateUserTheme: (theme: string) => Promise<void>; // THÊM FUNCTION MỚI
+  updateUserTheme: (theme: string) => Promise<void>;
+  updateUser: (userData: Partial<User>) => Promise<void>; // THÊM FUNCTION NÀY
   isAuthenticated: boolean;
   loginWithGoogle: () => Promise<void>;
 }
@@ -56,34 +57,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // Helper function to apply theme
-  // Helper function to apply theme - ĐÃ SỬA
-const applyTheme = (theme: string) => {
-  console.log('Applying theme:', theme);
-  const root = document.documentElement;
-  
-  // Xóa cả class light và dark trước
-  root.classList.remove('light', 'dark');
-  
-  if (theme === 'auto') {
-    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    console.log('System prefers dark:', systemPrefersDark);
-    if (systemPrefersDark) {
+  const applyTheme = (theme: string) => {
+    console.log('Applying theme:', theme);
+    const root = document.documentElement;
+    
+    // Xóa cả class light và dark trước
+    root.classList.remove('light', 'dark');
+    
+    if (theme === 'auto') {
+      const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      console.log('System prefers dark:', systemPrefersDark);
+      if (systemPrefersDark) {
+        root.classList.add('dark');
+      } else {
+        root.classList.add('light');
+      }
+    } else if (theme === 'dark') {
+      console.log('Setting dark theme');
       root.classList.add('dark');
     } else {
+      console.log('Setting light theme');
       root.classList.add('light');
     }
-  } else if (theme === 'dark') {
-    console.log('Setting dark theme');
-    root.classList.add('dark');
-  } else {
-    console.log('Setting light theme');
-    root.classList.add('light');
-  }
+    
+    // Lưu vào localStorage
+    localStorage.setItem('theme', theme);
+    console.log('Theme saved to localStorage:', theme);
+    console.log('HTML classes:', root.classList.toString());
+  };
+
+  // THÊM FUNCTION UPDATE USER
+  const updateUser = async (userData: Partial<User>): Promise<void> => { 
+  if (!user) return;
   
-  // Lưu vào localStorage
-  localStorage.setItem('theme', theme);
-  console.log('Theme saved to localStorage:', theme);
-  console.log('HTML classes:', root.classList.toString());
+  try {
+    // Update on server
+    const updatedUser = await userService.updateProfile(userData);
+    
+    // Update local state
+    setUser(updatedUser);
+    
+    // Update localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+    }
+    
+    // Không trả về gì cả (void)
+  } catch (error) {
+    console.error('Failed to update user:', error);
+    throw error;
+  }
 };
 
   // Google login
@@ -117,43 +140,43 @@ const applyTheme = (theme: string) => {
     }
   };
 
-  // Trong hàm login
-const login = async (credentials: LoginRequest) => {
-  try {
-    setLoading(true);
-    const authData: AuthResponse = await authService.login(credentials);
-    
-    // Save tokens - ĐẢM BẢO LƯU ĐÚNG KEY
-    authService.saveTokens(authData.accessToken, authData.refreshToken);
-    
-    // THÊM: Lưu token vào localStorage để taskService có thể đọc
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('token', authData.accessToken);
-      localStorage.setItem('accessToken', authData.accessToken); // Lưu cả 2 key để chắc chắn
+  // Login function
+  const login = async (credentials: LoginRequest) => {
+    try {
+      setLoading(true);
+      const authData: AuthResponse = await authService.login(credentials);
+      
+      // Save tokens
+      authService.saveTokens(authData.accessToken, authData.refreshToken);
+      
+      // THÊM: Lưu token vào localStorage để taskService có thể đọc
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('token', authData.accessToken);
+        localStorage.setItem('accessToken', authData.accessToken);
+      }
+      
+      // Set user state
+      setUser(authData.user);
+      
+      // Apply user's theme preference
+      applyTheme(authData.user.theme);
+      
+      // Save user to localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('user', JSON.stringify(authData.user));
+      }
+      
+      console.log('Login successful, token saved:', authData.accessToken);
+      
+      // Redirect to dashboard
+      router.push('/dashboard');
+    } catch (error) {
+      console.error('Login failed:', error);
+      throw error;
+    } finally {
+      setLoading(false);
     }
-    
-    // Set user state
-    setUser(authData.user);
-    
-    // Apply user's theme preference
-    applyTheme(authData.user.theme);
-    
-    // Save user to localStorage
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('user', JSON.stringify(authData.user));
-    }
-    
-    console.log('Login successful, token saved:', authData.accessToken);
-    
-    // Redirect to dashboard
-    router.push('/dashboard');
-  } catch (error) {
-    console.error('Login failed:', error);
-    throw error;
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const register = async (userData: RegisterRequest) => {
     try {
@@ -184,7 +207,7 @@ const login = async (credentials: LoginRequest) => {
     }
   };
 
-  // THÊM FUNCTION UPDATE THEME
+  // Update theme function
   const updateUserTheme = async (theme: string) => {
     if (!user) return;
     
@@ -237,7 +260,8 @@ const login = async (credentials: LoginRequest) => {
     login,
     register,
     logout,
-    updateUserTheme, // THÊM VÀO CONTEXT
+    updateUserTheme,
+    updateUser, // THÊM VÀO CONTEXT
     isAuthenticated: !!user,
     loginWithGoogle
   };
