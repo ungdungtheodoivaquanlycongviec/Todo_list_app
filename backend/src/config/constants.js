@@ -51,10 +51,8 @@ const ERROR_MESSAGES = {
   INVALID_CREDENTIALS: 'Invalid credentials',
   EMAIL_ALREADY_EXISTS: 'Email already exists',
   INVALID_TOKEN: 'Invalid or expired token',
-  TIME_ENTRY_NOT_FOUND: 'Time entry not found',
-  SCHEDULED_WORK_NOT_FOUND: 'Scheduled work not found',
-  INVALID_TIME_ENTRY: 'Invalid time entry data',
-  INVALID_SCHEDULED_WORK: 'Invalid scheduled work data'
+  INVALID_ID: 'Invalid ID format',
+  INVALID_TASK_ID: 'Invalid task ID'
 };
 
 // Success Messages
@@ -62,6 +60,8 @@ const SUCCESS_MESSAGES = {
   TASK_CREATED: 'Task created successfully',
   TASK_UPDATED: 'Task updated successfully',
   TASK_DELETED: 'Task deleted successfully',
+  TASK_ASSIGNED: 'Assignees updated successfully',
+  TASK_UNASSIGNED: 'Assignee removed successfully',
   GROUP_CREATED: 'Group created successfully',
   GROUP_UPDATED: 'Group updated successfully',
   GROUP_DELETED: 'Group deleted successfully',

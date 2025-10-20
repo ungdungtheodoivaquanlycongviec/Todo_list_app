@@ -1,0 +1,1276 @@
+{
+  "info": {
+    "name": "Phase7 Task Assignment",
+    "_postman_id": "d1c2b0df-4c5a-4b8d-90f2-6cfdd01e7a2f",
+    "description": "Postman collection covering setup, assignment, query, and unassignment flows for Phase 7 Task Assignment endpoints.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Setup",
+      "description": "Create test users and seed a base task for assignment scenarios.",
+      "item": [
+        {
+          "name": "Register Task Owner",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const email = `owner_${Date.now()}@example.com`;",
+                  "pm.collectionVariables.set('ownerEmail', email);",
+                  "pm.collectionVariables.set('ownerPassword', 'OwnerPass123!');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Registration succeeded', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "});",
+                  "if (json.data && json.data.user) {",
+                  "  pm.collectionVariables.set('ownerId', json.data.user._id);",
+                  "  pm.collectionVariables.set('ownerName', json.data.user.name);",
+                  "}",
+                  "if (json.data && json.data.accessToken) {",
+                  "  pm.collectionVariables.set('ownerAccessToken', json.data.accessToken);",
+                  "}",
+                  "if (json.data && json.data.refreshToken) {",
+                  "  pm.collectionVariables.set('ownerRefreshToken', json.data.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{ownerEmail}}\",\n  \"password\": \"{{ownerPassword}}\",\n  \"name\": \"Owner Automation\"\n}"
+            },
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/auth/register",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Test Task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Task creation succeeded', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "});",
+                  "if (json.data && json.data._id) {",
+                  "  pm.collectionVariables.set('taskId', json.data._id);",
+                  "  pm.collectionVariables.set('taskTitle', json.data.title);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerAccessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Phase 7 Assignment Test Task\",\n  \"description\": \"Task created automatically for assignment test cases\",\n  \"dueDate\": \"2030-01-01T00:00:00.000Z\",\n  \"priority\": \"high\"\n}"
+            },
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/tasks",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Register Assignee 1",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const email = `assignee1_${Date.now()}@example.com`;",
+                  "pm.collectionVariables.set('assignee1Email', email);",
+                  "pm.collectionVariables.set('assignee1Password', 'Assignee1Pass!');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Assignee 1 registered', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "});",
+                  "if (json.data && json.data.user) {",
+                  "  pm.collectionVariables.set('assignee1Id', json.data.user._id);",
+                  "  pm.collectionVariables.set('assignee1Name', json.data.user.name);",
+                  "}",
+                  "if (json.data && json.data.accessToken) {",
+                  "  pm.collectionVariables.set('assignee1AccessToken', json.data.accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{assignee1Email}}\",\n  \"password\": \"{{assignee1Password}}\",\n  \"name\": \"Assignee One\"\n}"
+            },
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/auth/register",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Register Assignee 2",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const email = `assignee2_${Date.now()}@example.com`;",
+                  "pm.collectionVariables.set('assignee2Email', email);",
+                  "pm.collectionVariables.set('assignee2Password', 'Assignee2Pass!');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Assignee 2 registered', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "});",
+                  "if (json.data && json.data.user) {",
+                  "  pm.collectionVariables.set('assignee2Id', json.data.user._id);",
+                  "  pm.collectionVariables.set('assignee2Name', json.data.user.name);",
+                  "}",
+                  "if (json.data && json.data.accessToken) {",
+                  "  pm.collectionVariables.set('assignee2AccessToken', json.data.accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{assignee2Email}}\",\n  \"password\": \"{{assignee2Password}}\",\n  \"name\": \"Assignee Two\"\n}"
+            },
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/auth/register",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Register Assignee 3",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const email = `assignee3_${Date.now()}@example.com`;",
+                  "pm.collectionVariables.set('assignee3Email', email);",
+                  "pm.collectionVariables.set('assignee3Password', 'Assignee3Pass!');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Assignee 3 registered', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "});",
+                  "if (json.data && json.data.user) {",
+                  "  pm.collectionVariables.set('assignee3Id', json.data.user._id);",
+                  "  pm.collectionVariables.set('assignee3Name', json.data.user.name);",
+                  "}",
+                  "if (json.data && json.data.accessToken) {",
+                  "  pm.collectionVariables.set('assignee3AccessToken', json.data.accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{assignee3Email}}\",\n  \"password\": \"{{assignee3Password}}\",\n  \"name\": \"Assignee Three\"\n}"
+            },
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/auth/register",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Assign Tests",
+      "description": "Validate assignment flows for owners and error paths.",
+      "item": [
+        {
+          "name": "Assign Single User - Success",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Assignment succeeded', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "  pm.expect(json.data.assignedUserIds).to.include(pm.collectionVariables.get('assignee1Id'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerAccessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userIds\": [\"{{assignee1Id}}\"]\n}"
+            },
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/tasks/{{taskId}}/assign",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "{{taskId}}",
+                "assign"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Assign Multiple Users - Success",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Multiple assignment succeeded', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "  pm.expect(json.data.assignedUserIds).to.include(pm.collectionVariables.get('assignee2Id'));",
+                  "  pm.expect(json.data.assignedUserIds).to.include(pm.collectionVariables.get('assignee3Id'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerAccessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userIds\": [\"{{assignee2Id}}\", \"{{assignee3Id}}\"]\n}"
+            },
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/tasks/{{taskId}}/assign",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "{{taskId}}",
+                "assign"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Assign Duplicate User - Error",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Duplicate assignment blocked', function () {",
+                  "  pm.expect(json.success).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerAccessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userIds\": [\"{{assignee1Id}}\"]\n}"
+            },
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/tasks/{{taskId}}/assign",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "{{taskId}}",
+                "assign"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Assign Non-existent User - Error",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Missing user rejected', function () {",
+                  "  pm.expect(json.success).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerAccessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userIds\": [\"{{nonexistentUserId}}\"]\n}"
+            },
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/tasks/{{taskId}}/assign",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "{{taskId}}",
+                "assign"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Assign Invalid Format - Error",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Invalid id rejected', function () {",
+                  "  pm.expect(json.success).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerAccessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userIds\": [\"invalid-id\"]\n}"
+            },
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/tasks/{{taskId}}/assign",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "{{taskId}}",
+                "assign"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Assign Empty Array - Error",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Empty payload rejected', function () {",
+                  "  pm.expect(json.success).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerAccessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userIds\": []\n}"
+            },
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/tasks/{{taskId}}/assign",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "{{taskId}}",
+                "assign"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Assign Not Owner - Forbidden",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 403', function () {",
+                  "  pm.response.to.have.status(403);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Non-owner blocked', function () {",
+                  "  pm.expect(json.success).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{assignee2AccessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userIds\": [\"{{assignee3Id}}\"]\n}"
+            },
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/tasks/{{taskId}}/assign",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "{{taskId}}",
+                "assign"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Assign Exceed Limit - Error",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const ids = [];",
+                  "for (let i = 0; i < 51; i += 1) {",
+                  "  const suffix = i.toString(16).padStart(2, '0');",
+                  "  ids.push(`507f1f77bcf86cd79943${suffix}`);",
+                  "}",
+                  "pm.collectionVariables.set('tooManyUserIds', JSON.stringify(ids));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Limit enforcement triggered', function () {",
+                  "  pm.expect(json.success).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerAccessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userIds\": {{tooManyUserIds}}\n}"
+            },
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/tasks/{{taskId}}/assign",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "{{taskId}}",
+                "assign"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Query Tests",
+      "description": "Verify assignee and assignment listing endpoints.",
+      "item": [
+        {
+          "name": "Get Assigned to Me - Success",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Assigned tasks returned', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "  pm.expect(json.data.tasks.length).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{assignee1AccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/tasks/assigned-to-me",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "assigned-to-me"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Assigned - With Filters",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Filters applied', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{assignee1AccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/tasks/assigned-to-me?status=todo&priority=high",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "assigned-to-me"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "todo"
+                },
+                {
+                  "key": "priority",
+                  "value": "high"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Assigned - Pagination",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Pagination honored', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "  pm.expect(json.data.pagination.limit).to.eql(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{assignee1AccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/tasks/assigned-to-me?page=1&limit=1",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "assigned-to-me"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Assigned - Search",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Search results found', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "  pm.expect(json.data.tasks.length).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{assignee1AccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/tasks/assigned-to-me?search=Phase%207%20Assignment",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "assigned-to-me"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "Phase 7 Assignment"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Task Assignees - Success",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Assignee list returned', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "  pm.expect(json.data.total).to.eql(3);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/tasks/{{taskId}}/assignees",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "{{taskId}}",
+                "assignees"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Task Assignees - Not Found",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 404', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Missing task handled', function () {",
+                  "  pm.expect(json.success).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/tasks/{{nonexistentTaskId}}/assignees",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "{{nonexistentTaskId}}",
+                "assignees"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Unassign Tests",
+      "description": "Ensure removal flows respect permissions and validation.",
+      "item": [
+        {
+          "name": "Unassign User - Success",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Unassignment succeeded', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "  pm.expect(json.data.removedUserId).to.eql(pm.collectionVariables.get('assignee1Id'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/tasks/{{taskId}}/unassign/{{assignee1Id}}",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "{{taskId}}",
+                "unassign",
+                "{{assignee1Id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Unassign Not Assigned - Error",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 404', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Repeat removal blocked', function () {",
+                  "  pm.expect(json.success).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/tasks/{{taskId}}/unassign/{{assignee1Id}}",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "{{taskId}}",
+                "unassign",
+                "{{assignee1Id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Unassign Not Owner - Forbidden",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 403', function () {",
+                  "  pm.response.to.have.status(403);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Non-owner cannot unassign', function () {",
+                  "  pm.expect(json.success).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{assignee2AccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/tasks/{{taskId}}/unassign/{{assignee2Id}}",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "{{taskId}}",
+                "unassign",
+                "{{assignee2Id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Unassign Invalid ID - Error",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Invalid id prevented', function () {",
+                  "  pm.expect(json.success).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/tasks/{{taskId}}/unassign/invalid-id",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "{{taskId}}",
+                "unassign",
+                "invalid-id"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Integration Test",
+      "description": "Final verification that remaining assignees persist after unassignment flows.",
+      "item": [
+        {
+          "name": "Final Assignee Snapshot",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Only two assignees remain', function () {",
+                  "  pm.expect(json.success).to.be.true;",
+                  "  pm.expect(json.data.total).to.eql(2);",
+                  "  const ids = json.data.assignees.map(a => a.user ? a.user._id : null);",
+                  "  pm.expect(ids).to.not.include(pm.collectionVariables.get('assignee1Id'));",
+                  "  pm.expect(ids).to.include(pm.collectionVariables.get('assignee2Id'));",
+                  "  pm.expect(ids).to.include(pm.collectionVariables.get('assignee3Id'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBaseUrl}}/api/tasks/{{taskId}}/assignees",
+              "host": [
+                "{{apiBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "{{taskId}}",
+                "assignees"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "apiBaseUrl",
+      "value": "http://localhost:5000"
+    },
+    {
+      "key": "nonexistentUserId",
+      "value": "507f1f77bcf86cd799439011"
+    },
+    {
+      "key": "nonexistentTaskId",
+      "value": "507f1f77bcf86cd799439012"
+    }
+  ]
+}

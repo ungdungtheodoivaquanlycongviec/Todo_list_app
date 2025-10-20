@@ -246,13 +246,12 @@ taskSchema.pre('save', function(next) {
 
 // Method: Populate user info
 taskSchema.methods.populateUserInfo = function() {
-  return this.populate('createdBy', 'name email avatar')
-    .populate('assignedTo.userId', 'name email avatar')
-    .populate('comments.user', 'name email avatar')
-    .populate('attachments.uploadedBy', 'name email avatar')
-    .populate('timeEntries.user', 'name email avatar')
-    .populate('scheduledWork.user', 'name email avatar')
-    .execPopulate();
+  return this.populate([
+    { path: 'createdBy', select: 'name email avatar' },
+    { path: 'assignedTo.userId', select: 'name email avatar' },
+    { path: 'comments.user', select: 'name email avatar' },
+    { path: 'attachments.uploadedBy', select: 'name email avatar' }
+  ]);
 };
 
 // Method: Format total logged time
