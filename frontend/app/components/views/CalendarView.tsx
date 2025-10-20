@@ -1,10 +1,11 @@
-"use client"
+"use client";
 
 import React, { useState, useEffect } from 'react';
 import { Plus, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { taskService } from '../../services/task.service';
 import { Task } from '../../services/types/task.types';
 import { useAuth } from '../../contexts/AuthContext';
+import CreateTaskModal from './TasksView/CreateTaskModal'; // Thêm import
 
 interface CalendarEvent {
   id: string;
@@ -29,6 +30,7 @@ export default function CalendarView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [calendarData, setCalendarData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false); // Thêm state cho modal
   
   // Mock waiting list data (giữ nguyên từ ảnh)
   const [waitingList, setWaitingList] = useState<WaitingListItem[]>([
@@ -164,9 +166,52 @@ export default function CalendarView() {
     }
   };
 
-  const handleAddEvent = () => {
-    // TODO: Connect to backend API
-    console.log('Add new event - connect to API');
+  // Thay đổi hàm handleAddEvent để mở modal
+  const handleAddTask = () => {
+    setShowCreateModal(true);
+  };
+
+  // Hàm xử lý tạo task mới
+  const handleCreateTask = async (taskData: any) => {
+    try {
+      const assignedTo = currentUser ? [{ userId: currentUser._id }] : [];
+
+      const backendTaskData = {
+        title: taskData.title || "Untitled Task",
+        description: taskData.description || "",
+        category: taskData.category || "general",
+        status: "todo",
+        priority: mapPriorityToBackend(taskData.priority),
+        dueDate: taskData.dueDate ? new Date(taskData.dueDate) : null,
+        tags: taskData.tags || [],
+        assignedTo: assignedTo,
+        estimatedTime: taskData.estimatedTime || "",
+      };
+
+      console.log("Creating task with data:", backendTaskData);
+      await taskService.createTask(backendTaskData);
+      setShowCreateModal(false);
+
+      // Refresh calendar data
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth() + 1;
+      fetchCalendarData(year, month);
+    } catch (error) {
+      console.error("Error creating task:", error);
+      alert("Failed to create task: " + getErrorMessage(error));
+    }
+  };
+
+  // Helper function để map priority
+  const mapPriorityToBackend = (frontendPriority: string): string => {
+    const priorityMap: { [key: string]: string } = {
+      None: "low",
+      Low: "low",
+      Medium: "medium",
+      High: "high",
+      Urgent: "urgent",
+    };
+    return priorityMap[frontendPriority] || "medium";
   };
 
   const handleEventClick = (taskId: string) => {
@@ -201,12 +246,13 @@ export default function CalendarView() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold">Calendar</h1>
+        {/* Thay đổi nút thành Add Task và tích hợp chức năng từ TaskView */}
         <button 
-          onClick={handleAddEvent}
-          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+          onClick={handleAddTask}
+          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm"
         >
           <Plus className="w-4 h-4" />
-          Add new
+          Add Task
         </button>
       </div>
 
@@ -218,7 +264,7 @@ export default function CalendarView() {
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-4">
                 <button 
-                  className="p-2 hover:bg-gray-100 rounded-lg"
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                   onClick={() => navigateMonth('prev')}
                 >
                   <ChevronLeft className="w-5 h-5" />
@@ -227,14 +273,14 @@ export default function CalendarView() {
                   {getMonthYearString(currentDate)}
                 </h2>
                 <button 
-                  className="p-2 hover:bg-gray-100 rounded-lg"
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                   onClick={() => navigateMonth('next')}
                 >
                   <ChevronRight className="w-5 h-5" />
                 </button>
               </div>
               <button 
-                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 onClick={goToToday}
               >
                 Today
@@ -260,7 +306,7 @@ export default function CalendarView() {
                     key={dayInfo.date}
                     className={`min-h-32 p-2 border border-gray-200 rounded-lg ${
                       isToday ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'
-                    } cursor-pointer`}
+                    } cursor-pointer transition-colors`}
                     onClick={() => handleDayClick(dayInfo)}
                   >
                     <div className={`text-sm font-medium mb-1 ${
@@ -274,7 +320,7 @@ export default function CalendarView() {
                       {dayTasks.slice(0, 3).map((task: Task) => (
                         <div 
                           key={task._id}
-                          className={`text-xs p-1 rounded border-l-2 cursor-pointer hover:opacity-80 ${getPriorityColor(task.priority || 'medium')}`}
+                          className={`text-xs p-1 rounded border-l-2 cursor-pointer hover:opacity-80 transition-opacity ${getPriorityColor(task.priority || 'medium')}`}
                           onClick={(e) => {
                             e.stopPropagation();
                             handleEventClick(task._id);
@@ -347,7 +393,7 @@ export default function CalendarView() {
                       return (
                         <div
                           key={dayInfo.date}
-                          className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer"
+                          className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
                           onClick={() => handleDayClick(dayInfo)}
                         >
                           <div className="flex items-center gap-3">
@@ -380,7 +426,7 @@ export default function CalendarView() {
                 <input
                   type="text"
                   placeholder="Search"
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
@@ -404,7 +450,7 @@ export default function CalendarView() {
               {waitingList.map((item) => (
                 <div 
                   key={item.id}
-                  className="bg-gray-50 border border-gray-200 p-3 rounded-lg cursor-pointer hover:bg-gray-100"
+                  className="bg-gray-50 border border-gray-200 p-3 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
                   onClick={() => handleWaitingListItemClick(item.id)}
                 >
                   <div className="text-sm text-gray-800">{item.title}</div>
@@ -417,6 +463,16 @@ export default function CalendarView() {
           </div>
         </div>
       </div>
+
+      {/* Thêm CreateTaskModal */}
+      {showCreateModal && (
+        <CreateTaskModal
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onCreateTask={handleCreateTask}
+          currentUser={currentUser}
+        />
+      )}
     </div>
   );
 }
