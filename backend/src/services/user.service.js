@@ -1,5 +1,6 @@
 const User = require('../models/User.model');
 const authService = require('./auth.service');
+const fileService = require('./file.service');
 
 class UserService {
   /**
@@ -136,6 +137,42 @@ class UserService {
     }
     
     return user.toSafeObject();
+  }
+
+  /**
+   * Upload user avatar file
+   * @param {String} userId
+   * @param {Object} file - Multer file object
+   * @returns {Object} - Updated user
+   */
+  async uploadAvatar(userId, file) {
+    try {
+      // Upload file to Cloudinary
+      const uploadedFile = await fileService.uploadFile(file.buffer, {
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size
+      }, 'avatars');
+
+      // Update user avatar
+      const user = await User.findByIdAndUpdate(
+        userId,
+        { 
+          avatar: uploadedFile.url,
+          updatedAt: new Date()
+        },
+        { new: true }
+      );
+      
+      if (!user) {
+        throw new Error('User not found');
+      }
+      
+      return user.toSafeObject();
+    } catch (error) {
+      console.error('Upload avatar error:', error);
+      throw new Error('Failed to upload avatar');
+    }
   }
   
   /**

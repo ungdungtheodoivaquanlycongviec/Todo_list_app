@@ -3,6 +3,7 @@ const router = express.Router();
 const userController = require('../controllers/user.controller');
 const { authenticate } = require('../middlewares/auth');
 const { validateUpdateProfile, validateChangePassword } = require('../middlewares/validator');
+const { uploadSingle } = require('../middlewares/upload');
 
 /**
  * User Management Routes
@@ -17,6 +18,7 @@ router.use(authenticate);
 router.put('/me', validateUpdateProfile, userController.updateProfile);
 router.put('/me/password', validateChangePassword, userController.changePassword);
 router.put('/me/avatar', userController.updateAvatar);
+router.post('/me/avatar/upload', uploadSingle, userController.uploadAvatar);
 router.put('/me/notifications', userController.updateNotificationSettings);
 router.delete('/me', userController.deactivateAccount);
 router.patch('/theme', authenticate, userController.updateTheme);

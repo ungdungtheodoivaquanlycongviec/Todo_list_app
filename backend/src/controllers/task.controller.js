@@ -165,6 +165,17 @@ const addComment = asyncHandler(async (req, res) => {
   const { content } = req.body;
   const userId = req.user._id;
 
+  // First check if task exists and get its status
+  const existingTask = await taskService.getTaskById(id);
+  if (!existingTask) {
+    return sendError(res, ERROR_MESSAGES.TASK_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  // Check if task is completed - only allow comments on completed tasks
+  if (existingTask.status !== 'completed') {
+    return sendError(res, 'Chỉ có thể comment trên task đã hoàn thành', HTTP_STATUS.FORBIDDEN);
+  }
+
   // Call service
   const task = await taskService.addComment(id, userId, content);
 

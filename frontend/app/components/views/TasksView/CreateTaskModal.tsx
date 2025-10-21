@@ -1,7 +1,16 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Calendar, Flag, Clock, Tag, User, Bookmark, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from "react";
+import {
+  X,
+  Calendar,
+  Flag,
+  Clock,
+  Tag,
+  User,
+  Bookmark,
+  AlertCircle,
+} from "lucide-react";
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -14,15 +23,15 @@ export default function CreateTaskModal({
   isOpen,
   onClose,
   onCreateTask,
-  currentUser
+  currentUser,
 }: CreateTaskModalProps) {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('');
-  const [priority, setPriority] = useState('Medium');
-  const [dueDate, setDueDate] = useState('');
-  const [tags, setTags] = useState('');
-  const [estimatedTime, setEstimatedTime] = useState('');
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [category, setCategory] = useState("");
+  const [priority, setPriority] = useState("Medium");
+  const [dueDate, setDueDate] = useState("");
+  const [tags, setTags] = useState("");
+  const [estimatedTime, setEstimatedTime] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<{ title?: string }>({});
 
@@ -31,30 +40,71 @@ export default function CreateTaskModal({
 
   // Enhanced options
   const categoryOptions = [
-    { value: 'Operational', label: 'Operational', color: 'text-blue-600 bg-blue-50' },
-    { value: 'Strategic', label: 'Strategic', color: 'text-green-600 bg-green-50' },
-    { value: 'Financial', label: 'Financial', color: 'text-yellow-600 bg-yellow-50' },
-    { value: 'Technical', label: 'Technical', color: 'text-purple-600 bg-purple-50' },
-    { value: 'Other', label: 'Other', color: 'text-gray-600 bg-gray-50' }
+    {
+      value: "Operational",
+      label: "Operational",
+      color: "text-blue-600 bg-blue-50",
+    },
+    {
+      value: "Strategic",
+      label: "Strategic",
+      color: "text-green-600 bg-green-50",
+    },
+    {
+      value: "Financial",
+      label: "Financial",
+      color: "text-yellow-600 bg-yellow-50",
+    },
+    {
+      value: "Technical",
+      label: "Technical",
+      color: "text-purple-600 bg-purple-50",
+    },
+    { value: "Other", label: "Other", color: "text-gray-600 bg-gray-50" },
   ];
 
   const priorityOptions = [
-    { value: 'None', label: 'None', color: 'text-gray-500', bgColor: 'bg-gray-100' },
-    { value: 'Low', label: 'Low', color: 'text-green-600', bgColor: 'bg-green-100' },
-    { value: 'Medium', label: 'Medium', color: 'text-yellow-600', bgColor: 'bg-yellow-100' },
-    { value: 'High', label: 'High', color: 'text-orange-600', bgColor: 'bg-orange-100' },
-    { value: 'Urgent', label: 'Urgent', color: 'text-red-600', bgColor: 'bg-red-100' }
+    {
+      value: "None",
+      label: "None",
+      color: "text-gray-500",
+      bgColor: "bg-gray-100",
+    },
+    {
+      value: "Low",
+      label: "Low",
+      color: "text-green-600",
+      bgColor: "bg-green-100",
+    },
+    {
+      value: "Medium",
+      label: "Medium",
+      color: "text-yellow-600",
+      bgColor: "bg-yellow-100",
+    },
+    {
+      value: "High",
+      label: "High",
+      color: "text-orange-600",
+      bgColor: "bg-orange-100",
+    },
+    {
+      value: "Urgent",
+      label: "Urgent",
+      color: "text-red-600",
+      bgColor: "bg-red-100",
+    },
   ];
 
   const estimatedTimeOptions = [
-    { value: '15m', label: '15 minutes' },
-    { value: '30m', label: '30 minutes' },
-    { value: '1h', label: '1 hour' },
-    { value: '2h', label: '2 hours' },
-    { value: '4h', label: '4 hours' },
-    { value: '1d', label: '1 day' },
-    { value: '2d', label: '2 days' },
-    { value: '1w', label: '1 week' }
+    { value: "15m", label: "15 minutes" },
+    { value: "30m", label: "30 minutes" },
+    { value: "1h", label: "1 hour" },
+    { value: "2h", label: "2 hours" },
+    { value: "4h", label: "4 hours" },
+    { value: "1d", label: "1 day" },
+    { value: "2d", label: "2 days" },
+    { value: "1w", label: "1 week" },
   ];
 
   // Reset form when modal opens/closes
@@ -70,13 +120,13 @@ export default function CreateTaskModal({
   // Handle ESC key to close modal
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
+      if (e.key === "Escape" && isOpen) {
         handleClose();
       }
     };
 
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
   }, [isOpen]);
 
   // Handle click outside to close modal
@@ -88,19 +138,19 @@ export default function CreateTaskModal({
     };
 
     if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
     }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen]);
 
   const resetForm = () => {
-    setTitle('');
-    setDescription('');
-    setCategory('');
-    setPriority('Medium');
-    setDueDate('');
-    setTags('');
-    setEstimatedTime('');
+    setTitle("");
+    setDescription("");
+    setCategory("");
+    setPriority("Medium");
+    setDueDate("");
+    setTags("");
+    setEstimatedTime("");
     setErrors({});
     setIsSubmitting(false);
   };
@@ -109,7 +159,7 @@ export default function CreateTaskModal({
     const newErrors: { title?: string } = {};
 
     if (!title.trim()) {
-      newErrors.title = 'Task title is required';
+      newErrors.title = "Task title is required";
     }
 
     setErrors(newErrors);
@@ -129,20 +179,23 @@ export default function CreateTaskModal({
       const taskData = {
         title: title.trim(),
         description: description.trim(),
-        category: category || 'Other',
+        category: category || "Other",
         priority,
         dueDate: dueDate || null,
-        tags: tags.split(',').map(tag => tag.trim()).filter(tag => tag),
-        estimatedTime: estimatedTime || '',
+        tags: tags
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter((tag) => tag),
+        estimatedTime: estimatedTime || "",
       };
 
-      console.log('Creating task with data:', taskData);
+      console.log("Creating task with data:", taskData);
       await onCreateTask(taskData);
 
       // Close modal after successful creation
       handleClose();
     } catch (error) {
-      console.error('Error creating task:', error);
+      console.error("Error creating task:", error);
     } finally {
       setIsSubmitting(false);
     }
@@ -155,7 +208,7 @@ export default function CreateTaskModal({
 
   const getMinDate = () => {
     const today = new Date();
-    return today.toISOString().split('T')[0];
+    return today.toISOString().split("T")[0];
   };
 
   if (!isOpen) return null;
@@ -167,9 +220,9 @@ export default function CreateTaskModal({
         className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-gray-200 dark:border-gray-700 animate-in slide-in-from-bottom-8 duration-300"
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-gray-800 bg-gradient-to-r from-gray-50 to-white dark:from-gray-800 dark:to-gray-900">
+        <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-[#1F1F1F]">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
               Create New Task
             </h2>
             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
@@ -178,7 +231,7 @@ export default function CreateTaskModal({
           </div>
           <button
             onClick={handleClose}
-            className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+            className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-[#2E2E2E]"
           >
             <X className="w-5 h-5" />
           </button>
@@ -211,10 +264,11 @@ export default function CreateTaskModal({
                     setErrors({ ...errors, title: undefined });
                   }
                 }}
-                className={`w-full p-3 border rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all ${errors.title
-                    ? 'border-red-300 dark:border-red-500'
-                    : 'border-gray-300 dark:border-gray-600 focus:border-blue-500'
-                  }`}
+                className={`w-full p-3 border rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all ${
+                  errors.title
+                    ? "border-red-300 dark:border-red-500"
+                    : "border-gray-300 dark:border-gray-600 focus:border-blue-500"
+                }`}
                 placeholder="What needs to be done?"
                 required
               />
@@ -244,13 +298,14 @@ export default function CreateTaskModal({
                   Type
                 </label>
                 <div className="space-y-2">
-                  {categoryOptions.map(option => (
+                  {categoryOptions.map((option) => (
                     <label
                       key={option.value}
-                      className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer transition-all hover:scale-[1.02] ${category === option.value
-                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                          : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                        }`}
+                      className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer transition-all hover:scale-[1.02] ${
+                        category === option.value
+                          ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                          : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
+                      }`}
                     >
                       <input
                         type="radio"
@@ -260,11 +315,16 @@ export default function CreateTaskModal({
                         onChange={(e) => setCategory(e.target.value)}
                         className="hidden"
                       />
-                      <div className={`w-3 h-3 rounded-full border-2 ${category === option.value
-                          ? 'border-blue-500 bg-blue-500'
-                          : 'border-gray-300 dark:border-gray-600'
-                        }`} />
-                      <span className={`text-sm font-medium ${option.color} px-2 py-1 rounded-full`}>
+                      <div
+                        className={`w-3 h-3 rounded-full border-2 ${
+                          category === option.value
+                            ? "border-blue-500 bg-blue-500"
+                            : "border-gray-300 dark:border-gray-600"
+                        }`}
+                      />
+                      <span
+                        className={`text-sm font-medium ${option.color} px-2 py-1 rounded-full`}
+                      >
                         {option.label}
                       </span>
                     </label>
@@ -279,13 +339,14 @@ export default function CreateTaskModal({
                   Priority
                 </label>
                 <div className="space-y-2">
-                  {priorityOptions.map(option => (
+                  {priorityOptions.map((option) => (
                     <label
                       key={option.value}
-                      className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer transition-all hover:scale-[1.02] ${priority === option.value
-                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                          : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                        }`}
+                      className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer transition-all hover:scale-[1.02] ${
+                        priority === option.value
+                          ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                          : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
+                      }`}
                     >
                       <input
                         type="radio"
@@ -295,11 +356,16 @@ export default function CreateTaskModal({
                         onChange={(e) => setPriority(e.target.value)}
                         className="hidden"
                       />
-                      <div className={`w-3 h-3 rounded-full border-2 ${priority === option.value
-                          ? 'border-blue-500 bg-blue-500'
-                          : 'border-gray-300 dark:border-gray-600'
-                        }`} />
-                      <span className={`text-sm font-medium ${option.color} ${option.bgColor} px-3 py-1 rounded-full border`}>
+                      <div
+                        className={`w-3 h-3 rounded-full border-2 ${
+                          priority === option.value
+                            ? "border-blue-500 bg-blue-500"
+                            : "border-gray-300 dark:border-gray-600"
+                        }`}
+                      />
+                      <span
+                        className={`text-sm font-medium ${option.color} ${option.bgColor} px-3 py-1 rounded-full border`}
+                      >
                         {option.label}
                       </span>
                     </label>
@@ -355,7 +421,7 @@ export default function CreateTaskModal({
                     className="px-3 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all min-w-20"
                   >
                     <option value="">Quick select</option>
-                    {estimatedTimeOptions.map(opt => (
+                    {estimatedTimeOptions.map((opt) => (
                       <option key={opt.value} value={opt.value}>
                         {opt.label}
                       </option>
@@ -392,7 +458,7 @@ export default function CreateTaskModal({
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center shadow-sm">
                     <span className="text-white text-sm font-bold">
-                      {currentUser.name?.charAt(0)?.toUpperCase() || 'U'}
+                      {currentUser.name?.charAt(0)?.toUpperCase() || "U"}
                     </span>
                   </div>
                   <div className="flex-1">
@@ -432,7 +498,7 @@ export default function CreateTaskModal({
                   Creating...
                 </div>
               ) : (
-                'Create Task'
+                "Create Task"
               )}
             </button>
           </div>

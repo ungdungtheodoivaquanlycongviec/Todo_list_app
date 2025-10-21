@@ -83,6 +83,28 @@ const updateAvatar = asyncHandler(async (req, res) => {
 });
 
 /**
+ * @route   POST /api/users/me/avatar/upload
+ * @desc    Upload user avatar file
+ * @access  Private
+ */
+const uploadAvatar = asyncHandler(async (req, res) => {
+  const file = req.file;
+  
+  if (!file) {
+    return sendError(res, 'Không có file nào được upload', 400);
+  }
+  
+  try {
+    const user = await userService.uploadAvatar(req.user._id, file);
+    
+    sendSuccess(res, { user }, 'Upload avatar thành công');
+  } catch (error) {
+    console.error('Upload avatar error:', error);
+    sendError(res, error.message || 'Lỗi khi upload avatar', 500);
+  }
+});
+
+/**
  * @route   PUT /api/users/me/notifications
  * @desc    Update notification settings
  * @access  Private
@@ -117,6 +139,7 @@ module.exports = {
   updateProfile,
   changePassword,
   updateAvatar,
+  uploadAvatar,
   updateNotificationSettings,
   deactivateAccount,
   updateTheme

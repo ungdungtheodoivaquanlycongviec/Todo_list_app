@@ -128,6 +128,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editingCommentContent, setEditingCommentContent] = useState("")
   const [showCommentMenu, setShowCommentMenu] = useState<string | null>(null)
+  const [uploadingFiles, setUploadingFiles] = useState(false)
 
   const { user: currentUser } = useAuth()
 
@@ -547,6 +548,12 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const handleAddComment = useCallback(async () => {
     if (!comment.trim() || !task) return
 
+    // Check if task is completed before allowing comments
+    if (task.status !== 'completed') {
+      alert('Chỉ có thể comment trên task đã hoàn thành. Vui lòng hoàn thành task trước khi thêm comment.')
+      return
+    }
+
     try {
       const updatedTask = await taskService.addComment(taskId, comment)
       setComment("")
@@ -633,11 +640,37 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   }, [currentUser, taskId])
 
   const getUserDisplayName = useCallback((comment: Comment): string => {
+  // Check if comment has user object with name
+  if (comment.user && typeof comment.user === "object") {
+    return (comment.user as MinimalUser).name || (comment.user as MinimalUser).email || "User";
+  }
+  
+  // Check if userId is an object (populated user)
   if (comment.userId && typeof comment.userId === "object") {
     return (comment.userId as MinimalUser).name || (comment.userId as MinimalUser).email || "User";
   }
+  
+  // If userId is string, try to find user in assignees or use current user
+  if (typeof comment.userId === "string") {
+    // Check if it's current user
+    if (currentUser && comment.userId === currentUser._id) {
+      return currentUser.name || currentUser.email || "You";
+    }
+    
+    // Check in task assignees
+    if (task && task.assignedTo) {
+      const assignee = task.assignedTo.find((assignment: any) => 
+        assignment.userId && typeof assignment.userId === 'object' && 
+        (assignment.userId as MinimalUser)._id === comment.userId
+      );
+      if (assignee && typeof assignee.userId === 'object') {
+        return (assignee.userId as MinimalUser).name || (assignee.userId as MinimalUser).email || "User";
+      }
+    }
+  }
+  
   return "User";
-}, []);
+}, [currentUser, task]);
 
 const getUserInitial = useCallback((comment: Comment): string => {
   const name = getUserDisplayName(comment);
@@ -672,6 +705,102 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
     setEditingCommentId(null)
     setEditingCommentContent("")
   }, [])
+
+  // File upload handler
+  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files || files.length === 0) return
+
+    try {
+      setUploadingFiles(true)
+      const formData = new FormData()
+      
+      // Add all selected files to FormData
+      Array.from(files).forEach(file => {
+        formData.append('files', file)
+      })
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/tasks/${taskId}/attachments`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+        },
+        body: formData
+      })
+
+      if (!response.ok) {
+        let errorMessage = 'Failed to upload files'
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData.message || errorMessage
+        } catch (parseError) {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`
+        }
+        throw new Error(errorMessage)
+      }
+
+      let result
+      try {
+        result = await response.json()
+      } catch (parseError) {
+        throw new Error('Invalid response from server')
+      }
+      
+      // Update task with new attachments
+      setTask(result.data)
+      onTaskUpdate(result.data)
+      
+      // Clear file input
+      event.target.value = ''
+      
+    } catch (error) {
+      console.error('Error uploading files:', error)
+      alert('Failed to upload files: ' + (error as Error).message)
+    } finally {
+      setUploadingFiles(false)
+    }
+  }, [taskId, onTaskUpdate])
+
+  // Delete attachment handler
+  const handleDeleteAttachment = useCallback(async (attachmentId: string) => {
+    if (!confirm('Are you sure you want to delete this attachment?')) return
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/tasks/${taskId}/attachments/${attachmentId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (!response.ok) {
+        let errorMessage = 'Failed to delete attachment'
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData.message || errorMessage
+        } catch (parseError) {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`
+        }
+        throw new Error(errorMessage)
+      }
+
+      let result
+      try {
+        result = await response.json()
+      } catch (parseError) {
+        throw new Error('Invalid response from server')
+      }
+      
+      // Update task with removed attachment
+      setTask(result.data)
+      onTaskUpdate(result.data)
+      
+    } catch (error) {
+      console.error('Error deleting attachment:', error)
+      alert('Failed to delete attachment: ' + (error as Error).message)
+    }
+  }, [taskId, onTaskUpdate])
 
   const CommentMenu = useCallback(({
     commentId,
@@ -1420,13 +1549,81 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                 <div>
                   <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
                     <Paperclip className="w-4 h-4" />
-                    Files
+                    Files ({task.attachments?.length || 0})
                   </h3>
                   <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                    <button className="flex items-center gap-2 text-blue-500 hover:text-blue-600 text-sm">
-                      <Paperclip className="w-4 h-4" />
-                      Attach file
-                    </button>
+                    {task.attachments && task.attachments.length > 0 ? (
+                      <div className="space-y-2">
+                        {task.attachments.map((attachment: any, index: number) => (
+                          <div key={index} className="flex items-center gap-3 p-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600">
+                            <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
+                              <Paperclip className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                                {attachment.filename}
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {Math.round(attachment.size / 1024)} KB
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <a
+                                href={attachment.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-500 hover:text-blue-600 text-sm"
+                              >
+                                View
+                              </a>
+                              <button
+                                onClick={() => handleDeleteAttachment(attachment._id)}
+                                className="text-red-500 hover:text-red-600 text-sm"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-4 text-gray-500 dark:text-gray-400">
+                        <Paperclip className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                        <p className="text-sm">No files attached</p>
+                      </div>
+                    )}
+                    
+                    <div className="mt-4">
+                      <input
+                        type="file"
+                        id="file-upload"
+                        multiple
+                        accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar"
+                        onChange={handleFileUpload}
+                        disabled={uploadingFiles}
+                        className="hidden"
+                      />
+                      <label
+                        htmlFor="file-upload"
+                        className={`flex items-center gap-2 text-sm cursor-pointer ${
+                          uploadingFiles 
+                            ? 'text-gray-400 cursor-not-allowed' 
+                            : 'text-blue-500 hover:text-blue-600'
+                        }`}
+                      >
+                        {uploadingFiles ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                            Uploading...
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="w-4 h-4" />
+                            Attach file
+                          </>
+                        )}
+                      </label>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1451,36 +1648,49 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
               </div>
 
               <div className="p-6 pt-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-                <div className="flex gap-3">
-                  <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-xs text-white font-medium flex-shrink-0">
-                    {currentUser?.name?.charAt(0)?.toUpperCase() || "U"}
-                  </div>
-                  <div className="flex-1">
-                    <div className="relative">
-                      <textarea
-                        value={comment}
-                        onChange={(e) => setComment(e.target.value)}
-                        placeholder="Type a message..."
-                        rows={3}
-                        className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-12 resize-none"
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault()
-                            handleAddComment()
-                          }
-                        }}
-                      />
-                      <button
-                        onClick={handleAddComment}
-                        disabled={!comment.trim()}
-                        className="absolute bottom-3 right-3 p-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        aria-label="Send comment"
-                      >
-                        <Send className="w-4 h-4" />
-                      </button>
+                {task.status !== 'completed' ? (
+                  <div className="flex items-center gap-3 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                    <div className="w-8 h-8 bg-yellow-500 rounded-full flex items-center justify-center text-xs text-white font-medium flex-shrink-0">
+                      <MessageSquare className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                        Chỉ có thể comment trên task đã hoàn thành. Vui lòng hoàn thành task trước khi thêm comment.
+                      </p>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="flex gap-3">
+                    <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-xs text-white font-medium flex-shrink-0">
+                      {currentUser?.name?.charAt(0)?.toUpperCase() || "U"}
+                    </div>
+                    <div className="flex-1">
+                      <div className="relative">
+                        <textarea
+                          value={comment}
+                          onChange={(e) => setComment(e.target.value)}
+                          placeholder="Type a message..."
+                          rows={3}
+                          className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-12 resize-none"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault()
+                              handleAddComment()
+                            }
+                          }}
+                        />
+                        <button
+                          onClick={handleAddComment}
+                          disabled={!comment.trim()}
+                          className="absolute bottom-3 right-3 p-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          aria-label="Send comment"
+                        >
+                          <Send className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
