@@ -853,15 +853,12 @@ export default function TasksView() {
           }`}
         onContextMenu={(e) => handleContextMenu(e, task)}
       >
-        {/* Task Title - Clickable for task detail */}
+         {/* Task Title - Clickable for task detail */}
         <div
           className="col-span-3 cursor-pointer"
           onClick={() => handleTaskClick(task._id)}
         >
           <div className="flex items-center gap-3">
-            {isOverdue && (
-              <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
-            )}
             <div
               className={`w-2 h-2 rounded-full ${task.priority === "urgent" || task.priority === "critical"
                   ? "bg-red-500"
@@ -980,7 +977,7 @@ export default function TasksView() {
               {task.dueDate
                 ? new Date(task.dueDate).toLocaleDateString("en-GB")
                 : "—"}
-              {isOverdue && " ⚠️"}
+              {isOverdue}
             </div>
           )}
         </div>
@@ -1441,7 +1438,7 @@ export default function TasksView() {
                   <ChevronRight className="w-5 h-5 text-gray-600" />
                 )}
                 <div className="flex items-center gap-2">
-                  <h2 className="font-semibold">Uncompleted Tasks</h2>
+                  <h2 className="font-semibold">Incompleted Tasks</h2>
                 </div>
                 <span className="bg-red-100 text-red-800 text-sm px-2 py-1 rounded-full">
                   {uncompletedTasks.length}
