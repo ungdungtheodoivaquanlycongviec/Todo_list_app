@@ -5,7 +5,7 @@ import { Plus, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { taskService } from '../../services/task.service';
 import { Task } from '../../services/types/task.types';
 import { useAuth } from '../../contexts/AuthContext';
-import CreateTaskModal from './TasksView/CreateTaskModal'; // Thêm import
+import CreateTaskModal from './TasksView/CreateTaskModal';
 
 interface CalendarEvent {
   id: string;
@@ -17,29 +17,22 @@ interface CalendarEvent {
   priority?: string;
 }
 
-interface WaitingListItem {
-  id: number;
-  title: string;
-  time: string | null;
-  type: string;
-}
-
 export default function CalendarView() {
   const { user: currentUser } = useAuth();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [searchQuery, setSearchQuery] = useState('');
+  const [assignedTasksSearch, setAssignedTasksSearch] = useState('');
   const [calendarData, setCalendarData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [showCreateModal, setShowCreateModal] = useState(false); // Thêm state cho modal
-  
-  // Mock waiting list data (giữ nguyên từ ảnh)
-  const [waitingList, setWaitingList] = useState<WaitingListItem[]>([
-    { id: 1, title: "📱 Install updates on PC and smartphone", time: "0:30h", type: "tech" },
-    { id: 2, title: "💪 Sign up for the gym", time: null, type: "health" },
-    { id: 3, title: "🔔 Check your health", time: null, type: "health" },
-    { id: 4, title: "🔧 Clean your house", time: "2h", type: "home" },
-    { id: 5, title: "💰 Get personal finances in order", time: "1:30h", type: "finance" },
-  ]);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [assignedTasks, setAssignedTasks] = useState<Task[]>([]);
+  const [assignedTasksLoading, setAssignedTasksLoading] = useState(false);
+
+  // Filter assigned tasks based on search
+  const filteredAssignedTasks = assignedTasks.filter(task =>
+    task.title.toLowerCase().includes(assignedTasksSearch.toLowerCase()) ||
+    (task.description && task.description.toLowerCase().includes(assignedTasksSearch.toLowerCase())) ||
+    (task.category && task.category.toLowerCase().includes(assignedTasksSearch.toLowerCase()))
+  );
 
   // Helper để lấy error message
   const getErrorMessage = (error: unknown): string => {
@@ -72,12 +65,38 @@ export default function CalendarView() {
     }
   };
 
+  // Fetch assigned tasks - SỬA LẠI ĐỂ DÙNG ĐÚNG HÀM
+  const fetchAssignedTasks = async () => {
+    if (!currentUser) return;
+  
+    try {
+      setAssignedTasksLoading(true);
+      // Sử dụng getAllTasks và lọc các task mà user hiện tại được gán
+      const response = await taskService.getAllTasks({}, {});
+      
+      // Lọc các task mà user hiện tại nằm trong assignedTo
+      const tasksAssignedToUser = response.tasks.filter((task: Task) =>
+        task.assignedTo.some((assignee: any) => 
+          assignee.userId?._id === currentUser._id || assignee.userId === currentUser._id
+        )
+      );
+      
+      setAssignedTasks(tasksAssignedToUser);
+    } catch (error) {
+      console.error('Error fetching assigned tasks:', error);
+      setAssignedTasks([]);
+    } finally {
+      setAssignedTasksLoading(false);
+    }
+  };
+
   // Gọi API khi currentDate thay đổi
   useEffect(() => {
     const year = currentDate.getFullYear();
-    const month = currentDate.getMonth() + 1; // Tháng trong JS từ 0-11
+    const month = currentDate.getMonth() + 1;
     fetchCalendarData(year, month);
-  }, [currentDate]);
+    fetchAssignedTasks();
+  }, [currentDate, currentUser]);
 
   // Hàm chuyển tháng
   const navigateMonth = (direction: 'prev' | 'next') => {
@@ -115,7 +134,7 @@ export default function CalendarView() {
         date: i,
         day: date.toLocaleDateString('en-US', { weekday: 'short' }),
         fullDate: date,
-        dateString: date.toISOString().split('T')[0] // YYYY-MM-DD
+        dateString: date.toISOString().split('T')[0]
       });
     }
     
@@ -192,10 +211,11 @@ export default function CalendarView() {
       await taskService.createTask(backendTaskData);
       setShowCreateModal(false);
 
-      // Refresh calendar data
+      // Refresh calendar data và assigned tasks
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth() + 1;
-      fetchCalendarData(year, month);
+      await fetchCalendarData(year, month);
+      await fetchAssignedTasks();
     } catch (error) {
       console.error("Error creating task:", error);
       alert("Failed to create task: " + getErrorMessage(error));
@@ -217,11 +237,6 @@ export default function CalendarView() {
   const handleEventClick = (taskId: string) => {
     // TODO: Open task details
     console.log('Task clicked:', taskId);
-  };
-
-  const handleWaitingListItemClick = (itemId: number) => {
-    // TODO: Open waiting list item details
-    console.log('Waiting list item clicked:', itemId);
   };
 
   const handleDayClick = (day: any) => {
@@ -246,7 +261,6 @@ export default function CalendarView() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold">Calendar</h1>
-        {/* Thay đổi nút thành Add Task và tích hợp chức năng từ TaskView */}
         <button 
           onClick={handleAddTask}
           className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm"
@@ -416,8 +430,9 @@ export default function CalendarView() {
           </div>
         </div>
 
-        {/* Waiting List Sidebar */}
+        {/* Sidebar - Chỉ còn Assigned Tasks */}
         <div className="w-80">
+          {/* Assigned Tasks Section */}
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             {/* Search */}
             <div className="mb-6">
@@ -425,46 +440,65 @@ export default function CalendarView() {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Search"
+                  placeholder="Search assigned tasks..."
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  value={assignedTasksSearch}
+                  onChange={(e) => setAssignedTasksSearch(e.target.value)}
                 />
               </div>
             </div>
 
-            {/* Waiting List Header */}
+            {/* Assigned Tasks Header */}
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-medium text-gray-700">Waiting list</h3>
+              <h3 className="font-medium text-gray-700">My Assigned Tasks</h3>
               <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                {waitingList.length}
+                {filteredAssignedTasks.length}
               </span>
             </div>
 
             <p className="text-sm text-gray-500 mb-4">
-              Put unscheduled tasks here and come back to them later
+              Tasks assigned to you across all projects
             </p>
 
-            {/* Waiting List Items */}
+            {/* Assigned Tasks List */}
             <div className="space-y-3">
-              {waitingList.map((item) => (
+              {assignedTasksLoading ? (
+                <div className="text-center py-4">
+                  <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                  <p className="text-gray-500 text-sm">Loading tasks...</p>
+                </div>
+              ) : filteredAssignedTasks.map((task) => (
                 <div 
-                  key={item.id}
-                  className="bg-gray-50 border border-gray-200 p-3 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
-                  onClick={() => handleWaitingListItemClick(item.id)}
+                  key={task._id}
+                  className={`p-3 rounded-lg border-l-4 cursor-pointer hover:shadow-md transition-shadow ${getPriorityColor(task.priority || 'medium')}`}
+                  onClick={() => handleEventClick(task._id)}
                 >
-                  <div className="text-sm text-gray-800">{item.title}</div>
-                  {item.time && (
-                    <div className="text-xs text-gray-500 mt-1">{item.time}</div>
+                  <div className="font-medium text-sm mb-1">{task.title}</div>
+                  {task.category && (
+                    <div className="text-xs text-gray-600 mb-1">{task.category}</div>
+                  )}
+                  <div className="text-xs text-gray-500">
+                    {task.estimatedTime && `⏱️ ${task.estimatedTime} • `}
+                    {getTaskStatus(task)}
+                  </div>
+                  {task.dueDate && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      Due: {new Date(task.dueDate).toLocaleDateString()}
+                    </div>
                   )}
                 </div>
               ))}
+              {!assignedTasksLoading && filteredAssignedTasks.length === 0 && (
+                <div className="text-center py-4 text-gray-500 text-sm">
+                  {assignedTasksSearch ? 'No tasks found' : 'No assigned tasks'}
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Thêm CreateTaskModal */}
+      {/* Create Task Modal */}
       {showCreateModal && (
         <CreateTaskModal
           isOpen={showCreateModal}
