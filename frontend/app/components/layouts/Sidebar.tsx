@@ -70,7 +70,7 @@ export default function Sidebar() {
           className="flex items-center justify-between cursor-pointer mb-2"
           onClick={() => setProjectsExpanded(!projectsExpanded)}
         >
-          <span className="text-[#839399] text-xs uppercase tracking-wide">Projects</span>
+          <span className="text-[#839399] text-xs uppercase tracking-wide">Groups</span>
           <Plus 
             className="w-4 h-4 text-[#839399] hover:text-[#FFFFE6]" 
             onClick={(e) => {

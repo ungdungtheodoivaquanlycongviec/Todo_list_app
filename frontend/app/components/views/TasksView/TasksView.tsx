@@ -607,8 +607,6 @@ export default function TasksView() {
         return "bg-blue-100 text-blue-800 border-blue-200";
       case "completed":
         return "bg-green-100 text-green-800 border-green-200";
-      case "archived":
-        return "bg-purple-100 text-purple-800 border-purple-200";
       default:
         return "bg-gray-100 text-gray-800 border-gray-200";
     }
@@ -676,7 +674,7 @@ export default function TasksView() {
     };
   }, []);
 
-  // Component cho Kanban View
+  // Component cho Kanban View 
   const KanbanView = () => {
     if (!kanbanData || !kanbanData.kanbanBoard) {
       return (
@@ -686,39 +684,86 @@ export default function TasksView() {
       );
     }
 
-    const statusColumns = [
-      { key: "todo", title: "To Do" },
-      { key: "in_progress", title: "In Progress" },
-      { key: "completed", title: "Completed" },
-      { key: "archived", title: "Archived" },
+    // Calculate incompleted tasks (overdue tasks)
+    const allTasks = [
+      ...(kanbanData.kanbanBoard.todo?.tasks || []),
+      ...(kanbanData.kanbanBoard.in_progress?.tasks || []),
+      ...(kanbanData.kanbanBoard.completed?.tasks || []),
     ];
 
+    const incompletedTasks = allTasks.filter(task => 
+      task && isTaskOverdue(task) && task.status !== "completed"
+    );
+
+    const statusColumns = [
+      { 
+        key: "todo", 
+        title: "To Do", 
+        icon: <div className="w-2 h-2 bg-gray-400 rounded-full" />,
+        count: kanbanData.kanbanBoard.todo?.count || 0,
+        color: "bg-gray-50 border-gray-200",
+        textColor: "text-gray-700"
+      },
+      { 
+        key: "in_progress", 
+        title: "In Progress", 
+        icon: <div className="w-2 h-2 bg-blue-500 rounded-full" />,
+        count: kanbanData.kanbanBoard.in_progress?.count || 0,
+        color: "bg-blue-50 border-blue-200",
+        textColor: "text-blue-700"
+      },
+      { 
+        key: "completed", 
+        title: "Completed", 
+        icon: <div className="w-2 h-2 bg-green-500 rounded-full" />,
+        count: kanbanData.kanbanBoard.completed?.count || 0,
+        color: "bg-green-50 border-green-200",
+        textColor: "text-green-700"
+      },
+      { 
+        key: "incompleted", 
+        title: "Incompleted Tasks", 
+        icon: <div className="w-2 h-2 bg-red-500 rounded-full" />,
+        count: incompletedTasks.length,
+        color: "bg-red-50 border-red-200",
+        textColor: "text-red-700"
+      },
+    ];
+
+    const getTasksForColumn = (columnKey: string) => {
+      if (columnKey === "incompleted") {
+        return incompletedTasks;
+      }
+      return kanbanData.kanbanBoard[columnKey]?.tasks || [];
+    };
+
     return (
-      <div className="flex gap-4 overflow-x-auto pb-4">
+      <div className="flex gap-6 overflow-x-auto pb-6 px-1">
         {statusColumns.map((column) => {
-          const columnData = kanbanData.kanbanBoard[column.key];
+          const columnTasks = getTasksForColumn(column.key);
+          
           return (
             <div
               key={column.key}
-              className="flex-1 min-w-80 bg-gray-50 rounded-lg p-4"
+              className={`flex-shrink-0 w-92 ${column.color} border rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow duration-200`}
             >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-gray-700">
-                  {column.title}
-                  <span className="ml-2 text-sm text-gray-500 bg-white px-2 py-1 rounded">
-                    {columnData?.count || 0}
+              {/* Column Header - Enhanced with Bordio style */}
+              <div className="flex items-center justify-between mb-4 p-2 rounded-lg bg-white/50">
+                <div className="flex items-center gap-3">
+                  {column.icon}
+                  <h3 className={`font-semibold text-sm ${column.textColor}`}>
+                    {column.title}
+                  </h3>
+                  <span className={`text-xs ${column.textColor} bg-white/80 px-2 py-1 rounded-full font-medium border`}>
+                    {column.count}
                   </span>
-                </h3>
-                <button
-                  onClick={handleAddTask}
-                  className="text-gray-500 hover:text-gray-700"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
+                </div>
+                {/* Removed the add task button from column header */}
               </div>
 
-              <div className="space-y-3">
-                {columnData?.tasks?.map((task: Task) => {
+              {/* Task List */}
+              <div className="space-y-3 min-h-[200px]">
+                {columnTasks.map((task: Task) => {
                   const assigneeInfo = getDetailedAssignees(task);
                   const assigneeSummary = getAssigneeSummary(task);
                   const isOverdue = isTaskOverdue(task);
@@ -726,99 +771,153 @@ export default function TasksView() {
                   return (
                     <div
                       key={task._id}
-                      className={`bg-white rounded-lg border ${isOverdue
-                          ? "border-red-200 bg-red-50"
-                          : "border-gray-200"
-                        } p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer`}
+                      className={`bg-white rounded-xl border-2 transition-all duration-200 hover:shadow-md hover:border-gray-300 cursor-pointer group
+                        ${isOverdue ? "border-red-200 bg-red-50/50" : "border-gray-100"}
+                        ${column.key === "completed" ? "opacity-80" : ""}
+                      `}
                       onClick={() => handleTaskClick(task._id)}
                       onContextMenu={(e) => handleContextMenu(e, task)}
                     >
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex items-center gap-2 flex-1">
-                          {isOverdue && (
-                            <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
-                          )}
-                          <h4 className="font-medium text-sm text-gray-900">
-                            {task.title || "Untitled Task"}
-                          </h4>
-                        </div>
-                        <span
-                          className={`text-xs px-2 py-1 rounded border ${getPriorityColor(
-                            task.priority || "medium"
-                          )}`}
-                        >
-                          {task.priority || "medium"}
-                        </span>
-                      </div>
-
-                      {task.description && (
-                        <p className="text-xs text-gray-600 mb-3 line-clamp-2">
-                          {task.description}
-                        </p>
-                      )}
-
-                      <div className="flex items-center justify-between text-xs text-gray-500">
-                        <div className="flex items-center gap-2">
-                          {/* UPDATED: Assignee avatars */}
-                          <div className="flex -space-x-1">
-                            {assigneeInfo.assignees.slice(0, 2).map((assignee) => (
-                              <div
-                                key={assignee._id}
-                                className={`w-5 h-5 rounded-full flex items-center justify-center text-xs border border-white ${assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id
-                                    ? "bg-green-100 text-green-800"
-                                    : "bg-blue-100 text-blue-800"
-                                  }`}
-                                title={assignee.name}
-                              >
-                                {assignee.avatar ? (
-                                  <img
-                                    src={assignee.avatar}
-                                    alt=""
-                                    className="w-full h-full rounded-full object-cover"
-                                  />
-                                ) : (
-                                  assignee.initial
-                                )}
-                              </div>
-                            ))}
-                            {assigneeInfo.totalCount > 2 && (
-                              <div className="w-5 h-5 bg-gray-100 text-gray-600 rounded-full flex items-center justify-center text-xs border border-white text-[10px]">
-                                +{assigneeInfo.totalCount - 2}
-                              </div>
-                            )}
+                      <div className="p-4">
+                        {/* Task Header */}
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex items-start gap-2 flex-1 min-w-0">
+                            <h4 className="font-medium text-sm text-gray-900 leading-tight line-clamp-2 group-hover:text-blue-600 transition-colors">
+                              {task.title || "Untitled Task"}
+                            </h4>
                           </div>
-
-                          <span className={`text-xs ${assigneeSummary.isCurrentUser ? 'text-green-600 font-medium' : 'text-gray-600'
-                            }`}>
-                            {assigneeSummary.displayText}
-                          </span>
-
-                          {task.estimatedTime && (
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              {task.estimatedTime}
+                          
+                          {/* Priority Badge */}
+                          {task.priority && task.priority !== "medium" && (
+                            <span
+                              className={`text-xs px-2 py-1 rounded-full border flex-shrink-0 ml-2 ${getPriorityColor(
+                                task.priority
+                              )}`}
+                            >
+                              {task.priority}
                             </span>
                           )}
                         </div>
 
-                        {task.dueDate && (
-                          <span
-                            className={`flex items-center gap-1 ${isOverdue ? "text-red-600 font-medium" : ""
-                              }`}
-                          >
-                            <Calendar className="w-3 h-3" />
-                            {new Date(task.dueDate).toLocaleDateString()}
-                            {isOverdue && " (Overdue)"}
-                          </span>
+                        {/* Description */}
+                        {task.description && (
+                          <p className="text-xs text-gray-600 mb-3 line-clamp-2 leading-relaxed">
+                            {task.description}
+                          </p>
                         )}
+
+                        {/* Tags and Category */}
+                        <div className="flex flex-wrap gap-1 mb-3">
+                          {task.category && task.category !== "Other" && (
+                            <span
+                              className={`text-xs px-2 py-1 rounded-full border ${getTypeColor(
+                                task.category
+                              )}`}
+                            >
+                              {task.category}
+                            </span>
+                          )}
+                          {task.tags?.slice(0, 2).map((tag, index) => (
+                            <span
+                              key={index}
+                              className="text-xs px-2 py-1 rounded-full border bg-gray-100 text-gray-700 border-gray-200"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                          {task.tags && task.tags.length > 2 && (
+                            <span className="text-xs px-2 py-1 rounded-full border bg-gray-100 text-gray-700 border-gray-200">
+                              +{task.tags.length - 2}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Task Footer */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            {/* Assignee Avatars */}
+                            <div className="flex -space-x-1">
+                              {assigneeInfo.assignees.slice(0, 2).map((assignee) => (
+                                <div
+                                  key={assignee._id}
+                                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs border-2 border-white shadow-sm
+                                    ${assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id
+                                      ? "bg-gradient-to-br from-green-100 to-green-200 text-green-800"
+                                      : "bg-gradient-to-br from-blue-100 to-blue-200 text-blue-800"
+                                    }`}
+                                  title={assignee.name}
+                                >
+                                  {assignee.avatar ? (
+                                    <img
+                                      src={assignee.avatar}
+                                      alt=""
+                                      className="w-full h-full rounded-full object-cover"
+                                    />
+                                  ) : (
+                                    assignee.initial
+                                  )}
+                                </div>
+                              ))}
+                              {assigneeInfo.totalCount > 2 && (
+                                <div className="w-6 h-6 bg-gradient-to-br from-gray-100 to-gray-200 text-gray-600 rounded-full flex items-center justify-center text-xs border-2 border-white shadow-sm text-[10px] font-medium">
+                                  +{assigneeInfo.totalCount - 2}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Time Estimate */}
+                            {task.estimatedTime && (
+                              <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                                <Clock className="w-3 h-3" />
+                                {task.estimatedTime}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Due Date */}
+                          {task.dueDate && (
+                            <span
+                              className={`text-xs px-2 py-1 rounded-full border font-medium
+                                ${isOverdue 
+                                  ? "bg-red-100 text-red-700 border-red-200" 
+                                  : "bg-gray-100 text-gray-700 border-gray-200"
+                                }`}
+                            >
+                              <Calendar className="w-3 h-3 inline mr-1" />
+                              {new Date(task.dueDate).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
                       </div>
+
+                      {/* Subtle hover effect */}
+                      <div className="h-1 bg-gradient-to-r from-transparent via-gray-100 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-b-xl" />
                     </div>
                   );
                 })}
 
-                {(!columnData?.tasks || columnData.tasks.length === 0) && (
+                {/* Empty State */}
+                {columnTasks.length === 0 && (
                   <div className="text-center py-8 text-gray-400 text-sm">
-                    No tasks
+                    <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                      {column.key === "incompleted" ? (
+                        <AlertTriangle className="w-6 h-6" />
+                      ) : column.key === "completed" ? (
+                        <div className="w-6 h-6 bg-green-200 rounded-full flex items-center justify-center">
+                          <div className="w-3 h-3 bg-green-500 rounded-full" />
+                        </div>
+                      ) : (
+                        <Plus className="w-6 h-6" />
+                      )}
+                    </div>
+                    <p className="text-gray-500">
+                      {column.key === "incompleted" 
+                        ? "No overdue tasks" 
+                        : column.key === "completed"
+                        ? "No completed tasks"
+                        : "No tasks"
+                      }
+                    </p>
                   </div>
                 )}
               </div>
@@ -829,7 +928,7 @@ export default function TasksView() {
     );
   };
 
-  // Task Row Component for List View
+  // Task Row Component for List View 
   const TaskRow = ({
     task,
     isOverdue = false,
@@ -853,7 +952,7 @@ export default function TasksView() {
           }`}
         onContextMenu={(e) => handleContextMenu(e, task)}
       >
-         {/* Task Title - Clickable for task detail */}
+        {/* Task Title - Clickable for task detail */}
         <div
           className="col-span-3 cursor-pointer"
           onClick={() => handleTaskClick(task._id)}
@@ -1060,39 +1159,6 @@ export default function TasksView() {
                 </span>
               )}
             </div>
-
-            {/* Detailed tooltip on hover */}
-            <div className="absolute left-0 top-full mt-2 hidden group-hover:block z-10 bg-gray-900 text-white text-xs rounded-lg p-3 shadow-lg min-w-48">
-              <div className="font-medium mb-2">Assigned to:</div>
-              {assigneeInfo.assignees.length === 0 ? (
-                <div className="text-gray-300">No one assigned</div>
-              ) : (
-                <div className="space-y-1">
-                  {assigneeInfo.assignees.map((assignee) => (
-                    <div key={assignee._id} className="flex items-center gap-2">
-                      <div className={`w-4 h-4 rounded-full flex items-center justify-center text-xs ${assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id
-                          ? "bg-green-500 text-white"
-                          : "bg-blue-500 text-white"
-                        }`}>
-                        {assignee.avatar ? (
-                          <img
-                            src={assignee.avatar}
-                            alt=""
-                            className="w-full h-full rounded-full object-cover"
-                          />
-                        ) : (
-                          assignee.initial
-                        )}
-                      </div>
-                      <span className={assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id ? "text-green-300" : ""}>
-                        {assignee.name}
-                        {assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id && ' (You)'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
         </div>
 
@@ -1162,7 +1228,7 @@ export default function TasksView() {
     );
   };
 
-  // Sort Dropdown Component
+  // Sort Dropdown Component (unchanged)
   const SortDropdown = () => {
     const dropdownRef = useRef<HTMLDivElement>(null);
 
