@@ -165,16 +165,14 @@ const addComment = asyncHandler(async (req, res) => {
   const { content } = req.body;
   const userId = req.user._id;
 
-  // First check if task exists and get its status
+  // First check if task exists
   const existingTask = await taskService.getTaskById(id);
   if (!existingTask) {
     return sendError(res, ERROR_MESSAGES.TASK_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
   }
 
-  // Check if task is completed - only allow comments on completed tasks
-  if (existingTask.status !== 'completed') {
-    return sendError(res, 'Chỉ có thể comment trên task đã hoàn thành', HTTP_STATUS.FORBIDDEN);
-  }
+  // FIXED: No restrictions - allow comments on all task statuses regardless of due date
+  // Comments are now available for all tasks without any due date or status restrictions
 
   // Call service
   const task = await taskService.addComment(id, userId, content);
@@ -258,6 +256,9 @@ const uploadAttachments = asyncHandler(async (req, res) => {
   if (!files || files.length === 0) {
     return sendError(res, 'Không có file nào được upload', HTTP_STATUS.BAD_REQUEST);
   }
+
+  // FIXED: No restrictions - allow file uploads on all task statuses regardless of due date
+  // File uploads are now available for all tasks without any due date or status restrictions
 
   // Call service
   const result = await taskService.uploadAttachments(id, userId, files);
@@ -398,6 +399,9 @@ const addCommentWithFile = asyncHandler(async (req, res) => {
   const userId = req.user._id;
   const file = req.file;
 
+  // FIXED: No restrictions - allow comments with files on all task statuses regardless of due date
+  // Comments with file attachments are now available for all tasks without any restrictions
+
   // Call service
   const task = await taskService.addCommentWithFile(id, userId, content, file);
 
@@ -406,6 +410,92 @@ const addCommentWithFile = asyncHandler(async (req, res) => {
   }
 
   sendSuccess(res, task, 'Thêm comment thành công', HTTP_STATUS.CREATED);
+});
+
+/**
+ * @desc    Start timer for task
+ * @route   POST /api/tasks/:id/start-timer
+ * @access  Private
+ */
+const startTimer = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user._id;
+
+  // Call service
+  const task = await taskService.startTimer(id, userId);
+
+  if (!task) {
+    return sendError(res, ERROR_MESSAGES.TASK_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  sendSuccess(res, task, 'Timer started successfully');
+});
+
+/**
+ * @desc    Stop timer for task
+ * @route   POST /api/tasks/:id/stop-timer
+ * @access  Private
+ */
+const stopTimer = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user._id;
+
+  // Call service
+  const task = await taskService.stopTimer(id, userId);
+
+  if (!task) {
+    return sendError(res, ERROR_MESSAGES.TASK_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  sendSuccess(res, task, 'Timer stopped successfully');
+});
+
+/**
+ * @desc    Set custom status for task
+ * @route   POST /api/tasks/:id/custom-status
+ * @access  Private
+ */
+const setCustomStatus = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { name, color } = req.body;
+
+  if (!name || !name.trim()) {
+    return sendError(res, 'Custom status name is required', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  // Call service
+  const task = await taskService.setCustomStatus(id, name.trim(), color || '#3B82F6');
+
+  if (!task) {
+    return sendError(res, ERROR_MESSAGES.TASK_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  sendSuccess(res, task, 'Custom status set successfully');
+});
+
+/**
+ * @desc    Set task repetition settings
+ * @route   POST /api/tasks/:id/repeat
+ * @access  Private
+ */
+const setTaskRepetition = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { isRepeating, frequency, interval, endDate, occurrences } = req.body;
+
+  // Call service
+  const task = await taskService.setTaskRepetition(id, {
+    isRepeating: Boolean(isRepeating),
+    frequency: frequency || 'weekly',
+    interval: parseInt(interval) || 1,
+    endDate: endDate ? new Date(endDate) : null,
+    occurrences: occurrences ? parseInt(occurrences) : null
+  });
+
+  if (!task) {
+    return sendError(res, ERROR_MESSAGES.TASK_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  sendSuccess(res, task, 'Task repetition settings updated successfully');
 });
 
 module.exports = {
@@ -426,5 +516,9 @@ module.exports = {
   unassignUser,
   getAssignedToMe,
   getTaskAssignees,
-  addCommentWithFile
+  addCommentWithFile,
+  startTimer,
+  stopTimer,
+  setCustomStatus,
+  setTaskRepetition
 };

@@ -432,6 +432,20 @@ export default function TasksView() {
     return `${option.label} • ${directionText}`;
   };
 
+  // Get sort indicator for Kanban columns
+  const getSortIndicator = () => {
+    if (!sortConfig) return null;
+    
+    const option = sortOptions.find((opt) => opt.key === sortConfig.key);
+    if (!option) return null;
+    
+    return (
+      <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full border border-blue-200">
+        Sorted by {option.label} {sortConfig.direction === "asc" ? "↑" : "↓"}
+      </div>
+    );
+  };
+
   const handleAddTask = () => {
     setShowCreateModal(true);
   };
@@ -731,35 +745,48 @@ export default function TasksView() {
     ];
 
     const getTasksForColumn = (columnKey: string) => {
+      let tasks = [];
       if (columnKey === "incompleted") {
-        return incompletedTasks;
+        tasks = incompletedTasks;
+      } else {
+        tasks = kanbanData.kanbanBoard[columnKey]?.tasks || [];
       }
-      return kanbanData.kanbanBoard[columnKey]?.tasks || [];
+      
+      // Apply sorting to Kanban tasks
+      return sortTasks(tasks);
     };
 
     return (
-      <div className="flex gap-6 overflow-x-auto pb-6 px-1">
-        {statusColumns.map((column) => {
-          const columnTasks = getTasksForColumn(column.key);
-          
-          return (
-            <div
-              key={column.key}
-              className={`flex-shrink-0 w-92 ${column.color} border rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow duration-200`}
-            >
-              {/* Column Header - Enhanced with Bordio style */}
-              <div className="flex items-center justify-between mb-4 p-2 rounded-lg bg-white/50">
-                <div className="flex items-center gap-3">
-                  {column.icon}
-                  <h3 className={`font-semibold text-sm ${column.textColor}`}>
-                    {column.title}
-                  </h3>
-                  <span className={`text-xs ${column.textColor} bg-white/80 px-2 py-1 rounded-full font-medium border`}>
-                    {column.count}
-                  </span>
+      <div className="space-y-4">
+        {/* Sort Indicator for Kanban View */}
+        {getSortIndicator() && (
+          <div className="flex justify-center">
+            {getSortIndicator()}
+          </div>
+        )}
+        
+        <div className="flex gap-6 overflow-x-auto pb-6 px-1">
+          {statusColumns.map((column) => {
+            const columnTasks = getTasksForColumn(column.key);
+            
+            return (
+              <div
+                key={column.key}
+                className={`flex-shrink-0 w-92 ${column.color} border rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow duration-200`}
+              >
+                {/* Column Header - Enhanced with Bordio style */}
+                <div className="flex items-center justify-between mb-4 p-2 rounded-lg bg-white/50">
+                  <div className="flex items-center gap-3">
+                    {column.icon}
+                    <h3 className={`font-semibold text-sm ${column.textColor}`}>
+                      {column.title}
+                    </h3>
+                    <span className={`text-xs ${column.textColor} bg-white/80 px-2 py-1 rounded-full font-medium border`}>
+                      {column.count}
+                    </span>
+                  </div>
+                  {/* Removed the add task button from column header */}
                 </div>
-                {/* Removed the add task button from column header */}
-              </div>
 
               {/* Task List */}
               <div className="space-y-3 min-h-[200px]">
@@ -924,6 +951,7 @@ export default function TasksView() {
             </div>
           );
         })}
+        </div>
       </div>
     );
   };
@@ -1342,12 +1370,10 @@ export default function TasksView() {
           </p>
         </div>
         <div className="flex gap-3 items-center">
-          {/* Sort Button */}
-          {viewMode === "list" && (
-            <div className="relative">
-              <SortDropdown />
-            </div>
-          )}
+          {/* Sort Button - Available for both List and Kanban views */}
+          <div className="relative">
+            <SortDropdown />
+          </div>
 
           {/* View Mode Toggle */}
           <div className="flex bg-white border border-gray-300 rounded-lg overflow-hidden shadow-sm">

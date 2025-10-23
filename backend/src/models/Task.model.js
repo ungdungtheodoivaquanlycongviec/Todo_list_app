@@ -33,14 +33,9 @@ const taskSchema = new mongoose.Schema(
     },
     dueDate: {
       type: Date,
-      default: null,
-      validate: {
-        validator: function(value) {
-          if (!value) return true;
-          return value >= new Date();
-        },
-        message: 'Ngày hết hạn phải là ngày trong tương lai'
-      }
+      default: null
+      // FIXED: Removed validation to allow any date (past, present, or future)
+      // This allows tasks to have flexible due dates without restrictions
     },
     completedAt: {
       type: Date,
@@ -144,6 +139,11 @@ const taskSchema = new mongoose.Schema(
     startTime: {
       type: Date,
       default: null
+    },
+    // NEW: Custom status support
+    customStatus: {
+      name: { type: String, trim: true },
+      color: { type: String, default: '#3B82F6' }
     },
     comments: {
       type: [

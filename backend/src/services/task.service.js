@@ -1162,6 +1162,7 @@ class TaskService {
       return null;
     }
 
+    // FIXED: No restrictions - comments are available for all tasks regardless of due date
     // Check limit 200 comments
     if (task.comments.length >= 200) {
       throw new Error('Task đã đạt giới hạn 200 comments');
@@ -1399,6 +1400,8 @@ class TaskService {
       };
     }
 
+    // FIXED: No restrictions - file uploads are available for all tasks regardless of due date
+
     // Check attachment limit (max 20 attachments per task)
     if (task.attachments.length + files.length > 20) {
       return {
@@ -1543,6 +1546,7 @@ class TaskService {
       return null;
     }
 
+    // FIXED: No restrictions - comments with files are available for all tasks regardless of due date
     // Check comment limit
     if (task.comments.length >= 200) {
       throw new Error('Vượt quá giới hạn 200 comments cho mỗi task');
@@ -1593,6 +1597,158 @@ class TaskService {
     await task.populate('comments.user', 'name email avatar');
     await task.populate('assignedTo.userId', 'name email avatar');
     await task.populate('createdBy', 'name email avatar');
+
+    return task;
+  }
+
+  /**
+   * Start timer for task
+   * @param {String} taskId - ID của task
+   * @param {String} userId - ID của user
+   * @returns {Promise<Object|null>} Task hoặc null
+   */
+  async startTimer(taskId, userId) {
+    if (!isValidObjectId(taskId)) {
+      throw new Error(ERROR_MESSAGES.INVALID_TASK_ID);
+    }
+
+    const task = await Task.findById(taskId);
+    if (!task) {
+      return null;
+    }
+
+    // Set start time
+    task.startTime = new Date();
+    await task.save();
+
+    // POPULATE USER INFO SAU KHI SAVE
+    await task.populate('createdBy', 'name email avatar');
+    await task.populate('assignedTo.userId', 'name email avatar');
+    await task.populate('comments.user', 'name email avatar');
+    await task.populate('groupId', 'name description');
+
+    return task;
+  }
+
+  /**
+   * Stop timer for task
+   * @param {String} taskId - ID của task
+   * @param {String} userId - ID của user
+   * @returns {Promise<Object|null>} Task hoặc null
+   */
+  async stopTimer(taskId, userId) {
+    if (!isValidObjectId(taskId)) {
+      throw new Error(ERROR_MESSAGES.INVALID_TASK_ID);
+    }
+
+    const task = await Task.findById(taskId);
+    if (!task) {
+      return null;
+    }
+
+    // Calculate elapsed time and add to time entries
+    if (task.startTime) {
+      const now = new Date();
+      const elapsedMs = now.getTime() - task.startTime.getTime();
+      const hours = Math.floor(elapsedMs / (1000 * 60 * 60));
+      const minutes = Math.floor((elapsedMs % (1000 * 60 * 60)) / (1000 * 60));
+
+      // Add time entry
+      task.timeEntries.push({
+        user: userId,
+        date: now,
+        hours,
+        minutes,
+        description: 'Timer session',
+        billable: true,
+        startTime: task.startTime,
+        endTime: now
+      });
+
+      // Clear start time
+      task.startTime = null;
+    }
+
+    await task.save();
+
+    // POPULATE USER INFO SAU KHI SAVE
+    await task.populate('createdBy', 'name email avatar');
+    await task.populate('assignedTo.userId', 'name email avatar');
+    await task.populate('comments.user', 'name email avatar');
+    await task.populate('groupId', 'name description');
+
+    return task;
+  }
+
+  /**
+   * Set custom status for task
+   * @param {String} taskId - ID của task
+   * @param {String} name - Custom status name
+   * @param {String} color - Custom status color
+   * @returns {Promise<Object|null>} Task hoặc null
+   */
+  async setCustomStatus(taskId, name, color) {
+    if (!isValidObjectId(taskId)) {
+      throw new Error(ERROR_MESSAGES.INVALID_TASK_ID);
+    }
+
+    const task = await Task.findById(taskId);
+    if (!task) {
+      return null;
+    }
+
+    // Set custom status
+    task.customStatus = {
+      name,
+      color
+    };
+
+    // Also update the main status to the custom status
+    task.status = name.toLowerCase().replace(/\s+/g, '_');
+
+    await task.save();
+
+    // POPULATE USER INFO SAU KHI SAVE
+    await task.populate('createdBy', 'name email avatar');
+    await task.populate('assignedTo.userId', 'name email avatar');
+    await task.populate('comments.user', 'name email avatar');
+    await task.populate('groupId', 'name description');
+
+    return task;
+  }
+
+  /**
+   * Set task repetition settings
+   * @param {String} taskId - ID của task
+   * @param {Object} repetitionSettings - Repetition settings
+   * @returns {Promise<Object|null>} Task hoặc null
+   */
+  async setTaskRepetition(taskId, repetitionSettings) {
+    if (!isValidObjectId(taskId)) {
+      throw new Error(ERROR_MESSAGES.INVALID_TASK_ID);
+    }
+
+    const task = await Task.findById(taskId);
+    if (!task) {
+      return null;
+    }
+
+    // Update repetition settings
+    task.repetition = {
+      isRepeating: repetitionSettings.isRepeating,
+      frequency: repetitionSettings.frequency,
+      interval: repetitionSettings.interval,
+      endDate: repetitionSettings.endDate,
+      occurrences: repetitionSettings.occurrences
+    };
+
+    await task.save();
+
+    // POPULATE USER INFO SAU KHI SAVE
+    await task.populate('createdBy', 'name email avatar');
+    await task.populate('assignedTo.userId', 'name email avatar');
+    await task.populate('comments.user', 'name email avatar');
+    await task.populate('groupId', 'name description');
 
     return task;
   }

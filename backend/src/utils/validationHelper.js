@@ -171,25 +171,18 @@ const isNonEmptyObject = (obj) => {
  * @returns {Object} { isValid, error }
  */
 const validateTaskDates = (startDate, dueDate) => {
-  if (!startDate || !dueDate) {
-    return { isValid: true }; // Dates are optional
-  }
-
-  if (!isValidDate(startDate)) {
+  // FIXED: Removed all due date restrictions to allow flexible task management
+  // Dates are now completely optional and can be any value
+  
+  if (startDate && !isValidDate(startDate)) {
     return { isValid: false, error: 'Invalid start date' };
   }
 
-  if (!isValidDate(dueDate)) {
+  if (dueDate && !isValidDate(dueDate)) {
     return { isValid: false, error: 'Invalid due date' };
   }
 
-  const start = new Date(startDate);
-  const due = new Date(dueDate);
-
-  if (due < start) {
-    return { isValid: false, error: 'Due date must be after start date' };
-  }
-
+  // No restrictions on date relationships
   return { isValid: true };
 };
 

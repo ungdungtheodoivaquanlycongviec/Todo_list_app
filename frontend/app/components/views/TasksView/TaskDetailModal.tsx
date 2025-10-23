@@ -125,6 +125,26 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
     status: "scheduled"
   })
 
+  // NEW: State for custom status functionality
+  const [showCustomStatusModal, setShowCustomStatusModal] = useState(false)
+  const [customStatusName, setCustomStatusName] = useState("")
+  const [customStatusColor, setCustomStatusColor] = useState("#3B82F6")
+
+  // NEW: State for timer functionality
+  const [isTimerRunning, setIsTimerRunning] = useState(false)
+  const [timerStartTime, setTimerStartTime] = useState<Date | null>(null)
+  const [elapsedTime, setElapsedTime] = useState(0)
+
+  // NEW: State for repeat task functionality
+  const [showRepeatModal, setShowRepeatModal] = useState(false)
+  const [repeatSettings, setRepeatSettings] = useState({
+    isRepeating: false,
+    frequency: "weekly",
+    interval: 1,
+    endDate: "",
+    occurrences: null
+  })
+
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editingCommentContent, setEditingCommentContent] = useState("")
   const [showCommentMenu, setShowCommentMenu] = useState<string | null>(null)
@@ -328,6 +348,25 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
     }
   }, [showCommentMenu])
 
+  // NEW: Timer functionality
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null
+
+    if (isTimerRunning && timerStartTime) {
+      interval = setInterval(() => {
+        const now = new Date()
+        const elapsed = Math.floor((now.getTime() - timerStartTime.getTime()) / 1000)
+        setElapsedTime(elapsed)
+      }, 1000)
+    }
+
+    return () => {
+      if (interval) {
+        clearInterval(interval)
+      }
+    }
+  }, [isTimerRunning, timerStartTime])
+
   // Save individual field to database
   const saveFieldToDatabase = async (field: string, value: any) => {
     if (!task) return
@@ -388,6 +427,99 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   // Handle quick time selection
   const handleQuickTimeSelect = (time: string) => {
     saveFieldToDatabase('estimatedTime', time)
+  }
+
+  // NEW: Custom status handlers
+  const handleAddCustomStatus = async () => {
+    if (!customStatusName.trim()) return
+
+    try {
+      // Use the new API method to set custom status
+      const updatedTask = await taskService.setCustomStatus(taskId, customStatusName.trim(), customStatusColor)
+      
+      setTask(updatedTask)
+      onTaskUpdate(updatedTask)
+      
+      setShowCustomStatusModal(false)
+      setCustomStatusName("")
+      setCustomStatusColor("#3B82F6")
+    } catch (error) {
+      console.error("Error adding custom status:", error)
+      alert("Failed to add custom status: " + (error as Error).message)
+    }
+  }
+
+  // NEW: Timer handlers
+  const handleStartTimer = async () => {
+    if (!isTimerRunning) {
+      try {
+        const updatedTask = await taskService.startTimer(taskId)
+        setTask(updatedTask)
+        onTaskUpdate(updatedTask)
+        
+        const now = new Date()
+        setTimerStartTime(now)
+        setIsTimerRunning(true)
+      } catch (error) {
+        console.error("Error starting timer:", error)
+        alert("Failed to start timer: " + (error as Error).message)
+      }
+    }
+  }
+
+  const handleStopTimer = async () => {
+    if (isTimerRunning) {
+      try {
+        const updatedTask = await taskService.stopTimer(taskId)
+        setTask(updatedTask)
+        onTaskUpdate(updatedTask)
+        
+        // Update time entries from the response
+        if ((updatedTask as any).timeEntries) {
+          setTimeEntries((updatedTask as any).timeEntries)
+        }
+        
+        // Reset timer
+        setIsTimerRunning(false)
+        setTimerStartTime(null)
+        setElapsedTime(0)
+      } catch (error) {
+        console.error("Error stopping timer:", error)
+        alert("Failed to stop timer: " + (error as Error).message)
+      }
+    }
+  }
+
+  const formatElapsedTime = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+    const secs = seconds % 60
+    
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+    }
+    return `${minutes}:${secs.toString().padStart(2, '0')}`
+  }
+
+  // NEW: Repeat task handlers
+  const handleSaveRepeatSettings = async () => {
+    try {
+      const repetitionData = {
+        isRepeating: repeatSettings.isRepeating,
+        frequency: repeatSettings.frequency,
+        interval: repeatSettings.interval,
+        endDate: repeatSettings.endDate ? new Date(repeatSettings.endDate).toISOString() : null,
+        occurrences: repeatSettings.occurrences
+      }
+
+      const updatedTask = await taskService.setTaskRepetition(taskId, repetitionData)
+      setTask(updatedTask)
+      onTaskUpdate(updatedTask)
+      setShowRepeatModal(false)
+    } catch (error) {
+      console.error("Error saving repeat settings:", error)
+      alert("Failed to save repeat settings: " + (error as Error).message)
+    }
   }
 
   // Get status color
@@ -545,15 +677,11 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
     }
   }, [task, taskId, onTaskDelete, onClose])
 
+  // FIXED: Allow comments on all task statuses regardless of due date
   const handleAddComment = useCallback(async () => {
     if (!comment.trim() || !task) return
 
-    // Check if task is completed before allowing comments
-    if (task.status !== 'completed') {
-      alert('Chỉ có thể comment trên task đã hoàn thành. Vui lòng hoàn thành task trước khi thêm comment.')
-      return
-    }
-
+    // REMOVED: All restrictions - comments are now available for all tasks without due date dependency
     try {
       const updatedTask = await taskService.addComment(taskId, comment)
       setComment("")
@@ -677,6 +805,39 @@ const getUserInitial = useCallback((comment: Comment): string => {
   return name.charAt(0).toUpperCase();
 }, [getUserDisplayName]);
 
+const getUserAvatar = useCallback((comment: Comment): string | null => {
+  // Check if comment has user object with avatar
+  if (comment.user && typeof comment.user === "object") {
+    return (comment.user as MinimalUser).avatar || null;
+  }
+  
+  // Check if userId is an object (populated user)
+  if (comment.userId && typeof comment.userId === "object") {
+    return (comment.userId as MinimalUser).avatar || null;
+  }
+  
+  // If userId is string, try to find user in assignees or use current user
+  if (typeof comment.userId === "string") {
+    // Check if it's current user
+    if (currentUser && comment.userId === currentUser._id) {
+      return currentUser.avatar || null;
+    }
+    
+    // Check in task assignees
+    if (task && task.assignedTo) {
+      const assignee = task.assignedTo.find((assignment: any) => 
+        assignment.userId && typeof assignment.userId === 'object' && 
+        (assignment.userId as MinimalUser)._id === comment.userId
+      );
+      if (assignee && typeof assignee.userId === 'object') {
+        return (assignee.userId as MinimalUser).avatar || null;
+      }
+    }
+  }
+  
+  return null;
+}, [currentUser, task]);
+
 const isCommentOwner = useCallback((comment: Comment): boolean => {
   if (!currentUser) return false;
 
@@ -706,7 +867,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
     setEditingCommentContent("")
   }, [])
 
-  // File upload handler
+  // File upload handler - FIXED: No restrictions, available for all tasks regardless of due date
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
     if (!files || files.length === 0) return
@@ -831,10 +992,32 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
     const isEditing = editingCommentId === comment._id
     const isOwner = isCommentOwner(comment)
 
+    const avatarUrl = getUserAvatar(comment);
+    
     return (
       <div key={comment._id || `comment-${index}`} className="flex gap-3 group">
-        <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-xs text-white font-medium flex-shrink-0">
-          {getUserInitial(comment)}
+        <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs text-white font-medium flex-shrink-0 overflow-hidden">
+          {avatarUrl ? (
+            <img 
+              src={avatarUrl} 
+              alt={getUserDisplayName(comment)}
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                // Fallback to initial if image fails to load
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+                const parent = target.parentElement;
+                if (parent) {
+                  parent.innerHTML = getUserInitial(comment);
+                  parent.className = parent.className.replace('overflow-hidden', '') + ' bg-blue-500';
+                }
+              }}
+            />
+          ) : (
+            <div className="w-full h-full bg-blue-500 rounded-full flex items-center justify-center">
+              {getUserInitial(comment)}
+            </div>
+          )}
         </div>
         <div className="flex-1 relative">
           <div className="flex items-center gap-2 mb-1">
@@ -917,7 +1100,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
         </div>
       </div>
     )
-  }, [editingCommentId, editingCommentContent, showCommentMenu, isCommentOwner, getUserInitial, getUserDisplayName, CommentMenu, startEditingComment, handleDeleteComment, handleUpdateComment, cancelEditingComment])
+  }, [editingCommentId, editingCommentContent, showCommentMenu, isCommentOwner, getUserInitial, getUserDisplayName, getUserAvatar, CommentMenu, startEditingComment, handleDeleteComment, handleUpdateComment, cancelEditingComment])
 
   // Time Entry Form Component
   const TimeEntryForm = () => (
@@ -1362,14 +1545,27 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
 
                 {/* Action Buttons */}
                 <div className="flex flex-wrap gap-2 pt-4">
-                  <button className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors shadow-sm">
+                  <button 
+                    onClick={() => setShowCustomStatusModal(true)}
+                    className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors shadow-sm"
+                  >
                     <Plus className="w-4 h-4" />
                     Add status
                   </button>
-                  <button className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors shadow-sm">
+                  
+                  {/* Timer Button */}
+                  <button 
+                    onClick={isTimerRunning ? handleStopTimer : handleStartTimer}
+                    className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm transition-colors shadow-sm ${
+                      isTimerRunning 
+                        ? 'bg-red-50 border-red-300 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300' 
+                        : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                    }`}
+                  >
                     <PlayCircle className="w-4 h-4" />
-                    Start time
+                    {isTimerRunning ? `Stop (${formatElapsedTime(elapsedTime)})` : 'Start time'}
                   </button>
+                  
                   <button 
                     onClick={() => setShowTimeEntryForm(!showTimeEntryForm)}
                     className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors shadow-sm"
@@ -1377,11 +1573,11 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                     <Timer className="w-4 h-4" />
                     Log time
                   </button>
-                  <button className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors shadow-sm">
-                    <Plus className="w-4 h-4" />
-                    Add tag
-                  </button>
-                  <button className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors shadow-sm">
+                  
+                  <button 
+                    onClick={() => setShowRepeatModal(true)}
+                    className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors shadow-sm"
+                  >
                     <RefreshCw className="w-4 h-4" />
                     Repeat task
                   </button>
@@ -1413,7 +1609,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                   )}
                 </div>
 
-                {/* Scheduled Work */}
+                {/* Scheduled Work - Available for all tasks regardless of due date */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Scheduled work</h3>
@@ -1477,7 +1673,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                   </div>
                 </div>
 
-                {/* Logged Time */}
+                {/* Logged Time - Available for all tasks regardless of due date */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Logged time</h3>
@@ -1545,7 +1741,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                   </div>
                 </div>
 
-                {/* Files Section */}
+                {/* Files Section - Available for all tasks regardless of due date */}
                 <div>
                   <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
                     <Paperclip className="w-4 h-4" />
@@ -1629,7 +1825,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
               </div>
             </div>
 
-            {/* Comments - 1/3 width */}
+            {/* Comments - 1/3 width - FIXED: Always show comment form for all task statuses regardless of due date */}
             <div className="w-1/3 overflow-auto flex flex-col">
               <div className="flex-1 p-6">
                 <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
@@ -1648,54 +1844,205 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
               </div>
 
               <div className="p-6 pt-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-                {task.status !== 'completed' ? (
-                  <div className="flex items-center gap-3 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                    <div className="w-8 h-8 bg-yellow-500 rounded-full flex items-center justify-center text-xs text-white font-medium flex-shrink-0">
-                      <MessageSquare className="w-4 h-4" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                        Chỉ có thể comment trên task đã hoàn thành. Vui lòng hoàn thành task trước khi thêm comment.
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex gap-3">
-                    <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-xs text-white font-medium flex-shrink-0">
-                      {currentUser?.name?.charAt(0)?.toUpperCase() || "U"}
-                    </div>
-                    <div className="flex-1">
-                      <div className="relative">
-                        <textarea
-                          value={comment}
-                          onChange={(e) => setComment(e.target.value)}
-                          placeholder="Type a message..."
-                          rows={3}
-                          className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-12 resize-none"
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && !e.shiftKey) {
-                              e.preventDefault()
-                              handleAddComment()
-                            }
-                          }}
-                        />
-                        <button
-                          onClick={handleAddComment}
-                          disabled={!comment.trim()}
-                          className="absolute bottom-3 right-3 p-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                          aria-label="Send comment"
-                        >
-                          <Send className="w-4 h-4" />
-                        </button>
+                {/* FIXED: Always show comment form - no restrictions based on due date or task status */}
+                <div className="flex gap-3">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs text-white font-medium flex-shrink-0 overflow-hidden">
+                    {currentUser?.avatar ? (
+                      <img 
+                        src={currentUser.avatar} 
+                        alt={currentUser.name || "User"}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          // Fallback to initial if image fails to load
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                          const parent = target.parentElement;
+                          if (parent) {
+                            parent.innerHTML = currentUser?.name?.charAt(0)?.toUpperCase() || "U";
+                            parent.className = parent.className.replace('overflow-hidden', '') + ' bg-blue-500';
+                          }
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-blue-500 rounded-full flex items-center justify-center">
+                        {currentUser?.name?.charAt(0)?.toUpperCase() || "U"}
                       </div>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <div className="relative">
+                      <textarea
+                        value={comment}
+                        onChange={(e) => setComment(e.target.value)}
+                        placeholder="Type a message..."
+                        rows={3}
+                        className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-12 resize-none"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault()
+                            handleAddComment()
+                          }
+                        }}
+                      />
+                      <button
+                        onClick={handleAddComment}
+                        disabled={!comment.trim()}
+                        className="absolute bottom-3 right-3 p-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        aria-label="Send comment"
+                      >
+                        <Send className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
-                )}
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Custom Status Modal */}
+      {showCustomStatusModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-96 max-w-md mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+              Add Custom Status
+            </h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Status Name
+                </label>
+                <input
+                  type="text"
+                  value={customStatusName}
+                  onChange={(e) => setCustomStatusName(e.target.value)}
+                  placeholder="e.g., In Review, Blocked, On Hold"
+                  className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  autoFocus
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Color
+                </label>
+                <div className="flex gap-2">
+                  {['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4'].map((color) => (
+                    <button
+                      key={color}
+                      onClick={() => setCustomStatusColor(color)}
+                      className={`w-8 h-8 rounded-full border-2 ${
+                        customStatusColor === color ? 'border-gray-900 dark:border-gray-100' : 'border-gray-300'
+                      }`}
+                      style={{ backgroundColor: color }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={handleAddCustomStatus}
+                disabled={!customStatusName.trim()}
+                className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Add Status
+              </button>
+              <button
+                onClick={() => setShowCustomStatusModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Repeat Task Modal */}
+      {showRepeatModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-96 max-w-md mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+              Repeat Task
+            </h3>
+            
+            <div className="space-y-4">
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="isRepeating"
+                  checked={repeatSettings.isRepeating}
+                  onChange={(e) => setRepeatSettings({...repeatSettings, isRepeating: e.target.checked})}
+                  className="mr-3"
+                />
+                <label htmlFor="isRepeating" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Enable task repetition
+                </label>
+              </div>
+              
+              {repeatSettings.isRepeating && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Repeat every
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        value={repeatSettings.interval}
+                        onChange={(e) => setRepeatSettings({...repeatSettings, interval: parseInt(e.target.value) || 1})}
+                        min="1"
+                        className="w-20 p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                      />
+                      <select
+                        value={repeatSettings.frequency}
+                        onChange={(e) => setRepeatSettings({...repeatSettings, frequency: e.target.value})}
+                        className="flex-1 p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                      >
+                        <option value="daily">Day(s)</option>
+                        <option value="weekly">Week(s)</option>
+                        <option value="monthly">Month(s)</option>
+                        <option value="yearly">Year(s)</option>
+                      </select>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      End date (optional)
+                    </label>
+                    <input
+                      type="date"
+                      value={repeatSettings.endDate}
+                      onChange={(e) => setRepeatSettings({...repeatSettings, endDate: e.target.value})}
+                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+            
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={handleSaveRepeatSettings}
+                className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+              >
+                Save Settings
+              </button>
+              <button
+                onClick={() => setShowRepeatModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

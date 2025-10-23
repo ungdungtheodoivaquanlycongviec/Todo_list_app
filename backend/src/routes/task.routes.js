@@ -18,7 +18,11 @@ const {
   assignTask,
   unassignUser,
   getAssignedToMe,
-  getTaskAssignees
+  getTaskAssignees,
+  startTimer,
+  stopTimer,
+  setCustomStatus,
+  setTaskRepetition
 } = require('../controllers/task.controller');
 const { 
   validateCreateTask, 
@@ -73,5 +77,15 @@ router.delete('/:id/comments/:commentId', deleteComment);
 // Attachment routes
 router.post('/:id/attachments', uploadMultiple, uploadAttachments);
 router.delete('/:id/attachments/:attachmentId', deleteAttachment);
+
+// NEW: Timer routes
+router.post('/:id/start-timer', startTimer);
+router.post('/:id/stop-timer', stopTimer);
+
+// NEW: Custom status routes
+router.post('/:id/custom-status', setCustomStatus);
+
+// NEW: Task repetition routes
+router.post('/:id/repeat', setTaskRepetition);
 
 module.exports = router;

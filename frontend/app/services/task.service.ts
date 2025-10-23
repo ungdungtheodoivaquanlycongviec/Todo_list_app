@@ -617,5 +617,151 @@ export const taskService = {
     const data = await response.json();
     console.log('Task assignees response:', data);
     return data;
+  },
+
+  // NEW: Start timer for task
+  startTimer: async (taskId: string): Promise<Task> => {
+    const token = getAuthToken();
+    const headers: HeadersInit = {};
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    console.log('Starting timer for task:', taskId);
+
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/start-timer`, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        if (typeof window !== 'undefined') {
+          localStorage.clear();
+          sessionStorage.clear();
+        }
+        throw new Error('Authentication failed. Please login again.');
+      }
+
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      throw new Error(`Failed to start timer: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return normalizeTaskResponse(data);
+  },
+
+  // NEW: Stop timer for task
+  stopTimer: async (taskId: string): Promise<Task> => {
+    const token = getAuthToken();
+    const headers: HeadersInit = {};
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    console.log('Stopping timer for task:', taskId);
+
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/stop-timer`, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        if (typeof window !== 'undefined') {
+          localStorage.clear();
+          sessionStorage.clear();
+        }
+        throw new Error('Authentication failed. Please login again.');
+      }
+
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      throw new Error(`Failed to stop timer: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return normalizeTaskResponse(data);
+  },
+
+  // NEW: Set custom status for task
+  setCustomStatus: async (taskId: string, name: string, color: string): Promise<Task> => {
+    const token = getAuthToken();
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    console.log('Setting custom status for task:', { taskId, name, color });
+
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/custom-status`, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify({ name, color }),
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        if (typeof window !== 'undefined') {
+          localStorage.clear();
+          sessionStorage.clear();
+        }
+        throw new Error('Authentication failed. Please login again.');
+      }
+
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      throw new Error(`Failed to set custom status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return normalizeTaskResponse(data);
+  },
+
+  // NEW: Set task repetition settings
+  setTaskRepetition: async (taskId: string, repetitionSettings: any): Promise<Task> => {
+    const token = getAuthToken();
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    console.log('Setting task repetition for task:', { taskId, repetitionSettings });
+
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/repeat`, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify(repetitionSettings),
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        if (typeof window !== 'undefined') {
+          localStorage.clear();
+          sessionStorage.clear();
+        }
+        throw new Error('Authentication failed. Please login again.');
+      }
+
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      throw new Error(`Failed to set task repetition: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return normalizeTaskResponse(data);
   }
 };
