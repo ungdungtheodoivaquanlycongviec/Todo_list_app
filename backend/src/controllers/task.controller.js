@@ -17,10 +17,16 @@ const { SUCCESS_MESSAGES, ERROR_MESSAGES, HTTP_STATUS } = require('../config/con
 const createTask = asyncHandler(async (req, res) => {
   // Get userId from authenticated user
   const createdBy = req.user._id;
+  const currentGroupId = req.user.currentGroupId;
+
+  if (!currentGroupId) {
+    return sendError(res, 'You must join or create a group to create tasks', HTTP_STATUS.FORBIDDEN);
+  }
 
   const taskData = {
     ...req.body,
-    createdBy
+    createdBy,
+    groupId: currentGroupId // Ensure task is created in user's current group
   };
 
   // Đảm bảo assignedTo bao gồm creator
@@ -103,11 +109,17 @@ const deleteTask = asyncHandler(async (req, res) => {
  * @access  Private
  */
 const getAllTasks = asyncHandler(async (req, res) => {
+  const currentGroupId = req.user.currentGroupId;
+
+  if (!currentGroupId) {
+    return sendError(res, 'You must join or create a group to view tasks', HTTP_STATUS.FORBIDDEN);
+  }
+
   const filters = {
     status: req.query.status,
     priority: req.query.priority,
     search: req.query.search,
-    groupId: req.query.groupId
+    groupId: currentGroupId // Only show tasks from user's current group
   };
 
   const options = {
@@ -130,9 +142,14 @@ const getAllTasks = asyncHandler(async (req, res) => {
  */
 const getCalendarView = asyncHandler(async (req, res) => {
   const { year, month } = req.query;
+  const currentGroupId = req.user.currentGroupId;
+
+  if (!currentGroupId) {
+    return sendError(res, 'You must join or create a group to view calendar', HTTP_STATUS.FORBIDDEN);
+  }
 
   // Call service (service sẽ validate)
-  const result = await taskService.getCalendarView(year, month);
+  const result = await taskService.getCalendarView(year, month, currentGroupId);
 
   sendSuccess(res, result, 'Lấy calendar view thành công');
 });
@@ -143,9 +160,15 @@ const getCalendarView = asyncHandler(async (req, res) => {
  * @access  Private
  */
 const getKanbanView = asyncHandler(async (req, res) => {
+  const currentGroupId = req.user.currentGroupId;
+
+  if (!currentGroupId) {
+    return sendError(res, 'You must join or create a group to view tasks', HTTP_STATUS.FORBIDDEN);
+  }
+
   const filters = {
     priority: req.query.priority,
-    groupId: req.query.groupId,
+    groupId: currentGroupId, // Only show tasks from user's current group
     search: req.query.search
   };
 

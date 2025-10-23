@@ -19,6 +19,7 @@ import { taskService } from '../../services/task.service';
 import { Task } from '../../services/types/task.types';
 import { useAuth } from '../../contexts/AuthContext';
 import CreateTaskModal from './TasksView/CreateTaskModal';
+import { useGroupChange } from '../../hooks/useGroupChange';
 
 interface CalendarEvent {
   id: string;
@@ -31,7 +32,7 @@ interface CalendarEvent {
 }
 
 export default function CalendarView() {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, currentGroup } = useAuth();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [assignedTasksSearch, setAssignedTasksSearch] = useState('');
   const [calendarData, setCalendarData] = useState<any>(null);
@@ -86,6 +87,7 @@ export default function CalendarView() {
   
     try {
       setAssignedTasksLoading(true);
+      // Backend đã filter theo currentGroupId, chỉ cần filter theo assignedTo ở frontend
       const response = await taskService.getAllTasks({}, {});
       
       const tasksAssignedToUser = response.tasks.filter((task: Task) =>
@@ -110,6 +112,15 @@ export default function CalendarView() {
     fetchCalendarData(year, month);
     fetchAssignedTasks();
   }, [currentDate, currentUser]);
+
+  // Listen for global group change events
+  useGroupChange(() => {
+    console.log('Group change detected, reloading CalendarView');
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth() + 1;
+    fetchCalendarData(year, month);
+    fetchAssignedTasks();
+  });
 
   // Hàm chuyển tháng/tuần
   const navigatePeriod = (direction: 'prev' | 'next') => {
@@ -349,6 +360,25 @@ export default function CalendarView() {
   };
 
   const displayDays = viewMode === 'month' ? getDisplayDays() : getDisplayWeekDays();
+
+  // Check if user has a current group
+  if (!currentGroup) {
+    return (
+      <div className="p-6 bg-gray-50 min-h-screen">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center max-w-md">
+            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-8 h-8 text-blue-600">⏳</div>
+            </div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Loading Workspace</h2>
+            <p className="text-gray-600 mb-6">
+              Please wait while we load your workspace...
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

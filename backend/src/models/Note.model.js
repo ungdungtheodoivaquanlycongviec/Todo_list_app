@@ -17,6 +17,11 @@ const noteSchema = new mongoose.Schema({
     ref: 'User',
     required: [true, 'User ID is required']
   },
+  groupId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Group',
+    required: [true, 'Group ID is required']
+  },
   lastEdited: {
     type: Date,
     default: Date.now

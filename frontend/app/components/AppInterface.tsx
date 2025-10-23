@@ -6,6 +6,7 @@ import MainLayout from './layouts/MainLayout';
 import TasksView from './views/TasksView/TasksView';
 import CalendarView from './views/CalendarView';
 import NotesView from './views/NotesView';
+import GroupMembersView from './views/GroupMembersView';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function AppInterface() {
@@ -61,6 +62,8 @@ export default function AppInterface() {
         return <CalendarView />;
       case 'notes':
         return <NotesView />;
+      case 'members':
+        return <GroupMembersView />;
       default:
         return <TasksView />;
     }

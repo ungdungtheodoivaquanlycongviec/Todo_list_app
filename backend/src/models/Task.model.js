@@ -73,7 +73,7 @@ const taskSchema = new mongoose.Schema(
     groupId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Group',
-      default: null
+      required: [true, 'Group ID is required for task management']
     },
     attachments: {
       type: [

@@ -23,8 +23,11 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { notesService, Note } from '../../services/notes.service';
+import { useGroupChange } from '../../hooks/useGroupChange';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function NotesView() {
+  const { currentGroup } = useAuth();
   const [notes, setNotes] = useState<Note[]>([]);
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -38,6 +41,12 @@ export default function NotesView() {
   useEffect(() => {
     loadNotes();
   }, []);
+
+  // Listen for global group change events
+  useGroupChange(() => {
+    console.log('Group change detected, reloading NotesView');
+    loadNotes();
+  });
 
   // Load notes with search
   const loadNotes = useCallback(async () => {
@@ -175,6 +184,25 @@ export default function NotesView() {
     const minutes = Math.ceil(words / 200);
     return minutes === 0 ? '< 1 min' : `${minutes} min read`;
   };
+
+  // Check if user has a current group
+  if (!currentGroup) {
+    return (
+      <div className="p-6 bg-gray-50 min-h-screen">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center max-w-md">
+            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-8 h-8 text-blue-600">⏳</div>
+            </div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Loading Workspace</h2>
+            <p className="text-gray-600 mb-6">
+              Please wait while we load your workspace...
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-gray-50">

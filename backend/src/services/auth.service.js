@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User.model');
+const Group = require('../models/Group.model');
 const { JWT_SECRET, JWT_REFRESH_SECRET } = require('../config/environment');
 const admin = require('../config/firebaseAdmin');
 
@@ -31,16 +32,28 @@ class AuthService {
       name
     });
     
-    // 4. Generate tokens
+    // 4. Create Personal Workspace group
+    const personalWorkspace = await Group.create({
+      name: 'Personal Workspace',
+      description: 'Your personal workspace for tasks and projects',
+      createdBy: user._id,
+      members: [{ userId: user._id, role: 'admin', joinedAt: new Date() }]
+    });
+    
+    // 5. Set Personal Workspace as user's current group and save
+    user.currentGroupId = personalWorkspace._id;
+    await user.save();
+    
+    // 6. Generate tokens
     const accessToken = user.generateAccessToken();
     const refreshToken = user.generateRefreshToken();
     
-    // 5. Save refresh token to DB
+    // 7. Save refresh token to DB
     user.refreshToken = refreshToken;
     user.lastLogin = new Date();
     await user.save();
     
-    // 6. Return user + tokens (without sensitive data)
+    // 8. Return user + tokens (without sensitive data)
     return {
       user: user.toSafeObject(),
       accessToken,
@@ -143,6 +156,18 @@ class AuthService {
         avatar: picture,
         isEmailVerified: true
       });
+      
+      // Create Personal Workspace for new Google user
+      const personalWorkspace = await Group.create({
+        name: 'Personal Workspace',
+        description: 'Your personal workspace for tasks and projects',
+        createdBy: user._id,
+        members: [{ userId: user._id, role: 'admin', joinedAt: new Date() }]
+      });
+      
+      // Set Personal Workspace as user's current group
+      user.currentGroupId = personalWorkspace._id;
+      await user.save();
     }
 
     if (!user.isActive) {

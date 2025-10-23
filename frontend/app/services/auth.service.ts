@@ -95,6 +95,14 @@ class AuthService {
     }
     return false;
   }
+
+  // Get current access token
+  getAuthToken(): string | null {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('accessToken');
+    }
+    return null;
+  }
 }
 
 export const authService = new AuthService();

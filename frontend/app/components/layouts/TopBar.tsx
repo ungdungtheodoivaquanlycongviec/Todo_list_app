@@ -2,6 +2,7 @@
 
 import React from 'react';
 import UserMenu from '../common/UserMenu';
+import NotificationDropdown from '../NotificationDropdown';
 import { User } from '../../services/types/auth.types';
 
 interface TopBarProps {
@@ -18,9 +19,7 @@ export default function TopBar({ user, onLogout, theme, onThemeChange, onProfile
     <div className="h-16 flex items-center justify-end px-6 bg-white dark:bg-gray-800">
       <div className="flex items-center gap-4">
         {/* Notifications */}
-        <button className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg relative">
-          <span className="text-xl">🔔</span>
-        </button>
+        <NotificationDropdown />
 
         <UserMenu 
           currentUser={user} 

@@ -15,9 +15,14 @@ const { SUCCESS_MESSAGES, ERROR_MESSAGES, HTTP_STATUS } = require('../config/con
  */
 const getAllNotes = asyncHandler(async (req, res) => {
   const userId = req.user._id;
+  const currentGroupId = req.user.currentGroupId;
   const { search, page = 1, limit = 50 } = req.query;
 
-  const notes = await noteService.getAllNotes(userId, { search, page, limit });
+  if (!currentGroupId) {
+    return sendError(res, 'You must join or create a group to view notes', HTTP_STATUS.FORBIDDEN);
+  }
+
+  const notes = await noteService.getAllNotes(userId, currentGroupId, { search, page, limit });
 
   sendSuccess(res, { notes }, SUCCESS_MESSAGES.NOTES_FETCHED);
 });
@@ -30,8 +35,13 @@ const getAllNotes = asyncHandler(async (req, res) => {
 const getNoteById = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const userId = req.user._id;
+  const currentGroupId = req.user.currentGroupId;
 
-  const note = await noteService.getNoteById(id, userId);
+  if (!currentGroupId) {
+    return sendError(res, 'You must join or create a group to view notes', HTTP_STATUS.FORBIDDEN);
+  }
+
+  const note = await noteService.getNoteById(id, userId, currentGroupId);
 
   if (!note) {
     return sendError(res, ERROR_MESSAGES.NOTE_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
@@ -47,9 +57,16 @@ const getNoteById = asyncHandler(async (req, res) => {
  */
 const createNote = asyncHandler(async (req, res) => {
   const userId = req.user._id;
+  const currentGroupId = req.user.currentGroupId;
+
+  if (!currentGroupId) {
+    return sendError(res, 'You must join or create a group to create notes', HTTP_STATUS.FORBIDDEN);
+  }
+
   const noteData = {
     ...req.body,
-    userId
+    userId,
+    groupId: currentGroupId
   };
 
   const note = await noteService.createNote(noteData);
@@ -65,9 +82,14 @@ const createNote = asyncHandler(async (req, res) => {
 const updateNote = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const userId = req.user._id;
+  const currentGroupId = req.user.currentGroupId;
   const updateData = req.body;
 
-  const note = await noteService.updateNote(id, userId, updateData);
+  if (!currentGroupId) {
+    return sendError(res, 'You must join or create a group to update notes', HTTP_STATUS.FORBIDDEN);
+  }
+
+  const note = await noteService.updateNote(id, userId, currentGroupId, updateData);
 
   if (!note) {
     return sendError(res, ERROR_MESSAGES.NOTE_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
@@ -84,8 +106,13 @@ const updateNote = asyncHandler(async (req, res) => {
 const deleteNote = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const userId = req.user._id;
+  const currentGroupId = req.user.currentGroupId;
 
-  const deleted = await noteService.deleteNote(id, userId);
+  if (!currentGroupId) {
+    return sendError(res, 'You must join or create a group to delete notes', HTTP_STATUS.FORBIDDEN);
+  }
+
+  const deleted = await noteService.deleteNote(id, userId, currentGroupId);
 
   if (!deleted) {
     return sendError(res, ERROR_MESSAGES.NOTE_NOT_FOUND, HTTP_STATUS.NOT_FOUND);

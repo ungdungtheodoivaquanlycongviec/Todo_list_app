@@ -1,12 +1,14 @@
 const Group = require('../models/Group.model');
 const Task = require('../models/Task.model');
 const User = require('../models/User.model');
+const notificationService = require('./notification.service');
 const {
   LIMITS,
   ERROR_MESSAGES,
   SUCCESS_MESSAGES,
   HTTP_STATUS
 } = require('../config/constants');
+// const nodemailer = require('nodemailer'); // No longer needed - using notifications
 const {
   isValidObjectId,
   validatePagination,
@@ -71,12 +73,15 @@ class GroupService {
       description: sanitizedDescription,
       createdBy: creatorId,
       members: [
-        { userId: creatorId, role: 'admin' },
+        { userId: creatorId, role: 'admin', joinedAt: new Date() },
         ...membersArray
           .filter(id => validMemberIds.has(id))
-          .map(id => ({ userId: id, role: 'member' }))
+          .map(id => ({ userId: id, role: 'member', joinedAt: new Date() }))
       ]
     });
+
+    // Set this group as user's current group
+    await User.findByIdAndUpdate(creatorId, { currentGroupId: group._id });
 
     await group.populate([
       { path: 'members.userId', select: 'name email avatar' },
@@ -119,7 +124,7 @@ class GroupService {
 
     const skip = (pagination.sanitizedPage - 1) * pagination.sanitizedLimit;
 
-    const [groups, total] = await Promise.all([
+    const [allGroups, total] = await Promise.all([
       Group.find(query)
         .populate('members.userId', 'name email avatar')
         .populate('createdBy', 'name email avatar')
@@ -130,12 +135,23 @@ class GroupService {
       Group.countDocuments(query)
     ]);
 
+    // Separate groups into "My Groups" and "Shared with me"
+    const myGroups = allGroups.filter(group => 
+      normalizeId(group.createdBy?._id || group.createdBy) === normalizeId(userId)
+    );
+    
+    const sharedGroups = allGroups.filter(group => 
+      normalizeId(group.createdBy?._id || group.createdBy) !== normalizeId(userId)
+    );
+
     return {
       success: true,
       statusCode: HTTP_STATUS.OK,
       message: SUCCESS_MESSAGES.GROUPS_FETCHED,
       data: {
-        groups,
+        myGroups,
+        sharedGroups,
+        allGroups,
         pagination: {
           total,
           page: pagination.sanitizedPage,
@@ -574,6 +590,220 @@ class GroupService {
       }
     };
   }
+
+  async joinGroup(groupId, userId) {
+    if (!isValidObjectId(groupId)) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: ERROR_MESSAGES.INVALID_ID
+      };
+    }
+
+    const group = await Group.findById(groupId);
+    if (!group) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.NOT_FOUND,
+        message: ERROR_MESSAGES.GROUP_NOT_FOUND
+      };
+    }
+
+    // Check if user is already a member
+    if (group.isMember(userId)) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.CONFLICT,
+        message: 'You are already a member of this group'
+      };
+    }
+
+    // Check if group has space for new members
+    if (group.members.length >= LIMITS.MAX_MEMBERS_PER_GROUP) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: ERROR_MESSAGES.GROUP_MEMBER_LIMIT_REACHED
+      };
+    }
+
+    // Add user to group
+    const updatedGroup = await Group.findByIdAndUpdate(
+      groupId,
+      {
+        $push: {
+          members: {
+            userId: userId,
+            role: 'member',
+            joinedAt: new Date()
+          }
+        }
+      },
+      { new: true }
+    )
+      .populate('members.userId', 'name email avatar')
+      .populate('createdBy', 'name email avatar');
+
+    return {
+      success: true,
+      statusCode: HTTP_STATUS.OK,
+      message: 'Successfully joined group',
+      data: updatedGroup
+    };
+  }
+
+  async switchToGroup(groupId, userId) {
+    if (!isValidObjectId(groupId)) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: ERROR_MESSAGES.INVALID_ID
+      };
+    }
+
+    const group = await Group.findById(groupId);
+    if (!group) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.NOT_FOUND,
+        message: ERROR_MESSAGES.GROUP_NOT_FOUND
+      };
+    }
+
+    // Check if user is a member of this group
+    if (!group.isMember(userId)) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.FORBIDDEN,
+        message: 'You are not a member of this group'
+      };
+    }
+
+    // Update user's current group
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { currentGroupId: groupId },
+      { new: true }
+    ).select('-password -refreshToken -passwordResetToken -passwordResetExpires');
+
+    return {
+      success: true,
+      statusCode: HTTP_STATUS.OK,
+      message: 'Successfully switched to group',
+      data: {
+        user: updatedUser,
+        group: group
+      }
+    };
+  }
+
+  async inviteUserToGroup(groupId, email, inviterId) {
+    if (!isValidObjectId(groupId) || !isValidObjectId(inviterId)) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: ERROR_MESSAGES.INVALID_ID
+      };
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: 'Invalid email format'
+      };
+    }
+
+    const group = await Group.findById(groupId).populate('createdBy', 'name email');
+    if (!group) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.NOT_FOUND,
+        message: ERROR_MESSAGES.GROUP_NOT_FOUND
+      };
+    }
+
+    // Check if inviter is admin of the group
+    const inviterMember = group.members.find(member => 
+      member.userId.toString() === inviterId.toString()
+    );
+
+    if (!inviterMember || inviterMember.role !== 'admin') {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.FORBIDDEN,
+        message: 'Only group admins can invite users'
+      };
+    }
+
+    // Check if user with email exists
+    const invitedUser = await User.findOne({ email, isActive: true });
+    if (!invitedUser) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.NOT_FOUND,
+        message: 'User with this email not found'
+      };
+    }
+
+    // Check if user is already a member
+    const isAlreadyMember = group.members.some(member => 
+      member.userId.toString() === invitedUser._id.toString()
+    );
+
+    if (isAlreadyMember) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: 'User is already a member of this group'
+      };
+    }
+
+    // Check group member limit
+    if (group.members.length >= LIMITS.MAX_MEMBERS_PER_GROUP) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: ERROR_MESSAGES.GROUP_MEMBER_LIMIT_REACHED
+      };
+    }
+
+    // Create notification instead of adding user directly
+    try {
+      const notificationResult = await notificationService.createGroupInvitationNotification(
+        invitedUser._id,
+        inviterId,
+        groupId,
+        group.name
+      );
+      
+      if (!notificationResult.success) {
+        return {
+          success: false,
+          statusCode: notificationResult.statusCode,
+          message: notificationResult.message
+        };
+      }
+    } catch (error) {
+      console.error('Failed to create invitation notification:', error);
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR,
+        message: 'Failed to send invitation'
+      };
+    }
+
+    return {
+      success: true,
+      statusCode: HTTP_STATUS.OK,
+      message: 'User invited successfully',
+      data: { group, invitedUser: { _id: invitedUser._id, name: invitedUser.name, email: invitedUser.email } }
+    };
+  }
+
+  // Email functionality removed - using in-app notifications instead
 }
 
 module.exports = new GroupService();

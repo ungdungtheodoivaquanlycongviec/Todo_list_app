@@ -22,9 +22,11 @@ import TaskContextMenu from "./TaskContextMenu";
 import TaskDetailModal from "./TaskDetailModal";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../contexts/AuthContext";
+import { Group } from "../../../services/types/group.types";
+import { useGroupChange } from "../../../hooks/useGroupChange";
 
 export default function TasksView() {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, currentGroup } = useAuth();
   const [activeTasksExpanded, setActiveTasksExpanded] = useState(true);
   const [uncompletedTasksExpanded, setUncompletedTasksExpanded] =
     useState(true);
@@ -342,6 +344,16 @@ export default function TasksView() {
       fetchKanbanData();
     }
   }, [viewMode]);
+
+  // Listen for global group change events
+  useGroupChange(() => {
+    console.log('Group change detected, reloading TasksView');
+    if (viewMode === "list") {
+      fetchTasks();
+    } else {
+      fetchKanbanData();
+    }
+  });
 
   // Sort tasks function
   const sortTasks = (tasks: Task[]) => {
@@ -1355,6 +1367,25 @@ export default function TasksView() {
         <div className="text-center">
           <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-600">Loading tasks...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Check if user has a current group
+  if (!currentGroup) {
+    return (
+      <div className="p-6 bg-gray-50 min-h-screen">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center max-w-md">
+            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-8 h-8 text-blue-600">⏳</div>
+            </div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Loading Workspace</h2>
+            <p className="text-gray-600 mb-6">
+              Please wait while we load your workspace...
+            </p>
+          </div>
         </div>
       </div>
     );

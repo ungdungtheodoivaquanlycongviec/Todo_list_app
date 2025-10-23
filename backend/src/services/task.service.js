@@ -61,7 +61,12 @@ class TaskService {
         raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
       }
 
-      if (!group.isAdmin(creatorId)) {
+      // Check if user is a member of the group (admin or member)
+      const isGroupMember = group.members.some(member => 
+        normalizeId(member.userId) === normalizeId(creatorId)
+      );
+      
+      if (!isGroupMember) {
         raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
       }
 
@@ -360,7 +365,7 @@ class TaskService {
    * @param {Number} month - Tháng (1-12)
    * @returns {Promise<Object>} { year, month, tasksByDate }
    */
-  async getCalendarView(year, month) {
+  async getCalendarView(year, month, groupId) {
     // Validate params
     if (!year || !month) {
       throw new Error('Year và month là bắt buộc');
@@ -385,12 +390,13 @@ class TaskService {
     const startDate = getFirstDayOfMonth(yearNum, monthNum);
     const endDate = getLastDayOfMonth(yearNum, monthNum);
 
-    // Query tasks VỚI POPULATE
+    // Query tasks VỚI POPULATE và filter theo group
     const tasks = await Task.find({
       dueDate: {
         $gte: startDate,
         $lte: endDate
-      }
+      },
+      groupId: groupId
     })
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')

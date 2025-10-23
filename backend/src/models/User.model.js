@@ -85,6 +85,13 @@ const userSchema = new mongoose.Schema({
     email: { type: Boolean, default: true },
     push: { type: Boolean, default: true },
     beforeDue: { type: Number, default: 24 } // Hours before due date
+  },
+  
+  // Current active group for the user
+  currentGroupId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Group',
+    default: null
   }
 }, {
   timestamps: true

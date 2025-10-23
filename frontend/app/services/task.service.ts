@@ -1,19 +1,10 @@
 import { Task } from './types/task.types';
+import { authService } from './auth.service';
+import { notificationService } from './notification.service';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080/api';
 
 console.log('API_BASE_URL:', API_BASE_URL);
-
-// Hàm helper để lấy token
-const getAuthToken = (): string | null => {
-  if (typeof window !== 'undefined') {
-    return localStorage.getItem('token') ||
-      localStorage.getItem('accessToken') ||
-      sessionStorage.getItem('token') ||
-      sessionStorage.getItem('accessToken');
-  }
-  return null;
-};
 
 // Helper để normalize response từ backend
 const normalizeTaskResponse = (data: any): Task => {
@@ -43,7 +34,7 @@ interface TasksResponse {
 export const taskService = {
   // Tạo task mới
   createTask: async (taskData: any): Promise<Task> => {
-    const token = getAuthToken();
+    const token = authService.getAuthToken();
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };
@@ -52,6 +43,25 @@ export const taskService = {
       headers['Authorization'] = `Bearer ${token}`;
     } else {
       console.warn('No authentication token found');
+    }
+
+    // Get current group from localStorage if available
+    let currentGroupId = null;
+    if (typeof window !== 'undefined') {
+      const userStr = localStorage.getItem('user');
+      if (userStr) {
+        try {
+          const user = JSON.parse(userStr);
+          currentGroupId = user.currentGroupId;
+        } catch (error) {
+          console.error('Failed to parse user from localStorage:', error);
+        }
+      }
+    }
+
+    // Add groupId to taskData if not already present
+    if (currentGroupId && !taskData.groupId) {
+      taskData.groupId = currentGroupId;
     }
 
     console.log('Creating task with data:', taskData);
@@ -87,12 +97,23 @@ export const taskService = {
     }
 
     const data = await response.json();
-    return normalizeTaskResponse(data);
+    const task = normalizeTaskResponse(data);
+    
+    // Send notification to group members about new task
+    if (task.groupId) {
+      try {
+        await notificationService.createNewTaskNotification(task.groupId, task.title);
+      } catch (notifErr) {
+        console.warn('Failed to send task notification:', notifErr);
+      }
+    }
+    
+    return task;
   },
 
   // Lấy tất cả tasks
   getAllTasks: async (filters?: any, options?: any): Promise<TasksResponse> => {
-    const token = getAuthToken();
+    const token = authService.getAuthToken();
     const headers: HeadersInit = {};
 
     if (token) {
@@ -171,7 +192,7 @@ export const taskService = {
 
   // Lấy task theo ID - FIXED
   getTaskById: async (id: string): Promise<Task> => {
-    const token = getAuthToken();
+    const token = authService.getAuthToken();
     const headers: HeadersInit = {};
 
     if (token) {
@@ -211,7 +232,7 @@ export const taskService = {
 
   // Update task - FIXED
   updateTask: async (id: string, updateData: any): Promise<Task> => {
-    const token = getAuthToken();
+    const token = authService.getAuthToken();
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };
@@ -267,7 +288,7 @@ export const taskService = {
 
   // Delete task
   deleteTask: async (id: string): Promise<void> => {
-    const token = getAuthToken();
+    const token = authService.getAuthToken();
     const headers: HeadersInit = {};
 
     if (token) {
@@ -297,7 +318,7 @@ export const taskService = {
 
   // Add comment
   addComment: async (taskId: string, content: string): Promise<Task> => {
-    const token = getAuthToken();
+    const token = authService.getAuthToken();
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };
@@ -324,7 +345,7 @@ export const taskService = {
 
   // Upload attachment
   uploadAttachment: async (taskId: string, file: File): Promise<Task> => {
-    const token = getAuthToken();
+    const token = authService.getAuthToken();
     const formData = new FormData();
     formData.append('file', file);
 
@@ -350,7 +371,7 @@ export const taskService = {
   },
 
   getKanbanView: async (filters?: any): Promise<any> => {
-    const token = getAuthToken();
+    const token = authService.getAuthToken();
     const headers: HeadersInit = {};
 
     if (token) {
@@ -398,7 +419,7 @@ export const taskService = {
 
   // Get calendar view
   getCalendarView: async (year: number, month: number): Promise<any> => {
-    const token = getAuthToken();
+    const token = authService.getAuthToken();
     const headers: HeadersInit = {};
 
     if (token) {
@@ -436,7 +457,7 @@ export const taskService = {
 
   // Update comment
   updateComment: async (taskId: string, commentId: string, userId: string, content: string): Promise<any> => {
-    const token = getAuthToken();
+    const token = authService.getAuthToken();
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };
@@ -475,7 +496,7 @@ export const taskService = {
 
   // Delete comment
   deleteComment: async (taskId: string, commentId: string, userId: string): Promise<any> => {
-    const token = getAuthToken();
+    const token = authService.getAuthToken();
     const headers: HeadersInit = {};
 
     if (token) {
@@ -511,7 +532,7 @@ export const taskService = {
 
   // NEW: Assign users to task
   assignUsersToTask: async (taskId: string, userIds: string[]): Promise<any> => {
-    const token = getAuthToken();
+    const token = authService.getAuthToken();
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };
@@ -550,7 +571,7 @@ export const taskService = {
 
   // NEW: Unassign user from task
   unassignUserFromTask: async (taskId: string, userId: string): Promise<any> => {
-    const token = getAuthToken();
+    const token = authService.getAuthToken();
     const headers: HeadersInit = {};
 
     if (token) {
@@ -586,7 +607,7 @@ export const taskService = {
 
   // NEW: Get task assignees
   getTaskAssignees: async (taskId: string): Promise<any> => {
-    const token = getAuthToken();
+    const token = authService.getAuthToken();
     const headers: HeadersInit = {};
 
     if (token) {

@@ -33,6 +33,7 @@ const {
   validateUnassignUser
 } = require('../middlewares/validator');
 const { authenticate } = require('../middlewares/auth');
+const { requireCurrentGroup } = require('../middlewares/groupAuth');
 const { uploadMultiple, uploadSingle } = require('../middlewares/upload');
 
 /**
@@ -42,6 +43,9 @@ const { uploadMultiple, uploadSingle } = require('../middlewares/upload');
 
 // Apply authentication to all task routes
 router.use(authenticate);
+
+// Apply group requirement to all task routes except group management
+router.use(requireCurrentGroup);
 
 // GET routes - List views
 router.get('/assigned-to-me', getAssignedToMe); // Phải đặt trước /:id

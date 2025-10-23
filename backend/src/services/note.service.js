@@ -6,16 +6,17 @@ const Note = require('../models/Note.model');
  */
 
 /**
- * Lấy tất cả notes của user
+ * Lấy tất cả notes của user trong group
  * @param {string} userId - ID của user
+ * @param {string} groupId - ID của group
  * @param {Object} options - Tùy chọn tìm kiếm và phân trang
  * @returns {Promise<Array>} Danh sách notes
  */
-const getAllNotes = async (userId, options = {}) => {
+const getAllNotes = async (userId, groupId, options = {}) => {
   const { search, page = 1, limit = 50 } = options;
   
   // Tạo query
-  let query = { userId };
+  let query = { userId, groupId };
   
   // Thêm tìm kiếm nếu có
   if (search && search.trim()) {
@@ -42,10 +43,11 @@ const getAllNotes = async (userId, options = {}) => {
  * Lấy note theo ID
  * @param {string} noteId - ID của note
  * @param {string} userId - ID của user
+ * @param {string} groupId - ID của group
  * @returns {Promise<Object|null>} Note object hoặc null
  */
-const getNoteById = async (noteId, userId) => {
-  const note = await Note.findOne({ _id: noteId, userId }).lean();
+const getNoteById = async (noteId, userId, groupId) => {
+  const note = await Note.findOne({ _id: noteId, userId, groupId }).lean();
   return note;
 };
 
@@ -64,12 +66,13 @@ const createNote = async (noteData) => {
  * Cập nhật note
  * @param {string} noteId - ID của note
  * @param {string} userId - ID của user
+ * @param {string} groupId - ID của group
  * @param {Object} updateData - Dữ liệu cập nhật
  * @returns {Promise<Object|null>} Note đã cập nhật hoặc null
  */
-const updateNote = async (noteId, userId, updateData) => {
+const updateNote = async (noteId, userId, groupId, updateData) => {
   const note = await Note.findOneAndUpdate(
-    { _id: noteId, userId },
+    { _id: noteId, userId, groupId },
     { ...updateData, lastEdited: new Date() },
     { new: true, runValidators: true }
   );
@@ -80,10 +83,11 @@ const updateNote = async (noteId, userId, updateData) => {
  * Xóa note
  * @param {string} noteId - ID của note
  * @param {string} userId - ID của user
+ * @param {string} groupId - ID của group
  * @returns {Promise<boolean>} True nếu xóa thành công
  */
-const deleteNote = async (noteId, userId) => {
-  const result = await Note.findOneAndDelete({ _id: noteId, userId });
+const deleteNote = async (noteId, userId, groupId) => {
+  const result = await Note.findOneAndDelete({ _id: noteId, userId, groupId });
   return !!result;
 };
 

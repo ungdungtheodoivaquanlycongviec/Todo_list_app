@@ -18,6 +18,14 @@ const createGroup = asyncHandler(async (req, res) => {
     return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);
   }
 
+  // Update user's currentGroupId
+  const User = require('../models/User.model');
+  await User.findByIdAndUpdate(creatorId, { currentGroupId: result.data._id });
+
+  // Update the user object in the response
+  const updatedUser = await User.findById(creatorId).select('-password -refreshToken -passwordResetToken -passwordResetExpires');
+  result.data.updatedUser = updatedUser;
+
   sendSuccess(res, result.data, result.message, result.statusCode || HTTP_STATUS.CREATED);
 });
 
@@ -130,6 +138,46 @@ const getGroupTasks = asyncHandler(async (req, res) => {
   sendSuccess(res, result.data, result.message, result.statusCode || HTTP_STATUS.OK);
 });
 
+const joinGroup = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const result = await groupService.joinGroup(id, req.user._id);
+
+  if (!result.success) {
+    return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);
+  }
+
+  sendSuccess(res, result.data, result.message, result.statusCode || HTTP_STATUS.OK);
+});
+
+const switchToGroup = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const result = await groupService.switchToGroup(id, req.user._id);
+
+  if (!result.success) {
+    return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);
+  }
+
+  // Update the user object in the response to include currentGroupId
+  const User = require('../models/User.model');
+  const updatedUser = await User.findById(req.user._id).select('-password -refreshToken -passwordResetToken -passwordResetExpires');
+  result.data.user = updatedUser;
+
+  sendSuccess(res, result.data, result.message, result.statusCode || HTTP_STATUS.OK);
+});
+
+const inviteUserToGroup = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { email } = req.body;
+  
+  const result = await groupService.inviteUserToGroup(id, email, req.user._id);
+
+  if (!result.success) {
+    return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);
+  }
+
+  sendSuccess(res, result.data, result.message, result.statusCode || HTTP_STATUS.OK);
+});
+
 module.exports = {
   createGroup,
   getGroups,
@@ -139,5 +187,8 @@ module.exports = {
   addMembers,
   removeMember,
   leaveGroup,
-  getGroupTasks
+  getGroupTasks,
+  joinGroup,
+  switchToGroup,
+  inviteUserToGroup
 };

@@ -5,15 +5,20 @@ import { useRouter } from 'next/navigation';
 import { authService } from '../services/auth.service';
 import { userService } from '../services/user.service';
 import { User, LoginRequest, RegisterRequest, AuthResponse } from '../services/types/auth.types';
+import { Group } from '../services/types/group.types';
+import { triggerGroupChange } from '../hooks/useGroupChange';
 
 interface AuthContextType {
   user: User | null;
+  currentGroup: Group | null;
   loading: boolean;
   login: (credentials: LoginRequest) => Promise<void>;
   register: (userData: RegisterRequest) => Promise<void>;
   logout: () => Promise<void>;
   updateUserTheme: (theme: string) => Promise<void>;
-  updateUser: (userData: Partial<User>) => Promise<void>; // THÊM FUNCTION NÀY
+  updateUser: (userData: Partial<User>) => Promise<void>;
+  setUser: (user: User | null) => void;
+  setCurrentGroup: (group: Group | null) => void;
   isAuthenticated: boolean;
   loginWithGoogle: () => Promise<void>;
 }
@@ -22,6 +27,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [currentGroup, setCurrentGroup] = useState<Group | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -41,6 +47,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Apply user's theme preference
         if (userData.theme) {
           applyTheme(userData.theme);
+        }
+        
+        // Load current group if user has one
+        if (userData.currentGroupId) {
+          try {
+            const { groupService } = await import('../services/group.service');
+            const group = await groupService.getGroupById(userData.currentGroupId);
+            setCurrentGroup(group);
+          } catch (error) {
+            console.error('Failed to load current group:', error);
+            // Don't fail auth if group loading fails
+          }
+        } else {
+          // If no current group, try to load the first available group
+          try {
+            const { groupService } = await import('../services/group.service');
+            const response = await groupService.getAllGroups();
+            if (response.myGroups.length > 0) {
+              setCurrentGroup(response.myGroups[0]);
+            } else if (response.sharedGroups.length > 0) {
+              setCurrentGroup(response.sharedGroups[0]);
+            }
+          } catch (error) {
+            console.error('Failed to load groups:', error);
+          }
         }
         
         // Save user to localStorage for persistence
@@ -161,6 +192,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Apply user's theme preference
       applyTheme(authData.user.theme);
       
+      // Load current group if user has one
+      if (authData.user.currentGroupId) {
+        try {
+          const { groupService } = await import('../services/group.service');
+          const group = await groupService.getGroupById(authData.user.currentGroupId);
+          setCurrentGroup(group);
+        } catch (error) {
+          console.error('Failed to load current group:', error);
+          // Don't fail login if group loading fails
+        }
+      } else {
+        // If no current group, try to load the first available group
+        try {
+          const { groupService } = await import('../services/group.service');
+          const response = await groupService.getAllGroups();
+          if (response.myGroups.length > 0) {
+            setCurrentGroup(response.myGroups[0]);
+          } else if (response.sharedGroups.length > 0) {
+            setCurrentGroup(response.sharedGroups[0]);
+          }
+        } catch (error) {
+          console.error('Failed to load groups:', error);
+        }
+      }
+      
       // Save user to localStorage
       if (typeof window !== 'undefined') {
         localStorage.setItem('user', JSON.stringify(authData.user));
@@ -254,14 +310,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const handleSetCurrentGroup = (group: Group | null) => {
+    setCurrentGroup(group);
+    
+    // Update user's currentGroupId in localStorage and state
+    if (typeof window !== 'undefined' && user) {
+      const updatedUser = { ...user, currentGroupId: group?._id || null };
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      setUser(updatedUser);
+    }
+    
+    // Trigger group change event to reload all views
+    triggerGroupChange();
+  };
+
   const value: AuthContextType = {
     user,
+    currentGroup,
     loading,
     login,
     register,
     logout,
     updateUserTheme,
-    updateUser, // THÊM VÀO CONTEXT
+    updateUser,
+    setUser,
+    setCurrentGroup: handleSetCurrentGroup,
     isAuthenticated: !!user,
     loginWithGoogle
   };
