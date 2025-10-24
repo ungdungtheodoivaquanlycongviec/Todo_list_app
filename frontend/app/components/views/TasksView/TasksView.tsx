@@ -24,6 +24,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../../../contexts/AuthContext";
 import { Group } from "../../../services/types/group.types";
 import { useGroupChange } from "../../../hooks/useGroupChange";
+import NoGroupState from "../../common/NoGroupState";
 
 export default function TasksView() {
   const { user: currentUser, currentGroup } = useAuth();
@@ -301,7 +302,17 @@ export default function TasksView() {
       if (errorMessage.includes("Authentication failed")) {
         alert("Session expired. Please login again.");
         router.push("/");
+        return;
       }
+
+      if (errorMessage.includes("You must join or create a group")) {
+        // Don't show error alert for group requirement - let the UI handle it
+        console.log("User needs to join/create a group");
+        return;
+      }
+
+      // For other errors, show alert
+      alert("Failed to fetch tasks: " + errorMessage);
 
       setActiveTasks([]);
       setUncompletedTasks([]);
@@ -328,7 +339,17 @@ export default function TasksView() {
       if (errorMessage.includes("Authentication failed")) {
         alert("Session expired. Please login again.");
         router.push("/");
+        return;
       }
+
+      if (errorMessage.includes("You must join or create a group")) {
+        // Don't show error alert for group requirement - let the UI handle it
+        console.log("User needs to join/create a group");
+        return;
+      }
+
+      // For other errors, show alert
+      alert("Failed to fetch kanban data: " + errorMessage);
 
       setKanbanData(null);
     } finally {
@@ -1375,19 +1396,10 @@ export default function TasksView() {
   // Check if user has a current group
   if (!currentGroup) {
     return (
-      <div className="p-6 bg-gray-50 min-h-screen">
-        <div className="flex items-center justify-center min-h-[400px]">
-          <div className="text-center max-w-md">
-            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <div className="w-8 h-8 text-blue-600">⏳</div>
-            </div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Loading Workspace</h2>
-            <p className="text-gray-600 mb-6">
-              Please wait while we load your workspace...
-            </p>
-          </div>
-        </div>
-      </div>
+      <NoGroupState 
+        title="Join or Create a Group to Manage Tasks"
+        description="You need to join or create a group to manage tasks and collaborate with your team."
+      />
     );
   }
 

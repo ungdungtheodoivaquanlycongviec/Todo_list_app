@@ -158,6 +158,18 @@ export const taskService = {
         throw new Error('Authentication failed. Please login again.');
       }
 
+      if (response.status === 403) {
+        const errorText = await response.text();
+        let errorMessage = 'You must join or create a group to manage tasks';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.message || errorMessage;
+        } catch {
+          // Use default message if parsing fails
+        }
+        throw new Error(errorMessage);
+      }
+
       const errorText = await response.text();
       console.error('Error response:', errorText);
       throw new Error(`Failed to fetch tasks: ${response.status}`);
@@ -406,6 +418,18 @@ export const taskService = {
         throw new Error('Authentication failed. Please login again.');
       }
 
+      if (response.status === 403) {
+        const errorText = await response.text();
+        let errorMessage = 'You must join or create a group to manage tasks';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.message || errorMessage;
+        } catch {
+          // Use default message if parsing fails
+        }
+        throw new Error(errorMessage);
+      }
+
       const errorText = await response.text();
       console.error('Error response:', errorText);
       throw new Error(`Failed to fetch kanban view: ${response.status}`);
@@ -442,6 +466,18 @@ export const taskService = {
           sessionStorage.clear();
         }
         throw new Error('Authentication failed. Please login again.');
+      }
+
+      if (response.status === 403) {
+        const errorText = await response.text();
+        let errorMessage = 'You must join or create a group to manage tasks';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.message || errorMessage;
+        } catch {
+          // Use default message if parsing fails
+        }
+        throw new Error(errorMessage);
       }
 
       const errorText = await response.text();

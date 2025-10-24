@@ -43,6 +43,23 @@
   background-color: #1F1F1F !important; /* Tools sidebar màu #1F1F1F */
 }
 
+/* Custom hex color overrides */
+.dark .bg-\[\#1F1F1F\] {
+  background-color: #1F1F1F !important; /* Sidebar và modal backgrounds */
+}
+
+.dark .bg-\[\#2E2E2E\] {
+  background-color: #2E2E2E !important; /* Input fields và hover states */
+}
+
+.dark .bg-\[\#3E3E3E\] {
+  background-color: #3E3E3E !important; /* Darker hover states */
+}
+
+.dark .bg-\[\#1A1A1A\] {
+  background-color: #1A1A1A !important; /* Main layout background */
+}
+
 /* Main content background */
 .dark .bg-gray-100 {
   background-color: #1A1A1A !important; /* Main layout màu #1A1A1A */
@@ -58,6 +75,15 @@
 .dark .hover\:bg-\[\#243152\]:hover,
 .dark .hover\:bg-\[\#1a2847\]:hover {
   background-color: #2E2E2E !important;
+}
+
+/* Custom hex color hover states */
+.dark .hover\:bg-\[\#2E2E2E\]:hover {
+  background-color: #2E2E2E !important;
+}
+
+.dark .hover\:bg-\[\#3E3E3E\]:hover {
+  background-color: #3E3E3E !important;
 }
 
 /* Các hover states cụ thể */
@@ -109,6 +135,15 @@
 
 .dark .border-\[\#2D4071\] {
   border-color: #404040 !important; /* Border sidebar */
+}
+
+/* Custom hex border colors */
+.dark .border-gray-600 {
+  border-color: #525252 !important; /* Input borders */
+}
+
+.dark .border-gray-700 {
+  border-color: #404040 !important; /* Modal borders */
 }
 
 /* Input fields */
@@ -171,6 +206,32 @@
   border-color: #404040 !important;
 }
 
+/* Additional dark theme overrides */
+.dark .bg-gray-700 {
+  background-color: #2E2E2E !important;
+}
+
+.dark .bg-gray-600 {
+  background-color: #3E3E3E !important;
+}
+
+.dark .bg-gray-900 {
+  background-color: #1A1A1A !important;
+}
+
+/* Text color overrides for better contrast */
+.dark .text-white {
+  color: #FFFFFF !important;
+}
+
+.dark .text-gray-200 {
+  color: #E5E5E5 !important;
+}
+
+.dark .text-gray-300 {
+  color: #D4D4D4 !important;
+}
+
 /* Task priority colors */
 .dark .text-red-600 { color: #f87171 !important; } /* red-400 */
 .dark .bg-red-50 { background-color: #7f1d1d !important; } /* red-900 */
@@ -223,6 +284,37 @@
   background-color: #2E2E2E !important;
 }
 
+/* Gradient backgrounds */
+.dark .bg-gradient-to-b {
+  background: linear-gradient(to bottom, #1F1F1F, #1A1A1A) !important;
+}
+
+.dark .bg-gradient-to-r {
+  background: linear-gradient(to right, #2E2E2E, #3E3E3E) !important;
+}
+
+/* Blue gradient backgrounds */
+.dark .bg-gradient-to-r.from-blue-600.to-blue-700 {
+  background: linear-gradient(to right, #2563eb, #1d4ed8) !important;
+}
+
+.dark .bg-gradient-to-br.from-blue-500.to-blue-600 {
+  background: linear-gradient(to bottom right, #3b82f6, #2563eb) !important;
+}
+
+/* Active/selected states */
+.dark .bg-blue-50 {
+  background-color: #1e3a8a !important; /* blue-900 */
+}
+
+.dark .border-blue-200 {
+  border-color: #1e40af !important; /* blue-800 */
+}
+
+.dark .border-blue-800 {
+  border-color: #1e40af !important; /* blue-800 */
+}
+
 /*Tat tam di vi d doc duoc gi ca
 /* @media (prefers-color-scheme: dark) {
   :root {
@@ -231,9 +323,19 @@
   }
 } */
 
+/* Ensure proper dark theme application */
+html.dark {
+  background-color: #1A1A1A !important;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
   transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.dark body {
+  background-color: #1A1A1A !important;
+  color: #FFFFFF !important;
 }

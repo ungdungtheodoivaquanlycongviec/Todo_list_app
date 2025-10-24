@@ -1,7 +1,7 @@
 "use client"
 
 import React from 'react';
-import { CheckSquare, Calendar, FileText, Users } from 'lucide-react';
+import { CheckSquare, Calendar, FileText, Users, Layout, Target, BarChart3 } from 'lucide-react';
 
 interface ToolsSidebarProps {
   activeView: string;
@@ -17,29 +17,44 @@ export default function ToolsSidebar({ activeView, onViewChange }: ToolsSidebarP
   ];
 
   return (
-    // THAY ĐỔI: w-[6.25%] thành w-full vì grid đã xử lý width
-    <div className="w-full h-full bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col pt-4">
-      <h2 className="px-3 mb-3 text-xs font-medium text-gray-600 dark:text-gray-400">Tools</h2>
-      
-      {tools.map((tool) => {
-        const Icon = tool.icon;
-        const isActive = activeView === tool.id;
-        
-        return (
-          <div
-            key={tool.id}
-            className={`flex flex-col items-center gap-2 py-3 px-2 cursor-pointer ${
-              isActive ? 'bg-blue-50 dark:bg-blue-900/30 border-l-2 border-blue-500' : 'hover:bg-gray-50 dark:hover:bg-gray-700'
-            }`}
-            onClick={() => onViewChange(tool.id)}
-          >
-            <Icon className={`w-5 h-5 ${isActive ? 'text-blue-500' : 'text-gray-600 dark:text-gray-400'}`} />
-            <span className={`text-xs ${isActive ? 'text-blue-500 font-medium' : 'text-gray-600 dark:text-gray-400'}`}>
-              {tool.label}
-            </span>
+    <div className="w-full h-full bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+      {/* Minimal Header */}
+      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+        <div className="text-center">
+          <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center mx-auto mb-1">
+            <Layout className="w-4 h-4 text-white" />
           </div>
-        );
-      })}
+          <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Tools</span>
+        </div>
+      </div>
+
+      {/* Icon-only Navigation */}
+      <div className="flex-1 flex flex-col items-center py-4 space-y-2">
+        {tools.map((tool) => {
+          const Icon = tool.icon;
+          const isActive = activeView === tool.id;
+          
+          return (
+            <button
+              key={tool.id}
+              className={`p-3 rounded-xl transition-all duration-200 group relative ${
+                isActive 
+                  ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' 
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
+              onClick={() => onViewChange(tool.id)}
+              title={tool.label}
+            >
+              <Icon className="w-5 h-5" />
+              
+              {/* Active indicator dot */}
+              {isActive && (
+                <div className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full border-2 border-white dark:border-gray-800"></div>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

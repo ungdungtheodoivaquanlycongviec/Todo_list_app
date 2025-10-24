@@ -25,6 +25,7 @@ import {
 import { notesService, Note } from '../../services/notes.service';
 import { useGroupChange } from '../../hooks/useGroupChange';
 import { useAuth } from '../../contexts/AuthContext';
+import NoGroupState from '../common/NoGroupState';
 
 export default function NotesView() {
   const { currentGroup } = useAuth();
@@ -61,6 +62,17 @@ export default function NotesView() {
       }
     } catch (error) {
       console.error('Error loading notes:', error);
+      
+      // Handle group requirement error gracefully
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes("You must join or create a group")) {
+        console.log("User needs to join/create a group for notes");
+        setNotes([]);
+        return;
+      }
+      
+      // For other errors, show empty state
+      setNotes([]);
     } finally {
       setLoading(false);
     }
@@ -188,19 +200,10 @@ export default function NotesView() {
   // Check if user has a current group
   if (!currentGroup) {
     return (
-      <div className="p-6 bg-gray-50 min-h-screen">
-        <div className="flex items-center justify-center min-h-[400px]">
-          <div className="text-center max-w-md">
-            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <div className="w-8 h-8 text-blue-600">⏳</div>
-            </div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Loading Workspace</h2>
-            <p className="text-gray-600 mb-6">
-              Please wait while we load your workspace...
-            </p>
-          </div>
-        </div>
-      </div>
+      <NoGroupState 
+        title="Join or Create a Group to Manage Notes"
+        description="You need to join or create a group to create and manage notes with your team."
+      />
     );
   }
 
@@ -212,8 +215,7 @@ export default function NotesView() {
           <div className="flex items-center justify-between mb-4">
             {!sidebarCollapsed && (
               <div className="flex items-center gap-2 transition-opacity duration-500 ease-in-out">
-                <FileText className="w-6 h-6 text-blue-500" />
-                <h1 className="text-xl font-bold text-gray-900">Notes</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Notes</h1>
               </div>
             )}
             <button

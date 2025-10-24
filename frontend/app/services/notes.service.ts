@@ -25,6 +25,7 @@ class NotesService {
       return response.data?.notes || [];
     } catch (error) {
       console.error('Error fetching notes:', error);
+      // Re-throw the error to be handled by the calling component
       throw error;
     }
   }

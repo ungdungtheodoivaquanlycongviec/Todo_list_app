@@ -19,7 +19,9 @@ import { taskService } from '../../services/task.service';
 import { Task } from '../../services/types/task.types';
 import { useAuth } from '../../contexts/AuthContext';
 import CreateTaskModal from './TasksView/CreateTaskModal';
+import TaskDetailModal from './TasksView/TaskDetailModal';
 import { useGroupChange } from '../../hooks/useGroupChange';
+import NoGroupState from '../common/NoGroupState';
 
 interface CalendarEvent {
   id: string;
@@ -42,6 +44,8 @@ export default function CalendarView() {
   const [assignedTasksLoading, setAssignedTasksLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'month' | 'week'>('month');
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [showTaskDetail, setShowTaskDetail] = useState(false);
 
   // Filter assigned tasks based on search
   const filteredAssignedTasks = assignedTasks.filter(task =>
@@ -75,6 +79,13 @@ export default function CalendarView() {
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       console.error('Error fetching calendar data:', errorMessage);
+      
+      if (errorMessage.includes("You must join or create a group")) {
+        // Don't show error alert for group requirement - let the UI handle it
+        console.log("User needs to join/create a group");
+        return;
+      }
+      
       setCalendarData(null);
     } finally {
       setLoading(false);
@@ -98,7 +109,15 @@ export default function CalendarView() {
       
       setAssignedTasks(tasksAssignedToUser);
     } catch (error) {
-      console.error('Error fetching assigned tasks:', error);
+      const errorMessage = getErrorMessage(error);
+      console.error('Error fetching assigned tasks:', errorMessage);
+      
+      if (errorMessage.includes("You must join or create a group")) {
+        // Don't show error alert for group requirement - let the UI handle it
+        console.log("User needs to join/create a group");
+        return;
+      }
+      
       setAssignedTasks([]);
     } finally {
       setAssignedTasksLoading(false);
@@ -350,8 +369,34 @@ export default function CalendarView() {
   };
 
   const handleEventClick = (taskId: string) => {
-    // TODO: Open task details
-    console.log('Task clicked:', taskId);
+    setSelectedTaskId(taskId);
+    setShowTaskDetail(true);
+  };
+
+  const handleTaskUpdate = async (updatedTask: Task) => {
+    // Update the task in assigned tasks list
+    setAssignedTasks(prev => 
+      prev.map(task => task._id === updatedTask._id ? updatedTask : task)
+    );
+    
+    // Refresh calendar data
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth() + 1;
+    await fetchCalendarData(year, month);
+  };
+
+  const handleTaskDelete = async (taskId: string) => {
+    // Remove task from assigned tasks list
+    setAssignedTasks(prev => prev.filter(task => task._id !== taskId));
+    
+    // Refresh calendar data
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth() + 1;
+    await fetchCalendarData(year, month);
+    
+    // Close task detail modal
+    setShowTaskDetail(false);
+    setSelectedTaskId(null);
   };
 
   const handleDayClick = (day: any) => {
@@ -364,19 +409,10 @@ export default function CalendarView() {
   // Check if user has a current group
   if (!currentGroup) {
     return (
-      <div className="p-6 bg-gray-50 min-h-screen">
-        <div className="flex items-center justify-center min-h-[400px]">
-          <div className="text-center max-w-md">
-            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <div className="w-8 h-8 text-blue-600">⏳</div>
-            </div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Loading Workspace</h2>
-            <p className="text-gray-600 mb-6">
-              Please wait while we load your workspace...
-            </p>
-          </div>
-        </div>
-      </div>
+      <NoGroupState 
+        title="Join or Create a Group to View Calendar"
+        description="You need to join or create a group to view your calendar and manage scheduled tasks."
+      />
     );
   }
 
@@ -566,9 +602,8 @@ export default function CalendarView() {
               ) : (
                 /* Week View */
                 <div className="space-y-4">
-                  {/* Time headers */}
-                  <div className="grid grid-cols-8 gap-4">
-                    <div className="p-3"></div>
+                  {/* Week headers */}
+                  <div className="grid grid-cols-7 gap-4">
                     {getDisplayWeekDays().map(dayInfo => {
                       const isToday = new Date().toDateString() === dayInfo.fullDate.toDateString();
                       const isSelected = selectedDate && selectedDate.toDateString() === dayInfo.fullDate.toDateString();
@@ -596,46 +631,120 @@ export default function CalendarView() {
                     })}
                   </div>
 
-                  {/* Time slots */}
-                  {Array.from({ length: 12 }, (_, i) => i + 8).map(hour => (
-                    <div key={hour} className="grid grid-cols-8 gap-4">
-                      <div className="p-3 text-sm text-gray-500 text-right font-medium">
-                        {hour}:00
-                      </div>
-                      {getDisplayWeekDays().map(dayInfo => {
-                        const dayTasks = getTasksForDate(dayInfo.dateString);
-                        const hourTasks = dayTasks.filter((task: Task) => {
-                          if (!task.dueDate) return false;
-                          const taskHour = new Date(task.dueDate).getHours();
-                          return taskHour === hour;
-                        });
-                        
-                        return (
-                          <div
-                            key={`${dayInfo.dateString}-${hour}`}
-                            className="min-h-20 p-2 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors"
-                          >
-                            {hourTasks.map((task: Task) => (
-                              <div
-                                key={task._id}
-                                className={`p-2 rounded border-l-3 mb-1 cursor-pointer hover:shadow-sm transition-all ${
-                                  getPriorityBackgroundColor(task.priority || 'medium')
-                                }`}
-                                onClick={() => handleEventClick(task._id)}
-                              >
-                                <div className="text-xs font-medium text-gray-900 truncate">
-                                  {task.title}
+                  {/* Tasks for each day */}
+                  <div className="grid grid-cols-7 gap-4">
+                    {getDisplayWeekDays().map(dayInfo => {
+                      const dayTasks = getTasksForDate(dayInfo.dateString);
+                      const isToday = new Date().toDateString() === dayInfo.fullDate.toDateString();
+                      
+                      return (
+                        <div key={dayInfo.dateString} className="space-y-2">
+                          <div className="min-h-96 p-3 border border-gray-200 rounded-lg bg-white">
+                            <div className="space-y-2">
+                              {dayTasks.map((task: Task) => {
+                                // Calculate task height based on estimated time
+                                const getTaskHeight = (estimatedTime: string) => {
+                                  if (!estimatedTime) return 'h-20'; // Default height
+                                  
+                                  // Parse estimated time (e.g., "2h 30m", "1h", "45m")
+                                  const timeMatch = estimatedTime.match(/(\d+)h?\s*(\d+)?m?/i);
+                                  if (timeMatch) {
+                                    const hours = parseInt(timeMatch[1]) || 0;
+                                    const minutes = parseInt(timeMatch[2]) || 0;
+                                    const totalMinutes = hours * 60 + minutes;
+                                    
+                                    // Map to Tailwind height classes
+                                    if (totalMinutes <= 30) return 'h-16';      // 30 min or less
+                                    if (totalMinutes <= 60) return 'h-20';      // 1 hour
+                                    if (totalMinutes <= 90) return 'h-24';      // 1.5 hours
+                                    if (totalMinutes <= 120) return 'h-28';      // 2 hours
+                                    if (totalMinutes <= 180) return 'h-32';      // 3 hours
+                                    if (totalMinutes <= 240) return 'h-36';      // 4 hours
+                                    return 'h-40';                               // 4+ hours
+                                  }
+                                  
+                                  return 'h-20'; // Default height
+                                };
+                                
+                                const status = getTaskStatus(task);
+                                
+                                return (
+                                  <div
+                                    key={task._id}
+                                    className={`${getTaskHeight(task.estimatedTime || '')} p-3 rounded-lg border-l-4 cursor-pointer hover:shadow-md transition-all duration-200 ${
+                                      getPriorityBackgroundColor(task.priority || 'medium')
+                                    }`}
+                                    onClick={() => handleEventClick(task._id)}
+                                  >
+                                    <div className="flex items-start justify-between h-full">
+                                      <div className="flex-1 min-w-0">
+                                        <div className="text-sm font-medium text-gray-900 truncate mb-1">
+                                          {task.title}
+                                        </div>
+                                        
+                                        {task.description && (
+                                          <div className="text-xs text-gray-600 line-clamp-2 mb-2">
+                                            {task.description}
+                                          </div>
+                                        )}
+                                        
+                                        <div className="flex items-center gap-3 text-xs text-gray-500">
+                                          <div className="flex items-center gap-1">
+                                            {getStatusIcon(status)}
+                                            <span className="capitalize">{status.replace('-', ' ')}</span>
+                                          </div>
+                                          
+                                          {task.estimatedTime && (
+                                            <div className="flex items-center gap-1">
+                                              <Clock className="w-3 h-3" />
+                                              <span>{task.estimatedTime}</span>
+                                            </div>
+                                          )}
+                                          
+                                          {task.category && (
+                                            <span className="bg-gray-100 px-2 py-1 rounded text-xs">
+                                              {task.category}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      
+                                      <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                          task.priority === 'urgent' ? 'bg-red-100 text-red-800' :
+                                          task.priority === 'high' ? 'bg-orange-100 text-orange-800' :
+                                          task.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                                          'bg-blue-100 text-blue-800'
+                                        }`}>
+                                          {task.priority}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                              
+                              {/* Empty state */}
+                              {dayTasks.length === 0 && (
+                                <div 
+                                  className="h-32 flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+                                  onClick={() => {
+                                    setSelectedDate(dayInfo.fullDate);
+                                    handleAddTask();
+                                  }}
+                                >
+                                  <div className="text-center text-gray-500">
+                                    <Plus className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                                    <p className="text-sm">Click to add task</p>
+                                  </div>
                                 </div>
-                                <div className="text-xs text-gray-500">
-                                  {task.estimatedTime && `⏱️ ${task.estimatedTime}`}
-                                </div>
-                              </div>
-                            ))}
+                              )}
+                            </div>
                           </div>
-                        );
-                      })}
-                    </div>
-                  ))}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
@@ -854,6 +963,21 @@ export default function CalendarView() {
           onClose={() => setShowCreateModal(false)}
           onCreateTask={handleCreateTask}
           currentUser={currentUser}
+          initialDueDate={selectedDate || undefined}
+        />
+      )}
+
+      {/* Task Detail Modal */}
+      {showTaskDetail && selectedTaskId && (
+        <TaskDetailModal
+          taskId={selectedTaskId}
+          isOpen={showTaskDetail}
+          onClose={() => {
+            setShowTaskDetail(false);
+            setSelectedTaskId(null);
+          }}
+          onTaskUpdate={handleTaskUpdate}
+          onTaskDelete={handleTaskDelete}
         />
       )}
     </div>

@@ -17,6 +17,7 @@ interface CreateTaskModalProps {
   onClose: () => void;
   onCreateTask: (taskData: any) => void;
   currentUser?: any;
+  initialDueDate?: Date;
 }
 
 export default function CreateTaskModal({
@@ -24,6 +25,7 @@ export default function CreateTaskModal({
   onClose,
   onCreateTask,
   currentUser,
+  initialDueDate,
 }: CreateTaskModalProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -37,6 +39,16 @@ export default function CreateTaskModal({
 
   const modalRef = useRef<HTMLDivElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
+
+  // Set initial due date when modal opens
+  useEffect(() => {
+    if (isOpen && initialDueDate) {
+      const dateString = initialDueDate.toISOString().split('T')[0];
+      const timeString = initialDueDate.toTimeString().split(' ')[0].substring(0, 5);
+      setDueDate(dateString);
+      // You might want to add a time field if needed
+    }
+  }, [isOpen, initialDueDate]);
 
   // Enhanced options
   const categoryOptions = [
