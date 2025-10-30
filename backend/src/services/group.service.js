@@ -206,6 +206,7 @@ class GroupService {
     }
 
     const group = access.data;
+    const previousName = group.name;
 
     if (!group.isAdmin(requesterId)) {
       return {
@@ -240,6 +241,23 @@ class GroupService {
     )
       .populate('members.userId', 'name email avatar')
       .populate('createdBy', 'name email avatar');
+
+    if (updateData.name && previousName && updatedGroup && updateData.name.trim() !== previousName) {
+      try {
+        const actorRecord = group.members.find(member => normalizeId(member.userId) === normalizeId(requesterId));
+        const actorName = actorRecord?.userId?.name || actorRecord?.name || null;
+
+        await notificationService.createGroupNameChangeNotification(
+          groupId,
+          requesterId,
+          previousName,
+          updatedGroup.name,
+          actorName
+        );
+      } catch (notificationError) {
+        console.error('Failed to dispatch group name change notification:', notificationError);
+      }
+    }
 
     return {
       success: true,
@@ -738,7 +756,9 @@ class GroupService {
       };
     }
 
-    // Check if user with email exists
+  const inviterProfile = await User.findById(inviterId).select('name email');
+
+  // Check if user with email exists
     const invitedUser = await User.findOne({ email, isActive: true });
     if (!invitedUser) {
       return {
@@ -776,7 +796,8 @@ class GroupService {
         invitedUser._id,
         inviterId,
         groupId,
-        group.name
+        group.name,
+        inviterProfile?.name || null
       );
       
       if (!notificationResult.success) {

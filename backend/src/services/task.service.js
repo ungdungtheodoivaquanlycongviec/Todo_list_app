@@ -14,6 +14,7 @@ const {
   getLastDayOfMonth 
 } = require('../utils/dateHelper');
 const fileService = require('./file.service');
+const notificationService = require('./notification.service');
 
 const normalizeId = value => {
   if (!value) return null;
@@ -49,6 +50,7 @@ class TaskService {
     }
 
     let groupMemberIds = null;
+    let targetGroup = null;
 
     if (taskData.groupId) {
       const groupId = normalizeId(taskData.groupId);
@@ -60,6 +62,8 @@ class TaskService {
       if (!group) {
         raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
       }
+
+      targetGroup = group;
 
       // Check if user is a member of the group (admin or member)
       const isGroupMember = group.members.some(member => 
@@ -106,6 +110,30 @@ class TaskService {
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
       .populate('groupId', 'name description');
+
+    if (targetGroup) {
+      try {
+        const recipientIds = targetGroup.members
+          .map(member => normalizeId(member.userId))
+          .filter(id => id && id !== creatorId);
+
+        if (recipientIds.length > 0) {
+          await notificationService.createNewTaskNotification({
+            groupId: targetGroup._id,
+            senderId: creatorId,
+            groupName: targetGroup.name,
+            taskId: populatedTask._id,
+            taskTitle: populatedTask.title,
+            recipientIds,
+            creatorName: populatedTask.createdBy?.name || null,
+            priority: populatedTask.priority,
+            dueDate: populatedTask.dueDate
+          });
+        }
+      } catch (notificationError) {
+        console.error('Failed to dispatch task creation notification:', notificationError);
+      }
+    }
 
     return populatedTask;
   }

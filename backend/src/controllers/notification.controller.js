@@ -5,14 +5,10 @@ const { HTTP_STATUS } = require('../config/constants');
 
 // Get all notifications for current user
 const getNotifications = asyncHandler(async (req, res) => {
-  const { page = 1, limit = 20, unreadOnly = false } = req.query;
   const userId = req.user._id;
+  const filters = req.notificationFilters || {};
 
-  const result = await notificationService.getUserNotifications(userId, {
-    page: parseInt(page),
-    limit: parseInt(limit),
-    unreadOnly: unreadOnly === 'true'
-  });
+  const result = await notificationService.getUserNotifications(userId, filters);
 
   if (!result.success) {
     return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);
@@ -38,8 +34,9 @@ const markAsRead = asyncHandler(async (req, res) => {
 // Mark all notifications as read
 const markAllAsRead = asyncHandler(async (req, res) => {
   const userId = req.user._id;
+  const categories = req.notificationMarkAll?.categories || [];
 
-  const result = await notificationService.markAllAsRead(userId);
+  const result = await notificationService.markAllAsRead(userId, categories);
 
   if (!result.success) {
     return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);
@@ -79,8 +76,9 @@ const declineGroupInvitation = asyncHandler(async (req, res) => {
 // Get unread count
 const getUnreadCount = asyncHandler(async (req, res) => {
   const userId = req.user._id;
+  const categories = req.notificationFilters?.categories || [];
 
-  const result = await notificationService.getUnreadCount(userId);
+  const result = await notificationService.getUnreadCount(userId, categories);
 
   if (!result.success) {
     return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);
@@ -103,15 +101,55 @@ const deleteNotification = asyncHandler(async (req, res) => {
   sendSuccess(res, result.data, result.message, result.statusCode || HTTP_STATUS.OK);
 });
 
+const archiveNotifications = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const ids = req.notificationArchiveIds || [];
+
+  const result = await notificationService.archiveNotifications(ids, userId);
+
+  if (!result.success) {
+    return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);
+  }
+
+  sendSuccess(res, result.data, result.message, result.statusCode || HTTP_STATUS.OK);
+});
+
+const deleteNotifications = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const ids = req.notificationArchiveIds || [];
+
+  const result = await notificationService.deleteNotifications(ids, userId);
+
+  if (!result.success) {
+    return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);
+  }
+
+  sendSuccess(res, result.data, result.message, result.statusCode || HTTP_STATUS.OK);
+});
+
+const updatePreferences = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const preferences = req.notificationPreferences || req.body || {};
+
+  const result = await notificationService.updateNotificationPreferences(userId, preferences);
+
+  if (!result.success) {
+    return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST, result.errors);
+  }
+
+  sendSuccess(res, result.data, result.message, result.statusCode || HTTP_STATUS.OK);
+});
+
 const createGroupNameChangeNotification = asyncHandler(async (req, res) => {
   const { groupId, oldName, newName } = req.body;
   const senderId = req.user._id;
 
   const result = await notificationService.createGroupNameChangeNotification(
-    groupId, 
-    senderId, 
-    oldName, 
-    newName
+    groupId,
+    senderId,
+    oldName,
+    newName,
+    req.user.name
   );
 
   if (!result.success) {
@@ -122,14 +160,29 @@ const createGroupNameChangeNotification = asyncHandler(async (req, res) => {
 });
 
 const createNewTaskNotification = asyncHandler(async (req, res) => {
-  const { groupId, taskTitle } = req.body;
+  const {
+    groupId,
+    taskTitle,
+    taskId,
+    recipientIds = [],
+    groupName,
+    creatorName,
+    priority,
+    dueDate
+  } = req.body;
   const senderId = req.user._id;
 
-  const result = await notificationService.createNewTaskNotification(
-    groupId, 
-    senderId, 
-    taskTitle
-  );
+  const result = await notificationService.createNewTaskNotification({
+    groupId,
+    senderId,
+    groupName,
+    taskId,
+    taskTitle,
+    recipientIds,
+    creatorName,
+    priority,
+    dueDate
+  });
 
   if (!result.success) {
     return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);
@@ -146,6 +199,9 @@ module.exports = {
   declineGroupInvitation,
   getUnreadCount,
   deleteNotification,
+  deleteNotifications,
+  archiveNotifications,
+  updatePreferences,
   createGroupNameChangeNotification,
   createNewTaskNotification
 };

@@ -1,0 +1,524 @@
+{
+  "info": {
+    "_postman_id": "phase9-notifications-collection",
+    "name": "Phase 9: Notifications & Realtime",
+    "description": "Regression suite for the Phase 9 notification upgrade covering producer triggers, consumer flows, filtering, and preference management.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{authToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080/api", "type": "string" },
+    { "key": "authToken", "value": "", "type": "string" },
+    { "key": "primaryToken", "value": "", "type": "string" },
+    { "key": "secondaryToken", "value": "", "type": "string" },
+    { "key": "primaryUserId", "value": "", "type": "string" },
+  { "key": "secondaryUserId", "value": "", "type": "string" },
+  { "key": "groupId", "value": "", "type": "string" },
+  { "key": "groupName", "value": "", "type": "string" },
+  { "key": "latestNotificationId", "value": "", "type": "string" },
+  { "key": "secondaryNotificationId", "value": "", "type": "string" },
+  { "key": "archivedNotificationId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "0. Setup",
+      "item": [
+        {
+          "name": "0.1 Register Primary User",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"phase9-primary-{{$timestamp}}@example.com\",\n  \"password\": \"RealtimeTest123!\",\n  \"name\": \"Phase9 Primary\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Response has user and tokens\", () => {",
+                  "  pm.expect(body.success).to.be.true;",
+                  "  pm.expect(body.data).to.have.property('accessToken');",
+                  "  pm.expect(body.data).to.have.property('refreshToken');",
+                  "  pm.expect(body.data.user).to.have.property('_id');",
+                  "});",
+                  "pm.collectionVariables.set('primaryToken', body.data.accessToken);",
+                  "pm.collectionVariables.set('authToken', body.data.accessToken);",
+                  "pm.collectionVariables.set('primaryUserId', body.data.user._id);",
+                  "pm.collectionVariables.set('primaryEmail', body.data.user.email);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "0.2 Register Secondary User",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"phase9-secondary-{{$timestamp}}@example.com\",\n  \"password\": \"RealtimeTest123!\",\n  \"name\": \"Phase9 Secondary\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Secondary user tokens issued\", () => {",
+                  "  pm.expect(body.success).to.be.true;",
+                  "  pm.expect(body.data.accessToken).to.be.a('string');",
+                  "});",
+                  "pm.collectionVariables.set('secondaryToken', body.data.accessToken);",
+                  "pm.collectionVariables.set('secondaryUserId', body.data.user._id);",
+                  "pm.collectionVariables.set('secondaryEmail', body.data.user.email);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "0.3 Create Collaboration Group",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{primaryToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Phase 9 QA Squad\",\n  \"description\": \"Test group for realtime notifications\",\n  \"memberIds\": [\"{{secondaryUserId}}\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/groups",
+              "host": ["{{baseUrl}}"],
+              "path": ["groups"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Group created with members\", () => {",
+                  "  pm.expect(body.data).to.have.property('_id');",
+                  "  pm.expect(body.data.members.length).to.be.greaterThan(1);",
+                  "});",
+                  "pm.collectionVariables.set('groupId', body.data._id);",
+                  "pm.collectionVariables.set('groupName', body.data.name);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1. Producer Triggers",
+      "item": [
+        {
+          "name": "1.1 Trigger Group Rename Notification",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{primaryToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"groupId\": \"{{groupId}}\",\n  \"oldName\": \"Phase 9 QA Squad\",\n  \"newName\": \"Phase 9 QA Squad v2\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/notifications/group-name-change",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications", "group-name-change"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Notification documents created\", () => {",
+                  "  pm.expect(body.data).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(body.data[0]).to.have.property('_id');",
+                  "});",
+                  "pm.collectionVariables.set('latestNotificationId', body.data[0]._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.2 Trigger Task Created Notification",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{primaryToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"groupId\": \"{{groupId}}\",\n  \"groupName\": \"Phase 9 QA Squad v2\",\n  \"taskId\": \"task-{{$guid}}\",\n  \"taskTitle\": \"Realtime Kickoff Checklist\",\n  \"recipientIds\": [\"{{secondaryUserId}}\"],\n  \"creatorName\": \"Phase9 Primary\",\n  \"priority\": \"high\",\n  \"dueDate\": \"2025-12-31\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/notifications/new-task",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications", "new-task"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Task notifications queued\", () => {",
+                  "  pm.expect(body.data).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "if (body.data.length > 0) {",
+                  "  pm.collectionVariables.set('secondaryNotificationId', body.data[0]._id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Consumer Flows",
+      "item": [
+        {
+          "name": "2.1 List Notifications (Secondary)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{secondaryToken}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/notifications",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Notifications array returned\", () => {",
+                  "  pm.expect(body.data.notifications).to.be.an('array');",
+                  "});",
+                  "if (body.data.notifications.length > 0) {",
+                  "  pm.collectionVariables.set('latestNotificationId', body.data.notifications[0]._id);",
+                  "}",
+                  "if (body.data.notifications.length > 1) {",
+                  "  pm.collectionVariables.set('secondaryNotificationId', body.data.notifications[1]._id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.2 Get Unread Count",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{secondaryToken}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/unread-count?categories=group,task",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications", "unread-count"],
+              "query": [
+                { "key": "categories", "value": "group,task" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Unread count present\", () => pm.expect(body.data).to.have.property('unreadCount'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.3 Mark Notification as Read",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{secondaryToken}}", "type": "string" }
+              ]
+            },
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/{{latestNotificationId}}/read",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications", "{{latestNotificationId}}", "read"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Notification marked read\", () => pm.expect(body.data.isRead).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.4 Mark All As Read (Task Category)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{secondaryToken}}", "type": "string" }
+              ]
+            },
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categories\": [\"task\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/notifications/mark-all-read",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications", "mark-all-read"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Modified count returned\", () => pm.expect(body.data.modifiedCount).to.be.a('number'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.5 Archive Notification",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{secondaryToken}}", "type": "string" }
+              ]
+            },
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [\"{{latestNotificationId}}\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/notifications/archive",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications", "archive"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Archive acknowledged\", () => pm.expect(body.data.modifiedCount).to.be.at.least(0));",
+                  "pm.collectionVariables.set('archivedNotificationId', pm.collectionVariables.get('latestNotificationId'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.6 Update Notification Preferences",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{secondaryToken}}", "type": "string" }
+              ]
+            },
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"channels\": [\"in_app\", \"socket\"],\n  \"quietHours\": {\n    \"start\": \"22:00\",\n    \"end\": \"07:00\",\n    \"timezone\": \"Asia/Ho_Chi_Minh\"\n  },\n  \"categories\": {\n    \"group\": true,\n    \"task\": true,\n    \"system\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/notifications/preferences",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications", "preferences"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Preferences saved\", () => pm.expect(body.data.channels).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.7 List Archived Notifications",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{secondaryToken}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/notifications?includeArchived=true&channels=socket&sort=deliveredAt:desc",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "includeArchived", "value": "true" },
+                { "key": "channels", "value": "socket" },
+                { "key": "sort", "value": "deliveredAt:desc" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Filters applied\", () => pm.expect(body.data.filters.includeArchived).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.8 Delete Archived Notification",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{secondaryToken}}", "type": "string" }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/{{archivedNotificationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications", "{{archivedNotificationId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Notification deleted\", () => pm.expect(body.success).to.be.true);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
