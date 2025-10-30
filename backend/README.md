@@ -37,7 +37,7 @@ cp .env.example .env
 
 4. Cấu hình file `.env` với thông tin của bạn:
 ```env
-PORT=5000
+PORT=8080
 MONGODB_URI=mongodb://localhost:27017/todolist
 NODE_ENV=development
 JWT_SECRET=your_secret_key_here
@@ -55,16 +55,16 @@ npm run dev
 npm start
 ```
 
-Server sẽ chạy tại: `http://localhost:5000`
+Server sẽ chạy tại: `http://localhost:8080`
 
 ## 🧪 Testing
 
 Test server đang chạy:
 ```bash
-curl http://localhost:5000/health
+curl http://localhost:8080/health
 ```
 
-Hoặc mở browser và truy cập: `http://localhost:5000`
+Hoặc mở browser và truy cập: `http://localhost:8080`
 
 ## 📁 Project Structure
 

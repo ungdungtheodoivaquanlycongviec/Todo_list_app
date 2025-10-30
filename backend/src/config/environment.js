@@ -5,7 +5,7 @@
 require('dotenv').config();
 
 const env = {
-  port: process.env.PORT || 5000,
+  port: process.env.PORT || 8080,
   nodeEnv: process.env.NODE_ENV || 'development',
   mongoUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/todolist',
   
