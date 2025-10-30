@@ -248,6 +248,97 @@ const validateSort = (sortBy, order, allowedFields = []) => {
   };
 };
 
+const sanitizeEnumArray = (values, allowedValues = [], maxItems) => {
+  if (!values || allowedValues.length === 0) {
+    return { isValid: true, values: [] };
+  }
+
+  const rawArray = Array.isArray(values)
+    ? values
+    : String(values)
+        .split(',')
+        .map(value => value.trim())
+        .filter(Boolean);
+
+  const normalized = rawArray.map(value => value.toLowerCase());
+  const uniqueValues = [...new Set(normalized)];
+
+  const invalidValues = uniqueValues.filter(value => !allowedValues.includes(value));
+
+  if (invalidValues.length > 0) {
+    return {
+      isValid: false,
+      error: `Invalid value(s): ${invalidValues.join(', ')}`,
+      invalidValues
+    };
+  }
+
+  if (maxItems && uniqueValues.length > maxItems) {
+    return {
+      isValid: false,
+      error: `Only ${maxItems} value(s) are allowed`,
+      count: uniqueValues.length
+    };
+  }
+
+  return {
+    isValid: true,
+    values: uniqueValues
+  };
+};
+
+const sanitizeSort = (sort, allowedFields = [], defaultField = 'createdAt', defaultOrder = 'desc') => {
+  if (!sort) {
+    return {
+      isValid: true,
+      sortBy: defaultField,
+      order: defaultOrder
+    };
+  }
+
+  let sortBy = defaultField;
+  let order = defaultOrder;
+
+  if (Array.isArray(sort)) {
+    [sortBy, order] = sort;
+  } else {
+    const sortString = String(sort).trim();
+
+    if (sortString.includes(':')) {
+      const [field, direction] = sortString.split(':');
+      sortBy = field?.trim() || defaultField;
+      order = direction?.trim().toLowerCase() || defaultOrder;
+    } else {
+      if (sortString.startsWith('-')) {
+        sortBy = sortString.slice(1);
+        order = 'desc';
+      } else if (sortString.startsWith('+')) {
+        sortBy = sortString.slice(1);
+        order = 'asc';
+      } else {
+        sortBy = sortString || defaultField;
+      }
+    }
+  }
+
+  if (allowedFields.length && !allowedFields.includes(sortBy)) {
+    return {
+      isValid: false,
+      error: `Invalid sort field. Allowed fields: ${allowedFields.join(', ')}`
+    };
+  }
+
+  if (!['asc', 'desc'].includes(order)) {
+    order = defaultOrder;
+  }
+
+  return {
+    isValid: true,
+    sortBy,
+    order
+  };
+};
+
 module.exports = {
   isValidObjectId,
   isValidEmail,
@@ -263,5 +354,7 @@ module.exports = {
   isNonEmptyObject,
   validateTaskDates,
   validatePagination,
-  validateSort
+  validateSort,
+  sanitizeEnumArray,
+  sanitizeSort
 };

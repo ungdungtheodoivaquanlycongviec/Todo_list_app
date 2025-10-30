@@ -27,7 +27,10 @@ const env = {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME,
     apiKey: process.env.CLOUDINARY_API_KEY,
     apiSecret: process.env.CLOUDINARY_API_SECRET
-  }
+  },
+
+  // Feature flags
+  enableRealtimeNotifications: process.env.ENABLE_REALTIME_NOTIFICATIONS === 'true'
 };
 
 // Validate required environment variables
@@ -50,3 +53,4 @@ module.exports.JWT_EXPIRES_IN = env.jwtExpiresIn;
 module.exports.JWT_REFRESH_SECRET = env.jwtRefreshSecret;
 module.exports.JWT_REFRESH_EXPIRES_IN = env.jwtRefreshExpiresIn;
 module.exports.GOOGLE_CLIENT_ID = env.googleClientId;
+module.exports.ENABLE_REALTIME_NOTIFICATIONS = env.enableRealtimeNotifications;

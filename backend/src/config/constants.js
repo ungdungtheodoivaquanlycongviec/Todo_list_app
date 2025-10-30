@@ -14,14 +14,37 @@ const TIME_ENTRY_BILLABLE_TYPES = ['billable', 'non-billable'];
 
 const GROUP_ROLES = ['admin', 'member'];
 
+const NOTIFICATION_CHANNELS = ['in_app', 'socket', 'email'];
+
+const NOTIFICATION_CATEGORIES = ['group', 'task', 'chat', 'call', 'system'];
+
+const NOTIFICATION_EVENTS = {
+  GROUP_INVITATION_SENT: 'GROUP_INVITATION_SENT',
+  GROUP_ROLE_UPDATED: 'GROUP_ROLE_UPDATED',
+  GROUP_NAME_CHANGED: 'GROUP_NAME_CHANGED',
+  TASK_CREATED_IN_GROUP: 'TASK_CREATED_IN_GROUP',
+  TASK_ASSIGNED: 'TASK_ASSIGNED',
+  TASK_UNASSIGNED: 'TASK_UNASSIGNED',
+  TASK_DUE_SOON: 'TASK_DUE_SOON',
+  COMMENT_MENTION: 'COMMENT_MENTION',
+  CHAT_MESSAGE_OFFLINE: 'CHAT_MESSAGE_OFFLINE',
+  CALL_INVITATION: 'CALL_INVITATION',
+  CALL_MISSED: 'CALL_MISSED',
+  SYSTEM_ANNOUNCEMENT: 'SYSTEM_ANNOUNCEMENT'
+};
+
 const NOTIFICATION_TYPES = [
   'task_due_soon',
   'task_assigned',
   'task_completed',
   'group_invite',
+  'group_invitation',
   'comment_added',
   'time_logged',
-  'work_scheduled'
+  'work_scheduled',
+  'group_name_change',
+  'new_task',
+  ...Object.values(NOTIFICATION_EVENTS)
 ];
 
 // HTTP Status Codes
@@ -48,6 +71,9 @@ const ERROR_MESSAGES = {
   USER_NOT_IN_GROUP: 'One or more users are not members of this group',
   USER_NOT_FOUND: 'User not found',
   NOTIFICATION_NOT_FOUND: 'Notification not found',
+  NOTIFICATION_ARCHIVE_LIMIT: 'Too many notifications in archive request',
+  NOTIFICATION_ARCHIVE_INVALID: 'Notification list contains invalid identifiers',
+  NOTIFICATION_PREFERENCES_INVALID: 'Notification preferences payload is invalid',
   NOTE_NOT_FOUND: 'Note not found',
   UNAUTHORIZED: 'Unauthorized access',
   FORBIDDEN: 'Forbidden access',
@@ -95,7 +121,13 @@ const SUCCESS_MESSAGES = {
   NOTE_CREATED: 'Note created successfully',
   NOTE_UPDATED: 'Note updated successfully',
   NOTE_DELETED: 'Note deleted successfully',
-  NOTE_FETCHED: 'Note fetched successfully'
+  NOTE_FETCHED: 'Note fetched successfully',
+  NOTIFICATION_MARKED_READ: 'Notification marked as read',
+  NOTIFICATIONS_FETCHED: 'Notifications fetched successfully',
+  NOTIFICATIONS_MARKED_READ: 'Notifications marked as read',
+  NOTIFICATIONS_ARCHIVED: 'Notifications archived successfully',
+  NOTIFICATION_DELETED: 'Notification deleted successfully',
+  NOTIFICATION_PREFERENCES_UPDATED: 'Notification preferences updated successfully'
 };
 
 // Limits
@@ -110,6 +142,9 @@ const LIMITS = {
   MAX_TAG_LENGTH: 30,
   MAX_FILE_SIZE: 10485760, // 10MB in bytes
   NOTIFICATION_RETENTION_DAYS: 30,
+  NOTIFICATION_DEFAULT_TTL_DAYS: 30,
+  NOTIFICATION_MAX_PAGE_LIMIT: 50,
+  NOTIFICATION_MAX_ARCHIVE_BATCH: 50,
   MAX_TIME_ENTRIES_PER_TASK: 1000,
   MAX_SCHEDULED_WORK_PER_TASK: 500,
   MAX_ESTIMATED_TIME_LENGTH: 50
@@ -166,6 +201,9 @@ module.exports = {
   SCHEDULED_WORK_STATUS,
   TIME_ENTRY_BILLABLE_TYPES,
   GROUP_ROLES,
+  NOTIFICATION_CHANNELS,
+  NOTIFICATION_CATEGORIES,
+  NOTIFICATION_EVENTS,
   NOTIFICATION_TYPES,
   HTTP_STATUS,
   ERROR_MESSAGES,

@@ -1,9 +1,21 @@
-const { TASK_STATUS, PRIORITY_LEVELS, ERROR_MESSAGES, LIMITS } = require('../config/constants');
+const {
+  TASK_STATUS,
+  PRIORITY_LEVELS,
+  ERROR_MESSAGES,
+  LIMITS,
+  NOTIFICATION_CHANNELS,
+  NOTIFICATION_CATEGORIES
+} = require('../config/constants');
 const validator = require('validator');
 const authService = require('../services/auth.service');
 const asyncHandler = require('./asyncHandler');
 const User = require('../models/User.model');
-const { isValidObjectId } = require('../utils/validationHelper');
+const {
+  isValidObjectId,
+  sanitizeEnumArray,
+  sanitizeSort,
+  validatePagination
+} = require('../utils/validationHelper');
 
 /**
  * Validation middleware cho Task endpoints
@@ -633,6 +645,144 @@ const validateGroupMemberParam = (req, res, next) => {
   next();
 };
 
+const validateNotificationQuery = (req, res, next) => {
+  const errors = [];
+  const {
+    page = 1,
+    limit = 20,
+    unreadOnly,
+    includeArchived,
+    categories,
+    channels,
+    sort,
+    order
+  } = req.query;
+
+  const pagination = validatePagination(page, limit);
+  const sanitizedLimit = Math.min(
+    pagination.sanitizedLimit,
+    LIMITS.NOTIFICATION_MAX_PAGE_LIMIT || pagination.sanitizedLimit
+  );
+
+  const categoryResult = sanitizeEnumArray(categories, NOTIFICATION_CATEGORIES);
+  if (!categoryResult.isValid) {
+    errors.push(categoryResult.error || 'Invalid category filter');
+  }
+
+  const channelResult = sanitizeEnumArray(channels, NOTIFICATION_CHANNELS);
+  if (!channelResult.isValid) {
+    errors.push(channelResult.error || 'Invalid channel filter');
+  }
+
+  const sortResult = sanitizeSort(
+    sort ? `${sort}:${order || ''}` : undefined,
+    ['createdAt', 'deliveredAt', 'readAt']
+  );
+
+  if (!sortResult.isValid) {
+    errors.push(sortResult.error || 'Invalid sort field');
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: ERROR_MESSAGES.VALIDATION_ERROR,
+      errors
+    });
+  }
+
+  req.notificationFilters = {
+    page: pagination.sanitizedPage,
+    limit: sanitizedLimit,
+    unreadOnly: unreadOnly === 'true' || unreadOnly === true,
+    includeArchived: includeArchived === 'true' || includeArchived === true,
+    categories: categoryResult.values,
+    channels: channelResult.values,
+    sort: sortResult.sortBy,
+    order: sortResult.order
+  };
+
+  next();
+};
+
+const validateNotificationArchive = (req, res, next) => {
+  const ids = req.body?.ids;
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: ERROR_MESSAGES.VALIDATION_ERROR,
+      errors: [{ field: 'ids', message: 'ids must be a non-empty array' }]
+    });
+  }
+
+  const trimmed = ids
+    .map(id => (typeof id === 'string' ? id.trim() : String(id || '')))
+    .filter(Boolean);
+
+  const unique = Array.from(new Set(trimmed));
+
+  if (unique.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: ERROR_MESSAGES.NOTIFICATION_ARCHIVE_INVALID
+    });
+  }
+
+  if (unique.length > LIMITS.NOTIFICATION_MAX_ARCHIVE_BATCH) {
+    return res.status(400).json({
+      success: false,
+      message: ERROR_MESSAGES.NOTIFICATION_ARCHIVE_LIMIT
+    });
+  }
+
+  const invalidIds = unique.filter(id => !isValidObjectId(id));
+  if (invalidIds.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: ERROR_MESSAGES.NOTIFICATION_ARCHIVE_INVALID,
+      errors: [{ field: 'ids', message: 'ids contains invalid identifier(s)', invalidIds }]
+    });
+  }
+
+  req.notificationArchiveIds = unique;
+  next();
+};
+
+const validateNotificationPreferences = (req, res, next) => {
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    return res.status(400).json({
+      success: false,
+      message: ERROR_MESSAGES.NOTIFICATION_PREFERENCES_INVALID
+    });
+  }
+
+  req.notificationPreferences = req.body;
+  next();
+};
+
+const validateNotificationMarkAll = (req, res, next) => {
+  const categoriesInput = req.body?.categories;
+
+  if (categoriesInput === undefined) {
+    req.notificationMarkAll = { categories: [] };
+    return next();
+  }
+
+  const result = sanitizeEnumArray(categoriesInput, NOTIFICATION_CATEGORIES);
+
+  if (!result.isValid) {
+    return res.status(400).json({
+      success: false,
+      message: ERROR_MESSAGES.VALIDATION_ERROR,
+      errors: [result.error]
+    });
+  }
+
+  req.notificationMarkAll = { categories: result.values };
+  next();
+};
+
 module.exports = {
   validateCreateTask,
   validateUpdateTask,
@@ -647,5 +797,9 @@ module.exports = {
   validateCreateGroup,
   validateUpdateGroup,
   validateManageGroupMembers,
-  validateGroupMemberParam
+  validateGroupMemberParam,
+  validateNotificationQuery,
+  validateNotificationArchive,
+  validateNotificationPreferences,
+  validateNotificationMarkAll
 };

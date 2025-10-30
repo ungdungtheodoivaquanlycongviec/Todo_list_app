@@ -3,6 +3,29 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const validator = require('validator');
 const { JWT_SECRET, JWT_EXPIRES_IN, JWT_REFRESH_SECRET, JWT_REFRESH_EXPIRES_IN } = require('../config/environment');
+const { NOTIFICATION_CHANNELS, NOTIFICATION_CATEGORIES } = require('../config/constants');
+
+const channelPreferenceSchema = new mongoose.Schema(
+  {
+    key: {
+      type: String,
+      enum: NOTIFICATION_CHANNELS,
+      required: true
+    },
+    enabled: {
+      type: Boolean,
+      default: false
+    }
+  },
+  { _id: false }
+);
+
+const buildDefaultCategoryPreferences = () => {
+  return NOTIFICATION_CATEGORIES.reduce((acc, category) => {
+    acc[category] = true;
+    return acc;
+  }, {});
+};
 
 const userSchema = new mongoose.Schema({
   email: {
@@ -84,7 +107,24 @@ const userSchema = new mongoose.Schema({
   notificationSettings: {
     email: { type: Boolean, default: true },
     push: { type: Boolean, default: true },
-    beforeDue: { type: Number, default: 24 } // Hours before due date
+    beforeDue: { type: Number, default: 24 },
+    quietHours: {
+      start: { type: String, default: null },
+      end: { type: String, default: null },
+      timezone: { type: String, default: 'UTC' }
+    },
+    channels: {
+      type: [channelPreferenceSchema],
+      default: () => NOTIFICATION_CHANNELS.map(channel => ({
+        key: channel,
+        enabled: channel === 'in_app'
+      }))
+    },
+    categories: {
+      type: Map,
+      of: Boolean,
+      default: buildDefaultCategoryPreferences
+    }
   },
   
   // Current active group for the user

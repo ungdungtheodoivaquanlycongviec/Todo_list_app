@@ -26,10 +26,11 @@
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.18.3",
-    "morgan": "^1.10.1",
-    "multer": "^2.0.2",
-    "nodemailer": "^7.0.10",
-    "validator": "^13.15.15"
+  "morgan": "^1.10.1",
+  "multer": "^2.0.2",
+  "nodemailer": "^7.0.10",
+  "socket.io": "^4.8.1",
+  "validator": "^13.15.15"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"
