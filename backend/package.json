@@ -12,6 +12,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@socket.io/redis-adapter": "^8.2.0",
     "bcryptjs": "^3.0.2",
     "cloudinary": "^2.7.0",
     "cookie-parser": "^1.4.7",
@@ -24,13 +25,16 @@
     "firebase-admin": "^13.5.0",
     "google-auth-library": "^10.4.0",
     "helmet": "^8.1.0",
+    "ioredis": "^5.4.2",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.18.3",
-  "morgan": "^1.10.1",
-  "multer": "^2.0.2",
-  "nodemailer": "^7.0.10",
-  "socket.io": "^4.8.1",
-  "validator": "^13.15.15"
+    "morgan": "^1.10.1",
+    "multer": "^2.0.2",
+    "nodemailer": "^7.0.10",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
+    "validator": "^13.15.15",
+    "yargs": "^17.7.2"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"
