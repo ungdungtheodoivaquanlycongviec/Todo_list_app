@@ -10,6 +10,30 @@ const { createPresenceService } = require('./presence.service');
 const USER_ROOM_PREFIX = 'user:';
 const DEFAULT_DEV_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000'];
 
+const realtimeMetrics = {
+  activeConnections: 0,
+  peakConnections: 0,
+  totalConnections: 0,
+  disconnectReasons: {},
+  lastUpdatedAt: null
+};
+
+const incrementDisconnectReason = (reason) => {
+  const key = reason || 'unknown';
+  realtimeMetrics.disconnectReasons[key] = (realtimeMetrics.disconnectReasons[key] || 0) + 1;
+};
+
+const logMetricSnapshot = () => {
+  realtimeMetrics.lastUpdatedAt = new Date().toISOString();
+  console.log('[Realtime] Metrics snapshot:', {
+    activeConnections: realtimeMetrics.activeConnections,
+    peakConnections: realtimeMetrics.peakConnections,
+    totalConnections: realtimeMetrics.totalConnections,
+    disconnectReasons: realtimeMetrics.disconnectReasons,
+    lastUpdatedAt: realtimeMetrics.lastUpdatedAt
+  });
+};
+
 const buildOrigins = () => {
   const explicitOrigins = Array.isArray(env.realtime.allowedOrigins)
     ? env.realtime.allowedOrigins.filter(Boolean)
@@ -158,6 +182,15 @@ const setupRealtimeServer = async (httpServer) => {
     const roomName = `${USER_ROOM_PREFIX}${userId}`;
     const metadata = buildSocketMetadata(socket);
 
+    realtimeMetrics.activeConnections += 1;
+    realtimeMetrics.totalConnections += 1;
+    if (realtimeMetrics.activeConnections > realtimeMetrics.peakConnections) {
+      realtimeMetrics.peakConnections = realtimeMetrics.activeConnections;
+    }
+    if (env.nodeEnv !== 'production') {
+      logMetricSnapshot();
+    }
+
     socket.join(roomName);
     socket.emit('notifications:ready', {
       message: 'Realtime channel established',
@@ -203,6 +236,11 @@ const setupRealtimeServer = async (httpServer) => {
         await presence.recordDisconnect(userId, socket.id);
       } catch (error) {
         console.error('[Realtime] Failed to record presence disconnect:', error.message);
+      }
+      realtimeMetrics.activeConnections = Math.max(realtimeMetrics.activeConnections - 1, 0);
+      incrementDisconnectReason(reason);
+      if (env.nodeEnv !== 'production') {
+        logMetricSnapshot();
       }
       console.log(`[Realtime] Socket disconnected (${reason}) for user ${userId}`);
     });
@@ -259,6 +297,7 @@ const setupRealtimeServer = async (httpServer) => {
       if (presenceClient && typeof presenceClient.quit === 'function') {
         await presenceClient.quit();
       }
+      logMetricSnapshot();
       console.log('[Realtime] Realtime server shut down gracefully.');
     } catch (error) {
       console.error('[Realtime] Error during realtime shutdown:', error.message);
@@ -269,6 +308,7 @@ const setupRealtimeServer = async (httpServer) => {
     io,
     namespace: appNamespace,
     presence,
+    metrics: realtimeMetrics,
     shutdown
   };
 };

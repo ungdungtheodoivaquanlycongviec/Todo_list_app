@@ -84,6 +84,7 @@ socket.emit('presence:heartbeat');
 
 - `user:<id>` – personal room automatically joined after successful authentication.
 - `group:<id>` – reserved for Phase 11 messaging fan-out.
+- `conversation:<id>` – planned for Phase 11 direct/group chat rooms.
 
 ## Envelope Limits
 
@@ -103,3 +104,4 @@ socket.emit('presence:heartbeat');
 - Presence service: `src/realtime/presence.service.js`
 - Authentication middleware: `src/realtime/middleware/authenticateSocket.js`
 - Notification bridge: `src/services/realtime.gateway.js`
+- Metrics Snapshot: Logged automatically in non-production environments; review server console for active/peak connection counts.
