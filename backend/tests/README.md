@@ -10,6 +10,9 @@ Thư mục này chứa tất cả tài liệu và resources để test API.
 tests/
 ├── postman/
 │   └── Todo_API.postman_collection.json  # Postman collection
+├── realtime/
+│   ├── mockNotificationClient.js        # Realtime notification client
+│   └── presenceSmoke.js                 # Presence heartbeat smoke test
 └── README.md                              # File này
 ```
 
@@ -143,3 +146,10 @@ Tất cả tests đều pass:
 ---
 
 **Cần trợ giúp?** Đọc các file hướng dẫn hoặc check server logs!
+---
+
+## 📡 Realtime Tooling
+
+- `node tests/realtime/mockNotificationClient.js --token <JWT>` – Kết nối realtime để xem sự kiện `notifications:new`.
+- `node tests/realtime/presenceSmoke.js --token <JWT>` – Kiểm tra luồng hiện diện, kèm tuỳ chọn `--heartbeat` (giây).
+- Xem hợp đồng payload tại `docs/realtime/events.md`.

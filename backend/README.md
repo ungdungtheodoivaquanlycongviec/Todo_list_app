@@ -81,6 +81,7 @@ backend/
 │   ├── middlewares/     # Custom middlewares
 │   ├── services/        # Business logic
 │   ├── utils/           # Helper functions
+│   ├── realtime/        # Socket.IO bootstrap & presence services
 │   └── app.js           # Express app setup
 ├── server.js            # Entry point
 ├── .env                 # Environment variables (gitignored)
@@ -99,13 +100,17 @@ backend/
 - Group Management APIs
 - Notifications APIs
 
-## 📊 Development Progress
+## � Realtime & Presence (Phase 10)
 
-- [x] Phase 0: Project Setup & MongoDB Connection
-- [ ] Phase 1: Create Task (FR-01)
-- [ ] Phase 2: Update & Delete Task (FR-02)
-- [ ] Phase 3: Multiple Views (FR-03)
-- [ ] Phase 4-11: Advanced Features
+- Bật realtime bằng cách đặt `ENABLE_REALTIME_NOTIFICATIONS=true` trong `.env`.
+- Socket namespace mặc định: `/ws/app`. Tùy chỉnh qua `SOCKET_NAMESPACE` nếu cần.
+- Giới hạn payload realtime: `SOCKET_MAX_PAYLOAD_BYTES` (mặc định 5KB).
+- TTL hiện diện: `PRESENCE_TTL_SECONDS` (mặc định 60 giây).
+- Chạy Redis cục bộ (tùy chọn) với `docker compose -f docker-compose.redis.yml up -d`, sau đó bật `ENABLE_SOCKET_REDIS_ADAPTER=true`.
+- QA nhanh: `node tests/realtime/mockNotificationClient.js --token <JWT>` để kiểm tra thông báo realtime.
+- Smoke test hiện diện: `node tests/realtime/presenceSmoke.js --token <JWT>`.
+
+Chi tiết payload và phòng realtime: xem `docs/realtime/events.md`.
 
 ## 🐛 Troubleshooting
 
