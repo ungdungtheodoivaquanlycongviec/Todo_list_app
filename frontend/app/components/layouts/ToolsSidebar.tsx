@@ -1,7 +1,7 @@
 "use client"
 
 import React from 'react';
-import { CheckSquare, Calendar, FileText, Users, Layout, Target, BarChart3 } from 'lucide-react';
+import { CheckSquare, Calendar, FileText, Users, Layout, Target, BarChart3, MessageSquare } from 'lucide-react';
 
 interface ToolsSidebarProps {
   activeView: string;
@@ -13,6 +13,7 @@ export default function ToolsSidebar({ activeView, onViewChange }: ToolsSidebarP
     { id: 'tasks', icon: CheckSquare, label: 'Tasks' },
     { id: 'calendar', icon: Calendar, label: 'Calendar' },
     { id: 'notes', icon: FileText, label: 'Notes' },
+    { id: 'chat', icon: MessageSquare, label: 'Chat' },
     { id: 'members', icon: Users, label: 'Members' },
   ];
 

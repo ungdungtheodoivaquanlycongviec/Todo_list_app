@@ -99,6 +99,115 @@ const EVENT_REGISTRY = {
       categories: ['task'],
       channels: ['in_app']
     })
+  },
+  [NOTIFICATION_EVENTS.TASK_ASSIGNED]: {
+    transform: payload => ({
+      recipient: payload.recipientId,
+      sender: payload.senderId ?? null,
+      type: 'task_assigned',
+      eventKey: NOTIFICATION_EVENTS.TASK_ASSIGNED,
+      title: 'Task Assigned',
+      message: `${payload.assignerName || 'Someone'} assigned you to "${payload.taskTitle}"`,
+      data: {
+        taskId: payload.taskId,
+        taskTitle: payload.taskTitle,
+        groupId: payload.groupId,
+        groupName: payload.groupName
+      },
+      metadata: {
+        assignerId: payload.senderId,
+        priority: payload.priority || null,
+        dueDate: payload.dueDate || null
+      },
+      categories: ['task'],
+      channels: ['in_app']
+    })
+  },
+  [NOTIFICATION_EVENTS.TASK_DUE_SOON]: {
+    transform: payload => ({
+      recipient: payload.recipientId,
+      sender: null,
+      type: 'task_due_soon',
+      eventKey: NOTIFICATION_EVENTS.TASK_DUE_SOON,
+      title: 'Task Due Soon',
+      message: `"${payload.taskTitle}" is due soon`,
+      data: {
+        taskId: payload.taskId,
+        taskTitle: payload.taskTitle,
+        groupId: payload.groupId,
+        groupName: payload.groupName
+      },
+      metadata: {
+        dueDate: payload.dueDate || null,
+        hoursUntilDue: payload.hoursUntilDue || null
+      },
+      categories: ['task'],
+      channels: ['in_app']
+    })
+  },
+  [NOTIFICATION_EVENTS.TASK_COMPLETED]: {
+    transform: payload => ({
+      recipient: payload.recipientId,
+      sender: payload.senderId ?? null,
+      type: 'task_completed',
+      eventKey: NOTIFICATION_EVENTS.TASK_COMPLETED,
+      title: 'Task Completed',
+      message: `${payload.completerName || 'Someone'} completed "${payload.taskTitle}"`,
+      data: {
+        taskId: payload.taskId,
+        taskTitle: payload.taskTitle,
+        groupId: payload.groupId,
+        groupName: payload.groupName
+      },
+      metadata: {
+        completedAt: payload.completedAt || new Date()
+      },
+      categories: ['task'],
+      channels: ['in_app']
+    })
+  },
+  [NOTIFICATION_EVENTS.COMMENT_ADDED]: {
+    transform: payload => ({
+      recipient: payload.recipientId,
+      sender: payload.senderId ?? null,
+      type: 'comment_added',
+      eventKey: NOTIFICATION_EVENTS.COMMENT_ADDED,
+      title: 'New Comment',
+      message: `${payload.commenterName || 'Someone'} commented on "${payload.taskTitle}"`,
+      data: {
+        taskId: payload.taskId,
+        taskTitle: payload.taskTitle,
+        commentId: payload.commentId,
+        groupId: payload.groupId,
+        groupName: payload.groupName
+      },
+      metadata: {
+        commentPreview: payload.commentPreview || null
+      },
+      categories: ['task'],
+      channels: ['in_app']
+    })
+  },
+  [NOTIFICATION_EVENTS.TASK_UNASSIGNED]: {
+    transform: payload => ({
+      recipient: payload.recipientId,
+      sender: payload.senderId ?? null,
+      type: 'task_unassigned',
+      eventKey: NOTIFICATION_EVENTS.TASK_UNASSIGNED,
+      title: 'Task Unassigned',
+      message: `${payload.unassignerName || 'Someone'} removed you from "${payload.taskTitle}"`,
+      data: {
+        taskId: payload.taskId,
+        taskTitle: payload.taskTitle,
+        groupId: payload.groupId,
+        groupName: payload.groupName
+      },
+      metadata: {
+        unassignerId: payload.senderId
+      },
+      categories: ['task'],
+      channels: ['in_app']
+    })
   }
 };
 
@@ -227,6 +336,71 @@ const notifyTaskCreated = ({ recipientId, senderId, taskId, taskTitle, groupId, 
   });
 };
 
+const notifyTaskAssigned = ({ recipientId, senderId, taskId, taskTitle, groupId, groupName, assignerName, priority, dueDate }) => {
+  return publishNotification(NOTIFICATION_EVENTS.TASK_ASSIGNED, {
+    recipientId,
+    senderId,
+    taskId,
+    taskTitle,
+    groupId,
+    groupName,
+    assignerName,
+    priority,
+    dueDate
+  });
+};
+
+const notifyTaskUnassigned = ({ recipientId, senderId, taskId, taskTitle, groupId, groupName, unassignerName }) => {
+  return publishNotification(NOTIFICATION_EVENTS.TASK_UNASSIGNED, {
+    recipientId,
+    senderId,
+    taskId,
+    taskTitle,
+    groupId,
+    groupName,
+    unassignerName
+  });
+};
+
+const notifyTaskCompleted = ({ recipientId, senderId, taskId, taskTitle, groupId, groupName, completerName, completedAt }) => {
+  return publishNotification(NOTIFICATION_EVENTS.TASK_COMPLETED, {
+    recipientId,
+    senderId,
+    taskId,
+    taskTitle,
+    groupId,
+    groupName,
+    completerName,
+    completedAt
+  });
+};
+
+const notifyCommentAdded = ({ recipientId, senderId, taskId, taskTitle, groupId, groupName, commenterName, commentId, commentPreview }) => {
+  return publishNotification(NOTIFICATION_EVENTS.COMMENT_ADDED, {
+    recipientId,
+    senderId,
+    taskId,
+    taskTitle,
+    groupId,
+    groupName,
+    commenterName,
+    commentId,
+    commentPreview
+  });
+};
+
+const notifyTaskDueSoon = ({ recipientId, taskId, taskTitle, groupId, groupName, dueDate, hoursUntilDue }) => {
+  return publishNotification(NOTIFICATION_EVENTS.TASK_DUE_SOON, {
+    recipientId,
+    taskId,
+    taskTitle,
+    groupId,
+    groupName,
+    dueDate,
+    hoursUntilDue
+  });
+};
+
 module.exports = {
   EVENT_REGISTRY,
   publishNotification,
@@ -234,5 +408,10 @@ module.exports = {
   registerListener,
   notifyGroupInvitation,
   notifyGroupNameChange,
-  notifyTaskCreated
+  notifyTaskCreated,
+  notifyTaskAssigned,
+  notifyTaskUnassigned,
+  notifyTaskCompleted,
+  notifyCommentAdded,
+  notifyTaskDueSoon
 };

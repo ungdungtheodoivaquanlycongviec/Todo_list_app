@@ -10,7 +10,11 @@ const {
   publishNotification,
   notifyGroupInvitation,
   notifyGroupNameChange,
-  notifyTaskCreated
+  notifyTaskCreated,
+  notifyTaskAssigned,
+  notifyTaskUnassigned,
+  notifyTaskCompleted,
+  notifyCommentAdded
 } = require('./notification.events');
 
 const createGroupInvitationNotification = async (recipientId, senderId, groupId, groupName, inviterName) => {
@@ -74,9 +78,34 @@ const createGroupNameChangeNotification = async (groupId, senderId, oldName, new
     };
   }
 
+  const senderIdStr = senderId.toString();
+  
+  // Normalize all member IDs to strings for comparison
   const recipientIds = group.members
-    .filter(member => member.userId.toString() !== senderId.toString())
-    .map(member => member.userId);
+    .map(member => {
+      if (!member.userId) return null;
+      // Handle both populated (with _id) and non-populated (ObjectId) userId
+      if (member.userId._id) {
+        return member.userId._id.toString();
+      }
+      if (typeof member.userId === 'object' && member.userId.toString) {
+        return member.userId.toString();
+      }
+      if (typeof member.userId === 'string') {
+        return member.userId;
+      }
+      return null;
+    })
+    .filter(id => id && id !== senderIdStr && isValidObjectId(id));
+
+  console.log('Group name change notification:', {
+    groupId: groupId.toString(),
+    senderId: senderIdStr,
+    totalMembers: group.members.length,
+    recipientIds,
+    oldName,
+    newName
+  });
 
   if (recipientIds.length === 0) {
     return {
@@ -87,16 +116,17 @@ const createGroupNameChangeNotification = async (groupId, senderId, oldName, new
     };
   }
 
-  const notificationTasks = recipientIds.map(recipientId =>
-    notifyGroupNameChange({
-      recipientId,
-      senderId,
-      groupId,
+  const notificationTasks = recipientIds.map(recipientId => {
+    const recipientIdStr = recipientId?.toString() || recipientId;
+    return notifyGroupNameChange({
+      recipientId: recipientIdStr,
+      senderId: senderIdStr,
+      groupId: groupId.toString(),
       oldName,
       newName,
       actorName
-    }).enqueuePromise
-  );
+    }).enqueuePromise;
+  });
 
   const notifications = await Promise.all(notificationTasks);
 
@@ -184,6 +214,223 @@ const createNewTaskNotification = async ({
   };
 };
 
+const createTaskAssignedNotification = async ({
+  taskId,
+  senderId,
+  assigneeIds = [],
+  taskTitle,
+  groupId,
+  groupName,
+  assignerName,
+  priority,
+  dueDate
+}) => {
+  if (!isValidObjectId(taskId) || !isValidObjectId(senderId)) {
+    return {
+      success: false,
+      statusCode: HTTP_STATUS.BAD_REQUEST,
+      message: ERROR_MESSAGES.INVALID_ID
+    };
+  }
+
+  const validRecipients = assigneeIds.filter(id => isValidObjectId(id) && id !== senderId.toString());
+
+  if (validRecipients.length === 0) {
+    return {
+      success: true,
+      statusCode: HTTP_STATUS.OK,
+      message: 'No recipients to notify',
+      data: []
+    };
+  }
+
+  const notificationTasks = validRecipients.map(recipientId =>
+    notifyTaskAssigned({
+      recipientId,
+      senderId,
+      taskId,
+      taskTitle,
+      groupId,
+      groupName,
+      assignerName,
+      priority,
+      dueDate
+    }).enqueuePromise
+  );
+
+  const notifications = await Promise.all(notificationTasks);
+
+  return {
+    success: true,
+    statusCode: HTTP_STATUS.CREATED,
+    message: 'Task assignment notifications created',
+    data: notifications
+  };
+};
+
+const createTaskCompletedNotification = async ({
+  taskId,
+  completerId,
+  taskTitle,
+  groupId,
+  groupName,
+  completerName,
+  recipientIds = [],
+  completedAt
+}) => {
+  if (!isValidObjectId(taskId) || !isValidObjectId(completerId)) {
+    return {
+      success: false,
+      statusCode: HTTP_STATUS.BAD_REQUEST,
+      message: ERROR_MESSAGES.INVALID_ID
+    };
+  }
+
+  let validRecipients = recipientIds.filter(id => isValidObjectId(id) && id !== completerId.toString());
+
+  if (validRecipients.length === 0 && groupId) {
+    const group = await Group.findById(groupId);
+    if (group) {
+      validRecipients = group.members
+        .filter(member => member.userId.toString() !== completerId.toString())
+        .map(member => member.userId)
+        .filter(isValidObjectId);
+    }
+  }
+
+  if (validRecipients.length === 0) {
+    return {
+      success: true,
+      statusCode: HTTP_STATUS.OK,
+      message: 'No recipients to notify',
+      data: []
+    };
+  }
+
+  const notificationTasks = validRecipients.map(recipientId =>
+    notifyTaskCompleted({
+      recipientId,
+      senderId: completerId,
+      taskId,
+      taskTitle,
+      groupId,
+      groupName,
+      completerName,
+      completedAt: completedAt || new Date()
+    }).enqueuePromise
+  );
+
+  const notifications = await Promise.all(notificationTasks);
+
+  return {
+    success: true,
+    statusCode: HTTP_STATUS.CREATED,
+    message: 'Task completion notifications created',
+    data: notifications
+  };
+};
+
+const createCommentAddedNotification = async ({
+  taskId,
+  commenterId,
+  commentId,
+  taskTitle,
+  groupId,
+  groupName,
+  commenterName,
+  commentPreview,
+  recipientIds = []
+}) => {
+  if (!isValidObjectId(taskId) || !isValidObjectId(commenterId)) {
+    return {
+      success: false,
+      statusCode: HTTP_STATUS.BAD_REQUEST,
+      message: ERROR_MESSAGES.INVALID_ID
+    };
+  }
+
+  let validRecipients = recipientIds.filter(id => isValidObjectId(id) && id !== commenterId.toString());
+
+  if (validRecipients.length === 0 && groupId) {
+    const group = await Group.findById(groupId);
+    if (group) {
+      validRecipients = group.members
+        .filter(member => member.userId.toString() !== commenterId.toString())
+        .map(member => member.userId)
+        .filter(isValidObjectId);
+    }
+  }
+
+  if (validRecipients.length === 0) {
+    return {
+      success: true,
+      statusCode: HTTP_STATUS.OK,
+      message: 'No recipients to notify',
+      data: []
+    };
+  }
+
+  const notificationTasks = validRecipients.map(recipientId =>
+    notifyCommentAdded({
+      recipientId,
+      senderId: commenterId,
+      taskId,
+      taskTitle,
+      groupId,
+      groupName,
+      commenterName,
+      commentId,
+      commentPreview: commentPreview ? commentPreview.substring(0, 100) : null
+    }).enqueuePromise
+  );
+
+  const notifications = await Promise.all(notificationTasks);
+
+  return {
+    success: true,
+    statusCode: HTTP_STATUS.CREATED,
+    message: 'Comment notifications created',
+    data: notifications
+  };
+};
+
+const createTaskUnassignmentNotification = async ({
+  taskId,
+  taskTitle,
+  groupId,
+  groupName,
+  unassignerId,
+  unassignerName,
+  recipientId
+}) => {
+  if (!isValidObjectId(taskId) || !isValidObjectId(unassignerId) || !isValidObjectId(groupId) || !isValidObjectId(recipientId)) {
+    return {
+      success: false,
+      statusCode: HTTP_STATUS.BAD_REQUEST,
+      message: ERROR_MESSAGES.INVALID_ID
+    };
+  }
+
+  const { enqueuePromise } = notifyTaskUnassigned({
+    recipientId,
+    senderId: unassignerId,
+    taskId,
+    taskTitle,
+    groupId,
+    groupName,
+    unassignerName
+  });
+
+  const notification = await enqueuePromise;
+
+  return {
+    success: true,
+    statusCode: HTTP_STATUS.CREATED,
+    message: 'Task unassignment notification created',
+    data: notification
+  };
+};
+
 module.exports = {
   publishNotification,
   notifyGroupInvitation,
@@ -191,5 +438,9 @@ module.exports = {
   notifyTaskCreated,
   createGroupInvitationNotification,
   createGroupNameChangeNotification,
-  createNewTaskNotification
+  createNewTaskNotification,
+  createTaskAssignedNotification,
+  createTaskUnassignmentNotification,
+  createTaskCompletedNotification,
+  createCommentAddedNotification
 };

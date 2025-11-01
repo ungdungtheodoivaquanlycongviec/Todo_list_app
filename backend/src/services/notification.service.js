@@ -18,5 +18,9 @@ module.exports = {
   declineGroupInvitation: consumer.declineGroupInvitation,
   createGroupInvitationNotification: producer.createGroupInvitationNotification,
   createGroupNameChangeNotification: producer.createGroupNameChangeNotification,
-  createNewTaskNotification: producer.createNewTaskNotification
+  createNewTaskNotification: producer.createNewTaskNotification,
+  createTaskAssignedNotification: producer.createTaskAssignedNotification,
+  createTaskUnassignmentNotification: producer.createTaskUnassignmentNotification,
+  createTaskCompletedNotification: producer.createTaskCompletedNotification,
+  createCommentAddedNotification: producer.createCommentAddedNotification
 };

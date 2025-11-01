@@ -241,7 +241,12 @@ const setupRealtimeServer = async (httpServer) => {
 
   const unregisterNotificationListener = registerNotificationListener(notificationListener);
 
+  // Setup chat handlers
+  const { setupChatHandlers } = require('../services/chat.socket');
+  setupChatHandlers(appNamespace);
+
   console.log(`[Realtime] Socket.IO namespace ${namespacePath} initialized.`);
+  console.log('[Realtime] Chat handlers registered.');
 
   const shutdown = async () => {
     try {

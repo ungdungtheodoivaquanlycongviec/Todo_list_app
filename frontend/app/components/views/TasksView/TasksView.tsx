@@ -130,8 +130,8 @@ export default function TasksView() {
     };
   }
 
-  const assignees = task.assignedTo
-    .filter(assignment => assignment.userId)
+  const assignees = (task.assignedTo as any[])
+    .filter(assignment => assignment && assignment.userId)
     .map(assignment => {
       // Xử lý cả trường hợp userId là string hoặc object
       let userData;
@@ -154,21 +154,28 @@ export default function TasksView() {
             avatar: currentUser.avatar
           };
         }
-      } else {
+      } else if (assignment.userId && typeof assignment.userId === 'object') {
         // Nếu userId là object (đã populated)
+        const user = assignment.userId as { _id: string; name?: string; email?: string; avatar?: string };
         userData = {
-          _id: assignment.userId._id,
-          name: assignment.userId.name || 'Unknown User',
-          email: assignment.userId.email,
-          avatar: assignment.userId.avatar
+          _id: user._id,
+          name: user.name || 'Unknown User',
+          email: user.email || '',
+          avatar: user.avatar
         };
+      } else {
+        // Fallback nếu userId không hợp lệ
+        return null;
       }
+
+      if (!userData) return null;
 
       return {
         ...userData,
         initial: (userData.name?.charAt(0) || 'U').toUpperCase()
       };
-    });
+    })
+    .filter((assignee): assignee is NonNullable<typeof assignee> => assignee !== null);
 
   const currentUserIsAssigned = currentUser && 
     assignees.some(assignee => assignee._id === currentUser._id);

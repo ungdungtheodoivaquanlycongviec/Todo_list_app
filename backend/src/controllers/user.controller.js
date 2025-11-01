@@ -27,6 +27,33 @@ const updateTheme = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * @route   PATCH /api/users/me/regional-preferences
+ * @desc    Update user regional preferences (timeZone, dateFormat, timeFormat, weekStart)
+ * @access  Private
+ */
+const updateRegionalPreferences = asyncHandler(async (req, res) => {
+  const { timeZone, dateFormat, timeFormat, weekStart } = req.body;
+  
+  try {
+    const preferences = {};
+    if (timeZone !== undefined) preferences.timeZone = timeZone;
+    if (dateFormat !== undefined) preferences.dateFormat = dateFormat;
+    if (timeFormat !== undefined) preferences.timeFormat = timeFormat;
+    if (weekStart !== undefined) preferences.weekStart = weekStart;
+    
+    const updatedUser = await userService.updateRegionalPreferences(req.user._id, preferences);
+    
+    sendSuccess(res, { user: updatedUser }, 'Regional preferences updated successfully');
+  } catch (error) {
+    console.error('Update regional preferences error:', error);
+    if (error.message.includes('validation failed')) {
+      return sendError(res, 'Invalid preference value', 400);
+    }
+    sendError(res, 'Failed to update regional preferences', 500);
+  }
+});
+
 const updateProfile = asyncHandler(async (req, res) => {
   const { name, avatar } = req.body;
   
@@ -142,5 +169,6 @@ module.exports = {
   uploadAvatar,
   updateNotificationSettings,
   deactivateAccount,
-  updateTheme
+  updateTheme,
+  updateRegionalPreferences
 };

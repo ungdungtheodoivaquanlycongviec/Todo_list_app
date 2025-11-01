@@ -7,6 +7,7 @@ import { notificationService } from '../../services/notification.service';
 import { Group, GroupMember } from '../../services/types/group.types';
 import { useGroupChange } from '../../hooks/useGroupChange';
 import NoGroupState from '../common/NoGroupState';
+import { Trash2 } from 'lucide-react';
 
 interface GroupMembersViewProps {
   groupId?: string;
@@ -25,6 +26,8 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now());
   const [showUpdateNotification, setShowUpdateNotification] = useState(false);
   const [showEditButton, setShowEditButton] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const targetGroupId = groupId || currentGroup?._id;
 
@@ -183,6 +186,21 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
       handleSaveName();
     } else if (e.key === 'Escape') {
       handleCancelEditName();
+    }
+  };
+
+  const handleDeleteGroup = async () => {
+    if (!targetGroupId) return;
+
+    setIsDeleting(true);
+    setError(null);
+    try {
+      await groupService.deleteGroup(targetGroupId);
+      // Reload the page or redirect after successful deletion
+      window.location.href = '/dashboard';
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete group');
+      setIsDeleting(false);
     }
   };
 
@@ -425,6 +443,15 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             </button>
+            {isCurrentUserAdmin() && (
+              <button
+                onClick={() => setShowDeleteModal(true)}
+                className="p-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                title="Delete group"
+              >
+                <Trash2 className="w-5 h-5" />
+              </button>
+            )}
             <button
               onClick={() => setShowInviteModal(true)}
               className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-xl transition-all duration-200 flex items-center shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 font-medium"
@@ -591,6 +618,16 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
           onInvite={handleInviteUser}
         />
       )}
+
+      {/* Delete Group Modal */}
+      {showDeleteModal && (
+        <DeleteGroupModal
+          groupName={group.name}
+          onClose={() => setShowDeleteModal(false)}
+          onConfirm={handleDeleteGroup}
+          isDeleting={isDeleting}
+        />
+      )}
     </div>
   );
 }
@@ -708,6 +745,59 @@ function InviteUserModal({ onClose, onInvite }: InviteUserModalProps) {
           <p className="text-xs text-gray-500 dark:text-gray-400">
             The user will receive an email invitation to join your group
           </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface DeleteGroupModalProps {
+  groupName: string;
+  onClose: () => void;
+  onConfirm: () => void;
+  isDeleting: boolean;
+}
+
+function DeleteGroupModal({ groupName, onClose, onConfirm, isDeleting }: DeleteGroupModalProps) {
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-[#1F1F1F] rounded-2xl p-8 w-full max-w-md mx-4 shadow-2xl border border-gray-100 dark:border-gray-700">
+        <div className="text-center mb-6">
+          <div className="w-16 h-16 mx-auto mb-4 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center">
+            <Trash2 className="w-8 h-8 text-red-600 dark:text-red-400" />
+          </div>
+          <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+            Delete Group
+          </h3>
+          <p className="text-gray-600 dark:text-gray-400 text-sm">
+            Are you sure you want to delete <strong>{groupName}</strong>? This action cannot be undone. All tasks in this group will be ungrouped.
+          </p>
+        </div>
+        
+        <div className="flex space-x-4 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isDeleting}
+            className="flex-1 bg-gray-100 dark:bg-[#2E2E2E] text-gray-700 dark:text-gray-300 py-4 px-6 rounded-xl hover:bg-gray-200 dark:hover:bg-[#3E3E3E] transition-all duration-200 font-medium border border-transparent hover:border-gray-300 dark:hover:border-gray-400 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isDeleting}
+            className="flex-1 bg-red-600 text-white py-4 px-6 rounded-xl hover:bg-red-700 transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none"
+          >
+            {isDeleting ? (
+              <div className="flex items-center justify-center">
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                Deleting...
+              </div>
+            ) : (
+              'Delete Group'
+            )}
+          </button>
         </div>
       </div>
     </div>

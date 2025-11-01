@@ -29,18 +29,8 @@ const createTask = asyncHandler(async (req, res) => {
     groupId: currentGroupId // Ensure task is created in user's current group
   };
 
-  // Đảm bảo assignedTo bao gồm creator
-  if (!taskData.assignedTo || taskData.assignedTo.length === 0) {
-    taskData.assignedTo = [{ userId: createdBy }];
-  } else {
-    // Kiểm tra xem creator đã có trong assignedTo chưa
-    const creatorAlreadyAssigned = taskData.assignedTo.some(
-      assignee => assignee.userId && assignee.userId.toString() === createdBy.toString()
-    );
-    if (!creatorAlreadyAssigned) {
-      taskData.assignedTo.push({ userId: createdBy });
-    }
-  }
+  // REMOVED: No longer automatically add creator to assignedTo
+  // Users can now create tasks and assign them to anyone they want without being forced into the list
 
   // Call service
   const task = await taskService.createTask(taskData);
@@ -538,7 +528,7 @@ module.exports = {
   assignTask,
   unassignUser,
   getAssignedToMe,
-  getTaskAssignees,
+  getTaskAssignees, 
   addCommentWithFile,
   startTimer,
   stopTimer,

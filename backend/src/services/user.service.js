@@ -176,6 +176,42 @@ class UserService {
   }
   
   /**
+   * Update regional preferences
+   * @param {String} userId
+   * @param {Object} preferences - { timeZone, dateFormat, timeFormat, weekStart }
+   * @returns {Object} - Updated user
+   */
+  async updateRegionalPreferences(userId, preferences) {
+    const allowedFields = ['timeZone', 'dateFormat', 'timeFormat', 'weekStart'];
+    const updates = {};
+    
+    // Filter and build regionalPreferences update
+    Object.keys(preferences).forEach(key => {
+      if (allowedFields.includes(key) && preferences[key] !== undefined) {
+        updates[`regionalPreferences.${key}`] = preferences[key];
+      }
+    });
+    
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { 
+        ...updates,
+        updatedAt: new Date()
+      },
+      { 
+        new: true, 
+        runValidators: true 
+      }
+    );
+    
+    if (!user) {
+      throw new Error('User not found');
+    }
+    
+    return user.toSafeObject();
+  }
+  
+  /**
    * Update notification settings
    * @param {String} userId
    * @param {Object} settings - { email, push, beforeDue }

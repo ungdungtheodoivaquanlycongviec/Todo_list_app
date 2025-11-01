@@ -1,4 +1,4 @@
-import { apiClient } from './api.client';
+import apiClient from './api.client';
 import { User } from './types/auth.types';
 import { ApiResponse } from './types/auth.types';
 
@@ -39,6 +39,20 @@ export const userService = {
     const response = await apiClient.put<ApiResponse<{ user: User }>>(
       '/users/me/avatar',
       { avatar }
+    );
+    return response.data.user;
+  },
+
+  // Update regional preferences
+  async updateRegionalPreferences(preferences: {
+    timeZone?: string;
+    dateFormat?: string;
+    timeFormat?: string;
+    weekStart?: string;
+  }): Promise<User> {
+    const response = await apiClient.patch<ApiResponse<{ user: User }>>(
+      '/users/me/regional-preferences',
+      preferences
     );
     return response.data.user;
   }

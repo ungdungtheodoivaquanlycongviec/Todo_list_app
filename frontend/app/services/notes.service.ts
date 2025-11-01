@@ -1,4 +1,4 @@
-import { apiClient } from './api.client';
+import apiClient from './api.client';
 import type { ApiResponse } from './types/auth.types';
 
 export interface Note {

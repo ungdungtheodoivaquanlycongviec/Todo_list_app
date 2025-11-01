@@ -371,5 +371,116 @@ export const notificationService = {
       const errorText = await response.text();
       throw new Error(`Failed to create notification: ${response.status}`);
     }
+  },
+
+  // Update notification preferences
+  updatePreferences: async (preferences: any): Promise<any> => {
+    const token = authService.getAuthToken();
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    } else {
+      throw new Error('No authentication token found');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/notifications/preferences`, {
+      method: 'PATCH',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify(preferences),
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        if (typeof window !== 'undefined') {
+          localStorage.clear();
+          sessionStorage.clear();
+        }
+        throw new Error('Authentication failed. Please login again.');
+      }
+
+      const errorText = await response.text();
+      throw new Error(`Failed to update preferences: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.data || data;
+  },
+
+  // Archive notifications
+  archiveNotifications: async (ids: string[]): Promise<any> => {
+    const token = authService.getAuthToken();
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    } else {
+      throw new Error('No authentication token found');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/notifications/archive`, {
+      method: 'PATCH',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify({ ids }),
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        if (typeof window !== 'undefined') {
+          localStorage.clear();
+          sessionStorage.clear();
+        }
+        throw new Error('Authentication failed. Please login again.');
+      }
+
+      const errorText = await response.text();
+      throw new Error(`Failed to archive notifications: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.data || data;
+  },
+
+  // Delete notifications (bulk)
+  deleteNotifications: async (ids: string[]): Promise<any> => {
+    const token = authService.getAuthToken();
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    } else {
+      throw new Error('No authentication token found');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/notifications`, {
+      method: 'DELETE',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify({ ids }),
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        if (typeof window !== 'undefined') {
+          localStorage.clear();
+          sessionStorage.clear();
+        }
+        throw new Error('Authentication failed. Please login again.');
+      }
+
+      const errorText = await response.text();
+      throw new Error(`Failed to delete notifications: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.data || data;
   }
 };

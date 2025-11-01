@@ -87,7 +87,8 @@ class TaskService {
         .filter(Boolean);
     }
 
-    assignedIds.push(creatorId);
+    // REMOVED: No longer automatically add creator to assignedTo
+    // Users can now assign tasks to any group members without the creator being forced in
     assignedIds = Array.from(new Set(assignedIds));
 
     if (groupMemberIds) {
@@ -333,19 +334,17 @@ class TaskService {
       );
     }
 
-    if (!finalAssignedIds.includes(creatorIdStr)) {
-      finalAssignedIds.push(creatorIdStr);
-    }
+    // REMOVED: No longer automatically add creator to assignedTo when updating
+    // Users have full control over who is assigned to the task
 
     if (finalAssignedIds.length > LIMITS.MAX_ASSIGNEES_PER_TASK) {
       raiseError(`Task cannot have more than ${LIMITS.MAX_ASSIGNEES_PER_TASK} assignees`);
     }
 
     if (groupMemberIds) {
-      if (!groupMemberIds.has(creatorIdStr)) {
-        raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
-      }
-
+      // REMOVED: No longer require creator to be in group members
+      // Users can assign tasks to anyone in the group
+      
       const outsideGroup = finalAssignedIds.filter(id => !groupMemberIds.has(id));
       if (outsideGroup.length > 0) {
         raiseError(ERROR_MESSAGES.USER_NOT_IN_GROUP);
@@ -373,6 +372,48 @@ class TaskService {
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
       .populate('groupId', 'name description');
+
+    // Send notifications for changes
+    if (updatedTask && targetGroup) {
+      try {
+        // Notification when task is assigned to new users
+        if (updateData.assignedTo !== undefined) {
+          const newAssigneeIds = finalAssignedIds.filter(id => !currentAssignedIds.includes(id));
+          if (newAssigneeIds.length > 0 && requesterIdStr) {
+            const User = require('../models/User.model');
+            const requester = await User.findById(requesterIdStr).select('name');
+            await notificationService.createTaskAssignedNotification({
+              taskId: updatedTask._id,
+              senderId: requesterIdStr,
+              assigneeIds: newAssigneeIds,
+              taskTitle: updatedTask.title,
+              groupId: finalGroupId,
+              groupName: targetGroup.name,
+              assignerName: requester?.name || null,
+              priority: updatedTask.priority,
+              dueDate: updatedTask.dueDate
+            });
+          }
+        }
+
+        // Notification when task is completed
+        if (updateData.status === 'completed' && taskDoc.status !== 'completed') {
+          const User = require('../models/User.model');
+          const completer = await User.findById(requesterIdStr || creatorIdStr).select('name');
+          await notificationService.createTaskCompletedNotification({
+            taskId: updatedTask._id,
+            completerId: requesterIdStr || creatorIdStr,
+            taskTitle: updatedTask.title,
+            groupId: finalGroupId,
+            groupName: targetGroup.name,
+            completerName: completer?.name || null,
+            completedAt: updatedTask.completedAt || new Date()
+          });
+        }
+      } catch (notificationError) {
+        console.error('Failed to dispatch task update notifications:', notificationError);
+      }
+    }
 
     return updatedTask;
   }
@@ -585,8 +626,10 @@ class TaskService {
     const normalizedAssignerId = normalizeId(assignerId);
 
     let groupMemberIds = null;
+    let group = null;
+    
     if (task.groupId) {
-      const group = await Group.findById(task.groupId);
+      group = await Group.findById(task.groupId);
       if (!group) {
         return {
           success: false,
@@ -595,22 +638,21 @@ class TaskService {
         };
       }
 
-      if (!group.isAdmin(normalizedAssignerId)) {
-        return {
-          success: false,
-          statusCode: HTTP_STATUS.FORBIDDEN,
-          message: ERROR_MESSAGES.GROUP_ACCESS_DENIED
-        };
-      }
-
       groupMemberIds = new Set(group.members.map(member => normalizeId(member.userId)).filter(Boolean));
     }
 
-    if (!normalizedAssignerId || task.createdBy.toString() !== normalizedAssignerId) {
+    // Check permissions: user must be either creator, admin of the group, or currently assigned to the task
+    const isCreator = normalizedAssignerId && task.createdBy.toString() === normalizedAssignerId;
+    const isGroupAdmin = group && group.isAdmin(normalizedAssignerId);
+    const isCurrentlyAssigned = normalizedAssignerId && task.assignedTo.some(
+      assignee => normalizeId(assignee.userId) === normalizedAssignerId
+    );
+
+    if (!normalizedAssignerId || (!isCreator && !isGroupAdmin && !isCurrentlyAssigned)) {
       return {
         success: false,
         statusCode: HTTP_STATUS.FORBIDDEN,
-        message: 'Chỉ người tạo task mới có thể gán người dùng'
+        message: 'Bạn không có quyền gán người dùng cho task này. Chỉ người tạo task, admin của group, hoặc người được gán mới có thể thực hiện.'
       };
     }
 
@@ -740,6 +782,31 @@ class TaskService {
       .populate('comments.user', 'name email avatar')
       .populate('groupId', 'name description');
 
+    // Send notification for assigned users
+    if (finalAssignableIds.length > 0 && populatedTask.groupId) {
+      try {
+        const User = require('../models/User.model');
+        const assigner = await User.findById(normalizedAssignerId).select('name');
+        const groupName = (populatedTask.groupId && typeof populatedTask.groupId === 'object' && populatedTask.groupId.name) 
+          ? populatedTask.groupId.name 
+          : null;
+        
+        await notificationService.createTaskAssignedNotification({
+          taskId: populatedTask._id,
+          senderId: normalizedAssignerId,
+          assigneeIds: finalAssignableIds,
+          taskTitle: populatedTask.title,
+          groupId: normalizeId(populatedTask.groupId),
+          groupName: groupName,
+          assignerName: assigner?.name || null,
+          priority: populatedTask.priority,
+          dueDate: populatedTask.dueDate
+        });
+      } catch (notificationError) {
+        console.error('Failed to dispatch task assignment notification:', notificationError);
+      }
+    }
+
     return {
       success: true,
       statusCode: HTTP_STATUS.OK,
@@ -781,19 +848,23 @@ class TaskService {
     }
 
     const requesterIdStr = requesterId?.toString();
-    if (!requesterIdStr || task.createdBy.toString() !== requesterIdStr) {
+    
+    // Get group info to check admin permissions
+    let group = null;
+    if (task.groupId) {
+      group = await Group.findById(task.groupId);
+    }
+
+    // Check permissions: user must be either creator, admin of the group, or the user being unassigned themselves
+    const isCreator = normalizeId(task.createdBy) === requesterIdStr;
+    const isGroupAdmin = group && group.isAdmin(requesterIdStr);
+    const isUnassigningSelf = requesterIdStr === userId.toString();
+
+    if (!requesterIdStr || (!isCreator && !isGroupAdmin && !isUnassigningSelf)) {
       return {
         success: false,
         statusCode: HTTP_STATUS.FORBIDDEN,
-        message: 'Chỉ người tạo task mới có thể bỏ gán người dùng'
-      };
-    }
-
-    if (requesterIdStr === userId.toString()) {
-      return {
-        success: false,
-        statusCode: HTTP_STATUS.BAD_REQUEST,
-        message: 'Không thể bỏ gán chính bạn khỏi task này'
+        message: 'Bạn không có quyền bỏ gán người dùng khỏi task này. Chỉ người tạo task, admin của group, hoặc chính người dùng đó mới có thể thực hiện.'
       };
     }
 
@@ -818,6 +889,29 @@ class TaskService {
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
       .populate('groupId', 'name description');
+
+    // Send notification for unassigned user
+    if (populatedTask.groupId) {
+      try {
+        const User = require('../models/User.model');
+        const unassigner = await User.findById(requesterIdStr).select('name');
+        const groupName = (populatedTask.groupId && typeof populatedTask.groupId === 'object' && populatedTask.groupId.name) 
+          ? populatedTask.groupId.name 
+          : null;
+        
+        await notificationService.createTaskUnassignmentNotification({
+          taskId: populatedTask._id,
+          taskTitle: populatedTask.title,
+          groupId: normalizeId(populatedTask.groupId),
+          groupName: groupName,
+          unassignerId: requesterIdStr,
+          unassignerName: unassigner?.name || null,
+          recipientId: userId.toString()
+        });
+      } catch (notificationError) {
+        console.error('Failed to dispatch task unassignment notification:', notificationError);
+      }
+    }
 
     return {
       success: true,
@@ -1216,6 +1310,41 @@ class TaskService {
     await task.populate('assignedTo.userId', 'name email avatar');
     await task.populate('createdBy', 'name email avatar');
     await task.populate('groupId', 'name description');
+
+    // Send notification for new comment
+    if (task.groupId) {
+      try {
+        const commenterIdStr = normalizeId(userId);
+        const groupIdStr = normalizeId(task.groupId);
+        const User = require('../models/User.model');
+        const commenter = await User.findById(commenterIdStr).select('name');
+        
+        // Get all assignees and creator (excluding commenter)
+        const recipientIds = [
+          ...task.assignedTo.map(a => normalizeId(a.userId)),
+          normalizeId(task.createdBy)
+        ].filter(id => id && id !== commenterIdStr);
+
+        const latestComment = task.comments[task.comments.length - 1];
+        const groupName = (task.groupId && typeof task.groupId === 'object' && task.groupId.name) 
+          ? task.groupId.name 
+          : null;
+        
+        await notificationService.createCommentAddedNotification({
+          taskId: task._id,
+          commenterId: commenterIdStr,
+          commentId: latestComment?._id,
+          taskTitle: task.title,
+          groupId: groupIdStr,
+          groupName: groupName,
+          commenterName: commenter?.name || null,
+          commentPreview: content.trim(),
+          recipientIds: Array.from(new Set(recipientIds))
+        });
+      } catch (notificationError) {
+        console.error('Failed to dispatch comment notification:', notificationError);
+      }
+    }
 
     return task;
   }

@@ -435,16 +435,36 @@ interface PreferencesTabProps {
 }
 
 function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, setMessage }: PreferencesTabProps) {
+  const { updateUser } = useAuth();
   const [theme, setTheme] = useState<ThemeType>(user.theme as ThemeType || 'light');
-  const [timeZone, setTimeZone] = useState('UTC-07:00');
-  const [dateFormat, setDateFormat] = useState('DD MMM YYYY');
-  const [timeFormat, setTimeFormat] = useState('12h');
-  const [weekStart, setWeekStart] = useState('monday');
+  const [timeZone, setTimeZone] = useState((user as any).regionalPreferences?.timeZone || 'UTC+00:00');
+  const [dateFormat, setDateFormat] = useState((user as any).regionalPreferences?.dateFormat || 'DD MMM YYYY');
+  const [timeFormat, setTimeFormat] = useState((user as any).regionalPreferences?.timeFormat || '12h');
+  const [weekStart, setWeekStart] = useState((user as any).regionalPreferences?.weekStart || 'monday');
   const [notifications, setNotifications] = useState({
-    email: true,
-    push: true,
+    email: (user as any).notificationSettings?.email ?? true,
+    push: (user as any).notificationSettings?.push ?? true,
     desktop: false
   });
+
+  const handleNotificationChange = async (key: 'email' | 'push' | 'desktop', value: boolean) => {
+    try {
+      setLoading(true);
+      setMessage('');
+      
+      // Update notification preferences via API
+      const { notificationService } = await import('../services/notification.service');
+      await notificationService.updatePreferences({ [key]: value });
+      
+      setNotifications(prev => ({ ...prev, [key]: value }));
+      setMessage('Notification preference updated successfully');
+      setTimeout(() => setMessage(''), 3000);
+    } catch (error: any) {
+      setMessage(error.response?.data?.message || 'Error updating notification preference');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleThemeChange = async (newTheme: ThemeType) => {
     setLoading(true);
@@ -455,6 +475,29 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
       setMessage('Theme updated successfully');
     } catch (error: any) {
       setMessage(error.response?.data?.message || 'Error updating theme');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegionalPreferenceChange = async (preference: 'timeZone' | 'dateFormat' | 'timeFormat' | 'weekStart', value: string) => {
+    try {
+      setLoading(true);
+      setMessage('');
+      
+      const updatedUser = await userService.updateRegionalPreferences({ [preference]: value });
+      await updateUser(updatedUser);
+      
+      // Update local state
+      if (preference === 'timeZone') setTimeZone(value);
+      else if (preference === 'dateFormat') setDateFormat(value);
+      else if (preference === 'timeFormat') setTimeFormat(value);
+      else if (preference === 'weekStart') setWeekStart(value);
+      
+      setMessage('Regional preference updated successfully');
+      setTimeout(() => setMessage(''), 3000);
+    } catch (error: any) {
+      setMessage(error.response?.data?.message || 'Error updating regional preference');
     } finally {
       setLoading(false);
     }
@@ -488,9 +531,14 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
           description: "Set your local time zone",
           type: "select" as const,
           options: [
-            'UTC-12:00', 'UTC-07:00 (Pacific Time)', 'UTC-06:00 (Central Time)',
-            'UTC-05:00 (Eastern Time)', 'UTC+00:00 (GMT)', 'UTC+01:00 (Central European)',
-            'UTC+08:00 (China Standard)', 'UTC+09:00 (Japan Standard)'
+            { value: 'UTC-12:00', label: 'UTC-12:00' },
+            { value: 'UTC-07:00', label: 'UTC-07:00 (Pacific Time)' },
+            { value: 'UTC-06:00', label: 'UTC-06:00 (Central Time)' },
+            { value: 'UTC-05:00', label: 'UTC-05:00 (Eastern Time)' },
+            { value: 'UTC+00:00', label: 'UTC+00:00 (GMT)' },
+            { value: 'UTC+01:00', label: 'UTC+01:00 (Central European)' },
+            { value: 'UTC+08:00', label: 'UTC+08:00 (China Standard)' },
+            { value: 'UTC+09:00', label: 'UTC+09:00 (Japan Standard)' }
           ],
           value: timeZone,
           onChange: setTimeZone
@@ -607,7 +655,20 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
                                 name={field.label}
                                 value={option.value}
                                 checked={field.value === option.value}
-                                onChange={() => field.onChange(option.value as ThemeType)}
+                                onChange={async () => {
+                                  const newValue = option.value;
+                                  field.onChange(newValue as ThemeType);
+                                  
+                                  // Handle regional preferences
+                                  if (field.label === 'Date Format') {
+                                    await handleRegionalPreferenceChange('dateFormat', newValue);
+                                  } else if (field.label === 'Time Format') {
+                                    await handleRegionalPreferenceChange('timeFormat', newValue);
+                                  } else if (field.label === 'Week Starts On') {
+                                    await handleRegionalPreferenceChange('weekStart', newValue);
+                                  }
+                                }}
+                                disabled={loading}
                                 className="hidden"
                               />
                               <div className={`w-4 h-4 border-2 rounded-full flex items-center justify-center ${
@@ -630,21 +691,43 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
                       {field.type === 'select' && (
                         <select
                           value={field.value}
-                          onChange={(e) => field.onChange(e.target.value)}
-                          className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-[#1F1F1F] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          onChange={(e) => {
+                            const newValue = e.target.value;
+                            field.onChange(newValue);
+                            if (field.label === 'Time Zone') {
+                              handleRegionalPreferenceChange('timeZone', newValue);
+                            }
+                          }}
+                          disabled={loading}
+                          className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-[#1F1F1F] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
                         >
-                          {field.options.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
+                          {field.options.map((option) => {
+                            const optionValue = typeof option === 'string' ? option : option.value;
+                            const optionLabel = typeof option === 'string' ? option : option.label;
+                            return (
+                              <option key={optionValue} value={optionValue}>
+                                {optionLabel}
+                              </option>
+                            );
+                          })}
                         </select>
                       )}
 
                       {field.type === 'toggle' && (
                         <button
-                          onClick={() => field.onChange(!field.value)}
-                          className={`w-12 h-6 rounded-full transition-colors ${
+                          onClick={async () => {
+                            const newValue = !field.value;
+                            field.onChange(newValue);
+                            
+                            // Handle notification preferences
+                            if (field.label === 'Email Notifications') {
+                              await handleNotificationChange('email', newValue);
+                            } else if (field.label === 'Push Notifications') {
+                              await handleNotificationChange('push', newValue);
+                            }
+                          }}
+                          disabled={loading}
+                          className={`w-12 h-6 rounded-full transition-colors disabled:opacity-50 ${
                             field.value 
                               ? 'bg-blue-500' 
                               : 'bg-gray-300 dark:bg-gray-600'

@@ -150,12 +150,16 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const [showCommentMenu, setShowCommentMenu] = useState<string | null>(null)
   const [uploadingFiles, setUploadingFiles] = useState(false)
 
-  const { user: currentUser } = useAuth()
+  const { user: currentUser, currentGroup } = useAuth()
 
   const estimatedTimeOptions = ["15m", "30m", "1h", "2h", "4h", "1d", "2d", "1w"]
   const taskTypeOptions = ["Operational", "Strategic", "Financial", "Technical", "Other"]
   const priorityOptions = ["low", "medium", "high", "urgent"]
   const statusOptions = ["todo", "in_progress", "completed", "archived"]
+  
+  // State for assign functionality
+  const [showAssignModal, setShowAssignModal] = useState(false)
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([])
 
   // NEW: Helper để lấy danh sách assignees chi tiết
   const getDetailedAssignees = (task: Task) => {
@@ -169,17 +173,51 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   }
 
   const assignees = (task.assignedTo as AssignedUser[])
-    .filter(assignment => assignment.userId && typeof assignment.userId === 'object')
+    .filter(assignment => assignment && assignment.userId)
     .map(assignment => {
-      const user = assignment.userId as MinimalUser;
+      // Xử lý cả trường hợp userId là string hoặc object
+      let userData;
+      
+      if (typeof assignment.userId === 'string') {
+        // Nếu userId là string ID, tạo minimal user object
+        userData = {
+          _id: assignment.userId,
+          name: 'Loading...', // Tạm thời
+          email: '',
+          avatar: undefined
+        };
+        
+        // Nếu là currentUser, sử dụng thông tin currentUser
+        if (currentUser && assignment.userId === currentUser._id) {
+          userData = {
+            _id: currentUser._id,
+            name: currentUser.name || 'You',
+            email: currentUser.email,
+            avatar: currentUser.avatar
+          };
+        }
+      } else if (assignment.userId && typeof assignment.userId === 'object') {
+        // Nếu userId là object (đã populated)
+        const user = assignment.userId as MinimalUser;
+        userData = {
+          _id: user._id,
+          name: user.name || 'Unknown User',
+          email: user.email || '',
+          avatar: user.avatar
+        };
+      } else {
+        // Fallback nếu userId không hợp lệ
+        return null;
+      }
+
+      if (!userData) return null;
+
       return {
-        _id: user._id,
-        name: user.name || 'Unknown User',
-        email: user.email,
-        avatar: user.avatar,
-        initial: (user.name?.charAt(0) || 'U').toUpperCase()
+        ...userData,
+        initial: (userData.name?.charAt(0) || 'U').toUpperCase()
       };
-    });
+    })
+    .filter((assignee): assignee is NonNullable<typeof assignee> => assignee !== null);
 
   const currentUserIsAssigned = currentUser && 
     assignees.some(assignee => assignee._id === currentUser._id);
@@ -202,7 +240,10 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
           <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">
             Assigned to ({assigneeInfo.totalCount})
           </h4>
-          <button className="text-blue-500 hover:text-blue-600 text-sm">
+          <button 
+            onClick={handleAddAssignee}
+            className="text-blue-500 hover:text-blue-600 text-sm"
+          >
             + Add assignee
           </button>
         </div>
@@ -211,7 +252,10 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
           <div className="text-center py-4 text-gray-500 dark:text-gray-400 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
             <User className="w-8 h-8 mx-auto mb-2 text-gray-400" />
             <p className="text-sm">No one assigned</p>
-            <button className="text-blue-500 hover:text-blue-600 text-xs mt-1">
+            <button 
+              onClick={handleAddAssignee}
+              className="text-blue-500 hover:text-blue-600 text-xs mt-1"
+            >
               Assign someone
             </button>
           </div>
@@ -252,7 +296,11 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
                     {assignee.email}
                   </p>
                 </div>
-                <button className="text-gray-400 hover:text-red-500 transition-colors">
+                <button 
+                  onClick={() => handleUnassign(assignee._id)}
+                  disabled={saving}
+                  className="text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50"
+                >
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
@@ -446,6 +494,48 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
     } catch (error) {
       console.error("Error adding custom status:", error)
       alert("Failed to add custom status: " + (error as Error).message)
+    }
+  }
+
+  // NEW: Assign/unassign handlers
+  const handleAddAssignee = () => {
+    setShowAssignModal(true)
+  }
+
+  const handleConfirmAssign = async () => {
+    if (!task || selectedMembers.length === 0) return
+    
+    try {
+      setSaving(true)
+      const response = await taskService.assignUsersToTask(taskId, selectedMembers)
+      
+      // Refresh task details
+      await fetchTaskDetails()
+      
+      setShowAssignModal(false)
+      setSelectedMembers([])
+    } catch (error) {
+      console.error("Error assigning users:", error)
+      alert("Failed to assign users: " + (error as Error).message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleUnassign = async (userId: string) => {
+    if (!task) return
+    
+    try {
+      setSaving(true)
+      await taskService.unassignUserFromTask(taskId, userId)
+      
+      // Refresh task details
+      await fetchTaskDetails()
+    } catch (error) {
+      console.error("Error unassigning user:", error)
+      alert("Failed to unassign user: " + (error as Error).message)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -2036,6 +2126,119 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
               <button
                 onClick={() => setShowRepeatModal(false)}
                 className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assign Members Modal */}
+      {showAssignModal && currentGroup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-96 max-w-md mx-4 max-h-[80vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+              Add Assignees
+            </h3>
+            
+            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+              {currentGroup.members.map((member) => {
+                const userId = typeof member.userId === 'object' ? member.userId._id : member.userId;
+                const userName = typeof member.userId === 'object' ? member.userId.name : member.name || 'Unknown';
+                const userEmail = typeof member.userId === 'object' ? member.userId.email : member.email || '';
+                const userAvatar = typeof member.userId === 'object' ? member.userId.avatar : member.avatar;
+                
+                const isAlreadyAssigned = task?.assignedTo?.some(
+                  (assignee: any) => {
+                    const assigneeId = typeof assignee.userId === 'object' ? assignee.userId._id : assignee.userId;
+                    return assigneeId === userId;
+                  }
+                );
+                
+                const isSelected = selectedMembers.includes(userId);
+                
+                return (
+                  <label
+                    key={userId}
+                    className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
+                      isAlreadyAssigned 
+                        ? 'bg-gray-100 dark:bg-gray-700 opacity-50 cursor-not-allowed'
+                        : isSelected
+                        ? 'bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-500'
+                        : 'bg-gray-50 dark:bg-gray-700/50 border-2 border-transparent hover:bg-gray-100 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      disabled={isAlreadyAssigned}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedMembers([...selectedMembers, userId]);
+                        } else {
+                          setSelectedMembers(selectedMembers.filter(id => id !== userId));
+                        }
+                      }}
+                      className="sr-only"
+                    />
+                    <div className="flex items-center gap-3 flex-1">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm ${
+                        isSelected ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-800'
+                      }`}>
+                        {userAvatar ? (
+                          <img 
+                            src={userAvatar} 
+                            alt={userName}
+                            className="w-full h-full rounded-full object-cover"
+                          />
+                        ) : (
+                          (userName?.charAt(0) || 'U').toUpperCase()
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                            {userName}
+                          </span>
+                          {isAlreadyAssigned && (
+                            <span className="text-xs bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded">
+                              Already assigned
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                          {userEmail}
+                        </p>
+                      </div>
+                    </div>
+                  </label>
+                );
+              })}
+              
+              {currentGroup.members.length === 0 && (
+                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                  <User className="w-12 h-12 mx-auto mb-2 text-gray-400" />
+                  <p className="text-sm">No members in this group</p>
+                </div>
+              )}
+            </div>
+            
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={handleConfirmAssign}
+                disabled={selectedMembers.length === 0 || saving}
+                className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {saving ? 'Adding...' : `Add ${selectedMembers.length} assignee(s)`}
+              </button>
+              <button
+                onClick={() => {
+                  setShowAssignModal(false);
+                  setSelectedMembers([]);
+                }}
+                disabled={saving}
+                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
               >
                 Cancel
               </button>
