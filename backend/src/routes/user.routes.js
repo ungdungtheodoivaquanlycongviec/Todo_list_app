@@ -20,6 +20,7 @@ router.put('/me/password', validateChangePassword, userController.changePassword
 router.put('/me/avatar', userController.updateAvatar);
 router.post('/me/avatar/upload', uploadSingle, userController.uploadAvatar);
 router.put('/me/notifications', userController.updateNotificationSettings);
+router.patch('/me/regional-preferences', userController.updateRegionalPreferences);
 router.delete('/me', userController.deactivateAccount);
 router.patch('/theme', authenticate, userController.updateTheme);
 

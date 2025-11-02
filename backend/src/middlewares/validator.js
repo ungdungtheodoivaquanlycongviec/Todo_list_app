@@ -4,9 +4,7 @@ const {
   ERROR_MESSAGES,
   LIMITS,
   NOTIFICATION_CHANNELS,
-  NOTIFICATION_CATEGORIES,
-  CONVERSATION_TYPES,
-  CHAT_LIMITS
+  NOTIFICATION_CATEGORIES
 } = require('../config/constants');
 const validator = require('validator');
 const authService = require('../services/auth.service');
@@ -501,20 +499,6 @@ const sanitizeMemberIds = (memberIds = []) => {
   return Array.from(unique);
 };
 
-const sanitizeIdList = (ids = []) => {
-  const unique = new Set();
-  ids.forEach(id => {
-    if (!id) {
-      return;
-    }
-    const normalized = typeof id === 'string' ? id.trim() : String(id);
-    if (normalized) {
-      unique.add(normalized);
-    }
-  });
-  return Array.from(unique);
-};
-
 const validateCreateGroup = (req, res, next) => {
   const errors = [];
   const { name, description, memberIds } = req.body;
@@ -799,198 +783,6 @@ const validateNotificationMarkAll = (req, res, next) => {
   next();
 };
 
-const validateCreateConversation = (req, res, next) => {
-  const errors = [];
-  const { type, participantIds, groupId, title } = req.body || {};
-
-  if (!type || !CONVERSATION_TYPES.includes(type)) {
-    errors.push({ field: 'type', message: 'Conversation type is invalid' });
-  }
-
-  const sanitizedParticipants = sanitizeIdList(participantIds || []);
-  const invalidParticipants = sanitizedParticipants.filter(id => !isValidObjectId(id));
-  if (invalidParticipants.length > 0) {
-    errors.push({ field: 'participantIds', message: 'participantIds contains invalid identifiers', invalidParticipants });
-  }
-
-  if (sanitizedParticipants.length === 0) {
-    errors.push({ field: 'participantIds', message: 'At least one participant is required' });
-  }
-
-  if (type === 'direct' && sanitizedParticipants.length !== 1) {
-    errors.push({ field: 'participantIds', message: 'Direct conversation requires exactly one other participant' });
-  }
-
-  if (type === 'group') {
-    if (!groupId || !isValidObjectId(groupId)) {
-      errors.push({ field: 'groupId', message: 'groupId is required for group conversations' });
-    }
-  }
-
-  if (title !== undefined && typeof title === 'string') {
-    req.body.title = title.trim();
-  }
-
-  if (errors.length > 0) {
-    return res.status(400).json({
-      success: false,
-      message: ERROR_MESSAGES.VALIDATION_ERROR,
-      errors
-    });
-  }
-
-  req.body.participantIds = sanitizedParticipants;
-  if (groupId) {
-    req.body.groupId = groupId;
-  }
-
-  next();
-};
-
-const validateUpdateConversation = (req, res, next) => {
-  const errors = [];
-  const { title, description, metadata } = req.body || {};
-
-  if (title !== undefined) {
-    if (typeof title !== 'string') {
-      errors.push({ field: 'title', message: 'Title must be a string' });
-    } else if (title.trim().length > LIMITS.MAX_GROUP_NAME_LENGTH) {
-      errors.push({ field: 'title', message: `Title must not exceed ${LIMITS.MAX_GROUP_NAME_LENGTH} characters` });
-    } else {
-      req.body.title = title.trim();
-    }
-  }
-
-  if (description !== undefined) {
-    if (typeof description !== 'string') {
-      errors.push({ field: 'description', message: 'Description must be a string' });
-    } else if (description.trim().length > LIMITS.MAX_GROUP_DESCRIPTION_LENGTH) {
-      errors.push({ field: 'description', message: `Description must not exceed ${LIMITS.MAX_GROUP_DESCRIPTION_LENGTH} characters` });
-    } else {
-      req.body.description = description.trim();
-    }
-  }
-
-  if (metadata !== undefined && (typeof metadata !== 'object' || Array.isArray(metadata))) {
-    errors.push({ field: 'metadata', message: 'Metadata must be an object' });
-  }
-
-  if (errors.length > 0) {
-    return res.status(400).json({
-      success: false,
-      message: ERROR_MESSAGES.VALIDATION_ERROR,
-      errors
-    });
-  }
-
-  next();
-};
-
-const validateConversationState = (req, res, next) => {
-  const state = {};
-  if (req.body.isMuted !== undefined) {
-    state.isMuted = req.body.isMuted === true || req.body.isMuted === 'true';
-  }
-  if (req.body.isArchived !== undefined) {
-    state.isArchived = req.body.isArchived === true || req.body.isArchived === 'true';
-  }
-
-  if (Object.keys(state).length === 0) {
-    return res.status(400).json({
-      success: false,
-      message: ERROR_MESSAGES.VALIDATION_ERROR,
-      errors: [{ field: 'state', message: 'Provide at least one state property to update' }]
-    });
-  }
-
-  req.body = state;
-  next();
-};
-
-const validateSendMessage = (req, res, next) => {
-  const errors = [];
-  const content = req.body?.content;
-  const normalizedContent = typeof content === 'string' ? content.trim() : (content ? String(content) : '');
-  const files = Array.isArray(req.files) ? req.files : [];
-
-  if (normalizedContent.length > CHAT_LIMITS.MAX_MESSAGE_LENGTH) {
-    errors.push({ field: 'content', message: `Message cannot exceed ${CHAT_LIMITS.MAX_MESSAGE_LENGTH} characters` });
-  }
-
-  if (files.length > CHAT_LIMITS.MAX_ATTACHMENTS_PER_MESSAGE) {
-    errors.push({ field: 'files', message: `Only ${CHAT_LIMITS.MAX_ATTACHMENTS_PER_MESSAGE} attachments are allowed per message` });
-  }
-
-  const oversize = files.find(file => file.size > CHAT_LIMITS.MAX_ATTACHMENT_SIZE_BYTES);
-  if (oversize) {
-    errors.push({ field: 'files', message: 'One or more files exceed the allowed size limit' });
-  }
-
-  if (!normalizedContent && files.length === 0) {
-    errors.push({ field: 'content', message: 'Message must include text or at least one attachment' });
-  }
-
-  if (errors.length > 0) {
-    return res.status(400).json({
-      success: false,
-      message: ERROR_MESSAGES.VALIDATION_ERROR,
-      errors
-    });
-  }
-
-  req.body.content = normalizedContent;
-  next();
-};
-
-const validateUpdateMessage = (req, res, next) => {
-  const errors = [];
-  const { content } = req.body || {};
-
-  if (content === undefined) {
-    errors.push({ field: 'content', message: 'Content is required' });
-  } else {
-    const normalizedContent = typeof content === 'string' ? content.trim() : String(content || '').trim();
-    if (!normalizedContent) {
-      errors.push({ field: 'content', message: 'Content cannot be empty' });
-    } else if (normalizedContent.length > CHAT_LIMITS.MAX_MESSAGE_LENGTH) {
-      errors.push({ field: 'content', message: `Message cannot exceed ${CHAT_LIMITS.MAX_MESSAGE_LENGTH} characters` });
-    } else {
-      req.body.content = normalizedContent;
-    }
-  }
-
-  if (errors.length > 0) {
-    return res.status(400).json({
-      success: false,
-      message: ERROR_MESSAGES.VALIDATION_ERROR,
-      errors
-    });
-  }
-
-  next();
-};
-
-const validateMarkConversationRead = (req, res, next) => {
-  const { messageId } = req.body || {};
-
-  if (!messageId) {
-    req.body = { messageId: null };
-    return next();
-  }
-
-  const normalized = typeof messageId === 'string' ? messageId.trim() : String(messageId);
-  if (!isValidObjectId(normalized)) {
-    return res.status(400).json({
-      success: false,
-      message: ERROR_MESSAGES.INVALID_ID,
-      errors: [{ field: 'messageId', message: 'messageId is invalid' }]
-    });
-  }
-
-  req.body = { messageId: normalized };
-  next();
-};
-
 module.exports = {
   validateCreateTask,
   validateUpdateTask,
@@ -1009,11 +801,5 @@ module.exports = {
   validateNotificationQuery,
   validateNotificationArchive,
   validateNotificationPreferences,
-  validateNotificationMarkAll,
-  validateCreateConversation,
-  validateUpdateConversation,
-  validateConversationState,
-  validateSendMessage,
-  validateUpdateMessage,
-  validateMarkConversationRead
+  validateNotificationMarkAll
 };

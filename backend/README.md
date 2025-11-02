@@ -94,17 +94,11 @@ backend/
 ### Health Check
 - `GET /health` - Check server status
 
-### Conversations & Messaging
-- `GET /api/conversations` – List conversations with pagination & filters
-- `POST /api/conversations` – Create direct or group conversations
-- `GET /api/conversations/:conversationId` – Fetch conversation details
-- `PATCH /api/conversations/:conversationId` – Update metadata (title, description)
-- `PATCH /api/conversations/:conversationId/state` – Toggle mute/archive flags
-- `POST /api/conversations/:conversationId/messages` – Send message w/ optional attachments
-- `GET /api/conversations/:conversationId/messages` – Retrieve message history (cursor pagination)
-- `PATCH /api/conversations/:conversationId/messages/:messageId` – Edit message content
-- `DELETE /api/conversations/:conversationId/messages/:messageId` – Soft delete a message
-- `POST /api/conversations/:conversationId/read` – Mark conversation read up to a message cursor
+### Coming Soon
+- Task Management APIs
+- User Authentication APIs
+- Group Management APIs
+- Notifications APIs
 
 ## � Realtime & Presence (Phase 10)
 
@@ -115,6 +109,7 @@ backend/
 - Chạy Redis cục bộ (tùy chọn) với `docker compose -f docker-compose.redis.yml up -d`, sau đó bật `ENABLE_SOCKET_REDIS_ADAPTER=true`.
 - QA nhanh: `node tests/realtime/mockNotificationClient.js --token <JWT>` để kiểm tra thông báo realtime.
 - Smoke test hiện diện: `node tests/realtime/presenceSmoke.js --token <JWT>`.
+
 Chi tiết payload và phòng realtime: xem `docs/realtime/events.md`.
 
 ## 🐛 Troubleshooting

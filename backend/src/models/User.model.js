@@ -71,6 +71,29 @@ const userSchema = new mongoose.Schema({
     default: 'light'
   },
   
+  // Regional preferences
+  regionalPreferences: {
+    timeZone: {
+      type: String,
+      default: 'UTC+00:00'
+    },
+    dateFormat: {
+      type: String,
+      enum: ['DD MMM YYYY', 'MMM DD, YYYY', 'DD/MM/YYYY', 'MM/DD/YYYY'],
+      default: 'DD MMM YYYY'
+    },
+    timeFormat: {
+      type: String,
+      enum: ['12h', '24h'],
+      default: '12h'
+    },
+    weekStart: {
+      type: String,
+      enum: ['monday', 'sunday'],
+      default: 'monday'
+    }
+  },
+  
   isActive: {
     type: Boolean,
     default: true
@@ -138,7 +161,6 @@ const userSchema = new mongoose.Schema({
 });
 
 // Indexes
-// userSchema.index({ email: 1 }, { unique: true });
 userSchema.index({ createdAt: -1 });
 
 // Pre-save middleware to hash password

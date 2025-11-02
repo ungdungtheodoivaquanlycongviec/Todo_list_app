@@ -24,19 +24,6 @@ const emitNotification = (eventKey, payload) => {
   });
 };
 
-const emitMessageEvent = (eventKey, payload) => {
-  if (!env.enableRealtimeNotifications) {
-    return;
-  }
-
-  setImmediate(() => {
-    gateway.emit('message', {
-      eventKey,
-      payload
-    });
-  });
-};
-
 const registerNotificationListener = listener => {
   if (typeof listener !== 'function') {
     throw new Error('Realtime listener must be a function');
@@ -46,18 +33,7 @@ const registerNotificationListener = listener => {
   return () => gateway.off('notification', listener);
 };
 
-const registerMessageListener = listener => {
-  if (typeof listener !== 'function') {
-    throw new Error('Realtime listener must be a function');
-  }
-
-  gateway.on('message', listener);
-  return () => gateway.off('message', listener);
-};
-
 module.exports = {
   emitNotification,
-  registerNotificationListener,
-  emitMessageEvent,
-  registerMessageListener
+  registerNotificationListener
 };

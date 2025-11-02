@@ -1,41 +1,14 @@
 const { Server } = require('socket.io');
 const env = require('../config/environment');
-const { registerNotificationListener, registerMessageListener } = require('../services/realtime.gateway');
-const { ERROR_MESSAGES } = require('../config/constants');
+const { registerNotificationListener } = require('../services/realtime.gateway');
 const {
   authenticateSocket,
   SOCKET_ERROR_CODES
 } = require('./middleware/authenticateSocket');
 const { createPresenceService } = require('./presence.service');
-const conversationService = require('../services/conversation.service');
-const { isValidObjectId } = require('../utils/validationHelper');
 
 const USER_ROOM_PREFIX = 'user:';
 const DEFAULT_DEV_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000'];
-
-const realtimeMetrics = {
-  activeConnections: 0,
-  peakConnections: 0,
-  totalConnections: 0,
-  disconnectReasons: {},
-  lastUpdatedAt: null
-};
-
-const incrementDisconnectReason = (reason) => {
-  const key = reason || 'unknown';
-  realtimeMetrics.disconnectReasons[key] = (realtimeMetrics.disconnectReasons[key] || 0) + 1;
-};
-
-const logMetricSnapshot = () => {
-  realtimeMetrics.lastUpdatedAt = new Date().toISOString();
-  console.log('[Realtime] Metrics snapshot:', {
-    activeConnections: realtimeMetrics.activeConnections,
-    peakConnections: realtimeMetrics.peakConnections,
-    totalConnections: realtimeMetrics.totalConnections,
-    disconnectReasons: realtimeMetrics.disconnectReasons,
-    lastUpdatedAt: realtimeMetrics.lastUpdatedAt
-  });
-};
 
 const buildOrigins = () => {
   const explicitOrigins = Array.isArray(env.realtime.allowedOrigins)
@@ -182,23 +155,8 @@ const setupRealtimeServer = async (httpServer) => {
       return;
     }
 
-    const safeAck = (ack, payload) => {
-      if (typeof ack === 'function') {
-        ack(payload);
-      }
-    };
-
     const roomName = `${USER_ROOM_PREFIX}${userId}`;
     const metadata = buildSocketMetadata(socket);
-
-    realtimeMetrics.activeConnections += 1;
-    realtimeMetrics.totalConnections += 1;
-    if (realtimeMetrics.activeConnections > realtimeMetrics.peakConnections) {
-      realtimeMetrics.peakConnections = realtimeMetrics.activeConnections;
-    }
-    if (env.nodeEnv !== 'production') {
-      logMetricSnapshot();
-    }
 
     socket.join(roomName);
     socket.emit('notifications:ready', {
@@ -246,68 +204,12 @@ const setupRealtimeServer = async (httpServer) => {
       } catch (error) {
         console.error('[Realtime] Failed to record presence disconnect:', error.message);
       }
-      realtimeMetrics.activeConnections = Math.max(realtimeMetrics.activeConnections - 1, 0);
-      incrementDisconnectReason(reason);
-      if (env.nodeEnv !== 'production') {
-        logMetricSnapshot();
-      }
       console.log(`[Realtime] Socket disconnected (${reason}) for user ${userId}`);
     });
 
     socket.on('error', (error) => {
       const code = error?.data?.code || SOCKET_ERROR_CODES.unauthorized;
       console.error('[Realtime] Socket error:', code, error.message);
-    });
-
-    socket.on('conversations:join', async (payload, ack) => {
-      const conversationId = typeof payload === 'string'
-        ? payload
-        : (payload?.conversationId || null);
-
-      if (!conversationId || !isValidObjectId(conversationId)) {
-        safeAck(ack, {
-          success: false,
-          message: 'Invalid conversation identifier'
-        });
-        return;
-      }
-
-      const allowed = await conversationService.isParticipant(conversationId, userId);
-      if (!allowed) {
-        safeAck(ack, {
-          success: false,
-          message: ERROR_MESSAGES.CONVERSATION_ACCESS_DENIED
-        });
-        return;
-      }
-
-      const conversationRoom = `conversation:${conversationId}`;
-      socket.join(conversationRoom);
-      safeAck(ack, {
-        success: true,
-        room: conversationRoom
-      });
-    });
-
-    socket.on('conversations:leave', (payload, ack) => {
-      const conversationId = typeof payload === 'string'
-        ? payload
-        : (payload?.conversationId || null);
-
-      if (!conversationId || !isValidObjectId(conversationId)) {
-        safeAck(ack, {
-          success: false,
-          message: 'Invalid conversation identifier'
-        });
-        return;
-      }
-
-      const conversationRoom = `conversation:${conversationId}`;
-      socket.leave(conversationRoom);
-      safeAck(ack, {
-        success: true,
-        room: conversationRoom
-      });
     });
   });
 
@@ -338,42 +240,17 @@ const setupRealtimeServer = async (httpServer) => {
   };
 
   const unregisterNotificationListener = registerNotificationListener(notificationListener);
-  const messageListener = ({ eventKey, payload }) => {
-    if (!payload) {
-      return;
-    }
 
-    const conversationId = payload.conversationId || payload.conversation || null;
-    if (!conversationId) {
-      return;
-    }
-
-    const conversationRoom = `conversation:${conversationId}`;
-
-    appNamespace.to(conversationRoom).emit(eventKey || 'messages:new', payload);
-
-    const recipientIds = Array.isArray(payload.recipients)
-      ? payload.recipients.map(id => (typeof id === 'string' ? id : id?.toString())).filter(Boolean)
-      : [];
-
-    const broadcastTargets = new Set(recipientIds);
-    if (payload.senderId) {
-      broadcastTargets.add(typeof payload.senderId === 'string' ? payload.senderId : payload.senderId.toString());
-    }
-
-    broadcastTargets.forEach(targetId => {
-      const targetRoom = `${USER_ROOM_PREFIX}${targetId}`;
-      appNamespace.to(targetRoom).emit(eventKey || 'messages:new', payload);
-    });
-  };
-  const unregisterMessageListener = registerMessageListener(messageListener);
+  // Setup chat handlers
+  const { setupChatHandlers } = require('../services/chat.socket');
+  setupChatHandlers(appNamespace);
 
   console.log(`[Realtime] Socket.IO namespace ${namespacePath} initialized.`);
+  console.log('[Realtime] Chat handlers registered.');
 
   const shutdown = async () => {
     try {
       unregisterNotificationListener();
-      unregisterMessageListener();
       presence.events.off('presence:update', presenceListener);
       await presence.shutdown();
       await appNamespace.disconnectSockets(true);
@@ -387,7 +264,6 @@ const setupRealtimeServer = async (httpServer) => {
       if (presenceClient && typeof presenceClient.quit === 'function') {
         await presenceClient.quit();
       }
-      logMetricSnapshot();
       console.log('[Realtime] Realtime server shut down gracefully.');
     } catch (error) {
       console.error('[Realtime] Error during realtime shutdown:', error.message);
@@ -398,7 +274,6 @@ const setupRealtimeServer = async (httpServer) => {
     io,
     namespace: appNamespace,
     presence,
-    metrics: realtimeMetrics,
     shutdown
   };
 };

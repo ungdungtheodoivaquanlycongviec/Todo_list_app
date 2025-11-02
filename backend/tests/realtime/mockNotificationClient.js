@@ -71,9 +71,3 @@ process.on('SIGINT', () => {
   socket.close();
   process.exit(0);
 });
-
-socket.on('messages:new', payload => {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] Message event:`);
-  console.dir(payload, { depth: null });
-});

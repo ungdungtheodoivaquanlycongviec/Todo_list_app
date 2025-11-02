@@ -34,7 +34,6 @@ const startServer = async ({ attachRealtime = true } = {}) => {
       console.log(`🔗 URL: http://localhost:${env.port}`);
       if (realtime?.namespace) {
         console.log(`📡 Realtime namespace ready at ${env.realtime.namespace}`);
-        console.log('📈 Realtime metrics tracking enabled');
       }
       console.log('=================================');
     });
