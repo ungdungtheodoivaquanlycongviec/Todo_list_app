@@ -37,6 +37,12 @@ const env = {
   // File upload
   maxFileSize: parseInt(process.env.MAX_FILE_SIZE) || 10485760, // 10MB
   maxFilesPerTask: parseInt(process.env.MAX_FILES_PER_TASK) || 20,
+  chat: {
+    attachmentFolder: process.env.CHAT_ATTACHMENT_FOLDER || 'chat',
+    maxMessageLength: toInt(process.env.CHAT_MAX_MESSAGE_LENGTH, 4000),
+    maxAttachmentsPerMessage: toInt(process.env.CHAT_MAX_ATTACHMENTS, 5),
+    maxAttachmentSizeBytes: toInt(process.env.CHAT_MAX_ATTACHMENT_SIZE_BYTES, 26214400)
+  },
   
   // Cloudinary
   cloudinary: {
@@ -96,3 +102,4 @@ module.exports.SOCKET_MAX_PAYLOAD_BYTES = env.realtime.maxPayloadBytes;
 module.exports.PRESENCE_TTL_SECONDS = env.realtime.presenceTtlSeconds;
 module.exports.ENABLE_SOCKET_REDIS_ADAPTER = env.realtime.enableRedisAdapter;
 module.exports.REDIS_CONFIG = env.realtime.redis;
+module.exports.CHAT_CONFIG = env.chat;

@@ -2,6 +2,8 @@
  * Application Constants
  */
 
+const env = require('./environment');
+
 const PRIORITY_LEVELS = ['low', 'medium', 'high', 'critical', 'urgent'];
 
 const TASK_STATUS = ['todo', 'in_progress', 'completed', 'archived'];
@@ -47,6 +49,17 @@ const NOTIFICATION_TYPES = [
   ...Object.values(NOTIFICATION_EVENTS)
 ];
 
+const CONVERSATION_TYPES = ['direct', 'group'];
+
+const MESSAGE_STATUSES = ['sent', 'edited', 'deleted'];
+
+const MESSAGE_EVENTS = {
+  MESSAGE_NEW: 'messages:new',
+  MESSAGE_UPDATED: 'messages:updated',
+  MESSAGE_DELETED: 'messages:deleted',
+  CONVERSATION_UPDATED: 'conversations:updated'
+};
+
 // HTTP Status Codes
 const HTTP_STATUS = {
   OK: 200,
@@ -65,6 +78,8 @@ const HTTP_STATUS = {
 const ERROR_MESSAGES = {
   TASK_NOT_FOUND: 'Task not found',
   GROUP_NOT_FOUND: 'Group not found',
+  CONVERSATION_NOT_FOUND: 'Conversation not found',
+  CONVERSATION_ACCESS_DENIED: 'You are not a participant in this conversation',
   GROUP_ACCESS_DENIED: 'You do not have permission to manage this group',
   GROUP_MEMBER_EXISTS: 'User is already a member of this group',
   GROUP_MEMBER_NOT_FOUND: 'Member not found in this group',
@@ -75,6 +90,11 @@ const ERROR_MESSAGES = {
   NOTIFICATION_ARCHIVE_INVALID: 'Notification list contains invalid identifiers',
   NOTIFICATION_PREFERENCES_INVALID: 'Notification preferences payload is invalid',
   NOTE_NOT_FOUND: 'Note not found',
+  MESSAGE_NOT_FOUND: 'Message not found',
+  MESSAGE_EMPTY: 'Message requires text or attachments',
+  MESSAGE_TOO_LONG: 'Message content exceeds the allowed length',
+  MESSAGE_ATTACHMENT_LIMIT: 'Too many attachments for one message',
+  MESSAGE_ATTACHMENT_TOO_LARGE: 'One or more attachments exceed the allowed size',
   UNAUTHORIZED: 'Unauthorized access',
   FORBIDDEN: 'Forbidden access',
   VALIDATION_ERROR: 'Validation error',
@@ -122,6 +142,14 @@ const SUCCESS_MESSAGES = {
   NOTE_UPDATED: 'Note updated successfully',
   NOTE_DELETED: 'Note deleted successfully',
   NOTE_FETCHED: 'Note fetched successfully',
+  CONVERSATION_CREATED: 'Conversation created successfully',
+  CONVERSATION_UPDATED: 'Conversation updated successfully',
+  CONVERSATION_FETCHED: 'Conversation fetched successfully',
+  CONVERSATIONS_FETCHED: 'Conversations fetched successfully',
+  MESSAGE_SENT: 'Message sent successfully',
+  MESSAGE_UPDATED: 'Message updated successfully',
+  MESSAGE_DELETED: 'Message deleted successfully',
+  MESSAGES_FETCHED: 'Messages fetched successfully',
   NOTIFICATION_MARKED_READ: 'Notification marked as read',
   NOTIFICATIONS_FETCHED: 'Notifications fetched successfully',
   NOTIFICATIONS_MARKED_READ: 'Notifications marked as read',
@@ -148,6 +176,12 @@ const LIMITS = {
   MAX_TIME_ENTRIES_PER_TASK: 1000,
   MAX_SCHEDULED_WORK_PER_TASK: 500,
   MAX_ESTIMATED_TIME_LENGTH: 50
+};
+
+const CHAT_LIMITS = {
+  MAX_MESSAGE_LENGTH: env.chat?.maxMessageLength || 4000,
+  MAX_ATTACHMENTS_PER_MESSAGE: env.chat?.maxAttachmentsPerMessage || 5,
+  MAX_ATTACHMENT_SIZE_BYTES: env.chat?.maxAttachmentSizeBytes || 26214400
 };
 
 // Time and Date Formats
@@ -205,10 +239,14 @@ module.exports = {
   NOTIFICATION_CATEGORIES,
   NOTIFICATION_EVENTS,
   NOTIFICATION_TYPES,
+  CONVERSATION_TYPES,
+  MESSAGE_STATUSES,
+  MESSAGE_EVENTS,
   HTTP_STATUS,
   ERROR_MESSAGES,
   SUCCESS_MESSAGES,
   LIMITS,
+  CHAT_LIMITS,
   TIME_FORMATS,
   TASK_PROPERTIES,
   DEFAULTS

@@ -33,6 +33,47 @@ interface NotificationsNewPayload {
 > **Note**
 > `NotificationDTO` corresponds to the response object returned by `GET /api/notifications`.
 
+### `messages:new`
+
+Broadcast whenever a persisted message enters a conversation. Delivered to:
+- `conversation:<id>` room (subscribed clients)
+- `user:<id>` rooms for all participants, including sender
+
+```ts
+interface MessagesNewPayload {
+  conversationId: string;
+  message: MessageDTO;      // Matches REST contract
+  senderId: string;
+  recipients: string[];     // Participant ids receiving the broadcast
+}
+```
+
+### `messages:updated`
+
+Emitted after an author edits a previously sent message.
+
+```ts
+interface MessagesUpdatedPayload {
+  conversationId: string;
+  message: MessageDTO;
+  senderId: string;
+  recipients: string[];
+}
+```
+
+### `messages:deleted`
+
+Soft-delete notification. Payload mirrors `messages:updated`, but `message.status` equals `'deleted'` and `message.deletedAt` is populated.
+
+```ts
+interface MessagesDeletedPayload {
+  conversationId: string;
+  message: MessageDTO;
+  senderId: string;
+  recipients: string[];
+}
+```
+
 ### `presence:update`
 
 Broadcast whenever a user's presence state changes (connect, heartbeat, disconnect).
@@ -80,11 +121,31 @@ Optional hint allowing clients to proactively refresh their presence state. The 
 socket.emit('presence:heartbeat');
 ```
 
+### `conversations:join`
+
+Join a conversation room to scope subsequent message broadcasts. The server validates membership before honoring the request.
+
+```ts
+socket.emit('conversations:join', { conversationId }, (ack) => {
+  if (!ack?.success) {
+    console.error('Join failed', ack?.message);
+  }
+});
+```
+
+### `conversations:leave`
+
+Gracefully exit a conversation room when no longer needed.
+
+```ts
+socket.emit('conversations:leave', { conversationId });
+```
+
 ## Room Strategy
 
 - `user:<id>` – personal room automatically joined after successful authentication.
-- `group:<id>` – reserved for Phase 11 messaging fan-out.
-- `conversation:<id>` – planned for Phase 11 direct/group chat rooms.
+- `conversation:<id>` – messaging fan-out room. Clients should call `conversations:join` before expecting message broadcasts.
+- `group:<id>` – reserved for future group-scope broadcasts.
 
 ## Envelope Limits
 

@@ -94,11 +94,17 @@ backend/
 ### Health Check
 - `GET /health` - Check server status
 
-### Coming Soon
-- Task Management APIs
-- User Authentication APIs
-- Group Management APIs
-- Notifications APIs
+### Conversations & Messaging
+- `GET /api/conversations` – List conversations with pagination & filters
+- `POST /api/conversations` – Create direct or group conversations
+- `GET /api/conversations/:conversationId` – Fetch conversation details
+- `PATCH /api/conversations/:conversationId` – Update metadata (title, description)
+- `PATCH /api/conversations/:conversationId/state` – Toggle mute/archive flags
+- `POST /api/conversations/:conversationId/messages` – Send message w/ optional attachments
+- `GET /api/conversations/:conversationId/messages` – Retrieve message history (cursor pagination)
+- `PATCH /api/conversations/:conversationId/messages/:messageId` – Edit message content
+- `DELETE /api/conversations/:conversationId/messages/:messageId` – Soft delete a message
+- `POST /api/conversations/:conversationId/read` – Mark conversation read up to a message cursor
 
 ## � Realtime & Presence (Phase 10)
 

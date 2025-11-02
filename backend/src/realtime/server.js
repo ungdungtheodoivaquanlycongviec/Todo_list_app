@@ -1,11 +1,14 @@
 const { Server } = require('socket.io');
 const env = require('../config/environment');
-const { registerNotificationListener } = require('../services/realtime.gateway');
+const { registerNotificationListener, registerMessageListener } = require('../services/realtime.gateway');
+const { ERROR_MESSAGES } = require('../config/constants');
 const {
   authenticateSocket,
   SOCKET_ERROR_CODES
 } = require('./middleware/authenticateSocket');
 const { createPresenceService } = require('./presence.service');
+const conversationService = require('../services/conversation.service');
+const { isValidObjectId } = require('../utils/validationHelper');
 
 const USER_ROOM_PREFIX = 'user:';
 const DEFAULT_DEV_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000'];
@@ -179,6 +182,12 @@ const setupRealtimeServer = async (httpServer) => {
       return;
     }
 
+    const safeAck = (ack, payload) => {
+      if (typeof ack === 'function') {
+        ack(payload);
+      }
+    };
+
     const roomName = `${USER_ROOM_PREFIX}${userId}`;
     const metadata = buildSocketMetadata(socket);
 
@@ -249,6 +258,57 @@ const setupRealtimeServer = async (httpServer) => {
       const code = error?.data?.code || SOCKET_ERROR_CODES.unauthorized;
       console.error('[Realtime] Socket error:', code, error.message);
     });
+
+    socket.on('conversations:join', async (payload, ack) => {
+      const conversationId = typeof payload === 'string'
+        ? payload
+        : (payload?.conversationId || null);
+
+      if (!conversationId || !isValidObjectId(conversationId)) {
+        safeAck(ack, {
+          success: false,
+          message: 'Invalid conversation identifier'
+        });
+        return;
+      }
+
+      const allowed = await conversationService.isParticipant(conversationId, userId);
+      if (!allowed) {
+        safeAck(ack, {
+          success: false,
+          message: ERROR_MESSAGES.CONVERSATION_ACCESS_DENIED
+        });
+        return;
+      }
+
+      const conversationRoom = `conversation:${conversationId}`;
+      socket.join(conversationRoom);
+      safeAck(ack, {
+        success: true,
+        room: conversationRoom
+      });
+    });
+
+    socket.on('conversations:leave', (payload, ack) => {
+      const conversationId = typeof payload === 'string'
+        ? payload
+        : (payload?.conversationId || null);
+
+      if (!conversationId || !isValidObjectId(conversationId)) {
+        safeAck(ack, {
+          success: false,
+          message: 'Invalid conversation identifier'
+        });
+        return;
+      }
+
+      const conversationRoom = `conversation:${conversationId}`;
+      socket.leave(conversationRoom);
+      safeAck(ack, {
+        success: true,
+        room: conversationRoom
+      });
+    });
   });
 
   const notificationListener = ({ eventKey, payload, data }) => {
@@ -278,12 +338,42 @@ const setupRealtimeServer = async (httpServer) => {
   };
 
   const unregisterNotificationListener = registerNotificationListener(notificationListener);
+  const messageListener = ({ eventKey, payload }) => {
+    if (!payload) {
+      return;
+    }
+
+    const conversationId = payload.conversationId || payload.conversation || null;
+    if (!conversationId) {
+      return;
+    }
+
+    const conversationRoom = `conversation:${conversationId}`;
+
+    appNamespace.to(conversationRoom).emit(eventKey || 'messages:new', payload);
+
+    const recipientIds = Array.isArray(payload.recipients)
+      ? payload.recipients.map(id => (typeof id === 'string' ? id : id?.toString())).filter(Boolean)
+      : [];
+
+    const broadcastTargets = new Set(recipientIds);
+    if (payload.senderId) {
+      broadcastTargets.add(typeof payload.senderId === 'string' ? payload.senderId : payload.senderId.toString());
+    }
+
+    broadcastTargets.forEach(targetId => {
+      const targetRoom = `${USER_ROOM_PREFIX}${targetId}`;
+      appNamespace.to(targetRoom).emit(eventKey || 'messages:new', payload);
+    });
+  };
+  const unregisterMessageListener = registerMessageListener(messageListener);
 
   console.log(`[Realtime] Socket.IO namespace ${namespacePath} initialized.`);
 
   const shutdown = async () => {
     try {
       unregisterNotificationListener();
+      unregisterMessageListener();
       presence.events.off('presence:update', presenceListener);
       await presence.shutdown();
       await appNamespace.disconnectSockets(true);

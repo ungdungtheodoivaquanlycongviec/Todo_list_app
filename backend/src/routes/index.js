@@ -8,6 +8,7 @@ const userRoutes = require('./user.routes');
 const noteRoutes = require('./note.routes');
 const groupRoutes = require('./group.routes');
 const notificationRoutes = require('./notification.routes');
+const conversationRoutes = require('./conversation.routes');
 
 // Mount routes
 router.use('/auth', authRoutes);
@@ -16,5 +17,6 @@ router.use('/tasks', taskRoutes);
 router.use('/notes', noteRoutes);
 router.use('/groups', groupRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/conversations', conversationRoutes);
 
 module.exports = router;
