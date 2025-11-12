@@ -42,8 +42,8 @@ const createSharedSocket = (token: string) => {
     notifyConnectionListeners(true);
   });
 
-  socket.on('disconnect', () => {
-    console.log('[Socket] Disconnected');
+  socket.on('disconnect', (reason) => {
+    console.log('[Socket] Disconnected, reason:', reason);
     notifyConnectionListeners(false);
   });
 
@@ -94,7 +94,10 @@ export function useSocket() {
       connectionListeners.delete(listener);
       subscriberCount = Math.max(0, subscriberCount - 1);
 
+      // Only disconnect if no more subscribers
+      // Don't disconnect on hot reload or component unmount if others are using it
       if (subscriberCount === 0 && sharedSocket) {
+        console.log('[Socket] No more subscribers, disconnecting socket');
         sharedSocket.disconnect();
         sharedSocket = null;
       }

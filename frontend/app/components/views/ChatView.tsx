@@ -34,9 +34,9 @@ export default function ChatView() {
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Scroll to bottom
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  }, []);
 
   // Load messages
   const loadMessages = useCallback(async () => {
@@ -54,37 +54,83 @@ export default function ChatView() {
     }
   }, [currentGroup]);
 
-  // Join group room
+  // Join group room and rejoin on reconnect
   useEffect(() => {
-    if (!socket || !currentGroup?._id || !isConnected) return;
+    if (!socket || !currentGroup?._id) {
+      console.log('[ChatView] Cannot join room:', { socket: !!socket, groupId: currentGroup?._id });
+      return;
+    }
 
-    socket.emit('chat:join', currentGroup._id, (response: any) => {
-      if (response.success) {
-        console.log('Joined group chat:', currentGroup._id);
-        loadMessages();
-      } else {
-        console.error('Failed to join chat:', response.error);
+    const joinRoom = () => {
+      if (!isConnected) {
+        console.log('[ChatView] Socket not connected, waiting...');
+        return;
       }
-    });
+
+      console.log('[ChatView] Joining group chat:', currentGroup._id);
+      socket.emit('chat:join', currentGroup._id, (response: any) => {
+        if (response.success) {
+          console.log('[ChatView] Successfully joined group chat:', currentGroup._id);
+          loadMessages();
+        } else {
+          console.error('[ChatView] Failed to join chat:', response.error);
+        }
+      });
+    };
+
+    // Join immediately if connected
+    if (isConnected) {
+      joinRoom();
+    }
+
+    // Rejoin on reconnect
+    const handleConnect = () => {
+      console.log('[ChatView] Socket reconnected, rejoining room');
+      joinRoom();
+    };
+
+    socket.on('connect', handleConnect);
 
     return () => {
-      socket.emit('chat:leave', currentGroup._id);
+      socket.off('connect', handleConnect);
+      if (isConnected && currentGroup?._id) {
+        console.log('[ChatView] Leaving group chat:', currentGroup._id);
+        socket.emit('chat:leave', currentGroup._id);
+      }
     };
   }, [socket, currentGroup, isConnected, loadMessages]);
 
   // Socket event listeners
   useEffect(() => {
-    if (!socket) return;
+    if (!socket) {
+      console.log('[ChatView] Socket not available, skipping event listeners setup');
+      return;
+    }
+
+    console.log('[ChatView] Setting up socket event listeners');
 
     const handleNewMessage = (data: { type: string; message: ChatMessage }) => {
+      console.log('[ChatView] Received chat:message event:', data);
       if (data.type === 'new') {
-        setMessages(prev => [...prev, data.message]);
+        console.log('[ChatView] Adding new message:', data.message);
+        setMessages(prev => {
+          // Check if message already exists to avoid duplicates
+          const exists = prev.some(msg => msg._id === data.message._id);
+          if (exists) {
+            console.log('[ChatView] Message already exists, skipping');
+            return prev;
+          }
+          console.log('[ChatView] Adding message to state, current count:', prev.length);
+          return [...prev, data.message];
+        });
         scrollToBottom();
       } else if (data.type === 'edited') {
+        console.log('[ChatView] Updating edited message:', data.message._id);
         setMessages(prev =>
           prev.map(msg => (msg._id === data.message._id ? data.message : msg))
         );
       } else if (data.type === 'deleted') {
+        console.log('[ChatView] Removing deleted message:', data.message._id);
         setMessages(prev =>
           prev.map(msg => (msg._id === data.message._id ? data.message : msg))
         );
@@ -98,6 +144,7 @@ export default function ChatView() {
       userId: string;
       message: ChatMessage;
     }) => {
+      console.log('[ChatView] Received chat:reaction event:', data);
       setMessages(prev =>
         prev.map(msg => (msg._id === data.messageId ? data.message : msg))
       );
@@ -117,16 +164,35 @@ export default function ChatView() {
       });
     };
 
+    // Setup listeners - remove old ones first to avoid duplicates
+    socket.off('chat:message', handleNewMessage);
+    socket.off('chat:reaction', handleReaction);
+    socket.off('chat:typing', handleTyping);
+    
+    // Add new listeners
     socket.on('chat:message', handleNewMessage);
     socket.on('chat:reaction', handleReaction);
     socket.on('chat:typing', handleTyping);
 
+    console.log('[ChatView] Socket event listeners registered for socket:', socket.id);
+    
+    // Test listener by logging all events
+    const testListener = (eventName: string, ...args: any[]) => {
+      console.log(`[ChatView] Socket event received: ${eventName}`, args);
+    };
+    
+    // Add a one-time test to verify socket is receiving events
+    socket.once('chat:message', (data) => {
+      console.log('[ChatView] TEST: First chat:message event received:', data);
+    });
+
     return () => {
+      console.log('[ChatView] Cleaning up socket event listeners');
       socket.off('chat:message', handleNewMessage);
       socket.off('chat:reaction', handleReaction);
       socket.off('chat:typing', handleTyping);
     };
-  }, [socket, user]);
+  }, [socket, user, scrollToBottom]);
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -142,6 +208,7 @@ export default function ChatView() {
 
     try {
       if (socket) {
+        console.log('[ChatView] Sending message via socket:', { groupId: currentGroup._id, content });
         socket.emit(
           'chat:send',
           {
@@ -151,6 +218,7 @@ export default function ChatView() {
             attachments: []
           },
           (response: any) => {
+            console.log('[ChatView] Send message response:', response);
             if (!response.success) {
               alert('Failed to send message: ' + response.error);
             } else {
@@ -160,9 +228,12 @@ export default function ChatView() {
             }
           }
         );
+      } else {
+        console.error('[ChatView] Socket not available');
+        alert('Socket connection not available');
       }
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('[ChatView] Error sending message:', error);
       alert('Failed to send message: ' + (error as Error).message);
     }
   };
