@@ -2,7 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from '../contexts/AuthContext';
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5000';
+// Get API URL and extract base URL for Socket.IO
+const getApiBaseUrl = () => {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+  // Remove /api suffix if present to get base URL
+  return apiUrl.replace(/\/api\/?$/, '');
+};
+
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || getApiBaseUrl();
 const SOCKET_NAMESPACE = process.env.NEXT_PUBLIC_SOCKET_NAMESPACE || '/ws/app';
 
 let sharedSocket: Socket | null = null;

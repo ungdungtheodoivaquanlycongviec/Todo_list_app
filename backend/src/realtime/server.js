@@ -24,7 +24,9 @@ const buildOrigins = () => {
     return [];
   }
 
-  return DEFAULT_DEV_ORIGINS;
+  // In development, allow all origins to enable testing from other devices on local network
+  // For production, explicitly set SOCKET_ALLOWED_ORIGINS in environment variables
+  return true; // Allow all origins in development
 };
 
 const resolveRedisOptions = () => {
@@ -110,13 +112,15 @@ const broadcastPresenceUpdate = (namespace, payload) => {
 
 const setupRealtimeServer = async (httpServer) => {
   const allowedOrigins = buildOrigins();
-  if (env.nodeEnv === 'production' && allowedOrigins.length === 0) {
+  if (env.nodeEnv === 'production' && (Array.isArray(allowedOrigins) && allowedOrigins.length === 0)) {
     console.warn('[Realtime] No SOCKET_ALLOWED_ORIGINS configured; allowing all origins (production fallback).');
   }
 
   const io = new Server(httpServer, {
     cors: {
-      origin: allowedOrigins.length > 0 ? allowedOrigins : true,
+      origin: allowedOrigins === true || (Array.isArray(allowedOrigins) && allowedOrigins.length > 0) 
+        ? allowedOrigins 
+        : true,
       credentials: true
     },
     serveClient: false,
@@ -287,29 +291,32 @@ const setupRealtimeServer = async (httpServer) => {
 
     const roomName = `${GROUP_ROOM_PREFIX}${groupId}`;
 
-    // Emit to group room
+    // Convert message to plain object to ensure proper serialization
+    const messageData = message?.toObject ? message.toObject() : (message?.toJSON ? message.toJSON() : message);
+
+    // Emit to group room (use .in() to include all sockets in the room)
     if (eventKey === CHAT_EVENTS.messageCreated) {
-      appNamespace.to(roomName).emit('chat:message', {
+      appNamespace.in(roomName).emit('chat:message', {
         type: 'new',
-        message
+        message: messageData
       });
     } else if (eventKey === CHAT_EVENTS.messageUpdated) {
-      appNamespace.to(roomName).emit('chat:message', {
+      appNamespace.in(roomName).emit('chat:message', {
         type: 'edited',
-        message
+        message: messageData
       });
     } else if (eventKey === CHAT_EVENTS.messageDeleted) {
-      appNamespace.to(roomName).emit('chat:message', {
+      appNamespace.in(roomName).emit('chat:message', {
         type: 'deleted',
-        message
+        message: messageData
       });
     } else if (eventKey === CHAT_EVENTS.reactionToggled) {
-      appNamespace.to(roomName).emit('chat:reaction', {
+      appNamespace.in(roomName).emit('chat:reaction', {
         type: payload.added ? 'added' : 'removed',
-        messageId: message._id,
+        messageId: messageData?._id || message?._id,
         emoji: payload.emoji,
         userId: payload.userId,
-        message
+        message: messageData
       });
     }
   };

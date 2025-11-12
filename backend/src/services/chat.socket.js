@@ -87,11 +87,15 @@ const setupChatHandlers = (namespace) => {
           attachments: attachments || []
         }, true); // skipRealtime = true
 
-        // Broadcast to all members in the group room
+        // Convert message to plain object to ensure proper serialization
+        const messageData = message.toObject ? message.toObject() : message;
+        
+        // Broadcast to all members in the group room (including sender)
         const roomName = `${GROUP_ROOM_PREFIX}${groupId}`;
-        namespace.to(roomName).emit('chat:message', {
+        // Use .in() instead of .to() to include the sender
+        namespace.in(roomName).emit('chat:message', {
           type: 'new',
-          message
+          message: messageData
         });
 
         if (callback) callback({ success: true, message });
@@ -118,12 +122,15 @@ const setupChatHandlers = (namespace) => {
         const message = await GroupMessage.findById(messageId);
         if (message) {
           const roomName = `${GROUP_ROOM_PREFIX}${message.groupId}`;
-          namespace.to(roomName).emit('chat:reaction', {
+          // Convert message to plain object to ensure proper serialization
+          const messageData = result.message?.toObject ? result.message.toObject() : result.message;
+          // Use .in() instead of .to() to include the sender
+          namespace.in(roomName).emit('chat:reaction', {
             type: result.added ? 'added' : 'removed',
             messageId,
             emoji,
             userId,
-            message: result.message
+            message: messageData
           });
         }
 
@@ -148,9 +155,12 @@ const setupChatHandlers = (namespace) => {
         const message = await chatService.editMessage(messageId, userId, content, true);
 
         const roomName = `${GROUP_ROOM_PREFIX}${message.groupId}`;
-        namespace.to(roomName).emit('chat:message', {
+        // Convert message to plain object to ensure proper serialization
+        const messageData = message.toObject ? message.toObject() : message;
+        // Use .in() instead of .to() to include the sender
+        namespace.in(roomName).emit('chat:message', {
           type: 'edited',
-          message
+          message: messageData
         });
 
         if (callback) callback({ success: true, message });
@@ -174,9 +184,12 @@ const setupChatHandlers = (namespace) => {
         const message = await chatService.deleteMessage(messageId, userId, true);
 
         const roomName = `${GROUP_ROOM_PREFIX}${message.groupId}`;
-        namespace.to(roomName).emit('chat:message', {
+        // Convert message to plain object to ensure proper serialization
+        const messageData = message.toObject ? message.toObject() : message;
+        // Use .in() instead of .to() to include the sender
+        namespace.in(roomName).emit('chat:message', {
           type: 'deleted',
-          message
+          message: messageData
         });
 
         if (callback) callback({ success: true, message });
