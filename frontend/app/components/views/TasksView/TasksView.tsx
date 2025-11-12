@@ -24,6 +24,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../../../contexts/AuthContext";
 import { Group } from "../../../services/types/group.types";
 import { useGroupChange } from "../../../hooks/useGroupChange";
+import { useTaskRealtime } from "../../../hooks/useTaskRealtime";
 import NoGroupState from "../../common/NoGroupState";
 
 export default function TasksView() {
@@ -105,6 +106,11 @@ export default function TasksView() {
       desc: "Newest first",
     },
   ];
+
+  const currentGroupId =
+    (currentGroup && (currentGroup as any)._id) ||
+    (currentGroup && (currentGroup as any).id) ||
+    null;
 
   // Helper để lấy error message
   const getErrorMessage = (error: unknown): string => {
@@ -565,6 +571,24 @@ export default function TasksView() {
       fetchKanbanData();
     }
   };
+
+  useTaskRealtime({
+    onTaskCreated: ({ task, groupId }) => {
+      if (!task) return;
+      if (currentGroupId && groupId && groupId !== currentGroupId) return;
+      handleTaskUpdate(task);
+    },
+    onTaskUpdated: ({ task, groupId }) => {
+      if (!task) return;
+      if (currentGroupId && groupId && groupId !== currentGroupId) return;
+      handleTaskUpdate(task);
+    },
+    onTaskDeleted: ({ taskId, groupId }) => {
+      if (!taskId) return;
+      if (currentGroupId && groupId && groupId !== currentGroupId) return;
+      handleTaskDelete(taskId);
+    }
+  });
 
   const handleTaskDelete = (taskId: string) => {
     if (viewMode === "list") {

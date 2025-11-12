@@ -1,6 +1,7 @@
 const { Server } = require('socket.io');
 const env = require('../config/environment');
 const { registerNotificationListener } = require('../services/realtime.gateway');
+const { registerTaskRealtimeListener } = require('../services/task.realtime.gateway');
 const {
   authenticateSocket,
   SOCKET_ERROR_CODES
@@ -241,6 +242,36 @@ const setupRealtimeServer = async (httpServer) => {
 
   const unregisterNotificationListener = registerNotificationListener(notificationListener);
 
+  const taskRealtimeListener = ({ eventKey, payload }) => {
+    if (!eventKey) {
+      return;
+    }
+
+    const eventName = `tasks:${eventKey}`;
+    const recipients = Array.isArray(payload?.recipients)
+      ? payload.recipients.filter(Boolean)
+      : [];
+
+    if (recipients.length > 0) {
+      const uniqueRecipients = Array.from(new Set(recipients));
+      uniqueRecipients.forEach((userId) => {
+        const roomName = `${USER_ROOM_PREFIX}${userId}`;
+        appNamespace.to(roomName).emit(eventName, {
+          eventKey,
+          payload
+        });
+      });
+      return;
+    }
+
+    appNamespace.emit(eventName, {
+      eventKey,
+      payload
+    });
+  };
+
+  const unregisterTaskListener = registerTaskRealtimeListener(taskRealtimeListener);
+
   // Setup chat handlers
   const { setupChatHandlers } = require('../services/chat.socket');
   setupChatHandlers(appNamespace);
@@ -251,6 +282,7 @@ const setupRealtimeServer = async (httpServer) => {
   const shutdown = async () => {
     try {
       unregisterNotificationListener();
+      unregisterTaskListener();
       presence.events.off('presence:update', presenceListener);
       await presence.shutdown();
       await appNamespace.disconnectSockets(true);

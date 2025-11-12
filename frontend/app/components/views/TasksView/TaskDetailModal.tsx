@@ -25,6 +25,7 @@ import {
 import type { Task } from "../../../services/types/task.types"
 import { taskService } from "../../../services/task.service"
 import { useAuth } from "../../../contexts/AuthContext"
+import { useTaskRealtime } from "../../../hooks/useTaskRealtime"
 
 interface MinimalUser {
   _id: string;
@@ -311,6 +312,50 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
     );
   };
 
+  const syncTaskState = useCallback((taskData: Task) => {
+    setTask(taskData)
+    setDescription(taskData.description || "")
+    setEstimatedTime(taskData.estimatedTime || "")
+
+    setTaskProperties({
+      title: taskData.title || "",
+      status: taskData.status || "todo",
+      dueDate: taskData.dueDate ? new Date(taskData.dueDate).toISOString().split('T')[0] : "",
+      estimatedTime: taskData.estimatedTime || "",
+      type: (taskData as any).type || "Operational",
+      priority: taskData.priority || "medium",
+      description: taskData.description || ""
+    })
+
+    if ((taskData as any).timeEntries && Array.isArray((taskData as any).timeEntries)) {
+      setTimeEntries((taskData as any).timeEntries)
+    } else {
+      setTimeEntries([])
+    }
+
+    if ((taskData as any).scheduledWork && Array.isArray((taskData as any).scheduledWork)) {
+      setScheduledWork((taskData as any).scheduledWork)
+    } else {
+      setScheduledWork([])
+    }
+
+    if (taskData.comments && Array.isArray(taskData.comments)) {
+      const formattedComments: Comment[] = taskData.comments.map((comment: any) => ({
+        _id: comment._id || comment.userId,
+        userId: comment.userId || comment.user?._id || comment.user,
+        user: comment.user,
+        content: comment.content || "",
+        createdAt: comment.createdAt,
+        updatedAt: comment.updatedAt,
+        isEdited: comment.isEdited || false,
+        attachment: comment.attachment,
+      }))
+      setComments(formattedComments)
+    } else {
+      setComments([])
+    }
+  }, [])
+
   const fetchTaskDetails = useCallback(async () => {
     if (!isOpen || !taskId) return
 
@@ -318,61 +363,36 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       setLoading(true)
       const taskData = await taskService.getTaskById(taskId)
 
-      setTask(taskData)
-      setDescription(taskData.description || "")
-      setEstimatedTime(taskData.estimatedTime || "")
-      
-      // Initialize task properties
-      setTaskProperties({
-        title: taskData.title || "",
-        status: taskData.status || "todo",
-        dueDate: taskData.dueDate ? new Date(taskData.dueDate).toISOString().split('T')[0] : "",
-        estimatedTime: taskData.estimatedTime || "",
-        type: (taskData as any).type || "Operational",
-        priority: taskData.priority || "medium",
-        description: taskData.description || ""
-      })
-
-      // Set time entries
-      if ((taskData as any).timeEntries && Array.isArray((taskData as any).timeEntries)) {
-        setTimeEntries((taskData as any).timeEntries)
-      } else {
-        setTimeEntries([])
-      }
-
-      // Set scheduled work
-      if ((taskData as any).scheduledWork && Array.isArray((taskData as any).scheduledWork)) {
-        setScheduledWork((taskData as any).scheduledWork)
-      } else {
-        setScheduledWork([])
-      }
-
-      if (taskData.comments && Array.isArray(taskData.comments)) {
-        const formattedComments: Comment[] = taskData.comments.map((comment: any) => ({
-          _id: comment._id || comment.userId,
-          userId: comment.userId || comment.user?._id || comment.user,
-          user: comment.user,
-          content: comment.content || "",
-          createdAt: comment.createdAt,
-          updatedAt: comment.updatedAt,
-          isEdited: comment.isEdited || false,
-          attachment: comment.attachment,
-        }))
-        setComments(formattedComments)
-      } else {
-        setComments([])
-      }
+      syncTaskState(taskData)
     } catch (error) {
       console.error("Error fetching task details:", error)
       alert("Failed to load task details: " + (error as Error).message)
     } finally {
       setLoading(false)
     }
-  }, [isOpen, taskId])
+  }, [isOpen, taskId, syncTaskState])
 
   useEffect(() => {
     fetchTaskDetails()
   }, [fetchTaskDetails])
+
+  useTaskRealtime({
+    onTaskUpdated: ({ task: updatedTask, taskId: updatedId }) => {
+      if (!updatedId || updatedId !== taskId) return
+
+      if (updatedTask) {
+        syncTaskState(updatedTask)
+        onTaskUpdate(updatedTask)
+      } else {
+        fetchTaskDetails()
+      }
+    },
+    onTaskDeleted: ({ taskId: deletedId }) => {
+      if (!deletedId || deletedId !== taskId) return
+      onTaskDelete(taskId)
+      onClose()
+    }
+  })
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {

@@ -5,48 +5,94 @@ import { useAuth } from '../contexts/AuthContext';
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5000';
 const SOCKET_NAMESPACE = process.env.NEXT_PUBLIC_SOCKET_NAMESPACE || '/ws/app';
 
+let sharedSocket: Socket | null = null;
+let subscriberCount = 0;
+const connectionListeners = new Set<(isConnected: boolean) => void>();
+
+const notifyConnectionListeners = (state: boolean) => {
+  connectionListeners.forEach((listener) => {
+    try {
+      listener(state);
+    } catch (error) {
+      console.error('[Socket] Connection listener error:', error);
+    }
+  });
+};
+
+const createSharedSocket = (token: string) => {
+  const socket = io(`${SOCKET_URL}${SOCKET_NAMESPACE}`, {
+    auth: {
+      token
+    },
+    transports: ['websocket', 'polling'],
+    reconnection: true,
+    reconnectionDelay: 1000,
+    reconnectionAttempts: 5
+  });
+
+  socket.on('connect', () => {
+    console.log('[Socket] Connected');
+    notifyConnectionListeners(true);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('[Socket] Disconnected');
+    notifyConnectionListeners(false);
+  });
+
+  socket.on('connect_error', (error) => {
+    console.error('[Socket] Connection error:', error);
+    notifyConnectionListeners(false);
+  });
+
+  return socket;
+};
+
 export function useSocket() {
   const { user } = useAuth();
   const socketRef = useRef<Socket | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
+  const [isConnected, setIsConnected] = useState<boolean>(false);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setIsConnected(false);
+      socketRef.current = null;
+      return;
+    }
 
     const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-    if (!token) return;
-
-    // Create socket connection
-    const socket = io(`${SOCKET_URL}${SOCKET_NAMESPACE}`, {
-      auth: {
-        token
-      },
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionAttempts: 5
-    });
-
-    socket.on('connect', () => {
-      console.log('[Socket] Connected');
-      setIsConnected(true);
-    });
-
-    socket.on('disconnect', () => {
-      console.log('[Socket] Disconnected');
+    if (!token) {
+      console.warn('[Socket] Missing access token. Realtime features disabled.');
       setIsConnected(false);
-    });
+      socketRef.current = null;
+      return;
+    }
 
-    socket.on('connect_error', (error) => {
-      console.error('[Socket] Connection error:', error);
-      setIsConnected(false);
-    });
+    subscriberCount += 1;
 
-    socketRef.current = socket;
+    if (!sharedSocket) {
+      sharedSocket = createSharedSocket(token);
+    }
+
+    socketRef.current = sharedSocket;
+    setIsConnected(sharedSocket.connected);
+
+    const listener = (state: boolean) => {
+      setIsConnected(state);
+    };
+
+    connectionListeners.add(listener);
 
     return () => {
-      socket.disconnect();
-      socketRef.current = null;
+      connectionListeners.delete(listener);
+      subscriberCount = Math.max(0, subscriberCount - 1);
+
+      if (subscriberCount === 0 && sharedSocket) {
+        sharedSocket.disconnect();
+        sharedSocket = null;
+      }
+
+      socketRef.current = sharedSocket;
     };
   }, [user]);
 

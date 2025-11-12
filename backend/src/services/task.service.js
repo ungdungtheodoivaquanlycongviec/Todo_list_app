@@ -15,6 +15,7 @@ const {
 } = require('../utils/dateHelper');
 const fileService = require('./file.service');
 const notificationService = require('./notification.service');
+const { TASK_EVENTS, emitTaskEvent } = require('./task.realtime.gateway');
 
 const normalizeId = value => {
   if (!value) return null;
@@ -29,6 +30,113 @@ const raiseError = (message, statusCode = HTTP_STATUS.BAD_REQUEST) => {
   const error = new Error(message);
   error.statusCode = statusCode;
   throw error;
+};
+
+const toPlainTask = (taskDoc) => {
+  if (!taskDoc) {
+    return null;
+  }
+  if (typeof taskDoc.toObject === 'function') {
+    return taskDoc.toObject({
+      virtuals: true,
+      getters: true
+    });
+  }
+  return taskDoc;
+};
+
+const buildRecipientList = (task, groupDoc = null) => {
+  const recipients = new Set();
+  const push = (value) => {
+    const normalized = normalizeId(value);
+    if (normalized) {
+      recipients.add(normalized);
+    }
+  };
+
+  if (!task) {
+    return [];
+  }
+
+  push(task.createdBy);
+
+  if (Array.isArray(task.assignedTo)) {
+    task.assignedTo.forEach((assignment) => {
+      if (!assignment) return;
+      const user = assignment.userId || assignment;
+      if (user && typeof user === 'object') {
+        push(user._id || user.id || user);
+      } else {
+        push(user);
+      }
+    });
+  }
+
+  if (groupDoc && Array.isArray(groupDoc.members)) {
+    groupDoc.members.forEach((member) => {
+      if (!member) return;
+      const user = member.userId || member;
+      if (user && typeof user === 'object') {
+        push(user._id || user.id || user);
+      } else {
+        push(user);
+      }
+    });
+  }
+
+  return Array.from(recipients);
+};
+
+const emitTaskRealtime = async ({
+  taskDoc,
+  groupDoc = null,
+  eventKey = TASK_EVENTS.updated,
+  meta = {}
+}) => {
+  if (!taskDoc) {
+    return;
+  }
+
+  const plainTask = toPlainTask(taskDoc);
+  if (!plainTask) {
+    return;
+  }
+
+  const groupId = normalizeId(plainTask.groupId);
+  let resolvedGroup = groupDoc;
+
+  if (!resolvedGroup && groupId) {
+    try {
+      resolvedGroup = await Group.findById(groupId).select('_id members').lean();
+    } catch (error) {
+      console.warn('Failed to resolve group for realtime task event:', error.message);
+    }
+  }
+
+  const recipients = buildRecipientList(plainTask, resolvedGroup);
+
+  const taskId =
+    normalizeId(plainTask._id) ||
+    (typeof plainTask.id === 'string' ? plainTask.id : null);
+
+  const mutationType =
+    meta.mutationType ||
+    (eventKey === TASK_EVENTS.created
+      ? 'create'
+      : eventKey === TASK_EVENTS.deleted
+      ? 'delete'
+      : 'update');
+
+  emitTaskEvent(eventKey, {
+    task: plainTask,
+    taskId,
+    groupId,
+    recipients,
+    meta: {
+      ...meta,
+      mutationType
+    }
+  });
 };
 
 /**
@@ -135,6 +243,16 @@ class TaskService {
         console.error('Failed to dispatch task creation notification:', notificationError);
       }
     }
+
+    await emitTaskRealtime({
+      taskDoc: populatedTask,
+      groupDoc: targetGroup,
+      eventKey: TASK_EVENTS.created,
+      meta: {
+        mutationType: 'create',
+        source: 'task:create'
+      }
+    });
 
     return populatedTask;
   }
@@ -415,6 +533,17 @@ class TaskService {
       }
     }
 
+    await emitTaskRealtime({
+      taskDoc: updatedTask,
+      groupDoc: targetGroup,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changedFields: Object.keys(updateData || {}),
+        source: 'task:update'
+      }
+    });
+
     return updatedTask;
   }
 
@@ -425,6 +554,18 @@ class TaskService {
    */
   async deleteTask(taskId) {
     const task = await Task.findByIdAndDelete(taskId);
+
+    if (task) {
+      await emitTaskRealtime({
+        taskDoc: task,
+        eventKey: TASK_EVENTS.deleted,
+        meta: {
+          mutationType: 'delete',
+          source: 'task:delete'
+        }
+      });
+    }
+
     return task;
   }
 
@@ -807,6 +948,18 @@ class TaskService {
       }
     }
 
+    await emitTaskRealtime({
+      taskDoc: populatedTask,
+      groupDoc: group,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'assignee:add',
+        addedUserIds: finalAssignableIds,
+        source: 'task:assign'
+      }
+    });
+
     return {
       success: true,
       statusCode: HTTP_STATUS.OK,
@@ -912,6 +1065,18 @@ class TaskService {
         console.error('Failed to dispatch task unassignment notification:', notificationError);
       }
     }
+
+    await emitTaskRealtime({
+      taskDoc: populatedTask,
+      groupDoc: group,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'assignee:remove',
+        removedUserId: userId.toString(),
+        source: 'task:unassign'
+      }
+    });
 
     return {
       success: true,
@@ -1346,6 +1511,19 @@ class TaskService {
       }
     }
 
+    const latestComment = task.comments[task.comments.length - 1];
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'comment:add',
+        commentId: normalizeId(latestComment?._id),
+        source: 'task:comment:add'
+      }
+    });
+
     return task;
   }
 
@@ -1408,6 +1586,17 @@ class TaskService {
     await task.populate('assignedTo.userId', 'name email avatar');
     await task.populate('createdBy', 'name email avatar');
     await task.populate('groupId', 'name description');
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'comment:update',
+        commentId: normalizeId(commentId),
+        source: 'task:comment:update'
+      }
+    });
 
     return {
       success: true,
@@ -1473,6 +1662,17 @@ class TaskService {
     await task.populate('assignedTo.userId', 'name email avatar');
     await task.populate('createdBy', 'name email avatar');
     await task.populate('groupId', 'name description');
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'comment:remove',
+        commentId: normalizeId(commentId),
+        source: 'task:comment:delete'
+      }
+    });
 
     return {
       success: true,
@@ -1600,6 +1800,21 @@ class TaskService {
       await task.populate('comments.user', 'name email avatar');
     await task.populate('groupId', 'name description');
 
+      const addedAttachments = newAttachments.length > 0
+        ? task.attachments.slice(-newAttachments.length)
+        : [];
+
+      await emitTaskRealtime({
+        taskDoc: task,
+        eventKey: TASK_EVENTS.updated,
+        meta: {
+          mutationType: 'update',
+          changeType: 'attachment:add',
+          attachmentIds: addedAttachments.map((attachment) => normalizeId(attachment?._id)),
+          source: 'task:attachment:add'
+        }
+      });
+
       return {
         success: true,
         task,
@@ -1675,6 +1890,17 @@ class TaskService {
       await task.populate('createdBy', 'name email avatar');
       await task.populate('comments.user', 'name email avatar');
     await task.populate('groupId', 'name description');
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'attachment:remove',
+        attachmentId: normalizeId(attachmentId),
+        source: 'task:attachment:delete'
+      }
+    });
 
       return {
         success: true,
@@ -1761,6 +1987,19 @@ class TaskService {
     await task.populate('assignedTo.userId', 'name email avatar');
     await task.populate('createdBy', 'name email avatar');
 
+    const latestComment = task.comments[task.comments.length - 1];
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'comment:add',
+        commentId: normalizeId(latestComment?._id),
+        source: 'task:comment:add:file'
+      }
+    });
+
     return task;
   }
 
@@ -1789,6 +2028,16 @@ class TaskService {
     await task.populate('assignedTo.userId', 'name email avatar');
     await task.populate('comments.user', 'name email avatar');
     await task.populate('groupId', 'name description');
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'timer:start',
+        source: 'task:timer:start'
+      }
+    });
 
     return task;
   }
@@ -1840,6 +2089,19 @@ class TaskService {
     await task.populate('comments.user', 'name email avatar');
     await task.populate('groupId', 'name description');
 
+    const latestEntry = task.timeEntries[task.timeEntries.length - 1];
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'timer:stop',
+        timeEntryId: normalizeId(latestEntry?._id),
+        source: 'task:timer:stop'
+      }
+    });
+
     return task;
   }
 
@@ -1877,6 +2139,17 @@ class TaskService {
     await task.populate('comments.user', 'name email avatar');
     await task.populate('groupId', 'name description');
 
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'status:custom',
+        customStatus: task.customStatus,
+        source: 'task:status:custom'
+      }
+    });
+
     return task;
   }
 
@@ -1912,6 +2185,17 @@ class TaskService {
     await task.populate('assignedTo.userId', 'name email avatar');
     await task.populate('comments.user', 'name email avatar');
     await task.populate('groupId', 'name description');
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'repeat:update',
+        repetition: task.repetition,
+        source: 'task:repeat:update'
+      }
+    });
 
     return task;
   }
