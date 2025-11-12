@@ -272,6 +272,50 @@ const setupRealtimeServer = async (httpServer) => {
 
   const unregisterTaskListener = registerTaskRealtimeListener(taskRealtimeListener);
 
+  const { registerChatRealtimeListener, CHAT_EVENTS } = require('../services/chat.realtime.gateway');
+  const GROUP_ROOM_PREFIX = 'group:';
+
+  const chatRealtimeListener = ({ eventKey, payload }) => {
+    if (!eventKey || !payload) {
+      return;
+    }
+
+    const { message, groupId } = payload;
+    if (!groupId) {
+      return;
+    }
+
+    const roomName = `${GROUP_ROOM_PREFIX}${groupId}`;
+
+    // Emit to group room
+    if (eventKey === CHAT_EVENTS.messageCreated) {
+      appNamespace.to(roomName).emit('chat:message', {
+        type: 'new',
+        message
+      });
+    } else if (eventKey === CHAT_EVENTS.messageUpdated) {
+      appNamespace.to(roomName).emit('chat:message', {
+        type: 'edited',
+        message
+      });
+    } else if (eventKey === CHAT_EVENTS.messageDeleted) {
+      appNamespace.to(roomName).emit('chat:message', {
+        type: 'deleted',
+        message
+      });
+    } else if (eventKey === CHAT_EVENTS.reactionToggled) {
+      appNamespace.to(roomName).emit('chat:reaction', {
+        type: payload.added ? 'added' : 'removed',
+        messageId: message._id,
+        emoji: payload.emoji,
+        userId: payload.userId,
+        message
+      });
+    }
+  };
+
+  const unregisterChatListener = registerChatRealtimeListener(chatRealtimeListener);
+
   // Setup chat handlers
   const { setupChatHandlers } = require('../services/chat.socket');
   setupChatHandlers(appNamespace);
@@ -283,6 +327,7 @@ const setupRealtimeServer = async (httpServer) => {
     try {
       unregisterNotificationListener();
       unregisterTaskListener();
+      unregisterChatListener();
       presence.events.off('presence:update', presenceListener);
       await presence.shutdown();
       await appNamespace.disconnectSockets(true);

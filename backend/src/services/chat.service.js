@@ -2,6 +2,7 @@ const GroupMessage = require('../models/GroupMessage.model');
 const Group = require('../models/Group.model');
 const { HTTP_STATUS, ERROR_MESSAGES } = require('../config/constants');
 const fileService = require('./file.service');
+const { CHAT_EVENTS, emitChatEvent } = require('./chat.realtime.gateway');
 
 const normalizeId = (value) => {
   if (!value) return null;
@@ -18,9 +19,10 @@ class ChatService {
    * @param {String} groupId - ID của group
    * @param {String} senderId - ID của người gửi
    * @param {Object} messageData - Dữ liệu message
+   * @param {Boolean} skipRealtime - Skip emitting realtime event (for socket handlers)
    * @returns {Promise<Object>} Message đã tạo
    */
-  async createMessage(groupId, senderId, messageData) {
+  async createMessage(groupId, senderId, messageData, skipRealtime = false) {
     const { content, replyTo, attachments = [] } = messageData;
 
     // Verify user is member of group
@@ -79,6 +81,14 @@ class ChatService {
           path: 'senderId',
           select: 'name email avatar'
         }
+      });
+    }
+
+    // Emit realtime event (skip if called from socket handler)
+    if (!skipRealtime) {
+      emitChatEvent(CHAT_EVENTS.messageCreated, {
+        message: savedMessage,
+        groupId: normalizeId(groupId)
       });
     }
 
@@ -166,9 +176,10 @@ class ChatService {
    * @param {String} messageId - ID của message
    * @param {String} emoji - Emoji string
    * @param {String} userId - ID của user
+   * @param {Boolean} skipRealtime - Skip emitting realtime event (for socket handlers)
    * @returns {Promise<Object>} Updated message
    */
-  async toggleReaction(messageId, emoji, userId) {
+  async toggleReaction(messageId, emoji, userId, skipRealtime = false) {
     const message = await GroupMessage.findById(messageId);
     if (!message) {
       const error = new Error('Message not found');
@@ -207,6 +218,17 @@ class ChatService {
       }
     });
 
+    // Emit realtime event (skip if called from socket handler)
+    if (!skipRealtime) {
+      emitChatEvent(CHAT_EVENTS.reactionToggled, {
+        message,
+        groupId: normalizeId(message.groupId),
+        emoji,
+        userId: normalizeId(userId),
+        added: result.added
+      });
+    }
+
     return {
       message,
       ...result
@@ -218,9 +240,10 @@ class ChatService {
    * @param {String} messageId - ID của message
    * @param {String} userId - ID của user (phải là người gửi)
    * @param {String} content - Nội dung mới
+   * @param {Boolean} skipRealtime - Skip emitting realtime event (for socket handlers)
    * @returns {Promise<Object>} Updated message
    */
-  async editMessage(messageId, userId, content) {
+  async editMessage(messageId, userId, content, skipRealtime = false) {
     const message = await GroupMessage.findById(messageId);
     if (!message) {
       const error = new Error('Message not found');
@@ -254,6 +277,14 @@ class ChatService {
       }
     });
 
+    // Emit realtime event (skip if called from socket handler)
+    if (!skipRealtime) {
+      emitChatEvent(CHAT_EVENTS.messageUpdated, {
+        message,
+        groupId: normalizeId(message.groupId)
+      });
+    }
+
     return message;
   }
 
@@ -261,9 +292,10 @@ class ChatService {
    * Xóa message (soft delete)
    * @param {String} messageId - ID của message
    * @param {String} userId - ID của user (phải là người gửi)
+   * @param {Boolean} skipRealtime - Skip emitting realtime event (for socket handlers)
    * @returns {Promise<Object>} Updated message
    */
-  async deleteMessage(messageId, userId) {
+  async deleteMessage(messageId, userId, skipRealtime = false) {
     const message = await GroupMessage.findById(messageId);
     if (!message) {
       const error = new Error('Message not found');
@@ -292,6 +324,14 @@ class ChatService {
     await message.softDelete();
 
     await message.populate('senderId', 'name email avatar');
+
+    // Emit realtime event (skip if called from socket handler)
+    if (!skipRealtime) {
+      emitChatEvent(CHAT_EVENTS.messageDeleted, {
+        message,
+        groupId: normalizeId(message.groupId)
+      });
+    }
 
     return message;
   }

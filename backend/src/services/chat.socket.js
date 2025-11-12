@@ -80,12 +80,12 @@ const setupChatHandlers = (namespace) => {
           return;
         }
 
-        // Create message using service
+        // Create message using service (skip realtime emit, we'll emit directly)
         const message = await chatService.createMessage(groupId, userId, {
           content,
           replyTo,
           attachments: attachments || []
-        });
+        }, true); // skipRealtime = true
 
         // Broadcast to all members in the group room
         const roomName = `${GROUP_ROOM_PREFIX}${groupId}`;
@@ -111,7 +111,8 @@ const setupChatHandlers = (namespace) => {
           return;
         }
 
-        const result = await chatService.toggleReaction(messageId, emoji, userId);
+        // Toggle reaction (skip realtime emit, we'll emit directly)
+        const result = await chatService.toggleReaction(messageId, emoji, userId, true);
 
         // Get message to find groupId
         const message = await GroupMessage.findById(messageId);
@@ -143,7 +144,8 @@ const setupChatHandlers = (namespace) => {
           return;
         }
 
-        const message = await chatService.editMessage(messageId, userId, content);
+        // Edit message (skip realtime emit, we'll emit directly)
+        const message = await chatService.editMessage(messageId, userId, content, true);
 
         const roomName = `${GROUP_ROOM_PREFIX}${message.groupId}`;
         namespace.to(roomName).emit('chat:message', {
@@ -168,7 +170,8 @@ const setupChatHandlers = (namespace) => {
           return;
         }
 
-        const message = await chatService.deleteMessage(messageId, userId);
+        // Delete message (skip realtime emit, we'll emit directly)
+        const message = await chatService.deleteMessage(messageId, userId, true);
 
         const roomName = `${GROUP_ROOM_PREFIX}${message.groupId}`;
         namespace.to(roomName).emit('chat:message', {
