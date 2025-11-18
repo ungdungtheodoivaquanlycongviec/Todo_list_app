@@ -67,8 +67,14 @@ export default function ChatView() {
         return;
       }
 
-      console.log('[ChatView] Joining group chat:', currentGroup._id);
+      if (!socket || !socket.connected) {
+        console.log('[ChatView] Socket not connected or not available');
+        return;
+      }
+
+      console.log('[ChatView] Joining group chat:', currentGroup._id, 'socket ID:', socket.id);
       socket.emit('chat:join', currentGroup._id, (response: any) => {
+        console.log('[ChatView] Join room response:', response);
         if (response.success) {
           console.log('[ChatView] Successfully joined group chat:', currentGroup._id);
           loadMessages();
@@ -79,14 +85,20 @@ export default function ChatView() {
     };
 
     // Join immediately if connected
-    if (isConnected) {
+    if (isConnected && socket.connected) {
+      console.log('[ChatView] Socket is connected, joining room immediately');
       joinRoom();
+    } else {
+      console.log('[ChatView] Socket not connected yet, waiting for connect event');
     }
 
     // Rejoin on reconnect
     const handleConnect = () => {
-      console.log('[ChatView] Socket reconnected, rejoining room');
-      joinRoom();
+      console.log('[ChatView] Socket connected/reconnected, socket ID:', socket.id);
+      // Wait a bit to ensure socket is fully ready
+      setTimeout(() => {
+        joinRoom();
+      }, 100);
     };
 
     socket.on('connect', handleConnect);
@@ -347,7 +359,7 @@ export default function ChatView() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-900">
+    <div className="flex flex-col h-full min-h-0 bg-white dark:bg-gray-900">
       {/* Header */}
       <div className="border-b border-gray-200 dark:border-gray-700 p-4">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
@@ -361,7 +373,7 @@ export default function ChatView() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="chat-scroll flex-1 overflow-y-auto max-h-[calc(100vh-200px)] p-4 space-y-4">
         {messages.map((msg) => (
           <MessageItem
             key={msg._id}

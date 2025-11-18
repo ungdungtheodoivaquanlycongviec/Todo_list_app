@@ -16,6 +16,7 @@ const {
 const fileService = require('./file.service');
 const notificationService = require('./notification.service');
 const { TASK_EVENTS, emitTaskEvent } = require('./task.realtime.gateway');
+const { resolveFolderContext } = require('./folder.service');
 
 const normalizeId = value => {
   if (!value) return null;
@@ -186,6 +187,15 @@ class TaskService {
         group.members.map(member => normalizeId(member.userId)).filter(Boolean)
       );
       taskData.groupId = groupId;
+
+      const { folder } = await resolveFolderContext({
+        groupId,
+        groupDoc: targetGroup,
+        folderId: taskData.folderId,
+        requesterId: creatorId
+      });
+
+      taskData.folderId = folder ? folder._id : null;
     }
 
     let assignedIds = [];
@@ -278,7 +288,7 @@ class TaskService {
    * @returns {Promise<Object>} { tasks, pagination }
    */
   async getAllTasks(filters = {}, options = {}, requesterId = null) {
-    const { status, priority, search, groupId } = filters;
+    const { status, priority, search, groupId, folderId } = filters;
     const { sortBy, order, page, limit } = options;
 
     // Validate và sanitize pagination
@@ -297,14 +307,13 @@ class TaskService {
     const sanitizedSortBy = sortValidation.sanitizedSortBy;
     const sanitizedOrder = sortValidation.sanitizedOrder;
 
-    // Build filter object
-    const query = {};
+    const queryFilters = [];
 
     if (status) {
       if (!TASK_STATUS.includes(status)) {
         throw new Error(`Invalid status. Allowed values: ${TASK_STATUS.join(', ')}`);
       }
-      query.status = status;
+      queryFilters.push({ status });
     }
     
     if (priority) {
@@ -312,7 +321,7 @@ class TaskService {
       if (!validPriorities.includes(priority)) {
         throw new Error(`Invalid priority. Allowed values: ${validPriorities.join(', ')}`);
       }
-      query.priority = priority;
+      queryFilters.push({ priority });
     }
 
     if (groupId) {
@@ -320,26 +329,39 @@ class TaskService {
         raiseError('Invalid groupId format');
       }
 
-      const group = await Group.findById(groupId);
-      if (!group) {
-        raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
-      }
+      const { folder } = await resolveFolderContext({
+        groupId,
+        folderId,
+        requesterId
+      });
 
-      const requesterIdStr = normalizeId(requesterId);
-      if (!requesterIdStr || !group.isMember(requesterIdStr)) {
-        raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
-      }
+      queryFilters.push({ groupId });
 
-      query.groupId = groupId;
+      if (folder) {
+        if (folder.isDefault) {
+          queryFilters.push({
+            $or: [
+              { folderId: folder._id },
+              { folderId: null },
+              { folderId: { $exists: false } }
+            ]
+          });
+        } else {
+          queryFilters.push({ folderId: folder._id });
+        }
+      }
     }
 
-    // Text search
     if (search && search.trim()) {
-      query.$or = [
-        { title: { $regex: search.trim(), $options: 'i' } },
-        { description: { $regex: search.trim(), $options: 'i' } }
-      ];
+      queryFilters.push({
+        $or: [
+          { title: { $regex: search.trim(), $options: 'i' } },
+          { description: { $regex: search.trim(), $options: 'i' } }
+        ]
+      });
     }
+
+    const query = queryFilters.length > 0 ? { $and: queryFilters } : {};
 
     // Sorting
     const sortOption = {};
@@ -428,6 +450,16 @@ class TaskService {
       targetGroup = await Group.findById(finalGroupId);
     }
 
+    let folderResolution = null;
+    if (updateData.folderId !== undefined || updateData.groupId !== undefined) {
+      folderResolution = await resolveFolderContext({
+        groupId: finalGroupId,
+        groupDoc: targetGroup,
+        folderId: updateData.folderId,
+        requesterId
+      });
+    }
+
     const groupMemberIds = targetGroup
       ? new Set(targetGroup.members.map(member => normalizeId(member.userId)).filter(Boolean))
       : null;
@@ -472,6 +504,7 @@ class TaskService {
     const updatePayload = { ...updateData };
     delete updatePayload.assignedTo;
     delete updatePayload.groupId;
+    delete updatePayload.folderId;
 
     if (updateData.assignedTo !== undefined || groupMemberIds) {
       updatePayload.assignedTo = finalAssignedIds.map(id => ({ userId: id }));
@@ -479,6 +512,10 @@ class TaskService {
 
     if (updateData.groupId !== undefined) {
       updatePayload.groupId = finalGroupId;
+    }
+
+    if (folderResolution) {
+      updatePayload.folderId = folderResolution.folder ? folderResolution.folder._id : null;
     }
 
     const updatedTask = await Task.findByIdAndUpdate(
@@ -575,7 +612,7 @@ class TaskService {
    * @param {Number} month - Tháng (1-12)
    * @returns {Promise<Object>} { year, month, tasksByDate }
    */
-  async getCalendarView(year, month, groupId) {
+  async getCalendarView(year, month, groupId, folderId = null, requesterId = null) {
     // Validate params
     if (!year || !month) {
       throw new Error('Year và month là bắt buộc');
@@ -600,14 +637,40 @@ class TaskService {
     const startDate = getFirstDayOfMonth(yearNum, monthNum);
     const endDate = getLastDayOfMonth(yearNum, monthNum);
 
+    const { folder } = await resolveFolderContext({
+      groupId,
+      folderId,
+      requesterId
+    });
+
+    const filters = [
+      { groupId },
+      {
+        dueDate: {
+          $gte: startDate,
+          $lte: endDate
+        }
+      }
+    ];
+
+    if (folder) {
+      if (folder.isDefault) {
+        filters.push({
+          $or: [
+            { folderId: folder._id },
+            { folderId: null },
+            { folderId: { $exists: false } }
+          ]
+        });
+      } else {
+        filters.push({ folderId: folder._id });
+      }
+    }
+
+    const query = { $and: filters };
+
     // Query tasks VỚI POPULATE và filter theo group
-    const tasks = await Task.find({
-      dueDate: {
-        $gte: startDate,
-        $lte: endDate
-      },
-      groupId: groupId
-    })
+    const tasks = await Task.find(query)
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
@@ -644,17 +707,16 @@ class TaskService {
    * @returns {Promise<Object>} Kanban board object
    */
   async getKanbanView(filters = {}, requesterId = null) {
-    const { priority, groupId, search } = filters;
+    const { priority, groupId, search, folderId } = filters;
 
-    // Build filter
-    const query = {};
+    const queryFilters = [];
     
     if (priority) {
       const validPriorities = ['low', 'medium', 'high', 'urgent'];
       if (!validPriorities.includes(priority)) {
         throw new Error(`Invalid priority. Allowed values: ${validPriorities.join(', ')}`);
       }
-      query.priority = priority;
+      queryFilters.push({ priority });
     }
     
     if (groupId) {
@@ -662,25 +724,39 @@ class TaskService {
         raiseError('Invalid groupId format');
       }
 
-      const group = await Group.findById(groupId);
-      if (!group) {
-        raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
-      }
+      const { folder } = await resolveFolderContext({
+        groupId,
+        folderId,
+        requesterId
+      });
 
-      const requesterIdStr = normalizeId(requesterId);
-      if (!requesterIdStr || !group.isMember(requesterIdStr)) {
-        raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
-      }
+      queryFilters.push({ groupId });
 
-      query.groupId = groupId;
+      if (folder) {
+        if (folder.isDefault) {
+          queryFilters.push({
+            $or: [
+              { folderId: folder._id },
+              { folderId: null },
+              { folderId: { $exists: false } }
+            ]
+          });
+        } else {
+          queryFilters.push({ folderId: folder._id });
+        }
+      }
     }
 
     if (search && search.trim()) {
-      query.$or = [
-        { title: { $regex: search.trim(), $options: 'i' } },
-        { description: { $regex: search.trim(), $options: 'i' } }
-      ];
+      queryFilters.push({
+        $or: [
+          { title: { $regex: search.trim(), $options: 'i' } },
+          { description: { $regex: search.trim(), $options: 'i' } }
+        ]
+      });
     }
+
+    const query = queryFilters.length > 0 ? { $and: queryFilters } : {};
 
     // Query all tasks VỚI POPULATE
     const tasks = await Task.find(query)
@@ -1103,12 +1179,12 @@ class TaskService {
       };
     }
 
-    const { status, priority, search, groupId } = filters;
+    const { status, priority, search, groupId, folderId } = filters;
     const { sortBy, order, page, limit } = options;
 
-    const query = {
-      'assignedTo.userId': userId
-    };
+    const queryFilters = [
+      { 'assignedTo.userId': userId }
+    ];
 
     if (status) {
       if (!TASK_STATUS.includes(status)) {
@@ -1118,7 +1194,7 @@ class TaskService {
           message: `Invalid status. Allowed values: ${TASK_STATUS.join(', ')}`
         };
       }
-      query.status = status;
+      queryFilters.push({ status });
     }
 
     if (priority) {
@@ -1129,7 +1205,7 @@ class TaskService {
           message: `Invalid priority. Allowed values: ${PRIORITY_LEVELS.join(', ')}`
         };
       }
-      query.priority = priority;
+      queryFilters.push({ priority });
     }
 
     if (groupId) {
@@ -1140,15 +1216,41 @@ class TaskService {
           message: 'Invalid groupId format'
         };
       }
-      query.groupId = groupId;
+      queryFilters.push({ groupId });
+
+      if (folderId !== undefined) {
+        const { folder } = await resolveFolderContext({
+          groupId,
+          folderId,
+          requesterId: userId
+        });
+
+        if (folder) {
+          if (folder.isDefault) {
+            queryFilters.push({
+              $or: [
+                { folderId: folder._id },
+                { folderId: null },
+                { folderId: { $exists: false } }
+              ]
+            });
+          } else {
+            queryFilters.push({ folderId: folder._id });
+          }
+        }
+      }
     }
 
     if (search && search.trim()) {
-      query.$or = [
-        { title: { $regex: search.trim(), $options: 'i' } },
-        { description: { $regex: search.trim(), $options: 'i' } }
-      ];
+      queryFilters.push({
+        $or: [
+          { title: { $regex: search.trim(), $options: 'i' } },
+          { description: { $regex: search.trim(), $options: 'i' } }
+        ]
+      });
     }
+
+    const query = queryFilters.length > 1 ? { $and: queryFilters } : queryFilters[0];
 
     const pagination = validatePagination(page, limit);
     const sanitizedPage = pagination.sanitizedPage;

@@ -26,9 +26,11 @@ import { Group } from "../../../services/types/group.types";
 import { useGroupChange } from "../../../hooks/useGroupChange";
 import { useTaskRealtime } from "../../../hooks/useTaskRealtime";
 import NoGroupState from "../../common/NoGroupState";
+import { useFolder } from "../../../contexts/FolderContext";
 
 export default function TasksView() {
   const { user: currentUser, currentGroup } = useAuth();
+  const { currentFolder } = useFolder();
   const [activeTasksExpanded, setActiveTasksExpanded] = useState(true);
   const [uncompletedTasksExpanded, setUncompletedTasksExpanded] =
     useState(true);
@@ -122,6 +124,25 @@ export default function TasksView() {
       return String(error.message);
     }
     return "An unknown error occurred";
+  };
+
+  const getTaskFolderId = (task: Task): string | null => {
+    const folder = (task as any)?.folderId;
+    if (!folder) return null;
+    if (typeof folder === "string") return folder;
+    if (typeof folder === "object") {
+      return folder._id || null;
+    }
+    return null;
+  };
+
+  const isTaskInCurrentFolder = (task: Task): boolean => {
+    if (!currentFolder) return true;
+    const taskFolderId = getTaskFolderId(task);
+    if (currentFolder.isDefault) {
+      return !taskFolderId || taskFolderId === currentFolder._id;
+    }
+    return taskFolderId === currentFolder._id;
   };
 
   // NEW: Helper để lấy danh sách assignees chi tiết
@@ -273,7 +294,10 @@ export default function TasksView() {
   const fetchTasks = async () => {
     try {
       setLoading(true);
-      const response = await taskService.getAllTasks();
+      const response = await taskService.getAllTasks(
+        { folderId: currentFolder?._id },
+        undefined
+      );
 
       console.log("=== FETCH TASKS DEBUG ===");
       console.log("Full response:", response);
@@ -339,7 +363,9 @@ export default function TasksView() {
   const fetchKanbanData = async () => {
     try {
       setLoading(true);
-      const response = await taskService.getKanbanView();
+      const response = await taskService.getKanbanView({
+        folderId: currentFolder?._id
+      });
 
       console.log("=== FETCH KANBAN DEBUG ===");
       console.log("Kanban response:", response);
@@ -377,7 +403,7 @@ export default function TasksView() {
     } else {
       fetchKanbanData();
     }
-  }, [viewMode]);
+  }, [viewMode, currentFolder?._id]);
 
   // Listen for global group change events
   useGroupChange(() => {
@@ -513,7 +539,8 @@ export default function TasksView() {
         tags: taskData.tags || [],
         estimatedTime: taskData.estimatedTime || "",
         type: taskData.category || "Operational",
-        assignedTo
+        assignedTo,
+        folderId: currentFolder?._id || undefined
       };
 
       console.log('🎯 Creating task with data:', backendTaskData);
@@ -558,6 +585,10 @@ export default function TasksView() {
         prev.filter((task) => task._id !== updatedTask._id)
       );
 
+      if (!isTaskInCurrentFolder(updatedTask)) {
+        return;
+      }
+
       // Add task to appropriate section based on status and due date
       if (updatedTask.status === "completed") {
         setCompletedTasks((prev) => [...prev, updatedTask]);
@@ -567,7 +598,6 @@ export default function TasksView() {
         setActiveTasks((prev) => [...prev, updatedTask]);
       }
     } else {
-      // Refresh kanban data khi có update
       fetchKanbanData();
     }
   };
@@ -1442,6 +1472,11 @@ export default function TasksView() {
           <p className="text-gray-600 mt-1">
             Manage your team's tasks and projects
           </p>
+          {currentFolder && (
+            <p className="text-sm text-gray-500 mt-2">
+              Folder: <span className="font-medium text-gray-800">{currentFolder.name}{currentFolder.isDefault ? ' (Default)' : ''}</span>
+            </p>
+          )}
         </div>
         <div className="flex gap-3 items-center">
           {/* Sort Button - Available for both List and Kanban views */}

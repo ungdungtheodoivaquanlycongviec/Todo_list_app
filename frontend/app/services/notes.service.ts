@@ -10,16 +10,18 @@ export interface Note {
   createdAt?: string;
   updatedAt?: string;
   formattedLastEdited?: string;
+  folderId?: string | null;
 }
 
 class NotesService {
   // Lấy tất cả notes của user
-  async getAllNotes(search?: string, page = 1, limit = 50): Promise<Note[]> {
+  async getAllNotes(search?: string, page = 1, limit = 50, folderId?: string): Promise<Note[]> {
     try {
       const params = new URLSearchParams();
       if (search) params.append('search', search);
       params.append('page', page.toString());
       params.append('limit', limit.toString());
+      if (folderId) params.append('folderId', folderId);
       
       const response = await apiClient.get<ApiResponse<{ notes: Note[] }>>(`/notes?${params.toString()}`);
       return response.data?.notes || [];

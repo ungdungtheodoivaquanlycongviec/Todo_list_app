@@ -86,7 +86,13 @@ const ERROR_MESSAGES = {
   INVALID_TOKEN: 'Invalid or expired token',
   INVALID_ID: 'Invalid ID format',
   INVALID_TASK_ID: 'Invalid task ID',
-  GROUP_MEMBER_LIMIT_REACHED: 'Group has reached the maximum number of members'
+  GROUP_MEMBER_LIMIT_REACHED: 'Group has reached the maximum number of members',
+  FOLDER_NOT_FOUND: 'Folder not found in this group',
+  FOLDER_ACCESS_DENIED: 'You do not have permission to manage folders in this group',
+  FOLDER_NAME_EXISTS: 'Folder name already exists in this group',
+  FOLDER_DELETE_DEFAULT: 'Default folder cannot be deleted',
+  FOLDER_NOT_EMPTY: 'Folder still contains tasks or notes',
+  FOLDER_LIMIT_REACHED: 'Folder limit for this group has been reached'
 };
 
 // Success Messages
@@ -129,7 +135,11 @@ const SUCCESS_MESSAGES = {
   NOTIFICATIONS_MARKED_READ: 'Notifications marked as read',
   NOTIFICATIONS_ARCHIVED: 'Notifications archived successfully',
   NOTIFICATION_DELETED: 'Notification deleted successfully',
-  NOTIFICATION_PREFERENCES_UPDATED: 'Notification preferences updated successfully'
+  NOTIFICATION_PREFERENCES_UPDATED: 'Notification preferences updated successfully',
+  FOLDERS_FETCHED: 'Folders fetched successfully',
+  FOLDER_CREATED: 'Folder created successfully',
+  FOLDER_UPDATED: 'Folder updated successfully',
+  FOLDER_DELETED: 'Folder deleted successfully'
 };
 
 // Limits
@@ -149,7 +159,8 @@ const LIMITS = {
   NOTIFICATION_MAX_ARCHIVE_BATCH: 50,
   MAX_TIME_ENTRIES_PER_TASK: 1000,
   MAX_SCHEDULED_WORK_PER_TASK: 500,
-  MAX_ESTIMATED_TIME_LENGTH: 50
+  MAX_ESTIMATED_TIME_LENGTH: 50,
+  MAX_FOLDERS_PER_GROUP: 100
 };
 
 // Time and Date Formats

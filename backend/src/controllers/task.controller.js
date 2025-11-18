@@ -109,7 +109,8 @@ const getAllTasks = asyncHandler(async (req, res) => {
     status: req.query.status,
     priority: req.query.priority,
     search: req.query.search,
-    groupId: currentGroupId // Only show tasks from user's current group
+    groupId: currentGroupId,
+    folderId: req.query.folderId
   };
 
   const options = {
@@ -139,7 +140,7 @@ const getCalendarView = asyncHandler(async (req, res) => {
   }
 
   // Call service (service sẽ validate)
-  const result = await taskService.getCalendarView(year, month, currentGroupId);
+  const result = await taskService.getCalendarView(year, month, currentGroupId, req.query.folderId, req.user._id);
 
   sendSuccess(res, result, 'Lấy calendar view thành công');
 });
@@ -158,8 +159,9 @@ const getKanbanView = asyncHandler(async (req, res) => {
 
   const filters = {
     priority: req.query.priority,
-    groupId: currentGroupId, // Only show tasks from user's current group
-    search: req.query.search
+    groupId: currentGroupId,
+    search: req.query.search,
+    folderId: req.query.folderId
   };
 
   // Call service
@@ -365,7 +367,8 @@ const getAssignedToMe = asyncHandler(async (req, res) => {
     status: req.query.status,
     priority: req.query.priority,
     search: req.query.search,
-    groupId: req.query.groupId
+    groupId: req.query.groupId,
+    folderId: req.query.folderId
   };
 
   const options = {

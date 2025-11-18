@@ -22,6 +22,12 @@ const noteSchema = new mongoose.Schema({
     ref: 'Group',
     required: [true, 'Group ID is required']
   },
+  folderId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Folder',
+    default: null,
+    index: true
+  },
   lastEdited: {
     type: Date,
     default: Date.now
@@ -35,6 +41,7 @@ const noteSchema = new mongoose.Schema({
 // Index for better query performance
 noteSchema.index({ userId: 1, lastEdited: -1 });
 noteSchema.index({ userId: 1, title: 'text', content: 'text' });
+noteSchema.index({ groupId: 1, folderId: 1, lastEdited: -1 });
 
 // Virtual for formatted lastEdited
 noteSchema.virtual('formattedLastEdited').get(function() {

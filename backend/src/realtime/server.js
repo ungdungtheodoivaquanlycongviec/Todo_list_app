@@ -289,7 +289,18 @@ const setupRealtimeServer = async (httpServer) => {
       return;
     }
 
-    const roomName = `${GROUP_ROOM_PREFIX}${groupId}`;
+    // Normalize groupId to ensure consistent room name
+    const normalizeId = (value) => {
+      if (!value) return null;
+      if (typeof value === 'string') return value;
+      if (value.toHexString) return value.toHexString();
+      if (value._id) return value._id.toString();
+      if (value.toString) return value.toString();
+      return null;
+    };
+    
+    const normalizedGroupId = normalizeId(groupId);
+    const roomName = `${GROUP_ROOM_PREFIX}${normalizedGroupId}`;
 
     // Convert message to plain object to ensure proper serialization
     const messageData = message?.toObject ? message.toObject() : (message?.toJSON ? message.toJSON() : message);

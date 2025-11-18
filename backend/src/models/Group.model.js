@@ -59,6 +59,11 @@ const groupSchema = new mongoose.Schema(
     metadata: {
       color: { type: String, default: '#2563eb' },
       icon: { type: String, default: 'users' }
+    },
+    defaultFolderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Folder',
+      default: null
     }
   },
   {

@@ -1,6 +1,7 @@
 const Group = require('../models/Group.model');
 const Task = require('../models/Task.model');
 const User = require('../models/User.model');
+const Folder = require('../models/Folder.model');
 const notificationService = require('./notification.service');
 const {
   LIMITS,
@@ -80,12 +81,35 @@ class GroupService {
       ]
     });
 
+    try {
+      const defaultFolder = await Folder.create({
+        name: 'General',
+        description: 'Default folder',
+        groupId: group._id,
+        createdBy: creatorId,
+        isDefault: true,
+        order: 0
+      });
+
+      group.defaultFolderId = defaultFolder._id;
+      await group.save();
+    } catch (folderError) {
+      console.error('Failed to create default folder for group:', folderError);
+      await Group.findByIdAndDelete(group._id);
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR,
+        message: 'Failed to create default folder for the group. Please try again.'
+      };
+    }
+
     // Set this group as user's current group
     await User.findByIdAndUpdate(creatorId, { currentGroupId: group._id });
 
     await group.populate([
       { path: 'members.userId', select: 'name email avatar' },
-      { path: 'createdBy', select: 'name email avatar' }
+      { path: 'createdBy', select: 'name email avatar' },
+      { path: 'defaultFolderId', select: 'name description' }
     ]);
 
     return {

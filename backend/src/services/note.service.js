@@ -1,4 +1,5 @@
 const Note = require('../models/Note.model');
+const { resolveFolderContext } = require('./folder.service');
 
 /**
  * Note Service
@@ -13,27 +14,50 @@ const Note = require('../models/Note.model');
  * @returns {Promise<Array>} Danh sách notes
  */
 const getAllNotes = async (userId, groupId, options = {}) => {
-  const { search, page = 1, limit = 50 } = options;
-  
-  // Tạo query
-  let query = { userId, groupId };
-  
-  // Thêm tìm kiếm nếu có
-  if (search && search.trim()) {
-    query.$or = [
-      { title: { $regex: search, $options: 'i' } },
-      { content: { $regex: search, $options: 'i' } }
-    ];
+  const { search, page = 1, limit = 50, folderId } = options;
+
+  const { folder } = await resolveFolderContext({
+    groupId,
+    folderId,
+    requesterId: userId
+  });
+
+  const filters = [{ userId }, { groupId }];
+
+  if (folder) {
+    if (folder.isDefault) {
+      filters.push({
+        $or: [
+          { folderId: folder._id },
+          { folderId: null },
+          { folderId: { $exists: false } }
+        ]
+      });
+    } else {
+      filters.push({ folderId: folder._id });
+    }
   }
 
-  // Tính toán skip
-  const skip = (parseInt(page) - 1) * parseInt(limit);
+  if (search && search.trim()) {
+    filters.push({
+      $or: [
+        { title: { $regex: search.trim(), $options: 'i' } },
+        { content: { $regex: search.trim(), $options: 'i' } }
+      ]
+    });
+  }
 
-  // Lấy notes
+  const query =
+    filters.length > 1
+      ? { $and: filters }
+      : filters[0];
+
+  const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+
   const notes = await Note.find(query)
     .sort({ lastEdited: -1 })
     .skip(skip)
-    .limit(parseInt(limit))
+    .limit(parseInt(limit, 10))
     .lean();
 
   return notes;
@@ -57,7 +81,16 @@ const getNoteById = async (noteId, userId, groupId) => {
  * @returns {Promise<Object>} Note đã tạo
  */
 const createNote = async (noteData) => {
-  const note = new Note(noteData);
+  const { folder } = await resolveFolderContext({
+    groupId: noteData.groupId,
+    folderId: noteData.folderId,
+    requesterId: noteData.userId
+  });
+
+  const note = new Note({
+    ...noteData,
+    folderId: folder ? folder._id : null
+  });
   await note.save();
   return note;
 };
@@ -71,11 +104,24 @@ const createNote = async (noteData) => {
  * @returns {Promise<Object|null>} Note đã cập nhật hoặc null
  */
 const updateNote = async (noteId, userId, groupId, updateData) => {
+  let folderUpdates = {};
+
+  if (updateData.folderId !== undefined) {
+    const { folder } = await resolveFolderContext({
+      groupId,
+      folderId: updateData.folderId,
+      requesterId: userId
+    });
+    folderUpdates.folderId = folder ? folder._id : null;
+    delete updateData.folderId;
+  }
+
   const note = await Note.findOneAndUpdate(
     { _id: noteId, userId, groupId },
-    { ...updateData, lastEdited: new Date() },
+    { ...updateData, ...folderUpdates, lastEdited: new Date() },
     { new: true, runValidators: true }
   );
+
   return note;
 };
 

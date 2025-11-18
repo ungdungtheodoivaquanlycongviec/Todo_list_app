@@ -60,11 +60,13 @@ export default function MainLayout({
           onThemeChange={onThemeChange}
           onProfileClick={() => setShowProfileSettings(true)}
         />
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 min-h-0 overflow-hidden">
           {showProfileSettings ? (
-            <ProfileSettings onClose={() => setShowProfileSettings(false)} />
+            <div className="h-full overflow-y-auto">
+              <ProfileSettings onClose={() => setShowProfileSettings(false)} />
+            </div>
           ) : (
-            children
+            <div className="h-full min-h-0 overflow-hidden">{children}</div>
           )}
         </div>
       </div>

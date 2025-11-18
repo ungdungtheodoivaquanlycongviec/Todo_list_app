@@ -47,13 +47,23 @@ const setupChatHandlers = (namespace) => {
         // Normalize groupId to ensure consistent room name
         const normalizedGroupId = normalizeId(groupId);
         const roomName = `${GROUP_ROOM_PREFIX}${normalizedGroupId}`;
+        
+        console.log(`[Chat] User ${userId} (socket ${socket.id}) attempting to join room ${roomName}`);
+        
         await socket.join(roomName);
+        
+        // Verify join was successful
+        const socketRooms = Array.from(socket.rooms);
+        console.log(`[Chat] Socket ${socket.id} is now in rooms:`, socketRooms);
 
         // Get sockets in room for debugging
         const socketsInRoom = await namespace.in(roomName).fetchSockets();
         console.log(`[Chat] User ${userId} joined group ${groupId} (room: ${roomName}), total sockets: ${socketsInRoom.length}`);
+        socketsInRoom.forEach(s => {
+          console.log(`  - Socket ${s.id}, userId: ${s.data.userId}`);
+        });
 
-        if (callback) callback({ success: true, groupId });
+        if (callback) callback({ success: true, groupId, roomName, socketCount: socketsInRoom.length });
       } catch (error) {
         console.error('[Chat] Error joining group:', error);
         if (callback) callback({ success: false, error: error.message });

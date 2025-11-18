@@ -442,7 +442,7 @@ export const taskService = {
   },
 
   // Get calendar view
-  getCalendarView: async (year: number, month: number): Promise<any> => {
+  getCalendarView: async (year: number, month: number, folderId?: string): Promise<any> => {
     const token = authService.getAuthToken();
     const headers: HeadersInit = {};
 
@@ -450,7 +450,16 @@ export const taskService = {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const url = `${API_BASE_URL}/tasks/calendar?year=${year}&month=${month}`;
+    const params = new URLSearchParams({
+      year: String(year),
+      month: String(month)
+    });
+
+    if (folderId) {
+      params.append('folderId', folderId);
+    }
+
+    const url = `${API_BASE_URL}/tasks/calendar?${params.toString()}`;
 
     console.log('Fetching calendar view from:', url);
 
