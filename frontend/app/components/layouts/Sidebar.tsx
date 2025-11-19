@@ -11,9 +11,7 @@ import {
   Folder as FolderIcon,
   Loader2,
   FolderPlus,
-  Pencil,
-  Check,
-  Trash2
+  Check
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { groupService } from '../../services/group.service';
@@ -21,7 +19,11 @@ import { Group } from '../../services/types/group.types';
 import { useFolder } from '../../contexts/FolderContext';
 import { folderService } from '../../services/folder.service';
 import { Folder } from '../../services/types/folder.types';
-import { DEFAULT_INVITE_ROLE, ROLE_SECTIONS } from '../../constants/groupRoles';
+import { DEFAULT_INVITE_ROLE, ROLE_SECTIONS, GROUP_ROLE_KEYS } from '../../constants/groupRoles';
+import { getMemberRole, canManageFolders, canAssignFolderMembers } from '../../utils/groupRoleUtils';
+import FolderContextMenu from '../folders/FolderContextMenu';
+import { FolderAccessModal } from '../folders/FolderAccessModal';
+import { useSocket } from '../../hooks/useSocket';
 
 // Create Group Modal Component
 interface CreateGroupModalProps {
@@ -268,6 +270,11 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, o
 
 export default function Sidebar() {
   const { user, currentGroup, setCurrentGroup } = useAuth();
+  const { socket, isConnected } = useSocket();
+  const userRole = currentGroup && user ? getMemberRole(currentGroup, user._id) : null;
+  const canDeleteFolders = canManageFolders(userRole);
+  const canEditFolders = canManageFolders(userRole);
+  const canAssignFolders = canAssignFolderMembers(userRole);
   const {
     folders,
     currentFolder,
@@ -314,6 +321,20 @@ export default function Sidebar() {
   const [renamingError, setRenamingError] = useState<string | null>(null);
   const [deletingFolderId, setDeletingFolderId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<{ folderId: string; message: string } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    folder: Folder;
+    groupId: string;
+  } | null>(null);
+  const [showFolderAccessModal, setShowFolderAccessModal] = useState(false);
+  const [selectedFolderForAccess, setSelectedFolderForAccess] = useState<{
+    folder: Folder;
+    groupId: string;
+  } | null>(null);
+  const [assigningMembers, setAssigningMembers] = useState(false);
+  const [assignError, setAssignError] = useState<string | null>(null);
+  const [groupMembersMap, setGroupMembersMap] = useState<Record<string, Group['members']>>({});
 
   const loadGroupFolders = useCallback(
     async (groupId: string) => {
@@ -372,12 +393,98 @@ export default function Sidebar() {
     }
   }, [pendingFolderSelection, currentGroup?._id, refreshFolders]);
 
+  // Join group rooms for real-time folder updates
+  useEffect(() => {
+    if (!socket || !isConnected) return;
+
+    const joinGroupRooms = async () => {
+      const allGroups = [...myGroups, ...sharedGroups];
+      for (const group of allGroups) {
+        if (group._id) {
+          try {
+            socket.emit('chat:join', group._id, (response: any) => {
+              if (response?.success) {
+                console.log(`[Sidebar] Joined group room for folder updates: ${group._id}`);
+              }
+            });
+          } catch (error) {
+            console.error(`[Sidebar] Failed to join group room ${group._id}:`, error);
+          }
+        }
+      }
+    };
+
+    if (myGroups.length > 0 || sharedGroups.length > 0) {
+      joinGroupRooms();
+    }
+  }, [socket, isConnected, myGroups, sharedGroups]);
+
+  // Listen for folder updates from all groups
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleFolderUpdate = (data: {
+      eventKey: string;
+      folder: Folder;
+      groupId: string;
+    }) => {
+      console.log('[Sidebar] Received folder update:', data.eventKey, 'for group:', data.groupId);
+      
+      // Refresh folders for the affected group
+      if (data.groupId === currentGroup?._id) {
+        // If it's the current group, refreshFolders will be called by FolderContext
+        // But we also need to refresh the groupFoldersMap
+        refreshFolders();
+      } else {
+        // Refresh folders for other groups
+        loadGroupFolders(data.groupId);
+      }
+    };
+
+    socket.on('folders:update', handleFolderUpdate);
+
+    return () => {
+      socket.off('folders:update', handleFolderUpdate);
+    };
+  }, [socket, currentGroup?._id, refreshFolders]);
+
+  // Listen for group updates
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleGroupUpdate = (data: {
+      eventKey: string;
+      group: Group;
+      groupId: string;
+    }) => {
+      console.log('[Sidebar] Received group update:', data.eventKey, 'for group:', data.groupId);
+      
+      // Reload groups list to reflect changes
+      loadGroups();
+    };
+
+    socket.on('groups:update', handleGroupUpdate);
+
+    return () => {
+      socket.off('groups:update', handleGroupUpdate);
+    };
+  }, [socket]);
+
   const loadGroups = async () => {
     try {
       setLoading(true);
       const response = await groupService.getAllGroups();
       setMyGroups(response.myGroups);
       setSharedGroups(response.sharedGroups);
+      
+      // Cache members for all groups
+      const membersMap: Record<string, Group['members']> = {};
+      [...response.myGroups, ...response.sharedGroups].forEach(group => {
+        if (group._id && group.members) {
+          membersMap[group._id] = group.members;
+        }
+      });
+      setGroupMembersMap(prev => ({ ...prev, ...membersMap }));
     } catch (error) {
       console.error('Failed to load groups:', error);
     } finally {
@@ -589,10 +696,11 @@ export default function Sidebar() {
   };
 
   const handleDeleteFolder = async (groupId: string, folderId: string) => {
-    if (!confirm('Are you sure you want to delete this folder?')) return;
+    if (!confirm('Are you sure you want to delete this folder? This will also delete all tasks and notes in this folder.')) return;
 
     setDeletingFolderId(folderId);
     setDeleteError(null);
+    setContextMenu(null);
 
     try {
       if (currentGroup?._id === groupId) {
@@ -612,6 +720,85 @@ export default function Sidebar() {
       });
     } finally {
       setDeletingFolderId(null);
+    }
+  };
+
+  const handleFolderRightClick = (e: React.MouseEvent, folder: Folder, groupId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!canEditFolders && !canDeleteFolders && !canAssignFolders) {
+      return;
+    }
+
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      folder,
+      groupId
+    });
+  };
+
+  const handleContextMenuEdit = () => {
+    if (!contextMenu) return;
+    startRenamingFolder(contextMenu.groupId, contextMenu.folder);
+    setContextMenu(null);
+  };
+
+  const handleContextMenuDelete = () => {
+    if (!contextMenu) return;
+    handleDeleteFolder(contextMenu.groupId, contextMenu.folder._id);
+  };
+
+  const handleContextMenuAssign = async () => {
+    if (!contextMenu) return;
+    
+    // Load members if not already loaded
+    if (!groupMembersMap[contextMenu.groupId]) {
+      try {
+        const group = await groupService.getGroupById(contextMenu.groupId);
+        setGroupMembersMap(prev => ({
+          ...prev,
+          [contextMenu.groupId]: group.members || []
+        }));
+      } catch (error) {
+        console.error('Failed to load group members:', error);
+      }
+    }
+    
+    setSelectedFolderForAccess({
+      folder: contextMenu.folder,
+      groupId: contextMenu.groupId
+    });
+    setShowFolderAccessModal(true);
+    setContextMenu(null);
+  };
+
+  const handleAssignFolderMembers = async (memberIds: string[]) => {
+    if (!selectedFolderForAccess) return;
+
+    setAssigningMembers(true);
+    setAssignError(null);
+
+    try {
+      await folderService.setFolderMembers(
+        selectedFolderForAccess.groupId,
+        selectedFolderForAccess.folder._id,
+        memberIds
+      );
+
+      if (currentGroup?._id === selectedFolderForAccess.groupId) {
+        await refreshFolders();
+      } else {
+        await loadGroupFolders(selectedFolderForAccess.groupId);
+      }
+
+      setShowFolderAccessModal(false);
+      setSelectedFolderForAccess(null);
+    } catch (error) {
+      setAssignError(error instanceof Error ? error.message : 'Failed to assign folder members');
+    } finally {
+      setAssigningMembers(false);
     }
   };
 
@@ -738,7 +925,10 @@ export default function Sidebar() {
                       </button>
                     </form>
                   ) : (
-                    <div className="flex items-center justify-between gap-3 px-3 py-2">
+                    <div
+                      className="flex items-center justify-between gap-3 px-3 py-2"
+                      onContextMenu={(e) => handleFolderRightClick(e, folder, folderGroupId)}
+                    >
                       <button
                         onClick={() => handleFolderClick(folderGroupId, folder._id)}
                         className="flex-1 flex items-center justify-between text-left"
@@ -760,29 +950,6 @@ export default function Sidebar() {
                           </div>
                         </div>
                       </button>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => startRenamingFolder(folderGroupId, folder)}
-                          className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#2E2E2E] rounded-lg"
-                          disabled={deletingFolderId === folder._id}
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        {!folder.isDefault && (
-                          <button
-                            onClick={() => handleDeleteFolder(folderGroupId, folder._id)}
-                            className="p-1 text-red-500 hover:text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg disabled:opacity-50"
-                            disabled={deletingFolderId === folder._id}
-                            title="Delete folder"
-                          >
-                            {deletingFolderId === folder._id ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="w-4 h-4" />
-                            )}
-                          </button>
-                        )}
-                      </div>
                     </div>
                   )}
                   {isEditing && renamingError && (
@@ -1022,6 +1189,40 @@ export default function Sidebar() {
             setSelectedGroup(null);
           }}
           onSubmit={handleInviteSubmit}
+        />
+      )}
+
+      {/* Folder Context Menu */}
+      {contextMenu && (
+        <FolderContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          onEdit={handleContextMenuEdit}
+          onDelete={handleContextMenuDelete}
+          onAssign={handleContextMenuAssign}
+          canEdit={canEditFolders}
+          canDelete={canDeleteFolders}
+          canAssign={canAssignFolders}
+        />
+      )}
+
+      {/* Folder Access Modal */}
+      {showFolderAccessModal && selectedFolderForAccess && (
+        <FolderAccessModal
+          folder={selectedFolderForAccess.folder}
+          members={
+            groupMembersMap[selectedFolderForAccess.groupId] ||
+            (currentGroup?._id === selectedFolderForAccess.groupId ? currentGroup.members || [] : [])
+          }
+          onClose={() => {
+            setShowFolderAccessModal(false);
+            setSelectedFolderForAccess(null);
+            setAssignError(null);
+          }}
+          onSave={handleAssignFolderMembers}
+          saving={assigningMembers}
+          error={assignError || undefined}
         />
       )}
     </div>

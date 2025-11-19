@@ -27,6 +27,7 @@ import { useGroupChange } from '../../hooks/useGroupChange';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFolder } from '../../contexts/FolderContext';
 import NoGroupState from '../common/NoGroupState';
+import NoFolderState from '../common/NoFolderState';
 
 export default function NotesView() {
   const { currentGroup } = useAuth();
@@ -210,6 +211,11 @@ export default function NotesView() {
         description="You need to join or create a group to create and manage notes with your team."
       />
     );
+  }
+
+  // Check if user has a current folder
+  if (!currentFolder) {
+    return <NoFolderState />;
   }
 
   return (

@@ -11,6 +11,7 @@ const {
   GROUP_ROLE_KEYS,
   GROUP_ROLES
 } = require('../config/constants');
+const { emitGroupEvent, GROUP_EVENTS } = require('./group.realtime.gateway');
 const {
   canManageRoles,
   canManageFolders,
@@ -116,36 +117,20 @@ class GroupService {
       ]
     });
 
-    try {
-      const defaultFolder = await Folder.create({
-        name: 'General',
-        description: 'Default folder',
-        groupId: group._id,
-        createdBy: creatorId,
-        isDefault: true,
-        order: 0
-      });
-
-      group.defaultFolderId = defaultFolder._id;
-      await group.save();
-    } catch (folderError) {
-      console.error('Failed to create default folder for group:', folderError);
-      await Group.findByIdAndDelete(group._id);
-      return {
-        success: false,
-        statusCode: HTTP_STATUS.INTERNAL_SERVER_ERROR,
-        message: 'Failed to create default folder for the group. Please try again.'
-      };
-    }
-
     // Set this group as user's current group
     await User.findByIdAndUpdate(creatorId, { currentGroupId: group._id });
 
     await group.populate([
       { path: 'members.userId', select: 'name email avatar' },
-      { path: 'createdBy', select: 'name email avatar' },
-      { path: 'defaultFolderId', select: 'name description' }
+      { path: 'createdBy', select: 'name email avatar' }
     ]);
+
+    // Emit realtime event
+    const groupData = group.toObject ? group.toObject() : group;
+    emitGroupEvent(GROUP_EVENTS.created, {
+      group: groupData,
+      recipients: group.members.map(member => normalizeId(member.userId)).filter(Boolean)
+    });
 
     return {
       success: true,
@@ -232,6 +217,16 @@ class GroupService {
     } catch (notificationError) {
       console.error('Failed to send role change notification', notificationError);
     }
+
+    // Emit realtime event
+    const groupData = updatedGroup.toObject ? updatedGroup.toObject() : updatedGroup;
+    emitGroupEvent(GROUP_EVENTS.memberRoleUpdated, {
+      group: groupData,
+      groupId: normalizeId(groupId),
+      memberId: normalizeId(memberId),
+      newRole: role,
+      recipients: updatedGroup.members.map(member => normalizeId(member.userId)).filter(Boolean)
+    });
 
     return {
       success: true,
@@ -404,6 +399,14 @@ class GroupService {
       }
     }
 
+    // Emit realtime event
+    const groupData = updatedGroup.toObject ? updatedGroup.toObject() : updatedGroup;
+    emitGroupEvent(GROUP_EVENTS.updated, {
+      group: groupData,
+      groupId: normalizeId(groupId),
+      recipients: updatedGroup.members.map(member => normalizeId(member.userId)).filter(Boolean)
+    });
+
     return {
       success: true,
       statusCode: HTTP_STATUS.OK,
@@ -427,8 +430,18 @@ class GroupService {
       };
     }
 
+    const groupData = group.toObject ? group.toObject() : group;
+    const recipients = group.members.map(member => normalizeId(member.userId)).filter(Boolean);
+    
     await Group.findByIdAndDelete(groupId);
     await Task.updateMany({ groupId }, { $set: { groupId: null } });
+
+    // Emit realtime event
+    emitGroupEvent(GROUP_EVENTS.deleted, {
+      group: { ...groupData, _id: groupId },
+      groupId: normalizeId(groupId),
+      recipients
+    });
 
     return {
       success: true,
@@ -541,6 +554,15 @@ class GroupService {
       .populate('members.userId', 'name email avatar')
       .populate('createdBy', 'name email avatar');
 
+    // Emit realtime event
+    const groupData = updatedGroup.toObject ? updatedGroup.toObject() : updatedGroup;
+    emitGroupEvent(GROUP_EVENTS.memberAdded, {
+      group: groupData,
+      groupId: normalizeId(groupId),
+      addedMemberIds: validEntries.map(entry => entry.userId),
+      recipients: updatedGroup.members.map(member => normalizeId(member.userId)).filter(Boolean)
+    });
+
     return {
       success: true,
       statusCode: HTTP_STATUS.OK,
@@ -621,6 +643,15 @@ class GroupService {
       { groupId, 'assignedTo.userId': memberId },
       { $pull: { assignedTo: { userId: memberId } } }
     );
+
+    // Emit realtime event
+    const groupData = updatedGroup.toObject ? updatedGroup.toObject() : updatedGroup;
+    emitGroupEvent(GROUP_EVENTS.memberRemoved, {
+      group: groupData,
+      groupId: normalizeId(groupId),
+      removedMemberId: normalizeId(memberId),
+      recipients: updatedGroup.members.map(member => normalizeId(member.userId)).filter(Boolean)
+    });
 
     return {
       success: true,

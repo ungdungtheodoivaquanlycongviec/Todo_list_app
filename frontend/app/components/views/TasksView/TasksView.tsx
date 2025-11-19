@@ -26,6 +26,7 @@ import { Group } from "../../../services/types/group.types";
 import { useGroupChange } from "../../../hooks/useGroupChange";
 import { useTaskRealtime } from "../../../hooks/useTaskRealtime";
 import NoGroupState from "../../common/NoGroupState";
+import NoFolderState from "../../common/NoFolderState";
 import { useFolder } from "../../../contexts/FolderContext";
 
 export default function TasksView() {
@@ -1462,6 +1463,11 @@ export default function TasksView() {
         description="You need to join or create a group to manage tasks and collaborate with your team."
       />
     );
+  }
+
+  // Check if user has a current folder
+  if (!currentFolder) {
+    return <NoFolderState />;
   }
 
   return (

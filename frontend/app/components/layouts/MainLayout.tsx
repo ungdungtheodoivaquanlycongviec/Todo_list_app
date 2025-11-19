@@ -6,6 +6,7 @@ import ToolsSidebar from './ToolsSidebar';
 import TopBar from './TopBar';
 import ProfileSettings from '../ProfileSettings';
 import { User } from '../../services/types/auth.types';
+import { useFolder } from '../../contexts/FolderContext';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -27,6 +28,8 @@ export default function MainLayout({
   onThemeChange
 }: MainLayoutProps) {
   const [showProfileSettings, setShowProfileSettings] = useState(false);
+  const { currentFolder } = useFolder();
+  const hasFolder = !!currentFolder;
 
   const handleViewChange = (view: string) => {
     if (view === 'profile') {
@@ -38,21 +41,25 @@ export default function MainLayout({
   };
 
   return (
-    <div className="grid grid-cols-[12.5%_6.25%_1fr] h-screen bg-gray-100 dark:bg-gray-900">
+    <div className={`grid h-screen bg-gray-100 dark:bg-gray-900 ${
+      hasFolder && !showProfileSettings 
+        ? 'grid-cols-[12.5%_6.25%_1fr]' 
+        : 'grid-cols-[12.5%_1fr]'
+    }`}>
       {/* Column 1: Sidebar - 12.5% */}
       <div className="col-span-1">
         <Sidebar />
       </div>
 
-      {/* Column 2: ToolsSidebar - 6.25% (ẩn khi profile settings hiển thị) */}
-      {!showProfileSettings && (
+      {/* Column 2: ToolsSidebar - 6.25% (ẩn khi profile settings hiển thị hoặc không có folder) */}
+      {!showProfileSettings && hasFolder && (
         <div className="col-span-1">
           <ToolsSidebar activeView={activeView} onViewChange={handleViewChange} />
         </div>
       )}
 
-      {/* Column 3: Main Content - MỞ RỘNG KHI PROFILE SETTINGS HIỂN THỊ */}
-      <div className={`${showProfileSettings ? 'col-span-2' : 'col-span-1'} flex flex-col min-w-0`}>
+      {/* Column 3: Main Content - MỞ RỘNG KHI PROFILE SETTINGS HIỂN THỊ hoặc không có folder */}
+      <div className={`${showProfileSettings || !hasFolder ? 'col-span-1' : 'col-span-1'} flex flex-col min-w-0`}>
         <TopBar 
           user={user} 
           onLogout={onLogout}

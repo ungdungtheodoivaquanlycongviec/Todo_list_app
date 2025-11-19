@@ -22,6 +22,7 @@ import CreateTaskModal from './TasksView/CreateTaskModal';
 import TaskDetailModal from './TasksView/TaskDetailModal';
 import { useGroupChange } from '../../hooks/useGroupChange';
 import NoGroupState from '../common/NoGroupState';
+import NoFolderState from '../common/NoFolderState';
 import { useFolder } from '../../contexts/FolderContext';
 
 interface CalendarEvent {
@@ -417,6 +418,11 @@ export default function CalendarView() {
         description="You need to join or create a group to view your calendar and manage scheduled tasks."
       />
     );
+  }
+
+  // Check if user has a current folder
+  if (!currentFolder) {
+    return <NoFolderState />;
   }
 
   if (loading) {

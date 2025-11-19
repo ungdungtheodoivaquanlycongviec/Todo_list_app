@@ -18,6 +18,7 @@ const {
   requiresFolderAssignment
 } = require('../utils/groupPermissions');
 const { isValidObjectId } = require('../utils/validationHelper');
+const { emitFolderEvent, FOLDER_EVENTS } = require('./folder.realtime.gateway');
 
 const normalizeId = value => {
   if (!value) return null;
@@ -70,22 +71,8 @@ const ensureDefaultFolder = async (groupDoc, actorId = null) => {
     defaultFolder = await Folder.findOne({ groupId, isDefault: true });
   }
 
-  if (!defaultFolder) {
-    defaultFolder = await Folder.create({
-      name: 'General',
-      description: 'Default folder',
-      groupId,
-      createdBy: normalizeId(actorId) || normalizeId(groupDoc.createdBy),
-      isDefault: true,
-      order: 0
-    });
-  }
-
-  if (!groupDoc.defaultFolderId || normalizeId(groupDoc.defaultFolderId) !== normalizeId(defaultFolder._id)) {
-    groupDoc.defaultFolderId = defaultFolder._id;
-    await groupDoc.save();
-  }
-
+  // No longer creating default folder automatically
+  // Return null if no default folder exists
   return defaultFolder;
 };
 
@@ -210,11 +197,6 @@ class FolderService {
       .sort({ order: 1, createdAt: 1 })
       .lean();
 
-    const hasDefault = folders.some(folder => normalizeId(folder._id) === normalizeId(defaultFolder._id));
-    if (!hasDefault && defaultFolder) {
-      folders = [defaultFolder.toObject ? defaultFolder.toObject() : defaultFolder, ...folders];
-    }
-
     const groupObjectId = new mongoose.Types.ObjectId(groupId);
 
     const [taskCountsRaw, noteCountsRaw] = await Promise.all([
@@ -230,20 +212,21 @@ class FolderService {
 
     const taskCounts = mapCounts(taskCountsRaw);
     const noteCounts = mapCounts(noteCountsRaw);
-    const defaultFolderId = normalizeId(defaultFolder?._id);
+    const defaultFolderId = defaultFolder ? normalizeId(defaultFolder._id) : null;
 
     const enrichedFolders = folders.map(folder => {
       const folderId = normalizeId(folder._id);
       const baseTaskCount = taskCounts[folderId] || 0;
       const baseNoteCount = noteCounts[folderId] || 0;
-      const unassignedTaskCount = folderId === defaultFolderId ? taskCounts.unassigned || 0 : 0;
-      const unassignedNoteCount = folderId === defaultFolderId ? noteCounts.unassigned || 0 : 0;
+      // No longer adding unassigned tasks/notes to default folder since we don't have one
+      const unassignedTaskCount = 0;
+      const unassignedNoteCount = 0;
 
       const base = {
         ...folder,
         taskCount: baseTaskCount + unassignedTaskCount,
         noteCount: baseNoteCount + unassignedNoteCount,
-        isDefault: folderId === defaultFolderId
+        isDefault: defaultFolderId ? folderId === defaultFolderId : false
       };
 
       if (!canManageFolders(requesterRole)) {
@@ -285,8 +268,6 @@ class FolderService {
     if (!canManageFolders(requesterRole)) {
       throw buildError(ERROR_MESSAGES.FOLDER_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
     }
-
-    await ensureDefaultFolder(group, requesterId);
 
     const folderCount = await Folder.countDocuments({ groupId });
     if (folderCount >= LIMITS.MAX_FOLDERS_PER_GROUP) {
@@ -343,6 +324,14 @@ class FolderService {
         await folder.save();
       }
     }
+
+    // Emit realtime event
+    const folderData = folder.toObject ? folder.toObject() : folder;
+    emitFolderEvent(FOLDER_EVENTS.created, {
+      folder: folderData,
+      groupId: normalizeId(groupId),
+      recipients: group.members.map(member => normalizeId(member.userId)).filter(Boolean)
+    });
 
     return {
       success: true,
@@ -415,6 +404,14 @@ class FolderService {
       { new: true }
     );
 
+    // Emit realtime event
+    const folderData = updatedFolder.toObject ? updatedFolder.toObject() : updatedFolder;
+    emitFolderEvent(FOLDER_EVENTS.updated, {
+      folder: folderData,
+      groupId: normalizeId(groupId),
+      recipients: group.members.map(member => normalizeId(member.userId)).filter(Boolean)
+    });
+
     return {
       success: true,
       statusCode: HTTP_STATUS.OK,
@@ -430,7 +427,7 @@ class FolderService {
     if (!canManageFolders(requesterRole)) {
       throw buildError(ERROR_MESSAGES.FOLDER_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
     }
-    const { folder, defaultFolder } = await resolveFolderContext({
+    const { folder } = await resolveFolderContext({
       groupId,
       groupDoc: group,
       folderId,
@@ -441,20 +438,38 @@ class FolderService {
       throw buildError(ERROR_MESSAGES.FOLDER_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
     }
 
-    if (folder.isDefault || normalizeId(folder._id) === normalizeId(defaultFolder?._id)) {
-      throw buildError(ERROR_MESSAGES.FOLDER_DELETE_DEFAULT, HTTP_STATUS.FORBIDDEN);
+    // Product Owner can delete any folder, including folders with tasks/notes
+    // For other roles with folder management, check if folder is empty
+    const isProductOwner = group.isProductOwner(requesterId);
+    
+    if (!isProductOwner) {
+      const [taskCount, noteCount] = await Promise.all([
+        Task.countDocuments({ groupId, folderId }),
+        Note.countDocuments({ groupId, folderId })
+      ]);
+
+      if (taskCount > 0 || noteCount > 0) {
+        throw buildError(ERROR_MESSAGES.FOLDER_NOT_EMPTY, HTTP_STATUS.BAD_REQUEST);
+      }
+    } else {
+      // Product Owner: Delete all tasks and notes in the folder first
+      await Promise.all([
+        Task.deleteMany({ groupId, folderId }),
+        Note.deleteMany({ groupId, folderId })
+      ]);
     }
 
-    const [taskCount, noteCount] = await Promise.all([
-      Task.countDocuments({ groupId, folderId }),
-      Note.countDocuments({ groupId, folderId })
-    ]);
-
-    if (taskCount > 0 || noteCount > 0) {
-      throw buildError(ERROR_MESSAGES.FOLDER_NOT_EMPTY, HTTP_STATUS.BAD_REQUEST);
-    }
-
+    const folderData = folder.toObject ? folder.toObject() : folder;
+    const groupIdNormalized = normalizeId(groupId);
+    
     await Folder.deleteOne({ _id: folderId, groupId });
+
+    // Emit realtime event
+    emitFolderEvent(FOLDER_EVENTS.deleted, {
+      folder: { ...folderData, _id: folderId },
+      groupId: groupIdNormalized,
+      recipients: group.members.map(member => normalizeId(member.userId)).filter(Boolean)
+    });
 
     return {
       success: true,
@@ -520,6 +535,13 @@ class FolderService {
 
     const plainFolder = folder.toObject();
     plainFolder.memberAccess = serializeMemberAccess(plainFolder.memberAccess);
+
+    // Emit realtime event
+    emitFolderEvent(FOLDER_EVENTS.membersUpdated, {
+      folder: plainFolder,
+      groupId: normalizeId(groupId),
+      recipients: group.members.map(member => normalizeId(member.userId)).filter(Boolean)
+    });
 
     return {
       success: true,

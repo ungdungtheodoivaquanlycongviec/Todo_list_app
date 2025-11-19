@@ -11,6 +11,7 @@ import React, {
 import { Folder } from '../services/types/folder.types';
 import { folderService } from '../services/folder.service';
 import { useAuth } from './AuthContext';
+import { useSocket } from '../hooks/useSocket';
 
 interface FolderContextValue {
   folders: Folder[];
@@ -27,6 +28,7 @@ const FolderContext = createContext<FolderContextValue | undefined>(undefined);
 
 export function FolderProvider({ children }: { children: React.ReactNode }) {
   const { currentGroup } = useAuth();
+  const { socket } = useSocket();
   const [folders, setFolders] = useState<Folder[]>([]);
   const [currentFolder, setCurrentFolder] = useState<Folder | null>(null);
   const [loading, setLoading] = useState(false);
@@ -58,11 +60,14 @@ export function FolderProvider({ children }: { children: React.ReactNode }) {
             ? window.localStorage.getItem(storageKey)
             : null);
 
+        // Don't auto-select folder if there are no folders
         const nextFolder =
-          folderList.find(folder => folder._id === storedFolderId) ||
-          folderList.find(folder => folder.isDefault) ||
-          folderList[0] ||
-          null;
+          folderList.length > 0
+            ? (folderList.find(folder => folder._id === storedFolderId) ||
+               folderList.find(folder => folder.isDefault) ||
+               folderList[0] ||
+               null)
+            : null;
 
         setCurrentFolder(nextFolder);
 
@@ -84,6 +89,29 @@ export function FolderProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     refreshFolders();
   }, [refreshFolders]);
+
+  // Listen for real-time folder updates
+  useEffect(() => {
+    if (!socket || !currentGroup?._id) return;
+
+    const handleFolderUpdate = (data: {
+      eventKey: string;
+      folder: Folder;
+      groupId: string;
+    }) => {
+      // Only refresh if the update is for the current group
+      if (data.groupId === currentGroup._id) {
+        console.log('[FolderContext] Received folder update:', data.eventKey);
+        refreshFolders();
+      }
+    };
+
+    socket.on('folders:update', handleFolderUpdate);
+
+    return () => {
+      socket.off('folders:update', handleFolderUpdate);
+    };
+  }, [socket, currentGroup?._id, refreshFolders]);
 
   const selectFolder = useCallback(
     (folderId: string) => {

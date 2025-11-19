@@ -338,14 +338,122 @@ const setupRealtimeServer = async (httpServer) => {
   const { setupChatHandlers } = require('../services/chat.socket');
   setupChatHandlers(appNamespace);
 
+  // Setup folder realtime listener
+  const { registerFolderRealtimeListener, FOLDER_EVENTS } = require('../services/folder.realtime.gateway');
+  
+  const folderRealtimeListener = ({ eventKey, payload }) => {
+    if (!eventKey || !payload) {
+      return;
+    }
+
+    const { folder, groupId, recipients } = payload;
+    if (!groupId) {
+      return;
+    }
+
+    // Normalize groupId
+    const normalizeId = (value) => {
+      if (!value) return null;
+      if (typeof value === 'string') return value;
+      if (value.toHexString) return value.toHexString();
+      if (value._id) return value._id.toString();
+      if (value.toString) return value.toString();
+      return null;
+    };
+    
+    const normalizedGroupId = normalizeId(groupId);
+    const roomName = `${GROUP_ROOM_PREFIX}${normalizedGroupId}`;
+
+    // Convert folder to plain object
+    const folderData = folder?.toObject ? folder.toObject() : (folder?.toJSON ? folder.toJSON() : folder);
+
+    // Emit to both group room and user rooms for better coverage
+    // First, emit to group room (all members in the group will receive)
+    appNamespace.in(roomName).emit('folders:update', {
+      eventKey,
+      folder: folderData,
+      groupId: normalizedGroupId
+    });
+
+    // Also emit to specific user rooms as backup
+    if (Array.isArray(recipients) && recipients.length > 0) {
+      const uniqueRecipients = Array.from(new Set(recipients.map(normalizeId).filter(Boolean)));
+      uniqueRecipients.forEach((userId) => {
+        const userRoomName = `${USER_ROOM_PREFIX}${userId}`;
+        appNamespace.to(userRoomName).emit('folders:update', {
+          eventKey,
+          folder: folderData,
+          groupId: normalizedGroupId
+        });
+      });
+    }
+  };
+
+  const unregisterFolderListener = registerFolderRealtimeListener(folderRealtimeListener);
+
+  // Setup group realtime listener
+  const { registerGroupRealtimeListener, GROUP_EVENTS } = require('../services/group.realtime.gateway');
+  
+  const groupRealtimeListener = ({ eventKey, payload }) => {
+    if (!eventKey || !payload) {
+      return;
+    }
+
+    const { group, groupId, recipients } = payload;
+    
+    // Normalize groupId
+    const normalizeId = (value) => {
+      if (!value) return null;
+      if (typeof value === 'string') return value;
+      if (value.toHexString) return value.toHexString();
+      if (value._id) return value._id.toString();
+      if (value.toString) return value.toString();
+      return null;
+    };
+    
+    const normalizedGroupId = normalizeId(groupId || group?._id);
+    if (!normalizedGroupId) {
+      return;
+    }
+
+    const roomName = `${GROUP_ROOM_PREFIX}${normalizedGroupId}`;
+    const groupData = group?.toObject ? group.toObject() : (group?.toJSON ? group.toJSON() : group);
+
+    // Emit to both group room and user rooms
+    appNamespace.in(roomName).emit('groups:update', {
+      eventKey,
+      group: groupData,
+      groupId: normalizedGroupId
+    });
+
+    // Also emit to specific user rooms
+    if (Array.isArray(recipients) && recipients.length > 0) {
+      const uniqueRecipients = Array.from(new Set(recipients.map(normalizeId).filter(Boolean)));
+      uniqueRecipients.forEach((userId) => {
+        const userRoomName = `${USER_ROOM_PREFIX}${userId}`;
+        appNamespace.to(userRoomName).emit('groups:update', {
+          eventKey,
+          group: groupData,
+          groupId: normalizedGroupId
+        });
+      });
+    }
+  };
+
+  const unregisterGroupListener = registerGroupRealtimeListener(groupRealtimeListener);
+
   console.log(`[Realtime] Socket.IO namespace ${namespacePath} initialized.`);
   console.log('[Realtime] Chat handlers registered.');
+  console.log('[Realtime] Folder handlers registered.');
+  console.log('[Realtime] Group handlers registered.');
 
   const shutdown = async () => {
     try {
       unregisterNotificationListener();
       unregisterTaskListener();
       unregisterChatListener();
+      unregisterFolderListener();
+      unregisterGroupListener();
       presence.events.off('presence:update', presenceListener);
       await presence.shutdown();
       await appNamespace.disconnectSockets(true);
