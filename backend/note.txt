@@ -1,0 +1,49 @@
+PORT=8080
+MONGODB_URI=mongodb+srv://goawaysuee:07122003@localhost0712.8o4p9c0.mongodb.net/
+NODE_ENV=development
+
+# JWT Authentication
+JWT_SECRET=your_jwt_secret_key_here_change_this_in_production
+JWT_EXPIRES_IN=7d
+JWT_REFRESH_SECRET=your_jwt_refresh_secret_key_here_change_this_too
+JWT_REFRESH_EXPIRES_IN=30d
+
+# Cloudinary config (for file upload)
+CLOUDINARY_CLOUD_NAME=drbphx8wz
+CLOUDINARY_API_KEY=947347552887834
+CLOUDINARY_API_SECRET=JFrXNtzxhQ_i_VkWQ-0VL-BhEpk
+
+# File upload limits
+MAX_FILE_SIZE=10485760
+MAX_FILES_PER_TASK=20
+FIREBASE_SERVICE_ACCOUNT_JSON='{
+  "type": "service_account",
+  "project_id": "todo-ff34f",
+  "private_key_id": "9552d1d2566f54c3058b7737aa97dd10bd928ef0",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDf1IKYDCDLGzrT\nJw2W4Ie4DHVMSi3Apcq8uzTEtBOE90R4tM4HktU5a4uzt+BMtvE96Ry3VNFXHxW7\n1Bf6ywfrc2iLwtEbFgH4KTi+Q8B5VrwqHXjM8IK7Cm7ZsOu9XeJmRAwWqGAlK/iL\nfv5M7s6ORMklgyeWraCT3v5fALLO8j5DSTImwYnms7gg6CQoznrPAnoHiMmkCkK3\nq4AZ9MDLc/DM6YvszZwnttzy6Ep6hreB2BEWUjeKvjVC+PKrxLDwwNGqvHDukPIs\nhZU5FM/GwV5YoGKhmYhFqohnLFqU5mA7M3bOH6ajq6lTuzz0Ru9rI3AmjZ6HLiZr\n4EkPYCQFAgMBAAECggEAArCHhzMyG66ulMX13FfDWbtQl4OWrCdx2bW4Kxrs1x6v\nhHHLvfyOMlvv+E9f0xwppvBLp4pN36mgdbrVNO7GoBYpbfB/2b74dBZut56RzAN2\nTF1BS9kiAQRdk6EUHBjqNQdhS85nJVszZ921SZBfDAeYkSpTyfQ5Jz25OcQE4gay\nZRuc4X76QiKDQKLGPqj0bz0sVe9udd4AozZFtv7L2H0HmQnPUnHihiT2m1ym+qiR\nxNNO032pNOzh/Eg0UaxqVAloryr5Ia+M9xvBhmy5LZ+bENS1hM5dJ6hAgZ6+RwWm\nxZRDg4EffPi8QFxTVfmfTQ7mZYJMXgpwk6ePSWloAQKBgQD8NHSJnVTFEKeeovoA\np+dhZUuVhyE6wGMyyicFW4V3VerCwTubX3w9mDuWqKwR8fj9uc4YvSx1twsR+mNH\neEc/dRWACu4DEA0B2oXPzCGeSX01DpIh7qLHHhxOelOZDwzYhMCYHZJeDrc1ai6s\nuPzUQsZ80isbqfiykQH3T2vIBQKBgQDjMr/bYFkuc0wtRgIB4Q+0FnWHAYlme3oJ\nhN8JsRpUlPJQpPwBDFtLXwyA3G/MLlQMOSRAlM3CSVlx5i+5OCCh73ufdK6i98/1\nTq0oWoCRwzqCi06q1SKnJCwpY0HKNrdNH5mvyoOIl3udAO4F+aMWjEJ4pEp+2liF\n3b/xiR2sAQKBgQCGnuFNy4NCJV+zl77mtrkVDeLIj/a2y5ant6wYef/F8UB8cHSG\nvPMuVaIJC0O92HFVzeYq4l9m/iuUjxiLP7KYNsEhNbRSQjEPOjuO7aFMQmHo/jwW\njLCqpHHrmfQhkR0EPegnyjEkr6ovgtwjKiMakgItAmosPBAaELkB74zSmQKBgQCB\n/rWb1eLxGvNJLDdVz+pmRjt0xcJSKvBGpgnfx7+jCZ4j2mJ+Tw2lcHr8+CPXleJt\nI/zEHuAj/Ef7TZOczKqPPTFkqSSLBnOsjhmxbycFP8kojIC0akLrk1zZSXuJMglr\nTVtoI91iuBn4WWHXdWCFNDeMQ6SENHZWEe0TTDr4AQKBgFO1bA74omTjBAE/ZnGD\nooPkxQBNy3azaoqyZD/f5vj04MY1iCXDuaVzhlsxuAjQHlPtwQEY7M4YPQNYXCwK\nEYZHCj+l9KTUy2cO3kyB5QR+nw52aVVxGZVjUWquCBew+sydJNhZjhbo98CFVH81\n291qDMEMdxuVZjDVKhPDMOMu\n-----END PRIVATE KEY-----\n",
+  "client_email": "firebase-adminsdk-fbsvc@todo-ff34f.iam.gserviceaccount.com",
+  "client_id": "108758540279799635366",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40todo-ff34f.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}'
+
+# Realtime & presence
+ENABLE_REALTIME_NOTIFICATIONS=true
+SOCKET_NAMESPACE=/ws/app
+# Comma-separated list of allowed CORS origins for Socket.IO; leave empty to use defaults
+SOCKET_ALLOWED_ORIGINS=http://localhost:3000
+SOCKET_HEARTBEAT_INTERVAL_MS=25000
+SOCKET_MAX_PAYLOAD_BYTES=5120
+PRESENCE_TTL_SECONDS=60
+
+# Redis adapter (optional)
+ENABLE_SOCKET_REDIS_ADAPTER=true
+REDIS_URL=redis://localhost:6379
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_USERNAME=
+REDIS_PASSWORD=
+REDIS_TLS=false

@@ -79,7 +79,7 @@ export default function TasksView() {
     "Other",
   ];
 
-  // Sort options like Bordio
+  // Sort options
   const sortOptions = [
     { key: "title", label: "Task name", asc: "A → Z", desc: "Z → A" },
     { key: "status", label: "Status", asc: "A → Z", desc: "Z → A" },
@@ -869,7 +869,7 @@ export default function TasksView() {
                 key={column.key}
                 className={`flex-shrink-0 w-92 ${column.color} border rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow duration-200`}
               >
-                {/* Column Header - Enhanced with Bordio style */}
+                {/* Column Header */}
                 <div className="flex items-center justify-between mb-4 p-2 rounded-lg bg-white/50">
                   <div className="flex items-center gap-3">
                     {column.icon}

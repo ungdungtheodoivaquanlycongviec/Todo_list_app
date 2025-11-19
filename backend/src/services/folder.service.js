@@ -238,10 +238,23 @@ class FolderService {
         };
       }
 
+      // Include memberAccess based on permissions:
+      // - Admins (Product Owner/PM) see all memberAccess
+      // - Regular users only see their own assignment in memberAccess
       if (exposeMemberAccess) {
+        // Admins see all memberAccess
         base.memberAccess = serializeMemberAccess(folder.memberAccess);
       } else {
-        delete base.memberAccess;
+        // Regular users only see if they are assigned to this folder
+        const userAssigned = hasFolderAssignment(folder, requesterId);
+        if (userAssigned && Array.isArray(folder.memberAccess)) {
+          const userAccess = folder.memberAccess.find(
+            access => normalizeId(access.userId) === normalizeId(requesterId)
+          );
+          base.memberAccess = userAccess ? serializeMemberAccess([userAccess]) : [];
+        } else {
+          base.memberAccess = [];
+        }
       }
 
       return base;
@@ -404,12 +417,38 @@ class FolderService {
       { new: true }
     );
 
-    // Emit realtime event
+    // Emit realtime event - only to users assigned to this folder (or admins)
     const folderData = updatedFolder.toObject ? updatedFolder.toObject() : updatedFolder;
+    const canViewAll = canViewAllFolders(requesterRole);
+    
+    // Determine recipients: assigned users + admins
+    let recipients = [];
+    if (canViewAll) {
+      // Admins get all updates
+      recipients = group.members.map(member => normalizeId(member.userId)).filter(Boolean);
+    } else {
+      // Regular users: only those assigned to this folder
+      if (Array.isArray(updatedFolder.memberAccess)) {
+        recipients = updatedFolder.memberAccess
+          .map(access => normalizeId(access.userId))
+          .filter(Boolean);
+      }
+      // Also include admins
+      group.members.forEach(member => {
+        const memberId = normalizeId(member.userId);
+        const memberRole = group.getMemberRole(memberId);
+        if (memberId && canViewAllFolders(memberRole)) {
+          if (!recipients.includes(memberId)) {
+            recipients.push(memberId);
+          }
+        }
+      });
+    }
+    
     emitFolderEvent(FOLDER_EVENTS.updated, {
       folder: folderData,
       groupId: normalizeId(groupId),
-      recipients: group.members.map(member => normalizeId(member.userId)).filter(Boolean)
+      recipients
     });
 
     return {
@@ -536,11 +575,37 @@ class FolderService {
     const plainFolder = folder.toObject();
     plainFolder.memberAccess = serializeMemberAccess(plainFolder.memberAccess);
 
-    // Emit realtime event
+    // Emit realtime event - only to users assigned to this folder (or admins)
+    const canViewAll = canViewAllFolders(requesterRole);
+    
+    // Determine recipients: newly assigned users + admins
+    let recipients = [];
+    if (canViewAll) {
+      // Admins get all updates
+      recipients = group.members.map(member => normalizeId(member.userId)).filter(Boolean);
+    } else {
+      // Regular users: only those assigned to this folder
+      if (Array.isArray(plainFolder.memberAccess)) {
+        recipients = plainFolder.memberAccess
+          .map(access => normalizeId(access.userId))
+          .filter(Boolean);
+      }
+      // Also include admins
+      group.members.forEach(member => {
+        const memberId = normalizeId(member.userId);
+        const memberRole = group.getMemberRole(memberId);
+        if (memberId && canViewAllFolders(memberRole)) {
+          if (!recipients.includes(memberId)) {
+            recipients.push(memberId);
+          }
+        }
+      });
+    }
+    
     emitFolderEvent(FOLDER_EVENTS.membersUpdated, {
       folder: plainFolder,
       groupId: normalizeId(groupId),
-      recipients: group.members.map(member => normalizeId(member.userId)).filter(Boolean)
+      recipients
     });
 
     return {

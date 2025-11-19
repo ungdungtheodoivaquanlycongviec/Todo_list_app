@@ -27,7 +27,7 @@ interface FolderContextValue {
 const FolderContext = createContext<FolderContextValue | undefined>(undefined);
 
 export function FolderProvider({ children }: { children: React.ReactNode }) {
-  const { currentGroup } = useAuth();
+  const { currentGroup, user } = useAuth();
   const { socket } = useSocket();
   const [folders, setFolders] = useState<Folder[]>([]);
   const [currentFolder, setCurrentFolder] = useState<Folder | null>(null);
@@ -100,9 +100,36 @@ export function FolderProvider({ children }: { children: React.ReactNode }) {
       groupId: string;
     }) => {
       // Only refresh if the update is for the current group
-      if (data.groupId === currentGroup._id) {
-        console.log('[FolderContext] Received folder update:', data.eventKey);
+      if (data.groupId !== currentGroup._id) {
+        return;
+      }
+
+      const eventKey = data.eventKey;
+      const folder = data.folder;
+
+      // Group-level events: created, deleted - refresh for all users
+      if (eventKey === 'folder:created' || eventKey === 'folder:deleted') {
+        console.log('[FolderContext] Received group-level folder update:', eventKey);
         refreshFolders();
+        return;
+      }
+
+      // Folder-specific events: updated, membersUpdated - only refresh if user is assigned
+      // Note: Backend already filters recipients, but we double-check here for safety
+      if (eventKey === 'folder:updated' || eventKey === 'folder:members:updated') {
+        if (!folder || !folder.memberAccess) {
+          return;
+        }
+        
+        // Check if current user is assigned to this folder
+        const isAssigned = folder.memberAccess.some(
+          (access: { userId: string }) => access.userId === user?._id
+        );
+
+        if (isAssigned) {
+          console.log('[FolderContext] Received folder update for assigned folder:', eventKey);
+          refreshFolders();
+        }
       }
     };
 
@@ -111,7 +138,7 @@ export function FolderProvider({ children }: { children: React.ReactNode }) {
     return () => {
       socket.off('folders:update', handleFolderUpdate);
     };
-  }, [socket, currentGroup?._id, refreshFolders]);
+  }, [socket, currentGroup?._id, user?._id, refreshFolders]);
 
   const selectFolder = useCallback(
     (folderId: string) => {

@@ -68,17 +68,24 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
     }
 
     const assignmentMap = new Map<string, string[]>();
+    const currentUserId = user?._id;
+    const canAssignFolders = canAssignFolderMembers(currentUserRole);
+    
     folders.forEach(folder => {
       if (!folder.memberAccess) return;
       folder.memberAccess.forEach(access => {
         if (!access?.userId) return;
+        // Only show assignments for current user, unless user is admin
+        if (!canAssignFolders && access.userId !== currentUserId) {
+          return;
+        }
         const existing = assignmentMap.get(access.userId) || [];
         assignmentMap.set(access.userId, [...existing, folder.name]);
       });
     });
 
     return assignmentMap;
-  }, [folders, showFolderAssignments]);
+  }, [folders, showFolderAssignments, user?._id, currentUserRole]);
 
   const getAssignedFolderNames = (memberId?: string | null) => {
     if (!memberId) return [];

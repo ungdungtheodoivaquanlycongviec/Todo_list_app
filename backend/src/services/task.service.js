@@ -23,7 +23,8 @@ const {
   canWriteInFolder,
   canViewFolder,
   canViewAllFolders,
-  requiresFolderAssignment
+  requiresFolderAssignment,
+  canAssignFolderMembers
 } = require('../utils/groupPermissions');
 
 const normalizeId = value => {
@@ -353,14 +354,54 @@ class TaskService {
         .filter(Boolean);
     }
 
-    // REMOVED: No longer automatically add creator to assignedTo
-    // Users can now assign tasks to any group members without the creator being forced in
+    // Check if user can assign to others (only PM and Product Owner)
+    const canAssignToOthers = targetGroup ? canAssignFolderMembers(role) : false;
+    
+    // If user cannot assign to others, they can only assign to themselves
+    if (!canAssignToOthers && assignedIds.length > 0) {
+      // Filter to only allow self-assignment
+      const selfOnly = assignedIds.filter(id => id === creatorId);
+      if (selfOnly.length !== assignedIds.length) {
+        raiseError('Bạn chỉ có thể gán task cho chính mình. Chỉ PM và Product Owner mới có thể gán task cho người khác.', HTTP_STATUS.FORBIDDEN);
+      }
+      assignedIds = selfOnly;
+    }
+
+    // If no assignees specified and user cannot assign to others, auto-assign to creator
+    if (assignedIds.length === 0 && !canAssignToOthers) {
+      assignedIds = [creatorId];
+    }
+
     assignedIds = Array.from(new Set(assignedIds));
 
     if (groupMemberIds) {
       const outsideGroup = assignedIds.filter(id => !groupMemberIds.has(id));
       if (outsideGroup.length > 0) {
         raiseError(ERROR_MESSAGES.USER_NOT_IN_GROUP);
+      }
+    }
+
+    // If task has a folder, verify all assignees have access to that folder
+    if (taskData.folderId && targetGroup) {
+      const folder = await Folder.findById(taskData.folderId);
+      if (folder && !folder.isDefault) {
+        const folderMemberAccess = new Set(
+          (folder.memberAccess || []).map(access => normalizeId(access.userId)).filter(Boolean)
+        );
+        
+        // Admins (PM/Product Owner) can assign to anyone in group, but regular users must have folder access
+        const invalidAssignees = assignedIds.filter(id => {
+          if (canAssignToOthers) {
+            // Admins can assign to anyone in group
+            return false;
+          }
+          // Regular users: assignees must have folder access
+          return !folderMemberAccess.has(id);
+        });
+        
+        if (invalidAssignees.length > 0) {
+          raiseError('Không thể gán task cho người không có quyền truy cập vào folder này.', HTTP_STATUS.FORBIDDEN);
+        }
       }
     }
 
@@ -1011,19 +1052,39 @@ class TaskService {
       groupMemberIds = new Set(group.members.map(member => normalizeId(member.userId)).filter(Boolean));
     }
 
-    // Check permissions: user must be either creator, admin of the group, or currently assigned to the task
-    const isCreator = normalizedAssignerId && task.createdBy.toString() === normalizedAssignerId;
-    const isGroupAdmin = group && group.isAdmin(normalizedAssignerId);
-    const isCurrentlyAssigned = normalizedAssignerId && task.assignedTo.some(
-      assignee => normalizeId(assignee.userId) === normalizedAssignerId
-    );
-
-    if (!normalizedAssignerId || (!isCreator && !isGroupAdmin && !isCurrentlyAssigned)) {
+    // Check permissions: only PM and Product Owner can assign tasks to others
+    const assignerRole = group ? group.getMemberRole(normalizedAssignerId) : null;
+    const canAssignToOthers = canAssignFolderMembers(assignerRole);
+    
+    if (!normalizedAssignerId) {
       return {
         success: false,
         statusCode: HTTP_STATUS.FORBIDDEN,
-        message: 'Bạn không có quyền gán người dùng cho task này. Chỉ người tạo task, admin của group, hoặc người được gán mới có thể thực hiện.'
+        message: 'Bạn không có quyền gán người dùng cho task này.'
       };
+    }
+
+    // If user cannot assign to others, they can only assign themselves
+    if (!canAssignToOthers) {
+      // Check if trying to assign to someone other than self
+      const tryingToAssignOthers = sanitizedIds.some(id => id !== normalizedAssignerId);
+      if (tryingToAssignOthers) {
+        return {
+          success: false,
+          statusCode: HTTP_STATUS.FORBIDDEN,
+          message: 'Bạn chỉ có thể gán task cho chính mình. Chỉ PM và Product Owner mới có thể gán task cho người khác.'
+        };
+      }
+      // If no userIds provided or only self, allow self-assignment
+      if (sanitizedIds.length === 0 || (sanitizedIds.length === 1 && sanitizedIds[0] === normalizedAssignerId)) {
+        // Allow self-assignment
+      } else {
+        return {
+          success: false,
+          statusCode: HTTP_STATUS.FORBIDDEN,
+          message: 'Bạn chỉ có thể gán task cho chính mình.'
+        };
+      }
     }
 
     const existingAssigneeIds = new Set(
@@ -1046,7 +1107,19 @@ class TaskService {
         return;
       }
 
-      if (id === normalizedAssignerId) {
+      // Allow self-assignment for regular users
+      if (id === normalizedAssignerId && !canAssignToOthers) {
+        // Regular users can assign themselves
+        if (existingAssigneeIds.has(id)) {
+          alreadyAssigned.push(id);
+          return;
+        }
+        filteredIds.push(id);
+        return;
+      }
+
+      // For admins, ignore self-assignment attempts (they can assign others)
+      if (id === normalizedAssignerId && canAssignToOthers) {
         ignoredSelf.push(id);
         return;
       }
@@ -1068,6 +1141,38 @@ class TaskService {
           message: ERROR_MESSAGES.USER_NOT_IN_GROUP,
           errors: { notInGroup: outsideGroup }
         };
+      }
+    }
+
+    // If task has a folder, verify all assignees have access to that folder
+    if (task.folderId && group) {
+      const folder = await Folder.findById(task.folderId);
+      if (folder && !folder.isDefault) {
+        const folderMemberAccess = new Set(
+          (folder.memberAccess || []).map(access => normalizeId(access.userId)).filter(Boolean)
+        );
+        
+        // Admins can assign to anyone in group, but regular users must have folder access
+        const invalidAssignees = filteredIds.filter(id => {
+          if (canAssignToOthers) {
+            // Admins can assign to anyone in group
+            return false;
+          }
+          // Regular users: assignees must have folder access (or be self)
+          if (id === normalizedAssignerId) {
+            return false; // Self-assignment is allowed
+          }
+          return !folderMemberAccess.has(id);
+        });
+        
+        if (invalidAssignees.length > 0) {
+          return {
+            success: false,
+            statusCode: HTTP_STATUS.FORBIDDEN,
+            message: 'Không thể gán task cho người không có quyền truy cập vào folder này.',
+            errors: { invalidAssignees }
+          };
+        }
       }
     }
 

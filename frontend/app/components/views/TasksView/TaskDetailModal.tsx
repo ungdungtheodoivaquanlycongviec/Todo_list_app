@@ -26,6 +26,8 @@ import type { Task } from "../../../services/types/task.types"
 import { taskService } from "../../../services/task.service"
 import { useAuth } from "../../../contexts/AuthContext"
 import { useTaskRealtime } from "../../../hooks/useTaskRealtime"
+import { useFolder } from "../../../contexts/FolderContext"
+import { getMemberRole, canAssignFolderMembers } from "../../../utils/groupRoleUtils"
 
 interface MinimalUser {
   _id: string;
@@ -152,6 +154,16 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const [uploadingFiles, setUploadingFiles] = useState(false)
 
   const { user: currentUser, currentGroup } = useAuth()
+  const { currentFolder } = useFolder()
+  
+  // Check if user can assign to others
+  const currentUserRole = currentGroup ? getMemberRole(currentGroup, currentUser?._id) : null
+  const canAssignToOthers = canAssignFolderMembers(currentUserRole)
+  
+  // Get folder member access list
+  const folderMemberAccess = currentFolder && !currentFolder.isDefault 
+    ? new Set((currentFolder.memberAccess || []).map((access: any) => access.userId).filter(Boolean))
+    : null
 
   const estimatedTimeOptions = ["15m", "30m", "1h", "2h", "4h", "1d", "2d", "1w"]
   const taskTypeOptions = ["Operational", "Strategic", "Financial", "Technical", "Other"]
@@ -241,24 +253,33 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
           <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">
             Assigned to ({assigneeInfo.totalCount})
           </h4>
-          <button 
-            onClick={handleAddAssignee}
-            className="text-blue-500 hover:text-blue-600 text-sm"
-          >
-            + Add assignee
-          </button>
+          {(canAssignToOthers || assigneeInfo.totalCount === 0) && (
+            <button 
+              onClick={handleAddAssignee}
+              className="text-blue-500 hover:text-blue-600 text-sm"
+            >
+              + Add assignee
+            </button>
+          )}
         </div>
         
         {assigneeInfo.assignees.length === 0 ? (
           <div className="text-center py-4 text-gray-500 dark:text-gray-400 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
             <User className="w-8 h-8 mx-auto mb-2 text-gray-400" />
             <p className="text-sm">No one assigned</p>
-            <button 
-              onClick={handleAddAssignee}
-              className="text-blue-500 hover:text-blue-600 text-xs mt-1"
-            >
-              Assign someone
-            </button>
+            {(canAssignToOthers || !currentUser) && (
+              <button 
+                onClick={handleAddAssignee}
+                className="text-blue-500 hover:text-blue-600 text-xs mt-1"
+              >
+                Assign someone
+              </button>
+            )}
+            {!canAssignToOthers && currentUser && (
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                Task sẽ được tự động gán cho bạn
+              </p>
+            )}
           </div>
         ) : (
           <div className="space-y-2">
@@ -297,13 +318,15 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
                     {assignee.email}
                   </p>
                 </div>
-                <button 
-                  onClick={() => handleUnassign(assignee._id)}
-                  disabled={saving}
-                  className="text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                {(canAssignToOthers || assignee._id === currentUser?._id) && (
+                  <button 
+                    onClick={() => handleUnassign(assignee._id)}
+                    disabled={saving}
+                    className="text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -2163,7 +2186,24 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
             </h3>
             
             <div className="space-y-2 max-h-[300px] overflow-y-auto">
-              {currentGroup.members.map((member) => {
+              {currentGroup.members
+                .filter((member) => {
+                  const userId = typeof member.userId === 'object' ? member.userId._id : member.userId;
+                  
+                  // If user cannot assign to others, only show themselves
+                  if (!canAssignToOthers) {
+                    return userId === currentUser?._id;
+                  }
+                  
+                  // If task has a folder, only show users with folder access
+                  if (folderMemberAccess && task?.folderId) {
+                    return folderMemberAccess.has(userId);
+                  }
+                  
+                  // Otherwise show all members
+                  return true;
+                })
+                .map((member) => {
                 const userId = typeof member.userId === 'object' ? member.userId._id : member.userId;
                 const userName = typeof member.userId === 'object' ? member.userId.name : member.name || 'Unknown';
                 const userEmail = typeof member.userId === 'object' ? member.userId.email : member.email || '';
@@ -2236,10 +2276,25 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                 );
               })}
               
-              {currentGroup.members.length === 0 && (
+              {currentGroup.members.filter((member) => {
+                const userId = typeof member.userId === 'object' ? member.userId._id : member.userId;
+                if (!canAssignToOthers) {
+                  return userId === currentUser?._id;
+                }
+                if (folderMemberAccess && task?.folderId) {
+                  return folderMemberAccess.has(userId);
+                }
+                return true;
+              }).length === 0 && (
                 <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                   <User className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-                  <p className="text-sm">No members in this group</p>
+                  <p className="text-sm">
+                    {!canAssignToOthers 
+                      ? "Bạn chỉ có thể gán task cho chính mình" 
+                      : folderMemberAccess && task?.folderId
+                      ? "Không có thành viên nào có quyền truy cập vào folder này"
+                      : "No members in this group"}
+                  </p>
                 </div>
               )}
             </div>
