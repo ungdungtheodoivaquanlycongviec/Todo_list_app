@@ -15,6 +15,11 @@ export interface Folder {
   noteCount?: number;
   createdAt?: string;
   updatedAt?: string;
+  memberAccess?: Array<{
+    userId: string;
+    addedBy: string;
+    addedAt: string;
+  }>;
 }
 
 export interface FolderListResponse {

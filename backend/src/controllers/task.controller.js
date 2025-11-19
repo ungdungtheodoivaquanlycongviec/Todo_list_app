@@ -84,7 +84,7 @@ const deleteTask = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
   // Call service
-  const task = await taskService.deleteTask(id);
+  const task = await taskService.deleteTask(id, req.user._id);
 
   if (!task) {
     return sendError(res, ERROR_MESSAGES.TASK_NOT_FOUND, HTTP_STATUS.NOT_FOUND);

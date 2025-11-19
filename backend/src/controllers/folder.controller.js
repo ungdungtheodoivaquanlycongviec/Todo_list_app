@@ -26,10 +26,18 @@ const deleteFolder = asyncHandler(async (req, res) => {
   sendSuccess(res, result.data, result.message, result.statusCode);
 });
 
+const setFolderMembers = asyncHandler(async (req, res) => {
+  const { groupId, folderId } = req.params;
+  const { memberIds = [] } = req.body;
+  const result = await folderService.setFolderMembers(groupId, folderId, req.user._id, memberIds);
+  sendSuccess(res, result.data, result.message, result.statusCode);
+});
+
 module.exports = {
   listFolders,
   createFolder,
   updateFolder,
-  deleteFolder
+  deleteFolder,
+  setFolderMembers
 };
 

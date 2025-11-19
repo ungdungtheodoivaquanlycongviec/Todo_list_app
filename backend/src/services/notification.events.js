@@ -1,7 +1,8 @@
 const {
   NOTIFICATION_EVENTS,
   NOTIFICATION_CHANNELS,
-  NOTIFICATION_CATEGORIES
+  NOTIFICATION_CATEGORIES,
+  GROUP_ROLE_LABELS
 } = require('../config/constants');
 const { persistNotificationFromEvent } = require('./notification.consumer');
 
@@ -41,15 +42,17 @@ const EVENT_REGISTRY = {
       type: 'group_invitation',
       eventKey: NOTIFICATION_EVENTS.GROUP_INVITATION_SENT,
       title: 'Group Invitation',
-      message: `${payload.inviterName || 'A group admin'} invited you to join ${payload.groupName}`,
+      message: `${payload.inviterName || 'Product Owner'} invited you to join ${payload.groupName} as ${GROUP_ROLE_LABELS[payload.role] || payload.role || 'a team member'}`,
       data: {
         groupId: payload.groupId,
         groupName: payload.groupName,
-        invitationId: payload.invitationId || null
+        invitationId: payload.invitationId || null,
+        role: payload.role || null
       },
       metadata: {
         inviterId: payload.senderId,
-        groupId: payload.groupId
+        groupId: payload.groupId,
+        role: payload.role || null
       },
       categories: ['group'],
       channels: ['in_app'],
@@ -69,6 +72,27 @@ const EVENT_REGISTRY = {
         oldName: payload.oldName,
         newName: payload.newName,
         action: 'name_changed'
+      },
+      metadata: {
+        actorId: payload.senderId,
+        groupId: payload.groupId
+      },
+      categories: ['group'],
+      channels: ['in_app']
+    })
+  },
+  [NOTIFICATION_EVENTS.GROUP_ROLE_UPDATED]: {
+    transform: payload => ({
+      recipient: payload.recipientId,
+      sender: payload.senderId ?? null,
+      type: 'group_role_update',
+      eventKey: NOTIFICATION_EVENTS.GROUP_ROLE_UPDATED,
+      title: 'Role Updated',
+      message: `${payload.actorName || 'Product Owner'} updated your role to ${GROUP_ROLE_LABELS[payload.newRole] || payload.newRole}`,
+      data: {
+        groupId: payload.groupId,
+        newRole: payload.newRole,
+        action: 'role_changed'
       },
       metadata: {
         actorId: payload.senderId,
@@ -322,6 +346,16 @@ const notifyGroupNameChange = ({ recipientId, senderId, groupId, oldName, newNam
   });
 };
 
+const notifyGroupRoleUpdated = ({ recipientId, senderId, groupId, newRole, actorName }) => {
+  return publishNotification(NOTIFICATION_EVENTS.GROUP_ROLE_UPDATED, {
+    recipientId,
+    senderId,
+    groupId,
+    newRole,
+    actorName
+  });
+};
+
 const notifyTaskCreated = ({ recipientId, senderId, taskId, taskTitle, groupId, groupName, creatorName, priority, dueDate }) => {
   return publishNotification(NOTIFICATION_EVENTS.TASK_CREATED_IN_GROUP, {
     recipientId,
@@ -408,6 +442,7 @@ module.exports = {
   registerListener,
   notifyGroupInvitation,
   notifyGroupNameChange,
+  notifyGroupRoleUpdated,
   notifyTaskCreated,
   notifyTaskAssigned,
   notifyTaskUnassigned,

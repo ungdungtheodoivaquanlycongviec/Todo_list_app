@@ -43,7 +43,25 @@ const folderSchema = new mongoose.Schema(
     metadata: {
       color: { type: String, default: '#1d4ed8' },
       icon: { type: String, default: 'folder' }
-    }
+    },
+    memberAccess: [
+      {
+        userId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User',
+          required: true
+        },
+        addedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User',
+          required: true
+        },
+        addedAt: {
+          type: Date,
+          default: Date.now
+        }
+      }
+    ]
   },
   {
     timestamps: true,
@@ -59,6 +77,7 @@ folderSchema.index(
     partialFilterExpression: { isDefault: true }
   }
 );
+folderSchema.index({ groupId: 1, 'memberAccess.userId': 1 });
 
 const Folder = mongoose.model('Folder', folderSchema);
 

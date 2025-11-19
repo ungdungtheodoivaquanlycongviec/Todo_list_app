@@ -1,5 +1,6 @@
 const Task = require('../models/Task.model');
 const Group = require('../models/Group.model');
+const Folder = require('../models/Folder.model');
 const User = require('../models/User.model');
 const { ERROR_MESSAGES, TASK_STATUS, LIMITS, SUCCESS_MESSAGES, HTTP_STATUS, PRIORITY_LEVELS } = require('../config/constants');
 const { 
@@ -17,6 +18,13 @@ const fileService = require('./file.service');
 const notificationService = require('./notification.service');
 const { TASK_EVENTS, emitTaskEvent } = require('./task.realtime.gateway');
 const { resolveFolderContext } = require('./folder.service');
+const {
+  canCreateTasks,
+  canWriteInFolder,
+  canViewFolder,
+  canViewAllFolders,
+  requiresFolderAssignment
+} = require('../utils/groupPermissions');
 
 const normalizeId = value => {
   if (!value) return null;
@@ -140,6 +148,153 @@ const emitTaskRealtime = async ({
   });
 };
 
+const ensureGroupAccess = async (groupId, requesterId) => {
+  if (!groupId) {
+    raiseError(ERROR_MESSAGES.INVALID_ID);
+  }
+
+  const group = await Group.findById(groupId);
+  if (!group) {
+    raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  if (!group.isMember(requesterId)) {
+    raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
+  }
+
+  const role = group.getMemberRole(requesterId);
+
+  return { group, role };
+};
+
+const enforceFolderAccess = async ({
+  group,
+  groupId,
+  folderId,
+  requesterId,
+  role,
+  requireWrite = false,
+  allowFallback = true
+}) => {
+  if (!group && groupId) {
+    group = await Group.findById(groupId);
+  }
+
+  return resolveFolderContext({
+    groupId: groupId || group?._id,
+    groupDoc: group,
+    folderId,
+    requesterId,
+    allowFallback,
+    access: {
+      role,
+      enforceAssignment: true,
+      requireWrite
+    }
+  });
+};
+
+const buildFolderClauses = folder => {
+  if (!folder) {
+    return [];
+  }
+
+  if (folder.isDefault) {
+    return [
+      {
+        $or: [
+          { folderId: folder._id },
+          { folderId: null },
+          { folderId: { $exists: false } }
+        ]
+      }
+    ];
+  }
+
+  return [{ folderId: folder._id }];
+};
+
+const buildScopedFolderFilter = async ({
+  group,
+  groupId,
+  folderId,
+  requesterId,
+  role
+}) => {
+  if (folderId) {
+    const { folder } = await enforceFolderAccess({
+      group,
+      groupId,
+      folderId,
+      requesterId,
+      role,
+      requireWrite: false
+    });
+    return buildFolderClauses(folder);
+  }
+
+  if (!requiresFolderAssignment(role)) {
+    return [];
+  }
+
+  const assignedFolders = await Folder.find({
+    groupId,
+    'memberAccess.userId': requesterId
+  })
+    .select('_id isDefault')
+    .lean();
+
+  if (!assignedFolders || assignedFolders.length === 0) {
+    raiseError(ERROR_MESSAGES.FOLDER_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
+  }
+
+  const clauses = [];
+  const defaultFolder = assignedFolders.find(folder => folder.isDefault);
+  const scopedFolders = assignedFolders.filter(folder => !folder.isDefault);
+
+  if (scopedFolders.length > 0) {
+    clauses.push({
+      folderId: { $in: scopedFolders.map(folder => folder._id) }
+    });
+  }
+
+  if (defaultFolder) {
+    clauses.push({
+      $or: [
+        { folderId: defaultFolder._id },
+        { folderId: null },
+        { folderId: { $exists: false } }
+      ]
+    });
+  }
+
+  return clauses;
+};
+
+const ensureTaskWriteAccess = async (taskDoc, requesterId) => {
+  if (!taskDoc) {
+    raiseError(ERROR_MESSAGES.TASK_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  const groupId = normalizeId(taskDoc.groupId);
+  if (!groupId) {
+    raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  const { group, role } = await ensureGroupAccess(groupId, requesterId);
+
+  await enforceFolderAccess({
+    group,
+    groupId,
+    folderId: taskDoc.folderId,
+    requesterId,
+    role,
+    requireWrite: true
+  });
+
+  return { group, role };
+};
+
 /**
  * Task Service
  * Chứa toàn bộ business logic liên quan đến Task
@@ -167,19 +322,10 @@ class TaskService {
         raiseError('Invalid groupId format');
       }
 
-      const group = await Group.findById(groupId);
-      if (!group) {
-        raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
-      }
-
+      const { group, role } = await ensureGroupAccess(groupId, creatorId);
       targetGroup = group;
 
-      // Check if user is a member of the group (admin or member)
-      const isGroupMember = group.members.some(member => 
-        normalizeId(member.userId) === normalizeId(creatorId)
-      );
-      
-      if (!isGroupMember) {
+      if (!canCreateTasks(role)) {
         raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
       }
 
@@ -188,11 +334,13 @@ class TaskService {
       );
       taskData.groupId = groupId;
 
-      const { folder } = await resolveFolderContext({
+      const { folder } = await enforceFolderAccess({
+        group,
         groupId,
-        groupDoc: targetGroup,
         folderId: taskData.folderId,
-        requesterId: creatorId
+        requesterId: creatorId,
+        role,
+        requireWrite: true
       });
 
       taskData.folderId = folder ? folder._id : null;
@@ -329,26 +477,22 @@ class TaskService {
         raiseError('Invalid groupId format');
       }
 
-      const { folder } = await resolveFolderContext({
-        groupId,
-        folderId,
-        requesterId
-      });
+      const { group, role } = await ensureGroupAccess(groupId, requesterId);
 
       queryFilters.push({ groupId });
 
-      if (folder) {
-        if (folder.isDefault) {
-          queryFilters.push({
-            $or: [
-              { folderId: folder._id },
-              { folderId: null },
-              { folderId: { $exists: false } }
-            ]
-          });
-        } else {
-          queryFilters.push({ folderId: folder._id });
-        }
+      const folderClauses = await buildScopedFolderFilter({
+        group,
+        groupId,
+        folderId,
+        requesterId,
+        role
+      });
+
+      if (folderClauses.length === 1) {
+        queryFilters.push(folderClauses[0]);
+      } else if (folderClauses.length > 1) {
+        queryFilters.push({ $or: folderClauses });
       }
     }
 
@@ -409,11 +553,14 @@ class TaskService {
       return null;
     }
 
+    const { group: currentGroup, role: initialRole } = await ensureTaskWriteAccess(taskDoc, requesterId);
+
     const requesterIdStr = normalizeId(requesterId);
     const creatorIdStr = normalizeId(taskDoc.createdBy);
 
     let finalGroupId = normalizeId(taskDoc.groupId);
-    let targetGroup = null;
+    let targetGroup = currentGroup;
+    let requesterRole = initialRole;
 
     if (updateData.groupId !== undefined) {
       const requestedGroupId = updateData.groupId ? normalizeId(updateData.groupId) : null;
@@ -445,19 +592,27 @@ class TaskService {
         }
 
         finalGroupId = requestedGroupId;
+        requesterRole = targetGroup.getMemberRole(requesterIdStr);
+        if (!requesterRole) {
+          raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
+        }
       }
     } else if (finalGroupId) {
       targetGroup = await Group.findById(finalGroupId);
     }
 
     let folderResolution = null;
-    if (updateData.folderId !== undefined || updateData.groupId !== undefined) {
-      folderResolution = await resolveFolderContext({
+    if ((updateData.folderId !== undefined || updateData.groupId !== undefined) && finalGroupId) {
+      folderResolution = await enforceFolderAccess({
+        group: targetGroup,
         groupId: finalGroupId,
-        groupDoc: targetGroup,
         folderId: updateData.folderId,
-        requesterId
+        requesterId,
+        role: requesterRole,
+        requireWrite: true
       });
+    } else if (updateData.folderId !== undefined && !finalGroupId) {
+      raiseError('Cannot assign folder without a valid group', HTTP_STATUS.BAD_REQUEST);
     }
 
     const groupMemberIds = targetGroup
@@ -589,8 +744,15 @@ class TaskService {
    * @param {String} taskId - ID của task
    * @returns {Promise<Object|null>} Task đã xóa hoặc null
    */
-  async deleteTask(taskId) {
-    const task = await Task.findByIdAndDelete(taskId);
+  async deleteTask(taskId, requesterId = null) {
+    const task = await Task.findById(taskId);
+    if (!task) {
+      return null;
+    }
+
+    await ensureTaskWriteAccess(task, requesterId);
+
+    await Task.deleteOne({ _id: taskId });
 
     if (task) {
       await emitTaskRealtime({
@@ -637,10 +799,13 @@ class TaskService {
     const startDate = getFirstDayOfMonth(yearNum, monthNum);
     const endDate = getLastDayOfMonth(yearNum, monthNum);
 
-    const { folder } = await resolveFolderContext({
+    const { group, role } = await ensureGroupAccess(groupId, requesterId);
+    const folderClauses = await buildScopedFolderFilter({
+      group,
       groupId,
       folderId,
-      requesterId
+      requesterId,
+      role
     });
 
     const filters = [
@@ -653,18 +818,10 @@ class TaskService {
       }
     ];
 
-    if (folder) {
-      if (folder.isDefault) {
-        filters.push({
-          $or: [
-            { folderId: folder._id },
-            { folderId: null },
-            { folderId: { $exists: false } }
-          ]
-        });
-      } else {
-        filters.push({ folderId: folder._id });
-      }
+    if (folderClauses.length === 1) {
+      filters.push(folderClauses[0]);
+    } else if (folderClauses.length > 1) {
+      filters.push({ $or: folderClauses });
     }
 
     const query = { $and: filters };
@@ -724,26 +881,22 @@ class TaskService {
         raiseError('Invalid groupId format');
       }
 
-      const { folder } = await resolveFolderContext({
-        groupId,
-        folderId,
-        requesterId
-      });
+      const { group, role } = await ensureGroupAccess(groupId, requesterId);
 
       queryFilters.push({ groupId });
 
-      if (folder) {
-        if (folder.isDefault) {
-          queryFilters.push({
-            $or: [
-              { folderId: folder._id },
-              { folderId: null },
-              { folderId: { $exists: false } }
-            ]
-          });
-        } else {
-          queryFilters.push({ folderId: folder._id });
-        }
+      const folderClauses = await buildScopedFolderFilter({
+        group,
+        groupId,
+        folderId,
+        requesterId,
+        role
+      });
+
+      if (folderClauses.length === 1) {
+        queryFilters.push(folderClauses[0]);
+      } else if (folderClauses.length > 1) {
+        queryFilters.push({ $or: folderClauses });
       }
     }
 

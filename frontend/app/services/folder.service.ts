@@ -84,6 +84,18 @@ export const folderService = {
     });
 
     await handleResponse(response);
+  },
+
+  async setFolderMembers(groupId: string, folderId: string, memberIds: string[]): Promise<Folder> {
+    const response = await fetch(`${API_BASE_URL}/groups/${groupId}/folders/${folderId}/members`, {
+      method: 'PUT',
+      headers: buildHeaders(),
+      credentials: 'include',
+      body: JSON.stringify({ memberIds })
+    });
+
+    const data = await handleResponse(response);
+    return data.data || data;
   }
 };
 

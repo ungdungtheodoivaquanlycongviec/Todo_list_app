@@ -12,7 +12,8 @@ import {
   Loader2,
   FolderPlus,
   Pencil,
-  Check
+  Check,
+  Trash2
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { groupService } from '../../services/group.service';
@@ -20,6 +21,7 @@ import { Group } from '../../services/types/group.types';
 import { useFolder } from '../../contexts/FolderContext';
 import { folderService } from '../../services/folder.service';
 import { Folder } from '../../services/types/folder.types';
+import { DEFAULT_INVITE_ROLE, ROLE_SECTIONS } from '../../constants/groupRoles';
 
 // Create Group Modal Component
 interface CreateGroupModalProps {
@@ -131,11 +133,12 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSubmit }
 interface InviteUserModalProps {
   groupName: string;
   onClose: () => void;
-  onSubmit: (email: string) => Promise<void>;
+  onSubmit: (email: string, role: string) => Promise<void>;
 }
 
 const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, onSubmit }) => {
   const [email, setEmail] = useState('');
+  const [role, setRole] = useState<string>(DEFAULT_INVITE_ROLE);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -146,7 +149,7 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, o
     setLoading(true);
     setError('');
     try {
-      await onSubmit(email.trim());
+      await onSubmit(email.trim(), role);
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to invite user');
     } finally {
@@ -197,6 +200,33 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, o
             />
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Assign Role *
+            </label>
+            <div className="relative">
+              <select
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                className="w-full bg-white dark:bg-[#2E2E2E] text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 appearance-none"
+                disabled={loading}
+              >
+                {ROLE_SECTIONS.map(section => (
+                  <optgroup key={section.title} label={section.title}>
+                    {section.roles.map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-gray-400">
+                <ChevronDown className="w-4 h-4" />
+              </div>
+            </div>
+          </div>
+
           {error && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3">
               <div className="flex items-center">
@@ -217,7 +247,7 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, o
             </button>
             <button
               type="submit"
-              disabled={!email.trim() || loading}
+              disabled={!email.trim() || !role || loading}
               className="flex-1 bg-gradient-to-r from-green-600 to-green-700 text-white py-3 px-4 rounded-xl hover:from-green-700 hover:to-green-800 transition-all duration-200 font-medium shadow-lg hover:shadow-xl disabled:opacity-50 disabled:shadow-none"
             >
               {loading ? (
@@ -244,6 +274,7 @@ export default function Sidebar() {
     loading: foldersLoading,
     selectFolder,
     createFolder,
+    deleteFolder,
     refreshFolders,
     error: foldersError
   } = useFolder();
@@ -281,6 +312,8 @@ export default function Sidebar() {
   } | null>(null);
   const [renamingLoading, setRenamingLoading] = useState(false);
   const [renamingError, setRenamingError] = useState<string | null>(null);
+  const [deletingFolderId, setDeletingFolderId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<{ folderId: string; message: string } | null>(null);
 
   const loadGroupFolders = useCallback(
     async (groupId: string) => {
@@ -392,11 +425,11 @@ export default function Sidebar() {
     setShowInviteModal(true);
   };
 
-  const handleInviteSubmit = async (email: string) => {
+  const handleInviteSubmit = async (email: string, role: string) => {
     if (!selectedGroup) return;
     
     try {
-      await groupService.inviteUserToGroup(selectedGroup._id, email);
+      await groupService.inviteUserToGroup(selectedGroup._id, email, role);
       setShowInviteModal(false);
       setSelectedGroup(null);
       // Reload groups to show updated member list
@@ -555,6 +588,33 @@ export default function Sidebar() {
     };
   };
 
+  const handleDeleteFolder = async (groupId: string, folderId: string) => {
+    if (!confirm('Are you sure you want to delete this folder?')) return;
+
+    setDeletingFolderId(folderId);
+    setDeleteError(null);
+
+    try {
+      if (currentGroup?._id === groupId) {
+        await deleteFolder(folderId);
+      } else {
+        await folderService.deleteFolder(groupId, folderId);
+        await loadGroupFolders(groupId);
+      }
+
+      if (renamingState?.folderId === folderId) {
+        setRenamingState(null);
+      }
+    } catch (error) {
+      setDeleteError({
+        folderId,
+        message: error instanceof Error ? error.message : 'Failed to delete folder'
+      });
+    } finally {
+      setDeletingFolderId(null);
+    }
+  };
+
   const renderFolderListForGroup = (group: Group) => {
     const folderState = getFolderStateForGroup(group._id);
     const formVisible = folderFormState.groupId === group._id;
@@ -700,16 +760,36 @@ export default function Sidebar() {
                           </div>
                         </div>
                       </button>
-                      <button
-                        onClick={() => startRenamingFolder(folderGroupId, folder)}
-                        className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#2E2E2E] rounded-lg"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => startRenamingFolder(folderGroupId, folder)}
+                          className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#2E2E2E] rounded-lg"
+                          disabled={deletingFolderId === folder._id}
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        {!folder.isDefault && (
+                          <button
+                            onClick={() => handleDeleteFolder(folderGroupId, folder._id)}
+                            className="p-1 text-red-500 hover:text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg disabled:opacity-50"
+                            disabled={deletingFolderId === folder._id}
+                            title="Delete folder"
+                          >
+                            {deletingFolderId === folder._id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-4 h-4" />
+                            )}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
                   {isEditing && renamingError && (
                     <p className="px-3 pb-2 text-xs text-red-500">{renamingError}</p>
+                  )}
+                  {deleteError?.folderId === folder._id && (
+                    <p className="px-3 pb-2 text-xs text-red-500">{deleteError.message}</p>
                   )}
                 </div>
               );

@@ -1,11 +1,15 @@
+import { GroupRoleKey } from '../../constants/groupRoles';
+
+export interface GroupMemberUser {
+  _id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+}
+
 export interface GroupMember {
-  userId: string | {
-    _id: string;
-    name: string;
-    email: string;
-    avatar?: string;
-  };
-  role: 'admin' | 'member';
+  userId: string | GroupMemberUser;
+  role: GroupRoleKey;
   joinedAt: string;
   name?: string;
   email?: string;

@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User.model');
 const Group = require('../models/Group.model');
+const { GROUP_ROLE_KEYS } = require('../config/constants');
 const { JWT_SECRET, JWT_REFRESH_SECRET } = require('../config/environment');
 const admin = require('../config/firebaseAdmin');
 
@@ -37,7 +38,7 @@ class AuthService {
       name: 'Personal Workspace',
       description: 'Your personal workspace for tasks and projects',
       createdBy: user._id,
-      members: [{ userId: user._id, role: 'admin', joinedAt: new Date() }]
+      members: [{ userId: user._id, role: GROUP_ROLE_KEYS.PRODUCT_OWNER, joinedAt: new Date() }]
     });
     
     // 5. Set Personal Workspace as user's current group and save
@@ -162,7 +163,7 @@ class AuthService {
         name: 'Personal Workspace',
         description: 'Your personal workspace for tasks and projects',
         createdBy: user._id,
-        members: [{ userId: user._id, role: 'admin', joinedAt: new Date() }]
+        members: [{ userId: user._id, role: GROUP_ROLE_KEYS.PRODUCT_OWNER, joinedAt: new Date() }]
       });
       
       // Set Personal Workspace as user's current group

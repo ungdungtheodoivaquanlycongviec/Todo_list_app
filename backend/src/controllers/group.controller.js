@@ -4,14 +4,14 @@ const { sendSuccess, sendError } = require('../utils/response');
 const { HTTP_STATUS } = require('../config/constants');
 
 const createGroup = asyncHandler(async (req, res) => {
-  const { name, description = '', memberIds = [] } = req.body;
+  const { name, description = '', members = [] } = req.body;
   const creatorId = req.user._id;
 
   const result = await groupService.createGroup({
     name,
     description,
     creatorId,
-    memberIds
+    members
   });
 
   if (!result.success) {
@@ -82,9 +82,22 @@ const deleteGroup = asyncHandler(async (req, res) => {
 
 const addMembers = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { memberIds = [] } = req.body;
+  const { members = [] } = req.body;
 
-  const result = await groupService.addMembers(id, req.user._id, memberIds);
+  const result = await groupService.addMembers(id, req.user._id, members);
+
+  if (!result.success) {
+    return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);
+  }
+
+  sendSuccess(res, result.data, result.message, result.statusCode || HTTP_STATUS.OK);
+});
+
+const updateMemberRole = asyncHandler(async (req, res) => {
+  const { id, memberId } = req.params;
+  const { role } = req.body;
+
+  const result = await groupService.updateMemberRole(id, req.user._id, { memberId, role });
 
   if (!result.success) {
     return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);
@@ -167,9 +180,9 @@ const switchToGroup = asyncHandler(async (req, res) => {
 
 const inviteUserToGroup = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { email } = req.body;
+  const { email, role } = req.body;
   
-  const result = await groupService.inviteUserToGroup(id, email, req.user._id);
+  const result = await groupService.inviteUserToGroup(id, email, role, req.user._id);
 
   if (!result.success) {
     return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);
@@ -190,5 +203,6 @@ module.exports = {
   getGroupTasks,
   joinGroup,
   switchToGroup,
-  inviteUserToGroup
+  inviteUserToGroup,
+  updateMemberRole
 };

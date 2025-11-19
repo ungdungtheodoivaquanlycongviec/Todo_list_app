@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { GROUP_ROLES, LIMITS } = require('../config/constants');
+const { GROUP_ROLES, GROUP_ROLE_KEYS, LIMITS } = require('../config/constants');
 
 const normalizeId = value => {
   if (!value) return null;
@@ -20,7 +20,7 @@ const memberSchema = new mongoose.Schema(
     role: {
       type: String,
       enum: GROUP_ROLES,
-      default: 'member'
+      required: true
     },
     joinedAt: {
       type: Date,
@@ -72,7 +72,7 @@ const groupSchema = new mongoose.Schema(
   }
 );
 
-// Ensure creator is always present as admin
+// Ensure creator is always present as product owner
 groupSchema.pre('validate', function(next) {
   if (!this.createdBy) {
     return next();
@@ -85,12 +85,12 @@ groupSchema.pre('validate', function(next) {
   });
 
   if (!hasCreator) {
-    this.members.push({ userId: this.createdBy, role: 'admin' });
+    this.members.push({ userId: this.createdBy, role: GROUP_ROLE_KEYS.PRODUCT_OWNER });
   } else {
     this.members = this.members.map(member => {
       const normalized = member?.toObject ? member.toObject() : member;
       if (normalized.userId && normalizeId(normalized.userId) === creatorId) {
-        return { ...normalized, role: 'admin' };
+        return { ...normalized, role: GROUP_ROLE_KEYS.PRODUCT_OWNER };
       }
       return normalized;
     });
@@ -133,12 +133,28 @@ groupSchema.methods.isMember = function(userId) {
   return this.members.some(member => normalizeId(member.userId) === targetId);
 };
 
-groupSchema.methods.isAdmin = function(userId) {
+groupSchema.methods.getMemberRole = function(userId) {
+  if (!userId) return null;
   const targetId = normalizeId(userId);
-  if (!targetId) return false;
-  return this.members.some(
-    member => normalizeId(member.userId) === targetId && member.role === 'admin'
-  );
+  if (!targetId) return null;
+  const record = this.members.find(member => normalizeId(member.userId) === targetId);
+  return record ? record.role : null;
+};
+
+groupSchema.methods.hasRole = function(userId, roles = []) {
+  if (!Array.isArray(roles) || roles.length === 0) {
+    return false;
+  }
+  const role = this.getMemberRole(userId);
+  return Boolean(role && roles.includes(role));
+};
+
+groupSchema.methods.isProductOwner = function(userId) {
+  return this.hasRole(userId, [GROUP_ROLE_KEYS.PRODUCT_OWNER]);
+};
+
+groupSchema.methods.isAdmin = function(userId) {
+  return this.isProductOwner(userId);
 };
 
 // Indexes

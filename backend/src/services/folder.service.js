@@ -9,6 +9,14 @@ const {
   LIMITS,
   HTTP_STATUS
 } = require('../config/constants');
+const {
+  canManageFolders,
+  canAssignFolderMembers,
+  canViewFolder,
+  canViewAllFolders,
+  canWriteInFolder,
+  requiresFolderAssignment
+} = require('../utils/groupPermissions');
 const { isValidObjectId } = require('../utils/validationHelper');
 
 const normalizeId = value => {
@@ -86,7 +94,8 @@ const resolveFolderContext = async ({
   groupDoc = null,
   folderId,
   requesterId,
-  allowFallback = true
+  allowFallback = true,
+  access = null
 }) => {
   const normalizedGroupId = normalizeId(groupDoc?._id || groupId);
   const group = groupDoc || await fetchGroupOrThrow(normalizedGroupId, requesterId);
@@ -95,13 +104,24 @@ const resolveFolderContext = async ({
     throw buildError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
   }
   const defaultFolder = await ensureDefaultFolder(group, requesterId);
+  const role = access?.role || getRequesterRole(group, requesterId);
+  let accessResult = null;
 
   if (!folderId && !allowFallback) {
     return { group, folder: null, defaultFolder };
   }
 
   if (!folderId) {
-    return { group, folder: defaultFolder, defaultFolder };
+    if (access?.enforceAssignment && requesterId && defaultFolder) {
+      accessResult = assertFolderPermission({
+        groupDoc: group,
+        folderDoc: defaultFolder,
+        requesterId,
+        role,
+        requireWrite: Boolean(access?.requireWrite)
+      });
+    }
+    return { group, folder: defaultFolder, defaultFolder, permission: accessResult };
   }
 
   if (!isValidObjectId(folderId)) {
@@ -113,7 +133,20 @@ const resolveFolderContext = async ({
     throw buildError(ERROR_MESSAGES.FOLDER_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
   }
 
-  return { group, folder, defaultFolder };
+  if (access?.enforceAssignment && requesterId) {
+    const targetFolder = folder || defaultFolder;
+    if (targetFolder) {
+      accessResult = assertFolderPermission({
+        groupDoc: group,
+        folderDoc: targetFolder,
+        requesterId,
+        role,
+        requireWrite: Boolean(access?.requireWrite)
+      });
+    }
+  }
+
+  return { group, folder, defaultFolder, permission: accessResult };
 };
 
 const mapCounts = (docs = []) =>
@@ -123,12 +156,57 @@ const mapCounts = (docs = []) =>
     return acc;
   }, {});
 
+const getRequesterRole = (groupDoc, requesterId) => {
+  if (!groupDoc || typeof groupDoc.getMemberRole !== 'function') {
+    return null;
+  }
+  return groupDoc.getMemberRole(requesterId);
+};
+
+const hasFolderAssignment = (folderDoc, requesterId) => {
+  if (!folderDoc || !Array.isArray(folderDoc.memberAccess)) {
+    return false;
+  }
+  const targetId = normalizeId(requesterId);
+  if (!targetId) {
+    return false;
+  }
+  return folderDoc.memberAccess.some(access => normalizeId(access.userId) === targetId);
+};
+
+const serializeMemberAccess = entries =>
+  (Array.isArray(entries) ? entries : []).map(entry => ({
+    userId: normalizeId(entry.userId),
+    addedBy: normalizeId(entry.addedBy),
+    addedAt: entry.addedAt || null
+  }));
+
+const assertFolderPermission = ({ groupDoc, folderDoc, requesterId, role, requireWrite = false }) => {
+  const effectiveRole = role || getRequesterRole(groupDoc, requesterId);
+  const assigned = hasFolderAssignment(folderDoc, requesterId);
+  if (!canViewFolder(effectiveRole, { isAssigned: assigned })) {
+    throw buildError(ERROR_MESSAGES.FOLDER_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
+  }
+  if (requireWrite && !canWriteInFolder(effectiveRole, { isAssigned: assigned })) {
+    throw buildError(ERROR_MESSAGES.FOLDER_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
+  }
+  return { effectiveRole, assigned };
+};
+
 class FolderService {
   async getFolders(groupId, requesterId) {
     const group = await fetchGroupOrThrow(groupId, requesterId);
     const defaultFolder = await ensureDefaultFolder(group, requesterId);
+    const requesterRole = getRequesterRole(group, requesterId);
+    const canViewAll = canViewAllFolders(requesterRole);
+    const exposeMemberAccess = canAssignFolderMembers(requesterRole);
+    const query = { groupId };
+    if (!canViewAll) {
+      const requesterObjectId = new mongoose.Types.ObjectId(normalizeId(requesterId));
+      query['memberAccess.userId'] = requesterObjectId;
+    }
 
-    let folders = await Folder.find({ groupId })
+    let folders = await Folder.find(query)
       .sort({ order: 1, createdAt: 1 })
       .lean();
 
@@ -161,12 +239,29 @@ class FolderService {
       const unassignedTaskCount = folderId === defaultFolderId ? taskCounts.unassigned || 0 : 0;
       const unassignedNoteCount = folderId === defaultFolderId ? noteCounts.unassigned || 0 : 0;
 
-      return {
+      const base = {
         ...folder,
         taskCount: baseTaskCount + unassignedTaskCount,
         noteCount: baseNoteCount + unassignedNoteCount,
         isDefault: folderId === defaultFolderId
       };
+
+      if (!canManageFolders(requesterRole)) {
+        base.permissions = {
+          canManage: canManageFolders(requesterRole),
+          canWrite: canWriteInFolder(requesterRole, {
+            isAssigned: hasFolderAssignment(folder, requesterId)
+          })
+        };
+      }
+
+      if (exposeMemberAccess) {
+        base.memberAccess = serializeMemberAccess(folder.memberAccess);
+      } else {
+        delete base.memberAccess;
+      }
+
+      return base;
     });
 
     return {
@@ -185,6 +280,12 @@ class FolderService {
 
   async createFolder(groupId, requesterId, payload = {}) {
     const group = await fetchGroupOrThrow(groupId, requesterId);
+    const requesterRole = getRequesterRole(group, requesterId);
+
+    if (!canManageFolders(requesterRole)) {
+      throw buildError(ERROR_MESSAGES.FOLDER_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
+    }
+
     await ensureDefaultFolder(group, requesterId);
 
     const folderCount = await Folder.countDocuments({ groupId });
@@ -222,6 +323,27 @@ class FolderService {
       }
     });
 
+    if (Array.isArray(payload.memberIds) && payload.memberIds.length > 0) {
+      const memberSet = new Set(
+        group.members.map(member => normalizeId(member.userId)).filter(Boolean)
+      );
+      const normalizedAssignments = Array.from(
+        new Set(
+          payload.memberIds
+            .filter(isValidObjectId)
+            .map(id => normalizeId(id))
+        )
+      ).filter(id => memberSet.has(id));
+
+      if (normalizedAssignments.length > 0) {
+        folder.memberAccess = normalizedAssignments.map(id => ({
+          userId: id,
+          addedBy: requesterId
+        }));
+        await folder.save();
+      }
+    }
+
     return {
       success: true,
       statusCode: HTTP_STATUS.CREATED,
@@ -231,7 +353,12 @@ class FolderService {
   }
 
   async updateFolder(groupId, folderId, requesterId, payload = {}) {
-    await fetchGroupOrThrow(groupId, requesterId);
+    const group = await fetchGroupOrThrow(groupId, requesterId);
+    const requesterRole = getRequesterRole(group, requesterId);
+
+    if (!canManageFolders(requesterRole)) {
+      throw buildError(ERROR_MESSAGES.FOLDER_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
+    }
 
     if (!folderId || !isValidObjectId(folderId)) {
       throw buildError(ERROR_MESSAGES.INVALID_ID);
@@ -298,6 +425,11 @@ class FolderService {
 
   async deleteFolder(groupId, folderId, requesterId) {
     const group = await fetchGroupOrThrow(groupId, requesterId);
+    const requesterRole = getRequesterRole(group, requesterId);
+
+    if (!canManageFolders(requesterRole)) {
+      throw buildError(ERROR_MESSAGES.FOLDER_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
+    }
     const { folder, defaultFolder } = await resolveFolderContext({
       groupId,
       groupDoc: group,
@@ -329,6 +461,71 @@ class FolderService {
       statusCode: HTTP_STATUS.OK,
       message: SUCCESS_MESSAGES.FOLDER_DELETED,
       data: { id: folderId }
+    };
+  }
+
+  async setFolderMembers(groupId, folderId, requesterId, memberIds = []) {
+    const group = await fetchGroupOrThrow(groupId, requesterId);
+    const requesterRole = getRequesterRole(group, requesterId);
+
+    if (!canAssignFolderMembers(requesterRole)) {
+      throw buildError(ERROR_MESSAGES.FOLDER_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
+    }
+
+    if (!folderId || !isValidObjectId(folderId)) {
+      throw buildError(ERROR_MESSAGES.INVALID_ID);
+    }
+
+    const folder = await Folder.findOne({ _id: folderId, groupId });
+    if (!folder) {
+      throw buildError(ERROR_MESSAGES.FOLDER_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+    }
+
+    if (folder.isDefault) {
+      throw buildError('Cannot manage access for the default folder', HTTP_STATUS.FORBIDDEN);
+    }
+
+    if (!Array.isArray(memberIds)) {
+      throw buildError('memberIds must be an array', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const memberSet = new Set(
+      group.members.map(member => normalizeId(member.userId)).filter(Boolean)
+    );
+
+    const normalizedAssignments = Array.from(
+      new Set(
+        memberIds
+          .filter(isValidObjectId)
+          .map(id => normalizeId(id))
+      )
+    ).filter(id => memberSet.has(id));
+
+    if (!Array.isArray(folder.memberAccess)) {
+      folder.memberAccess = [];
+    }
+
+    folder.memberAccess = normalizedAssignments.map(id => {
+      const existing = folder.memberAccess.find(access => normalizeId(access.userId) === id);
+      return existing
+        ? existing
+        : {
+            userId: id,
+            addedBy: requesterId,
+            addedAt: new Date()
+          };
+    });
+
+    await folder.save();
+
+    const plainFolder = folder.toObject();
+    plainFolder.memberAccess = serializeMemberAccess(plainFolder.memberAccess);
+
+    return {
+      success: true,
+      statusCode: HTTP_STATUS.OK,
+      message: 'Folder members updated',
+      data: plainFolder
     };
   }
 }
