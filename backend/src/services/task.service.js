@@ -316,6 +316,7 @@ class TaskService {
 
     let groupMemberIds = null;
     let targetGroup = null;
+    let requesterRole = null;
 
     if (taskData.groupId) {
       const groupId = normalizeId(taskData.groupId);
@@ -325,8 +326,9 @@ class TaskService {
 
       const { group, role } = await ensureGroupAccess(groupId, creatorId);
       targetGroup = group;
+      requesterRole = role;
 
-      if (!canCreateTasks(role)) {
+      if (!canCreateTasks(requesterRole)) {
         raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
       }
 
@@ -340,7 +342,7 @@ class TaskService {
         groupId,
         folderId: taskData.folderId,
         requesterId: creatorId,
-        role,
+        role: requesterRole,
         requireWrite: true
       });
 
@@ -355,7 +357,7 @@ class TaskService {
     }
 
     // Check if user can assign to others (only PM and Product Owner)
-    const canAssignToOthers = targetGroup ? canAssignFolderMembers(role) : false;
+    const canAssignToOthers = targetGroup ? canAssignFolderMembers(requesterRole) : false;
     
     // If user cannot assign to others, they can only assign to themselves
     if (!canAssignToOthers && assignedIds.length > 0) {

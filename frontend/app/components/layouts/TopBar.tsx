@@ -15,19 +15,20 @@ interface TopBarProps {
 
 export default function TopBar({ user, onLogout, theme, onThemeChange, onProfileClick }: TopBarProps) {
   return (
-    // LOẠI BỎ BORDER Ở TOPBAR
-    <div className="h-16 flex items-center justify-end px-6 bg-white dark:bg-gray-800">
-      <div className="flex items-center gap-4">
-        {/* Notifications */}
-        <NotificationDropdown />
-
-        <UserMenu 
-          currentUser={user} 
-          onLogout={onLogout}
-          theme={theme}
-          onThemeChange={onThemeChange}
-          onProfileClick={onProfileClick}
-        />
+    <div className="w-full bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+      <div className="px-4 sm:px-6 py-3 md:py-4">
+        <div className="flex justify-end">
+          <div className="w-full max-w-full md:max-w-[10vw] lg:max-w-[220px] flex items-center justify-end gap-2 sm:gap-3">
+            <NotificationDropdown />
+            <UserMenu 
+              currentUser={user} 
+              onLogout={onLogout}
+              theme={theme}
+              onThemeChange={onThemeChange}
+              onProfileClick={onProfileClick}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

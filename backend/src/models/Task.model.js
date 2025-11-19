@@ -144,7 +144,7 @@ const taskSchema = new mongoose.Schema(
     // NEW: Start time for tasks
     startTime: {
       type: Date,
-      default: null
+      default: Date.now
     },
     // NEW: Custom status support
     customStatus: {
