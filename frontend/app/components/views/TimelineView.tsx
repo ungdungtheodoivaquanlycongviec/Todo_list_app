@@ -65,7 +65,17 @@ export default function TimelineView() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const dragAnimationFrame = useRef<number | null>(null);
   const resizeAnimationFrame = useRef<number | null>(null);
-  const [resizedTaskPosition, setResizedTaskPosition] = useState<{ startTime?: string; dueDate?: string } | null>(null);
+const [resizedTaskPosition, setResizedTaskPosition] = useState<{ startTime?: string; dueDate?: string } | null>(null);
+
+const getTaskColor = useCallback((taskId: string) => {
+  let hash = 0;
+  for (let i = 0; i < taskId.length; i++) {
+    hash = (hash << 5) - hash + taskId.charCodeAt(i);
+    hash |= 0;
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 65%, 55%)`;
+}, []);
 
   const daysPerColumn = useMemo(() => {
     switch (zoomLevel) {
@@ -1001,6 +1011,20 @@ export default function TimelineView() {
 
               if (groupTimelineTasks.length === 0) return null;
 
+              const groupRowOffset = Math.min(...groupTimelineTasks.map(t => t.row));
+              const tasksForRender = groupTimelineTasks.map(task => ({
+                ...task,
+                rowWithinGroup: task.row - groupRowOffset
+              }));
+              const groupRowCount = Math.max(
+                1,
+                Math.max(...tasksForRender.map(t => t.rowWithinGroup)) + 1
+              );
+              const rowHeight = 40;
+              const rowGap = 10;
+              const groupPadding = groupBy !== 'none' ? 40 : 10;
+              const containerHeight = Math.max(60, groupRowCount * (rowHeight + rowGap) + groupPadding);
+
               return (
                 <div key={groupName} className="border-b border-gray-100">
                   {/* Group Header */}
@@ -1021,10 +1045,9 @@ export default function TimelineView() {
                   )}
 
                   {/* Task Bars */}
-                  <div className="relative" style={{ minHeight: `${Math.max(60, (groupTimelineTasks.length > 0 ? Math.max(...groupTimelineTasks.map(t => t.row)) + 1 : 1) * 50)}px` }}>
-                    {groupTimelineTasks.map((task) => {
-                      const rowHeight = 40;
-                      const top = task.row * (rowHeight + 10) + (groupBy !== 'none' ? 40 : 10);
+                  <div className="relative" style={{ minHeight: `${containerHeight}px` }}>
+                    {tasksForRender.map((task) => {
+                      const top = task.rowWithinGroup * (rowHeight + rowGap) + groupPadding;
 
                       return (
                         <div
@@ -1058,17 +1081,8 @@ export default function TimelineView() {
                               draggedTask === task._id ? 'opacity-75 ring-2 ring-blue-400' : ''
                             } ${resizingTask === task._id ? 'ring-2 ring-yellow-400' : ''}`}
                             style={{
-                              backgroundColor: task.status === 'completed' 
-                                ? '#10b981' 
-                                : task.status === 'in-progress'
-                                ? '#3b82f6'
-                                : task.priority === 'urgent'
-                                ? '#ef4444'
-                                : task.priority === 'high'
-                                ? '#f97316'
-                                : task.priority === 'medium'
-                                ? '#eab308'
-                                : '#6b7280'
+                              backgroundColor: getTaskColor(task._id),
+                              color: '#ffffff'
                             }}
                           >
                             <div className="flex items-center gap-2 flex-1 min-w-0">
