@@ -193,7 +193,7 @@ export const ROLE_SECTIONS = [
   }
 ];
 
-export const INVITABLE_ROLES = ROLE_SECTIONS.flatMap(section => section.roles);
+export const INVITABLE_ROLES = ROLE_SECTIONS.flatMap(section => section.roles as Array<{ value: GroupRoleKey; label: string }>);
 export const DEFAULT_INVITE_ROLE = GROUP_ROLE_KEYS.PM;
 
 export const getRoleLabel = (role?: string | null) => {

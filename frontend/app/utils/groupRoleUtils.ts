@@ -34,6 +34,9 @@ export const requiresFolderAssignment = (role?: GroupRoleKey | null) =>
 export const canManageRoles = (role?: GroupRoleKey | null) =>
   role === GROUP_ROLE_KEYS.PRODUCT_OWNER;
 
+export const canAddMembers = (role?: GroupRoleKey | null) =>
+  role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM;
+
 export const canManageFolders = (role?: GroupRoleKey | null) =>
   role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM;
 

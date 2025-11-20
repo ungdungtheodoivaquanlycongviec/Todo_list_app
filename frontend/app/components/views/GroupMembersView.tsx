@@ -23,6 +23,7 @@ import {
   getMemberId,
   getMemberRole,
   canManageRoles as canManageRolesFor,
+  canAddMembers,
   canAssignFolderMembers,
   requiresFolderAssignment as requiresFolderAssignmentHelper
 } from '../../utils/groupRoleUtils';
@@ -61,6 +62,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
     [group, user?._id]
   );
   const canEditRoles = canManageRolesFor(currentUserRole);
+  const canAddMembersCheck = canAddMembers(currentUserRole);
   const showFolderAssignments = Boolean(group?._id && currentGroup?._id && group?._id === currentGroup?._id);
   const folderAssignments = useMemo(() => {
     if (!showFolderAssignments || !Array.isArray(folders)) {
@@ -617,7 +619,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
                 <Trash2 className="w-5 h-5" />
               </button>
             )}
-            {canEditRoles && (
+            {canAddMembersCheck && (
               <button
                 onClick={() => setShowInviteModal(true)}
                 className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-xl transition-all duration-200 flex items-center shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 font-medium"
@@ -835,7 +837,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
         </div>
 
         {/* Add People Link */}
-        {members.length > 0 && canEditRoles && (
+        {members.length > 0 && canAddMembersCheck && (
           <div className="mt-4 text-center">
             <button
               onClick={() => setShowInviteModal(true)}

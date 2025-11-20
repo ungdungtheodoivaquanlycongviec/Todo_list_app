@@ -20,7 +20,7 @@ import { useFolder } from '../../contexts/FolderContext';
 import { folderService } from '../../services/folder.service';
 import { Folder } from '../../services/types/folder.types';
 import { DEFAULT_INVITE_ROLE, ROLE_SECTIONS, GROUP_ROLE_KEYS } from '../../constants/groupRoles';
-import { getMemberRole, canManageFolders, canAssignFolderMembers } from '../../utils/groupRoleUtils';
+import { getMemberRole, canManageFolders, canAssignFolderMembers, canAddMembers } from '../../utils/groupRoleUtils';
 import FolderContextMenu from '../folders/FolderContextMenu';
 import { FolderAccessModal } from '../folders/FolderAccessModal';
 import { useSocket } from '../../hooks/useSocket';
@@ -1135,7 +1135,10 @@ export default function Sidebar() {
                   </button>
                 </div>
               ) : (
-                myGroups.map(group => renderGroupCard(group, { canInvite: true }))
+                myGroups.map(group => {
+                  const groupUserRole = user ? getMemberRole(group, user._id) : null;
+                  return renderGroupCard(group, { canInvite: canAddMembers(groupUserRole) });
+                })
               )}
             </div>
           )}

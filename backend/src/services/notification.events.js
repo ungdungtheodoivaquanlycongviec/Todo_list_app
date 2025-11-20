@@ -232,6 +232,33 @@ const EVENT_REGISTRY = {
       categories: ['task'],
       channels: ['in_app']
     })
+  },
+  [NOTIFICATION_EVENTS.CHAT_MESSAGE_OFFLINE]: {
+    transform: payload => ({
+      recipient: payload.recipientId,
+      sender: payload.senderId ?? null,
+      type: 'chat_message',
+      eventKey: NOTIFICATION_EVENTS.CHAT_MESSAGE_OFFLINE,
+      title:
+        payload.contextType === 'direct'
+          ? 'New direct message'
+          : `New message in ${payload.groupName || 'group'}`,
+      message: `${payload.senderName || 'A teammate'}: ${
+        payload.preview || 'New message just arrived'
+      }`,
+      data: {
+        contextType: payload.contextType,
+        groupId: payload.groupId || null,
+        conversationId: payload.conversationId || null,
+        messageId: payload.messageId || null
+      },
+      metadata: {
+        channel: payload.contextType,
+        groupName: payload.groupName || null
+      },
+      categories: ['chat'],
+      channels: ['in_app']
+    })
   }
 };
 
@@ -435,6 +462,30 @@ const notifyTaskDueSoon = ({ recipientId, taskId, taskTitle, groupId, groupName,
   });
 };
 
+const notifyChatMessage = ({
+  recipientId,
+  senderId,
+  senderName,
+  preview,
+  contextType,
+  groupId,
+  groupName,
+  conversationId,
+  messageId
+}) => {
+  return publishNotification(NOTIFICATION_EVENTS.CHAT_MESSAGE_OFFLINE, {
+    recipientId,
+    senderId,
+    senderName,
+    preview,
+    contextType,
+    groupId,
+    groupName,
+    conversationId,
+    messageId
+  });
+};
+
 module.exports = {
   EVENT_REGISTRY,
   publishNotification,
@@ -448,5 +499,6 @@ module.exports = {
   notifyTaskUnassigned,
   notifyTaskCompleted,
   notifyCommentAdded,
-  notifyTaskDueSoon
+  notifyTaskDueSoon,
+  notifyChatMessage
 };

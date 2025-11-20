@@ -23,5 +23,6 @@ module.exports = {
   createTaskAssignedNotification: producer.createTaskAssignedNotification,
   createTaskUnassignmentNotification: producer.createTaskUnassignmentNotification,
   createTaskCompletedNotification: producer.createTaskCompletedNotification,
-  createCommentAddedNotification: producer.createCommentAddedNotification
+  createCommentAddedNotification: producer.createCommentAddedNotification,
+  createChatMessageNotification: producer.createChatMessageNotification
 };

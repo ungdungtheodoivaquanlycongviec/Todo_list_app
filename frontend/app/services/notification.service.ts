@@ -5,23 +5,32 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8
 export interface Notification {
   _id: string;
   recipient: string;
-  sender: {
+  sender?: {
     _id: string;
     name: string;
     email: string;
     avatar?: string;
-  };
-  type: 'group_invitation' | 'task_assignment' | 'group_update' | 'group_name_change' | 'new_task';
+  } | null;
+  type:
+    | 'group_invitation'
+    | 'task_assignment'
+    | 'group_update'
+    | 'group_name_change'
+    | 'new_task'
+    | 'chat_message';
   title: string;
   message: string;
   data: {
     groupId?: string;
     groupName?: string;
     action?: string;
+    contextType?: 'group' | 'direct';
+    conversationId?: string | null;
+    messageId?: string | null;
   };
   isRead: boolean;
-  status: 'pending' | 'accepted' | 'declined' | 'expired';
-  expiresAt: string;
+  status?: 'pending' | 'accepted' | 'declined' | 'expired';
+  expiresAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

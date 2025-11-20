@@ -8,6 +8,7 @@ const {
   deleteMessage,
   uploadAttachment
 } = require('../controllers/chat.controller');
+const directChatController = require('../controllers/directChat.controller');
 const { authenticate } = require('../middlewares/auth');
 const { uploadSingle, handleMulterError } = require('../middlewares/upload');
 
@@ -31,6 +32,30 @@ router.put('/messages/:messageId', editMessage);
 
 // Delete message
 router.delete('/messages/:messageId', deleteMessage);
+
+// Direct conversation routes
+router.get('/direct/conversations', directChatController.listConversations);
+router.post('/direct/conversations', directChatController.startConversation);
+router.get(
+  '/direct/conversations/:conversationId/messages',
+  directChatController.getConversationMessages
+);
+router.post(
+  '/direct/conversations/:conversationId/messages',
+  directChatController.sendDirectMessage
+);
+router.post(
+  '/direct/conversations/:conversationId/upload',
+  uploadSingle,
+  handleMulterError,
+  directChatController.uploadDirectAttachment
+);
+router.post(
+  '/direct/messages/:messageId/reactions',
+  directChatController.toggleDirectReaction
+);
+router.put('/direct/messages/:messageId', directChatController.editDirectMessage);
+router.delete('/direct/messages/:messageId', directChatController.deleteDirectMessage);
 
 module.exports = router;
 

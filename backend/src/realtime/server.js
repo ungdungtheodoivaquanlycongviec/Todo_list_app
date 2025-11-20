@@ -9,6 +9,7 @@ const {
 const { createPresenceService } = require('./presence.service');
 
 const USER_ROOM_PREFIX = 'user:';
+const DIRECT_ROOM_PREFIX = 'direct:';
 const DEFAULT_DEV_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000'];
 
 const buildOrigins = () => {
@@ -284,12 +285,6 @@ const setupRealtimeServer = async (httpServer) => {
       return;
     }
 
-    const { message, groupId } = payload;
-    if (!groupId) {
-      return;
-    }
-
-    // Normalize groupId to ensure consistent room name
     const normalizeId = (value) => {
       if (!value) return null;
       if (typeof value === 'string') return value;
@@ -298,14 +293,84 @@ const setupRealtimeServer = async (httpServer) => {
       if (value.toString) return value.toString();
       return null;
     };
-    
+
+    if (payload.targetType === 'direct') {
+      const normalizedConversationId = normalizeId(payload.conversationId);
+      if (!normalizedConversationId) {
+        return;
+      }
+
+      const roomName = `${DIRECT_ROOM_PREFIX}${normalizedConversationId}`;
+      const messageData = payload.message?.toObject
+        ? payload.message.toObject()
+        : (payload.message?.toJSON ? payload.message.toJSON() : payload.message);
+
+      if (eventKey === CHAT_EVENTS.messageCreated) {
+        appNamespace.in(roomName).emit('direct:message', {
+          type: 'new',
+          conversationId: normalizedConversationId,
+          message: messageData
+        });
+      } else if (eventKey === CHAT_EVENTS.messageUpdated) {
+        appNamespace.in(roomName).emit('direct:message', {
+          type: 'edited',
+          conversationId: normalizedConversationId,
+          message: messageData
+        });
+      } else if (eventKey === CHAT_EVENTS.messageDeleted) {
+        appNamespace.in(roomName).emit('direct:message', {
+          type: 'deleted',
+          conversationId: normalizedConversationId,
+          message: messageData
+        });
+      } else if (eventKey === CHAT_EVENTS.reactionToggled) {
+        appNamespace.in(roomName).emit('direct:reaction', {
+          type: payload.added ? 'added' : 'removed',
+          conversationId: normalizedConversationId,
+          messageId: messageData?._id || payload.message?._id,
+          emoji: payload.emoji,
+          userId: payload.userId,
+          message: messageData
+        });
+      }
+
+      const participantSummaries = Array.isArray(payload.participantSummaries)
+        ? payload.participantSummaries
+        : (Array.isArray(payload.participants)
+            ? payload.participants.map(participantId => ({
+                userId: participantId,
+                summary: null
+              }))
+            : []);
+
+      participantSummaries
+        .map(entry => ({
+          userId: normalizeId(entry.userId),
+          summary: entry.summary || null
+        }))
+        .filter(entry => Boolean(entry.userId))
+        .forEach(entry => {
+          const userRoomName = `${USER_ROOM_PREFIX}${entry.userId}`;
+          appNamespace.to(userRoomName).emit('direct:conversation', {
+            eventKey,
+            conversationId: normalizedConversationId,
+            conversation: entry.summary || null
+          });
+        });
+
+      return;
+    }
+
+    const { message, groupId } = payload;
+    if (!groupId) {
+      return;
+    }
+
     const normalizedGroupId = normalizeId(groupId);
     const roomName = `${GROUP_ROOM_PREFIX}${normalizedGroupId}`;
 
-    // Convert message to plain object to ensure proper serialization
     const messageData = message?.toObject ? message.toObject() : (message?.toJSON ? message.toJSON() : message);
 
-    // Emit to group room (use .in() to include all sockets in the room)
     if (eventKey === CHAT_EVENTS.messageCreated) {
       appNamespace.in(roomName).emit('chat:message', {
         type: 'new',

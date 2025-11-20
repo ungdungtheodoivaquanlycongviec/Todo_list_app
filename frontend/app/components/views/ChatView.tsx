@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { chatService, ChatMessage } from '../../services/chat.service';
+import { chatService, ChatMessage, DirectConversationSummary } from '../../services/chat.service';
 import { useSocket } from '../../hooks/useSocket';
 import {
   Send,
@@ -13,20 +13,32 @@ import {
   Edit2,
   Trash2,
   Reply,
-  MoreVertical
+  MoreVertical,
+  MessageSquare,
+  UserPlus,
+  Search
 } from 'lucide-react';
 
 export default function ChatView() {
   const { user, currentGroup } = useAuth();
   const { socket, isConnected } = useSocket();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [messagesLoading, setMessagesLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [uploading, setUploading] = useState(false);
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+  const [activeContext, setActiveContext] = useState<'group' | 'direct'>('group');
+  const [directConversations, setDirectConversations] = useState<DirectConversationSummary[]>([]);
+  const [directConversationsLoading, setDirectConversationsLoading] = useState(false);
+  const [directSearch, setDirectSearch] = useState('');
+  const [startingDirectChat, setStartingDirectChat] = useState(false);
+  const [activeDirectConversation, setActiveDirectConversation] = useState<DirectConversationSummary | null>(null);
+  const [hasGroupUnread, setHasGroupUnread] = useState(false);
+  const [pendingDirectIndicators, setPendingDirectIndicators] = useState<Record<string, boolean>>({});
+  const [hasDirectUnread, setHasDirectUnread] = useState<Set<string>>(new Set());
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -38,24 +50,183 @@ export default function ChatView() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
-  // Load messages
-  const loadMessages = useCallback(async () => {
-    if (!currentGroup?._id) return;
+  const loadGroupMessages = useCallback(async () => {
+    if (!currentGroup?._id) {
+      setMessages([]);
+      setMessagesLoading(false);
+      return;
+    }
 
     try {
-      setLoading(true);
+      setMessagesLoading(true);
       const result = await chatService.getMessages(currentGroup._id, { limit: 50 });
       setMessages(result.messages);
     } catch (error) {
       console.error('Error loading messages:', error);
       alert('Failed to load messages: ' + (error as Error).message);
     } finally {
-      setLoading(false);
+      setMessagesLoading(false);
     }
-  }, [currentGroup]);
+  }, [currentGroup?._id]);
+
+  const loadDirectMessages = useCallback(async (conversationId: string) => {
+    if (!conversationId) {
+      setMessages([]);
+      setMessagesLoading(false);
+      return;
+    }
+
+    try {
+      setMessagesLoading(true);
+      const result = await chatService.getDirectMessages(conversationId, { limit: 50 });
+      setMessages(result.messages);
+      if (result.conversation) {
+        setDirectConversations(prev => {
+          const next = [...prev];
+          const idx = next.findIndex(conv => conv._id === result.conversation!._id);
+          if (idx >= 0) {
+            next[idx] = result.conversation!;
+            return next;
+          }
+          return [result.conversation!, ...next];
+        });
+        setActiveDirectConversation(prev =>
+          prev && prev._id === result.conversation!._id ? result.conversation! : prev
+        );
+        setPendingDirectIndicators(prev => {
+          if (!prev[result.conversation!._id]) return prev;
+          const next = { ...prev };
+          delete next[result.conversation!._id];
+          return next;
+        });
+      }
+    } catch (error) {
+      console.error('Error loading direct messages:', error);
+      alert('Failed to load messages: ' + (error as Error).message);
+    } finally {
+      setMessagesLoading(false);
+    }
+  }, []);
+
+  const loadDirectConversations = useCallback(async () => {
+    try {
+      setDirectConversationsLoading(true);
+      const conversations = await chatService.getDirectConversations();
+      setDirectConversations(conversations);
+    } catch (error) {
+      console.error('Error loading direct conversations:', error);
+    } finally {
+      setDirectConversationsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDirectConversations();
+  }, [loadDirectConversations]);
+
+  const upsertDirectConversation = useCallback(
+    (summary: DirectConversationSummary | null | undefined) => {
+      if (!summary) return;
+      setDirectConversations(prev => {
+        const index = prev.findIndex(conv => conv._id === summary._id);
+        if (index >= 0) {
+          const updated = [...prev];
+          updated[index] = summary;
+          return updated;
+        }
+        return [summary, ...prev];
+      });
+
+      if (activeDirectConversation?._id === summary._id) {
+        setActiveDirectConversation(summary);
+      }
+
+      if (summary.unreadCount === 0) {
+        setPendingDirectIndicators(prev => {
+          if (!prev[summary._id]) return prev;
+          const next = { ...prev };
+          delete next[summary._id];
+          return next;
+        });
+      }
+    },
+    [activeDirectConversation?._id]
+  );
+
+  const handleDirectConversationEvent = useCallback(
+    (data: { conversationId: string; conversation?: DirectConversationSummary | null }) => {
+      if (data.conversation) {
+        upsertDirectConversation({
+          ...data.conversation,
+          _id: data.conversation._id || data.conversationId
+        });
+      } else {
+        loadDirectConversations();
+      }
+    },
+    [upsertDirectConversation, loadDirectConversations]
+  );
+
+  useEffect(() => {
+    if (activeContext === 'group') {
+      if (!currentGroup?._id && directConversations.length > 0) {
+        setActiveContext('direct');
+        setActiveDirectConversation(prev => prev || directConversations[0]);
+      }
+    } else if (activeContext === 'direct') {
+      if (!activeDirectConversation && directConversations.length > 0) {
+        setActiveDirectConversation(directConversations[0]);
+      }
+    }
+  }, [activeContext, currentGroup?._id, directConversations, activeDirectConversation]);
+
+  useEffect(() => {
+    setTypingUsers(new Set());
+    setReplyingTo(null);
+    setEditingMessage(null);
+
+    if (activeContext === 'group') {
+      if (currentGroup?._id) {
+        loadGroupMessages();
+      } else {
+        setMessages([]);
+        setMessagesLoading(false);
+      }
+    } else if (activeContext === 'direct') {
+      if (activeDirectConversation?._id) {
+        loadDirectMessages(activeDirectConversation._id);
+      } else {
+        setMessages([]);
+        setMessagesLoading(false);
+      }
+    }
+  }, [
+    activeContext,
+    currentGroup?._id,
+    activeDirectConversation?._id,
+    loadGroupMessages,
+    loadDirectMessages
+  ]);
+
+  useEffect(() => {
+    if (activeContext === 'group') {
+      setHasGroupUnread(false);
+    } else if (activeContext === 'direct' && activeDirectConversation?._id) {
+      setPendingDirectIndicators(prev => {
+        if (!prev[activeDirectConversation._id]) return prev;
+        const next = { ...prev };
+        delete next[activeDirectConversation._id];
+        return next;
+      });
+    }
+  }, [activeContext, activeDirectConversation?._id]);
 
   // Join group room and rejoin on reconnect
   useEffect(() => {
+    if (activeContext !== 'group') {
+      return;
+    }
+
     if (!socket || !currentGroup?._id) {
       console.log('[ChatView] Cannot join room:', { socket: !!socket, groupId: currentGroup?._id });
       return;
@@ -77,14 +248,13 @@ export default function ChatView() {
         console.log('[ChatView] Join room response:', response);
         if (response.success) {
           console.log('[ChatView] Successfully joined group chat:', currentGroup._id);
-          loadMessages();
+          loadGroupMessages();
         } else {
           console.error('[ChatView] Failed to join chat:', response.error);
         }
       });
     };
 
-    // Join immediately if connected
     if (isConnected && socket.connected) {
       console.log('[ChatView] Socket is connected, joining room immediately');
       joinRoom();
@@ -92,10 +262,8 @@ export default function ChatView() {
       console.log('[ChatView] Socket not connected yet, waiting for connect event');
     }
 
-    // Rejoin on reconnect
     const handleConnect = () => {
       console.log('[ChatView] Socket connected/reconnected, socket ID:', socket.id);
-      // Wait a bit to ensure socket is fully ready
       setTimeout(() => {
         joinRoom();
       }, 100);
@@ -110,7 +278,64 @@ export default function ChatView() {
         socket.emit('chat:leave', currentGroup._id);
       }
     };
-  }, [socket, currentGroup, isConnected, loadMessages]);
+  }, [socket, currentGroup?._id, isConnected, loadGroupMessages, activeContext]);
+
+  useEffect(() => {
+    if (activeContext !== 'direct') {
+      return;
+    }
+
+    if (!socket || !activeDirectConversation?._id) {
+      console.log('[ChatView] Cannot join direct conversation:', {
+        socket: !!socket,
+        conversationId: activeDirectConversation?._id
+      });
+      return;
+    }
+
+    const conversationId = activeDirectConversation._id;
+
+    const joinDirectRoom = () => {
+      if (!isConnected || !socket?.connected) {
+        console.log('[ChatView] Socket not ready for direct conversation');
+        return;
+      }
+
+      socket.emit('direct:join', conversationId, (response: any) => {
+        if (response?.success) {
+          console.log('[ChatView] Joined direct conversation', conversationId);
+          loadDirectMessages(conversationId);
+        } else {
+          console.error('[ChatView] Failed to join direct conversation:', response?.error);
+        }
+      });
+    };
+
+    if (isConnected && socket.connected) {
+      joinDirectRoom();
+    }
+
+    const handleConnect = () => {
+      setTimeout(() => joinDirectRoom(), 100);
+    };
+
+    socket.on('connect', handleConnect);
+
+    return () => {
+      socket.off('connect', handleConnect);
+      if (socket && conversationId) {
+        socket.emit('direct:leave', conversationId, () => {
+          console.log('[ChatView] Left direct conversation', conversationId);
+        });
+      }
+    };
+  }, [
+    socket,
+    activeDirectConversation?._id,
+    isConnected,
+    loadDirectMessages,
+    activeContext
+  ]);
 
   // Socket event listeners
   useEffect(() => {
@@ -122,27 +347,20 @@ export default function ChatView() {
     console.log('[ChatView] Setting up socket event listeners');
 
     const handleNewMessage = (data: { type: string; message: ChatMessage }) => {
-      console.log('[ChatView] Received chat:message event:', data);
+      if (activeContext !== 'group' || !currentGroup?._id) {
+        return;
+      }
+
       if (data.type === 'new') {
-        console.log('[ChatView] Adding new message:', data.message);
         setMessages(prev => {
-          // Check if message already exists to avoid duplicates
           const exists = prev.some(msg => msg._id === data.message._id);
           if (exists) {
-            console.log('[ChatView] Message already exists, skipping');
             return prev;
           }
-          console.log('[ChatView] Adding message to state, current count:', prev.length);
           return [...prev, data.message];
         });
         scrollToBottom();
-      } else if (data.type === 'edited') {
-        console.log('[ChatView] Updating edited message:', data.message._id);
-        setMessages(prev =>
-          prev.map(msg => (msg._id === data.message._id ? data.message : msg))
-        );
-      } else if (data.type === 'deleted') {
-        console.log('[ChatView] Removing deleted message:', data.message._id);
+      } else {
         setMessages(prev =>
           prev.map(msg => (msg._id === data.message._id ? data.message : msg))
         );
@@ -156,13 +374,88 @@ export default function ChatView() {
       userId: string;
       message: ChatMessage;
     }) => {
-      console.log('[ChatView] Received chat:reaction event:', data);
+      if (activeContext !== 'group') {
+        return;
+      }
+
       setMessages(prev =>
         prev.map(msg => (msg._id === data.messageId ? data.message : msg))
       );
     };
 
     const handleTyping = (data: { userId: string; isTyping: boolean }) => {
+      if (activeContext !== 'group') {
+        return;
+      }
+      if (data.userId === user?._id) return;
+
+      setTypingUsers(prev => {
+        const newSet = new Set(prev);
+        if (data.isTyping) {
+          newSet.add(data.userId);
+        } else {
+          newSet.delete(data.userId);
+        }
+        return newSet;
+      });
+    };
+
+    const handleDirectMessage = (data: {
+      type: string;
+      conversationId: string;
+      message: ChatMessage;
+    }) => {
+      if (activeContext !== 'direct') {
+        return;
+      }
+      if (!activeDirectConversation?._id || data.conversationId !== activeDirectConversation._id) {
+        return;
+      }
+
+      if (data.type === 'new') {
+        setMessages(prev => {
+          const exists = prev.some(msg => msg._id === data.message._id);
+          if (exists) {
+            return prev;
+          }
+          return [...prev, data.message];
+        });
+        scrollToBottom();
+      } else {
+        setMessages(prev =>
+          prev.map(msg => (msg._id === data.message._id ? data.message : msg))
+        );
+      }
+    };
+
+    const handleDirectReaction = (data: {
+      conversationId: string;
+      messageId: string;
+      emoji: string;
+      userId: string;
+      message: ChatMessage;
+    }) => {
+      if (
+        activeContext !== 'direct' ||
+        !activeDirectConversation?._id ||
+        data.conversationId !== activeDirectConversation._id
+      ) {
+        return;
+      }
+
+      setMessages(prev =>
+        prev.map(msg => (msg._id === data.messageId ? data.message : msg))
+      );
+    };
+
+    const handleDirectTyping = (data: { conversationId: string; userId: string; isTyping: boolean }) => {
+      if (
+        activeContext !== 'direct' ||
+        !activeDirectConversation?._id ||
+        data.conversationId !== activeDirectConversation._id
+      ) {
+        return;
+      }
       if (data.userId === user?._id) return;
 
       setTypingUsers(prev => {
@@ -180,31 +473,105 @@ export default function ChatView() {
     socket.off('chat:message', handleNewMessage);
     socket.off('chat:reaction', handleReaction);
     socket.off('chat:typing', handleTyping);
-    
+    socket.off('direct:message', handleDirectMessage);
+    socket.off('direct:reaction', handleDirectReaction);
+    socket.off('direct:typing', handleDirectTyping);
+    socket.off('direct:conversation', handleDirectConversationEvent);
+
     // Add new listeners
     socket.on('chat:message', handleNewMessage);
     socket.on('chat:reaction', handleReaction);
     socket.on('chat:typing', handleTyping);
-
-    console.log('[ChatView] Socket event listeners registered for socket:', socket.id);
-    
-    // Test listener by logging all events
-    const testListener = (eventName: string, ...args: any[]) => {
-      console.log(`[ChatView] Socket event received: ${eventName}`, args);
-    };
-    
-    // Add a one-time test to verify socket is receiving events
-    socket.once('chat:message', (data) => {
-      console.log('[ChatView] TEST: First chat:message event received:', data);
-    });
+    socket.on('direct:message', handleDirectMessage);
+    socket.on('direct:reaction', handleDirectReaction);
+    socket.on('direct:typing', handleDirectTyping);
+    socket.on('direct:conversation', handleDirectConversationEvent);
 
     return () => {
-      console.log('[ChatView] Cleaning up socket event listeners');
       socket.off('chat:message', handleNewMessage);
       socket.off('chat:reaction', handleReaction);
       socket.off('chat:typing', handleTyping);
+      socket.off('direct:message', handleDirectMessage);
+      socket.off('direct:reaction', handleDirectReaction);
+      socket.off('direct:typing', handleDirectTyping);
+      socket.off('direct:conversation', handleDirectConversationEvent);
     };
-  }, [socket, user, scrollToBottom]);
+  }, [
+    socket,
+    user?._id,
+    scrollToBottom,
+    activeContext,
+    currentGroup?._id,
+    activeDirectConversation?._id,
+    handleDirectConversationEvent
+  ]);
+
+  useEffect(() => {
+    if (!socket) return;
+  
+    const handleNotification = (payload: any) => {
+      const notification = payload?.notification || payload;
+      const eventKey = notification?.eventKey || payload?.eventKey;
+      if (eventKey !== 'CHAT_MESSAGE_OFFLINE') {
+        return;
+      }
+      const data = notification?.data || {};
+      
+      if (data.contextType === 'group') {
+        if (currentGroup?._id && data.groupId === currentGroup._id && activeContext === 'group') {
+          return;
+        }
+        if (currentGroup?._id && data.groupId === currentGroup._id) {
+          setHasGroupUnread(true);
+        }
+      } else if (data.contextType === 'direct') {
+        if (!data.conversationId) return;
+        
+        // THÊM LOGIC MỚI: Hiển thị chấm xanh cho direct chat
+        if (
+          activeContext === 'direct' &&
+          activeDirectConversation?._id === data.conversationId
+        ) {
+          return;
+        }
+        
+        // Cập nhật cả pending indicators và direct unread
+        setPendingDirectIndicators(prev => ({ ...prev, [data.conversationId]: true }));
+        setHasDirectUnread(prev => new Set(prev).add(data.conversationId));
+      }
+    };
+  
+    socket.on('notifications:new', handleNotification);
+  
+    return () => {
+      socket.off('notifications:new', handleNotification);
+    };
+  }, [socket, activeContext, activeDirectConversation?._id, currentGroup?._id]);
+  
+  // Thêm hàm reset trạng thái đã đọc cho direct chat
+  const resetDirectUnread = useCallback((conversationId: string) => {
+    setHasDirectUnread(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(conversationId);
+      return newSet;
+    });
+  }, []);
+  
+  // Cập nhật khi chuyển tab hoặc chọn conversation
+  useEffect(() => {
+    if (activeContext === 'group') {
+      setHasGroupUnread(false);
+    } else if (activeContext === 'direct' && activeDirectConversation?._id) {
+      // RESET TRẠNG THÁI ĐÃ ĐỌC KHI CHỌN DIRECT CHAT
+      resetDirectUnread(activeDirectConversation._id);
+      setPendingDirectIndicators(prev => {
+        if (!prev[activeDirectConversation._id]) return prev;
+        const next = { ...prev };
+        delete next[activeDirectConversation._id];
+        return next;
+      });
+    }
+  }, [activeContext, activeDirectConversation?._id, resetDirectUnread]);
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -213,14 +580,16 @@ export default function ChatView() {
 
   // Send message
   const handleSend = async () => {
-    if (!currentGroup?._id || (!message.trim() && !replyingTo && !uploading)) return;
-
     const content = message.trim();
     if (!content && !replyingTo && !uploading) return;
 
     try {
-      if (socket) {
-        console.log('[ChatView] Sending message via socket:', { groupId: currentGroup._id, content });
+      if (!socket) {
+        throw new Error('Socket connection not available');
+      }
+
+      if (activeContext === 'group') {
+        if (!currentGroup?._id) return;
         socket.emit(
           'chat:send',
           {
@@ -230,7 +599,6 @@ export default function ChatView() {
             attachments: []
           },
           (response: any) => {
-            console.log('[ChatView] Send message response:', response);
             if (!response.success) {
               alert('Failed to send message: ' + response.error);
             } else {
@@ -240,9 +608,26 @@ export default function ChatView() {
             }
           }
         );
-      } else {
-        console.error('[ChatView] Socket not available');
-        alert('Socket connection not available');
+      } else if (activeContext === 'direct') {
+        if (!activeDirectConversation?._id) return;
+        socket.emit(
+          'direct:send',
+          {
+            conversationId: activeDirectConversation._id,
+            content,
+            replyTo: replyingTo?._id || null,
+            attachments: []
+          },
+          (response: any) => {
+            if (!response.success) {
+              alert('Failed to send message: ' + response.error);
+            } else {
+              setMessage('');
+              setReplyingTo(null);
+              stopTyping();
+            }
+          }
+        );
       }
     } catch (error) {
       console.error('[ChatView] Error sending message:', error);
@@ -252,12 +637,21 @@ export default function ChatView() {
 
   // Handle typing
   const handleTyping = () => {
-    if (!socket || !currentGroup?._id) return;
+    if (!socket) return;
 
-    socket.emit('chat:typing', {
-      groupId: currentGroup._id,
-      isTyping: true
-    });
+    if (activeContext === 'group') {
+      if (!currentGroup?._id) return;
+      socket.emit('chat:typing', {
+        groupId: currentGroup._id,
+        isTyping: true
+      });
+    } else if (activeContext === 'direct') {
+      if (!activeDirectConversation?._id) return;
+      socket.emit('direct:typing', {
+        conversationId: activeDirectConversation._id,
+        isTyping: true
+      });
+    }
 
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
@@ -269,12 +663,21 @@ export default function ChatView() {
   };
 
   const stopTyping = () => {
-    if (!socket || !currentGroup?._id) return;
+    if (!socket) return;
 
-    socket.emit('chat:typing', {
-      groupId: currentGroup._id,
-      isTyping: false
-    });
+    if (activeContext === 'group') {
+      if (!currentGroup?._id) return;
+      socket.emit('chat:typing', {
+        groupId: currentGroup._id,
+        isTyping: false
+      });
+    } else if (activeContext === 'direct') {
+      if (!activeDirectConversation?._id) return;
+      socket.emit('direct:typing', {
+        conversationId: activeDirectConversation._id,
+        isTyping: false
+      });
+    }
 
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
@@ -283,17 +686,37 @@ export default function ChatView() {
 
   // Upload file
   const handleFileUpload = async (file: File) => {
-    if (!currentGroup?._id) return;
+    if (!socket) return;
 
     try {
       setUploading(true);
-      const attachment = await chatService.uploadAttachment(currentGroup._id, file);
-
-      if (socket) {
+      if (activeContext === 'group') {
+        if (!currentGroup?._id) return;
+        const attachment = await chatService.uploadAttachment(currentGroup._id, file);
         socket.emit(
           'chat:send',
           {
             groupId: currentGroup._id,
+            content: '',
+            attachments: [attachment]
+          },
+          (response: any) => {
+            if (!response.success) {
+              alert('Failed to send file: ' + response.error);
+            }
+            setUploading(false);
+          }
+        );
+      } else if (activeContext === 'direct') {
+        if (!activeDirectConversation?._id) return;
+        const attachment = await chatService.uploadDirectAttachment(
+          activeDirectConversation._id,
+          file
+        );
+        socket.emit(
+          'direct:send',
+          {
+            conversationId: activeDirectConversation._id,
             content: '',
             attachments: [attachment]
           },
@@ -316,15 +739,27 @@ export default function ChatView() {
   const handleReaction = async (messageId: string, emoji: string) => {
     if (!socket) return;
 
-    socket.emit(
-      'chat:reaction',
-      { messageId, emoji },
-      (response: any) => {
-        if (!response.success) {
-          alert('Failed to add reaction: ' + response.error);
+    if (activeContext === 'group') {
+      socket.emit(
+        'chat:reaction',
+        { messageId, emoji },
+        (response: any) => {
+          if (!response.success) {
+            alert('Failed to add reaction: ' + response.error);
+          }
         }
-      }
-    );
+      );
+    } else if (activeContext === 'direct') {
+      socket.emit(
+        'direct:reaction',
+        { messageId, emoji },
+        (response: any) => {
+          if (!response.success) {
+            alert('Failed to add reaction: ' + response.error);
+          }
+        }
+      );
+    }
   };
 
   // Delete message
@@ -332,170 +767,398 @@ export default function ChatView() {
     if (!confirm('Are you sure you want to delete this message?')) return;
     if (!socket) return;
 
-    socket.emit('chat:delete', { messageId }, (response: any) => {
-      if (!response.success) {
-        alert('Failed to delete message: ' + response.error);
-      }
-    });
+    if (activeContext === 'group') {
+      socket.emit('chat:delete', { messageId }, (response: any) => {
+        if (!response.success) {
+          alert('Failed to delete message: ' + response.error);
+        }
+      });
+    } else if (activeContext === 'direct') {
+      socket.emit('direct:delete', { messageId }, (response: any) => {
+        if (!response.success) {
+          alert('Failed to delete message: ' + response.error);
+        }
+      });
+    }
   };
 
   // Common emojis
   const commonEmojis = ['👍', '❤️', '😄', '😂', '😮', '😢', '🙏', '🔥', '👏', '💯'];
 
-  if (!currentGroup) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <p className="text-gray-500">Please select a group to start chatting</p>
-      </div>
-    );
-  }
+  const formatPreviewTime = (value?: string) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
-  }
+  const handleStartDirectConversation = async () => {
+    if (!directSearch.trim()) return;
+    try {
+      setStartingDirectChat(true);
+      const conversation = await chatService.startDirectConversation({ email: directSearch.trim() });
+      upsertDirectConversation(conversation);
+      setActiveContext('direct');
+      setActiveDirectConversation(conversation);
+      setDirectSearch('');
+    } catch (error) {
+      console.error('Error starting direct conversation:', error);
+      alert('Failed to start conversation: ' + (error as Error).message);
+    } finally {
+      setStartingDirectChat(false);
+    }
+  };
+
+  const conversationReady =
+    activeContext === 'group' ? Boolean(currentGroup) : Boolean(activeDirectConversation);
+
+  const conversationTitle =
+    activeContext === 'group'
+      ? currentGroup?.name || 'Chưa chọn nhóm'
+      : activeDirectConversation?.targetUser?.name || 'Chưa chọn chat riêng';
+
+  const conversationSubtitle =
+    activeContext === 'group'
+      ? currentGroup
+        ? `${currentGroup.members?.length || 0} thành viên`
+        : ''
+      : activeDirectConversation?.targetUser?.email || '';
+
+  const typingLabel =
+    typingUsers.size > 0
+      ? `${Array.from(typingUsers).length} ${
+          Array.from(typingUsers).length === 1 ? 'person is' : 'people are'
+        } typing...`
+      : '';
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-white dark:bg-gray-900">
-      {/* Header */}
-      <div className="border-b border-gray-200 dark:border-gray-700 p-4">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-          {currentGroup.name}
-        </h2>
-        {typingUsers.size > 0 && (
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            {Array.from(typingUsers).length} {Array.from(typingUsers).length === 1 ? 'person is' : 'people are'} typing...
+    <div className="flex h-full min-h-0 bg-white dark:bg-gray-900">
+      <aside className="w-80 border-r border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/40 flex flex-col">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+          <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">
+            Group chat
           </p>
-        )}
-      </div>
-
-      {/* Messages */}
-      <div className="chat-scroll flex-1 overflow-y-auto max-h-[calc(100vh-200px)] p-4 space-y-4">
-        {messages.map((msg) => (
-          <MessageItem
-            key={msg._id}
-            message={msg}
-            currentUserId={user?._id || ''}
-            onReply={() => setReplyingTo(msg)}
-            onEdit={() => setEditingMessage(msg)}
-            onDelete={() => handleDelete(msg._id)}
-            onReaction={handleReaction}
-          />
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Reply preview */}
-      {replyingTo && (
-        <div className="border-t border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-800 flex items-center justify-between">
-          <div className="flex-1">
-            <p className="text-xs text-gray-500 dark:text-gray-400">Replying to {replyingTo.senderId.name}</p>
-            <p className="text-sm text-gray-700 dark:text-gray-300 truncate">{replyingTo.content}</p>
-          </div>
           <button
-            onClick={() => setReplyingTo(null)}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            onClick={() => {
+              setActiveContext('group');
+              setHasGroupUnread(false);
+            }}
+            className={`w-full flex items-center gap-3 rounded-xl border p-3 transition ${
+              activeContext === 'group'
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-200'
+                : 'border-transparent bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-800 dark:text-gray-200'
+            }`}
           >
-            <X className="w-4 h-4" />
+            <div className="relative">
+              <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-300">
+                <MessageSquare className="w-5 h-5" />
+              </div>
+              {hasGroupUnread && (
+                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white dark:border-gray-900" />
+              )}
+            </div>
+            <div className="flex-1 text-left">
+              <p className="text-sm font-medium">
+                {currentGroup ? currentGroup.name : 'Chưa có nhóm'}
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {currentGroup
+                  ? `${currentGroup.members?.length || 0} thành viên`
+                  : 'Thêm vào nhóm để chat chung'}
+              </p>
+            </div>
           </button>
         </div>
-      )}
 
-      {/* Input */}
-      <div className="border-t border-gray-200 dark:border-gray-700 p-4">
-        <div className="flex items-end gap-2">
-          <div className="flex-1 relative">
-            <textarea
-              value={message}
-              onChange={(e) => {
-                setMessage(e.target.value);
-                handleTyping();
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              placeholder="Type a message..."
-              rows={1}
-              className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-            />
-            {showEmojiPicker && (
-              <div className="absolute bottom-full mb-2 left-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-2 shadow-lg">
-                <div className="flex gap-2 flex-wrap w-64">
-                  {commonEmojis.map((emoji) => (
-                    <button
-                      key={emoji}
-                      onClick={() => {
-                        setMessage(prev => prev + emoji);
-                        setShowEmojiPicker(false);
-                      }}
-                      className="text-2xl hover:bg-gray-100 dark:hover:bg-gray-700 rounded p-1"
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+        <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              One-on-one chat
+            </p>
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              {directConversations.length}
+            </span>
           </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleFileUpload(file);
-              }}
-            />
-            <input
-              ref={imageInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleFileUpload(file);
-              }}
-            />
-
+          <div className="flex gap-2">
+            <div className="flex-1 relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                value={directSearch}
+                onChange={(e) => setDirectSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleStartDirectConversation();
+                  }
+                }}
+                placeholder="Enter email"
+                className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
             <button
-              onClick={() => fileInputRef.current?.click()}
-              className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              onClick={handleStartDirectConversation}
+              disabled={!directSearch.trim() || startingDirectChat}
+              className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
             >
-              <Paperclip className="w-5 h-5" />
-            </button>
-
-            <button
-              onClick={() => imageInputRef.current?.click()}
-              className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-            >
-              <ImageIcon className="w-5 h-5" />
-            </button>
-
-            <button
-              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-              className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-            >
-              <Smile className="w-5 h-5" />
-            </button>
-
-            <button
-              onClick={handleSend}
-              disabled={!message.trim() && !replyingTo && !uploading}
-              className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Send className="w-5 h-5" />
+              <UserPlus className="w-4 h-4" />
             </button>
           </div>
         </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {directConversationsLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : directConversations.length === 0 ? (
+            <div className="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+              No private chat yet.
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+              {directConversations.map(conversation => {
+  const isActive =
+    activeContext === 'direct' &&
+    activeDirectConversation?._id === conversation._id;
+  const hasUnread =
+    (conversation.unreadCount || 0) > 0 ||
+    Boolean(pendingDirectIndicators[conversation._id]) ||
+    hasDirectUnread.has(conversation._id); // THÊM ĐIỀU KIỆN NÀY
+  
+  return (
+    <button
+      key={conversation._id}
+      onClick={() => {
+        setActiveContext('direct');
+        setActiveDirectConversation(conversation);
+        // RESET KHI CLICK
+        resetDirectUnread(conversation._id);
+        setPendingDirectIndicators(prev => {
+          if (!prev[conversation._id]) return prev;
+          const next = { ...prev };
+          delete next[conversation._id];
+          return next;
+        });
+      }}
+      className={`w-full flex items-start gap-3 px-4 py-3 text-left transition ${
+        isActive
+          ? 'bg-blue-50 dark:bg-blue-900/20'
+          : 'hover:bg-gray-100 dark:hover:bg-gray-800/60'
+      }`}
+    >
+      <div className="relative w-10 h-10">
+        <div className="w-10 h-10 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-300 flex items-center justify-center font-semibold">
+          {conversation.targetUser?.avatar ? (
+            <img
+              src={conversation.targetUser.avatar}
+              alt={conversation.targetUser.name}
+              className="w-full h-full rounded-full object-cover"
+            />
+          ) : (
+            (conversation.targetUser?.name || '?').charAt(0).toUpperCase()
+          )}
+        </div>
+        {/* HIỂN THỊ CHẤM XANH KHI CÓ TIN NHẮN MỚI */}
+        {hasUnread && (
+          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white dark:border-gray-900" />
+        )}
       </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
+                          {conversation.targetUser?.name || 'Thành viên'}
+                        </p>
+                        <span className="text-xs text-gray-400">
+                          {formatPreviewTime(conversation.lastMessageAt)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                        {conversation.lastMessagePreview || 'Chưa có tin nhắn'}
+                      </p>
+                    </div>
+                    {conversation.unreadCount > 0 && (
+                      <span className="text-xs font-semibold text-white bg-blue-500 rounded-full px-2 py-0.5">
+                        {conversation.unreadCount}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </aside>
+
+      <section className="flex-1 flex flex-col min-h-0">
+        <div className="border-b border-gray-200 dark:border-gray-700 p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                {conversationTitle}
+              </h2>
+              {conversationSubtitle && (
+                <p className="text-sm text-gray-500 dark:text-gray-400">{conversationSubtitle}</p>
+              )}
+            </div>
+            {typingLabel && (
+              <p className="text-sm text-gray-500 dark:text-gray-400">{typingLabel}</p>
+            )}
+          </div>
+        </div>
+
+        {conversationReady ? (
+          <>
+            <div className="chat-scroll flex-1 overflow-y-auto p-4 space-y-4">
+              {messagesLoading ? (
+                <div className="flex items-center justify-center py-10">
+                  <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : messages.length === 0 ? (
+                <div className="text-center text-gray-400 dark:text-gray-500 mt-10">
+                  Chưa có tin nhắn nào. Hãy bắt đầu cuộc trò chuyện!
+                </div>
+              ) : (
+                messages.map(msg => (
+                  <MessageItem
+                    key={msg._id}
+                    message={msg}
+                    currentUserId={user?._id || ''}
+                    onReply={() => setReplyingTo(msg)}
+                    onEdit={() => setEditingMessage(msg)}
+                    onDelete={() => handleDelete(msg._id)}
+                    onReaction={handleReaction}
+                  />
+                ))
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {replyingTo && (
+              <div className="border-t border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-800 flex items-center justify-between">
+                <div className="flex-1">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Đang trả lời {replyingTo.senderId.name}
+                  </p>
+                  <p className="text-sm text-gray-700 dark:text-gray-300 truncate">
+                    {replyingTo.content}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setReplyingTo(null)}
+                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            <div className="border-t border-gray-200 dark:border-gray-700 p-4">
+              <div className="flex items-end gap-2">
+                <div className="flex-1 relative">
+                  <textarea
+                    value={message}
+                    onChange={(e) => {
+                      setMessage(e.target.value);
+                      handleTyping();
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSend();
+                      }
+                    }}
+                    placeholder={
+                      activeContext === 'group'
+                        ? 'Nhắn tin cho nhóm...'
+                        : 'Nhắn tin cho thành viên...'
+                    }
+                    rows={1}
+                    className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  />
+                  {showEmojiPicker && (
+                    <div className="absolute bottom-full mb-2 left-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-2 shadow-lg">
+                      <div className="flex gap-2 flex-wrap w-64">
+                        {commonEmojis.map((emoji) => (
+                          <button
+                            key={emoji}
+                            onClick={() => {
+                              setMessage(prev => prev + emoji);
+                              setShowEmojiPicker(false);
+                            }}
+                            className="text-2xl hover:bg-gray-100 dark:hover:bg-gray-700 rounded p-1"
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleFileUpload(file);
+                    }}
+                  />
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleFileUpload(file);
+                    }}
+                  />
+
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                  >
+                    <Paperclip className="w-5 h-5" />
+                  </button>
+
+                  <button
+                    onClick={() => imageInputRef.current?.click()}
+                    className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                  >
+                    <ImageIcon className="w-5 h-5" />
+                  </button>
+
+                  <button
+                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                    className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                  >
+                    <Smile className="w-5 h-5" />
+                  </button>
+
+                  <button
+                    onClick={handleSend}
+                    disabled={!message.trim() && !replyingTo && !uploading}
+                    className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Send className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-center text-gray-500 dark:text-gray-400 px-6">
+            <div>
+              <p className="text-lg font-semibold mb-2">Please choose the current group or search for members to start a private chat.</p>
+              <p className="text-sm">
+                Please choose the current group or search for members to start a private chat.
+              </p>
+            </div>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
@@ -719,4 +1382,3 @@ function MessageItem({
     </div>
   );
 }
-

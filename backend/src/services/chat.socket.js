@@ -1,6 +1,9 @@
 const chatService = require('./chat.service');
+const directChatService = require('./directChat.service');
 const Group = require('../models/Group.model');
 const GroupMessage = require('../models/GroupMessage.model');
+const DirectConversation = require('../models/DirectConversation.model');
+const DirectMessage = require('../models/DirectMessage.model');
 
 const normalizeId = (value) => {
   if (!value) return null;
@@ -12,6 +15,8 @@ const normalizeId = (value) => {
 };
 
 const GROUP_ROOM_PREFIX = 'group:';
+const DIRECT_ROOM_PREFIX = 'direct:';
+const USER_ROOM_PREFIX = 'user:';
 
 /**
  * Setup chat socket handlers
@@ -84,6 +89,197 @@ const setupChatHandlers = (namespace) => {
         console.error('[Chat] Error leaving group:', error);
         if (callback) callback({ success: false, error: error.message });
       }
+    });
+
+    // Join direct conversation room
+    socket.on('direct:join', async (conversationId, callback) => {
+      try {
+        const conversation = await DirectConversation.findById(conversationId);
+        if (!conversation) {
+          if (callback) callback({ success: false, error: 'Conversation not found' });
+          return;
+        }
+
+        const normalizedUserId = normalizeId(userId);
+        const isParticipant = conversation.participants.some(
+          participant => normalizeId(participant) === normalizedUserId
+        );
+
+        if (!isParticipant) {
+          if (callback) callback({ success: false, error: 'Not a participant of this conversation' });
+          return;
+        }
+
+        const normalizedConversationId = normalizeId(conversationId);
+        const roomName = `${DIRECT_ROOM_PREFIX}${normalizedConversationId}`;
+        await socket.join(roomName);
+
+        if (callback) callback({ success: true, conversationId, roomName });
+        console.log(`[Chat] User ${userId} joined direct conversation ${conversationId}`);
+      } catch (error) {
+        console.error('[Chat] Error joining direct conversation:', error);
+        if (callback) callback({ success: false, error: error.message });
+      }
+    });
+
+    socket.on('direct:leave', async (conversationId, callback) => {
+      try {
+        const normalizedConversationId = normalizeId(conversationId);
+        const roomName = `${DIRECT_ROOM_PREFIX}${normalizedConversationId}`;
+        await socket.leave(roomName);
+        if (callback) callback({ success: true });
+      } catch (error) {
+        console.error('[Chat] Error leaving direct conversation:', error);
+        if (callback) callback({ success: false, error: error.message });
+      }
+    });
+
+    socket.on('direct:send', async (data, callback) => {
+      try {
+        const { conversationId, content, replyTo, attachments } = data || {};
+        if (!conversationId) {
+          if (callback) callback({ success: false, error: 'Conversation ID is required' });
+          return;
+        }
+
+        const result = await directChatService.createMessage(
+          conversationId,
+          userId,
+          {
+            content,
+            replyTo,
+            attachments: attachments || []
+          },
+          true
+        );
+
+        const message = result.message;
+        const normalizedConversationId = normalizeId(conversationId);
+        const roomName = `${DIRECT_ROOM_PREFIX}${normalizedConversationId}`;
+        const messageData = message.toObject
+          ? message.toObject({ virtuals: true })
+          : (message.toJSON ? message.toJSON() : message);
+
+        namespace.in(roomName).emit('direct:message', {
+          type: 'new',
+          conversationId: normalizedConversationId,
+          message: messageData
+        });
+
+        (result.participantSummaries || []).forEach(entry => {
+          const targetUserId = normalizeId(entry.userId);
+          if (!targetUserId) return;
+          const userRoomName = `${USER_ROOM_PREFIX}${targetUserId}`;
+          namespace.to(userRoomName).emit('direct:conversation', {
+            eventKey: 'message:created',
+            conversationId: normalizedConversationId,
+            conversation: entry.summary
+          });
+        });
+
+        if (callback) callback({ success: true, message: messageData });
+      } catch (error) {
+        console.error('[Chat] Error sending direct message:', error);
+        if (callback) callback({ success: false, error: error.message });
+      }
+    });
+
+    socket.on('direct:reaction', async (data, callback) => {
+      try {
+        const { messageId, emoji } = data || {};
+        if (!messageId || !emoji) {
+          if (callback) callback({ success: false, error: 'Message ID and emoji are required' });
+          return;
+        }
+
+        const result = await directChatService.toggleReaction(messageId, emoji, userId, true);
+        const message = await DirectMessage.findById(messageId);
+        if (message) {
+          const normalizedConversationId = normalizeId(message.conversationId);
+          const roomName = `${DIRECT_ROOM_PREFIX}${normalizedConversationId}`;
+          const messageData = result.message?.toObject ? result.message.toObject() : result.message;
+          namespace.in(roomName).emit('direct:reaction', {
+            type: result.added ? 'added' : 'removed',
+            conversationId: normalizedConversationId,
+            messageId,
+            emoji,
+            userId,
+            message: messageData
+          });
+        }
+
+        if (callback) callback({ success: true, ...result });
+      } catch (error) {
+        console.error('[Chat] Error toggling direct reaction:', error);
+        if (callback) callback({ success: false, error: error.message });
+      }
+    });
+
+    socket.on('direct:edit', async (data, callback) => {
+      try {
+        const { messageId, content } = data || {};
+        if (!messageId || !content) {
+          if (callback) callback({ success: false, error: 'Message ID and content are required' });
+          return;
+        }
+
+        const message = await directChatService.editMessage(messageId, userId, content, true);
+        const normalizedConversationId = normalizeId(message.conversationId);
+        const roomName = `${DIRECT_ROOM_PREFIX}${normalizedConversationId}`;
+        const messageData = message.toObject ? message.toObject() : message;
+
+        namespace.in(roomName).emit('direct:message', {
+          type: 'edited',
+          conversationId: normalizedConversationId,
+          message: messageData
+        });
+
+        if (callback) callback({ success: true, message: messageData });
+      } catch (error) {
+        console.error('[Chat] Error editing direct message:', error);
+        if (callback) callback({ success: false, error: error.message });
+      }
+    });
+
+    socket.on('direct:delete', async (data, callback) => {
+      try {
+        const { messageId } = data || {};
+        if (!messageId) {
+          if (callback) callback({ success: false, error: 'Message ID is required' });
+          return;
+        }
+
+        const message = await directChatService.deleteMessage(messageId, userId, true);
+        const normalizedConversationId = normalizeId(message.conversationId);
+        const roomName = `${DIRECT_ROOM_PREFIX}${normalizedConversationId}`;
+        const messageData = message.toObject ? message.toObject() : message;
+
+        namespace.in(roomName).emit('direct:message', {
+          type: 'deleted',
+          conversationId: normalizedConversationId,
+          message: messageData
+        });
+
+        if (callback) callback({ success: true, message: messageData });
+      } catch (error) {
+        console.error('[Chat] Error deleting direct message:', error);
+        if (callback) callback({ success: false, error: error.message });
+      }
+    });
+
+    socket.on('direct:typing', (data = {}) => {
+      const { conversationId, isTyping } = data;
+      if (!conversationId) {
+        return;
+      }
+
+      const normalizedConversationId = normalizeId(conversationId);
+      const roomName = `${DIRECT_ROOM_PREFIX}${normalizedConversationId}`;
+      socket.to(roomName).emit('direct:typing', {
+        userId,
+        conversationId: normalizedConversationId,
+        isTyping: Boolean(isTyping)
+      });
     });
 
     // Send message

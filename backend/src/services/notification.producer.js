@@ -15,7 +15,8 @@ const {
   notifyTaskAssigned,
   notifyTaskUnassigned,
   notifyTaskCompleted,
-  notifyCommentAdded
+  notifyCommentAdded,
+  notifyChatMessage
 } = require('./notification.events');
 
 const createGroupInvitationNotification = async (recipientId, senderId, groupId, groupName, inviterName, role) => {
@@ -449,6 +450,54 @@ const createCommentAddedNotification = async ({
   };
 };
 
+const createChatMessageNotification = async ({
+  senderId,
+  senderName,
+  preview,
+  contextType,
+  groupId,
+  groupName,
+  conversationId,
+  messageId,
+  recipientIds = []
+}) => {
+  const validRecipients = recipientIds
+    .filter(isValidObjectId)
+    .filter(recipientId => recipientId.toString() !== senderId.toString());
+
+  if (validRecipients.length === 0) {
+    return {
+      success: true,
+      statusCode: HTTP_STATUS.OK,
+      message: 'No recipients to notify',
+      data: []
+    };
+  }
+
+  const tasks = validRecipients.map(recipientId =>
+    notifyChatMessage({
+      recipientId,
+      senderId,
+      senderName,
+      preview,
+      contextType,
+      groupId,
+      groupName,
+      conversationId,
+      messageId
+    }).enqueuePromise
+  );
+
+  const notifications = await Promise.all(tasks);
+
+  return {
+    success: true,
+    statusCode: HTTP_STATUS.CREATED,
+    message: 'Chat message notifications created',
+    data: notifications
+  };
+};
+
 const createTaskUnassignmentNotification = async ({
   taskId,
   taskTitle,
@@ -499,5 +548,6 @@ module.exports = {
   createTaskAssignedNotification,
   createTaskUnassignmentNotification,
   createTaskCompletedNotification,
-  createCommentAddedNotification
+  createCommentAddedNotification,
+  createChatMessageNotification
 };

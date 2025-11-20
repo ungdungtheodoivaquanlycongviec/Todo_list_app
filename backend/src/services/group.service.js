@@ -467,7 +467,7 @@ class GroupService {
 
     const group = access.data;
 
-    if (!group.isProductOwner(requesterId)) {
+    if (!group.hasRole(requesterId, [GROUP_ROLE_KEYS.PRODUCT_OWNER, GROUP_ROLE_KEYS.PM])) {
       return {
         success: false,
         statusCode: HTTP_STATUS.FORBIDDEN,
