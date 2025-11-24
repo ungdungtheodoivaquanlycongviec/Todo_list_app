@@ -9,7 +9,9 @@ const {
   SUCCESS_MESSAGES,
   HTTP_STATUS,
   NOTIFICATION_CHANNELS,
-  NOTIFICATION_CATEGORIES
+  NOTIFICATION_CATEGORIES,
+  GROUP_ROLES,
+  GROUP_ROLE_KEYS
 } = require('../config/constants');
 const {
   isValidObjectId,
@@ -554,6 +556,18 @@ const acceptGroupInvitation = async (notificationId, userId) => {
   }
 
   const groupId = notification.data?.groupId;
+  let invitationRole = notification.data?.role || notification.metadata?.get?.('role') || GROUP_ROLE_KEYS.BA;
+  if (!GROUP_ROLES.includes(invitationRole)) {
+    invitationRole = GROUP_ROLE_KEYS.BA;
+  }
+
+  if (invitationRole === GROUP_ROLE_KEYS.PRODUCT_OWNER) {
+    return {
+      success: false,
+      statusCode: HTTP_STATUS.BAD_REQUEST,
+      message: 'Product Owner role cannot be assigned through invitations'
+    };
+  }
   const group = await Group.findById(groupId);
 
   if (!group) {
@@ -571,7 +585,7 @@ const acceptGroupInvitation = async (notificationId, userId) => {
   if (!isAlreadyMember) {
     group.members.push({
       userId,
-      role: 'member',
+      role: invitationRole,
       joinedAt: new Date()
     });
     await group.save();

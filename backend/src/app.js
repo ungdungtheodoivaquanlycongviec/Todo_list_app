@@ -19,7 +19,7 @@ app.use(helmet());
 const corsOptions = {
   origin: env.nodeEnv === 'production' 
     ? ['https://your-production-domain.com']
-    : ['http://localhost:3000', 'http://127.0.0.1:3000'],
+    : true, // Allow all origins in development to enable testing from other devices
   credentials: true
 };
 

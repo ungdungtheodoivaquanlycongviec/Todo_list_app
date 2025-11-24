@@ -12,7 +12,69 @@ const SCHEDULED_WORK_STATUS = ['scheduled', 'in-progress', 'completed', 'cancell
 
 const TIME_ENTRY_BILLABLE_TYPES = ['billable', 'non-billable'];
 
-const GROUP_ROLES = ['admin', 'member'];
+const GROUP_ROLE_KEYS = {
+  PRODUCT_OWNER: 'product_owner',
+  SALE: 'sale',
+  QA: 'qa',
+  DEV_MANAGER: 'developer_manager',
+  PM: 'pm',
+  BA: 'ba',
+  TECH_LEAD: 'tech',
+  BOT_BUILDER: 'bot_builder',
+  QC: 'qc',
+  DEVOPS: 'devops',
+  CLOUD_INFRA: 'cloud_infra',
+  SECURITY: 'security',
+  CHATBOT: 'chatbot',
+  VOICEBOT: 'voicebot',
+  DEVELOPER: 'developer'
+};
+
+const GROUP_ROLES = Object.values(GROUP_ROLE_KEYS);
+
+const GROUP_ROLE_GROUPS = {
+  SUPERVISION: [
+    GROUP_ROLE_KEYS.SALE,
+    GROUP_ROLE_KEYS.PRODUCT_OWNER,
+    GROUP_ROLE_KEYS.QA,
+    GROUP_ROLE_KEYS.DEV_MANAGER
+  ],
+  DELIVERY: [
+    GROUP_ROLE_KEYS.PM,
+    GROUP_ROLE_KEYS.BA,
+    GROUP_ROLE_KEYS.TECH_LEAD,
+    GROUP_ROLE_KEYS.BOT_BUILDER,
+    GROUP_ROLE_KEYS.QC
+  ],
+  INFRA: [
+    GROUP_ROLE_KEYS.DEVOPS,
+    GROUP_ROLE_KEYS.CLOUD_INFRA,
+    GROUP_ROLE_KEYS.SECURITY
+  ],
+  PRODUCT_TEAM: [
+    GROUP_ROLE_KEYS.CHATBOT,
+    GROUP_ROLE_KEYS.VOICEBOT,
+    GROUP_ROLE_KEYS.DEVELOPER
+  ]
+};
+
+const GROUP_ROLE_LABELS = {
+  [GROUP_ROLE_KEYS.PRODUCT_OWNER]: 'Product Owner',
+  [GROUP_ROLE_KEYS.SALE]: 'Sale',
+  [GROUP_ROLE_KEYS.QA]: 'Quality Assurance',
+  [GROUP_ROLE_KEYS.DEV_MANAGER]: 'Developer Manager',
+  [GROUP_ROLE_KEYS.PM]: 'Project Manager',
+  [GROUP_ROLE_KEYS.BA]: 'Business Analyst',
+  [GROUP_ROLE_KEYS.TECH_LEAD]: 'Tech Lead',
+  [GROUP_ROLE_KEYS.BOT_BUILDER]: 'Bot Builder',
+  [GROUP_ROLE_KEYS.QC]: 'Quality Control',
+  [GROUP_ROLE_KEYS.DEVOPS]: 'DevOps',
+  [GROUP_ROLE_KEYS.CLOUD_INFRA]: 'Cloud Infra',
+  [GROUP_ROLE_KEYS.SECURITY]: 'Security',
+  [GROUP_ROLE_KEYS.CHATBOT]: 'Chatbot',
+  [GROUP_ROLE_KEYS.VOICEBOT]: 'Voicebot',
+  [GROUP_ROLE_KEYS.DEVELOPER]: 'Developer'
+};
 
 const NOTIFICATION_CHANNELS = ['in_app', 'socket', 'email'];
 
@@ -86,7 +148,13 @@ const ERROR_MESSAGES = {
   INVALID_TOKEN: 'Invalid or expired token',
   INVALID_ID: 'Invalid ID format',
   INVALID_TASK_ID: 'Invalid task ID',
-  GROUP_MEMBER_LIMIT_REACHED: 'Group has reached the maximum number of members'
+  GROUP_MEMBER_LIMIT_REACHED: 'Group has reached the maximum number of members',
+  FOLDER_NOT_FOUND: 'Folder not found in this group',
+  FOLDER_ACCESS_DENIED: 'You do not have permission to manage folders in this group',
+  FOLDER_NAME_EXISTS: 'Folder name already exists in this group',
+  FOLDER_DELETE_DEFAULT: 'Default folder cannot be deleted',
+  FOLDER_NOT_EMPTY: 'Folder still contains tasks or notes',
+  FOLDER_LIMIT_REACHED: 'Folder limit for this group has been reached'
 };
 
 // Success Messages
@@ -129,7 +197,11 @@ const SUCCESS_MESSAGES = {
   NOTIFICATIONS_MARKED_READ: 'Notifications marked as read',
   NOTIFICATIONS_ARCHIVED: 'Notifications archived successfully',
   NOTIFICATION_DELETED: 'Notification deleted successfully',
-  NOTIFICATION_PREFERENCES_UPDATED: 'Notification preferences updated successfully'
+  NOTIFICATION_PREFERENCES_UPDATED: 'Notification preferences updated successfully',
+  FOLDERS_FETCHED: 'Folders fetched successfully',
+  FOLDER_CREATED: 'Folder created successfully',
+  FOLDER_UPDATED: 'Folder updated successfully',
+  FOLDER_DELETED: 'Folder deleted successfully'
 };
 
 // Limits
@@ -149,7 +221,8 @@ const LIMITS = {
   NOTIFICATION_MAX_ARCHIVE_BATCH: 50,
   MAX_TIME_ENTRIES_PER_TASK: 1000,
   MAX_SCHEDULED_WORK_PER_TASK: 500,
-  MAX_ESTIMATED_TIME_LENGTH: 50
+  MAX_ESTIMATED_TIME_LENGTH: 50,
+  MAX_FOLDERS_PER_GROUP: 100
 };
 
 // Time and Date Formats
@@ -202,7 +275,10 @@ module.exports = {
   TASK_TYPES,
   SCHEDULED_WORK_STATUS,
   TIME_ENTRY_BILLABLE_TYPES,
+  GROUP_ROLE_KEYS,
   GROUP_ROLES,
+  GROUP_ROLE_GROUPS,
+  GROUP_ROLE_LABELS,
   NOTIFICATION_CHANNELS,
   NOTIFICATION_CATEGORIES,
   NOTIFICATION_EVENTS,

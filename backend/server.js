@@ -26,17 +26,35 @@ const startServer = async ({ attachRealtime = true } = {}) => {
       }
     }
 
-    httpServer.listen(env.port, () => {
+    // Listen on all interfaces (0.0.0.0) to allow connections from other devices on the network
+    const host = process.env.HOST || '0.0.0.0';
+    httpServer.listen(env.port, host, () => {
       console.log('=================================');
       console.log('🚀 Server is running');
       console.log(`📍 Environment: ${env.nodeEnv}`);
       console.log(`🌐 Port: ${env.port}`);
       console.log(`🔗 URL: http://localhost:${env.port}`);
+      console.log(`🌍 Network: http://${host === '0.0.0.0' ? getLocalIP() : host}:${env.port}`);
       if (realtime?.namespace) {
         console.log(`📡 Realtime namespace ready at ${env.realtime.namespace}`);
       }
       console.log('=================================');
     });
+    
+    // Helper function to get local IP address
+    function getLocalIP() {
+      const os = require('os');
+      const interfaces = os.networkInterfaces();
+      for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name]) {
+          // Skip internal (loopback) and non-IPv4 addresses
+          if (iface.family === 'IPv4' && !iface.internal) {
+            return iface.address;
+          }
+        }
+      }
+      return 'localhost';
+    }
 
     httpServer.on('error', (error) => {
       if (error.code === 'EADDRINUSE') {

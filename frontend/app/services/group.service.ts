@@ -337,7 +337,7 @@ export const groupService = {
   },
 
   // Mời user vào group
-  inviteUserToGroup: async (id: string, email: string): Promise<any> => {
+  inviteUserToGroup: async (id: string, email: string, role: string): Promise<any> => {
     const token = authService.getAuthToken();
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
@@ -353,7 +353,7 @@ export const groupService = {
       method: 'POST',
       headers,
       credentials: 'include',
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, role }),
     });
 
     if (!response.ok) {
@@ -380,6 +380,51 @@ export const groupService = {
 
     const data = await response.json();
     return data.data || data;
+  },
+
+  updateMemberRole: async (groupId: string, memberId: string, role: string): Promise<Group> => {
+    const token = authService.getAuthToken();
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json'
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    } else {
+      throw new Error('No authentication token found');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/groups/${groupId}/members/${memberId}/role`, {
+      method: 'PATCH',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify({ role })
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        if (typeof window !== 'undefined') {
+          localStorage.clear();
+          sessionStorage.clear();
+        }
+        throw new Error('Authentication failed. Please login again.');
+      }
+
+      const errorText = await response.text();
+      let errorMessage = `Failed to update member role: ${response.status}`;
+
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    return normalizeGroupResponse(data);
   },
 
   // Rời khỏi group

@@ -10,14 +10,16 @@ const {
   publishNotification,
   notifyGroupInvitation,
   notifyGroupNameChange,
+  notifyGroupRoleUpdated,
   notifyTaskCreated,
   notifyTaskAssigned,
   notifyTaskUnassigned,
   notifyTaskCompleted,
-  notifyCommentAdded
+  notifyCommentAdded,
+  notifyChatMessage
 } = require('./notification.events');
 
-const createGroupInvitationNotification = async (recipientId, senderId, groupId, groupName, inviterName) => {
+const createGroupInvitationNotification = async (recipientId, senderId, groupId, groupName, inviterName, role) => {
   if (!isValidObjectId(recipientId) || !isValidObjectId(senderId) || !isValidObjectId(groupId)) {
     return {
       success: false,
@@ -46,7 +48,8 @@ const createGroupInvitationNotification = async (recipientId, senderId, groupId,
     senderId,
     groupId,
     groupName,
-    inviterName
+    inviterName,
+    role
   });
 
   const notification = await enqueuePromise;
@@ -135,6 +138,59 @@ const createGroupNameChangeNotification = async (groupId, senderId, oldName, new
     statusCode: HTTP_STATUS.CREATED,
     message: 'Group name change notifications created',
     data: notifications
+  };
+};
+
+const createGroupRoleChangeNotification = async ({
+  groupId,
+  senderId,
+  recipientId,
+  newRole
+}) => {
+  if (!isValidObjectId(groupId) || !isValidObjectId(senderId) || !isValidObjectId(recipientId)) {
+    return {
+      success: false,
+      statusCode: HTTP_STATUS.BAD_REQUEST,
+      message: ERROR_MESSAGES.INVALID_ID
+    };
+  }
+
+  const group = await Group.findById(groupId).populate('members.userId', 'name');
+  if (!group) {
+    return {
+      success: false,
+      statusCode: HTTP_STATUS.NOT_FOUND,
+      message: ERROR_MESSAGES.GROUP_NOT_FOUND
+    };
+  }
+
+  const isRecipientMember = group.members.some(member => member.userId && member.userId._id.toString() === recipientId.toString());
+  if (!isRecipientMember) {
+    return {
+      success: false,
+      statusCode: HTTP_STATUS.BAD_REQUEST,
+      message: ERROR_MESSAGES.GROUP_MEMBER_NOT_FOUND
+    };
+  }
+
+  const senderRecord = group.members.find(member => member.userId && member.userId._id.toString() === senderId.toString());
+  const actorName = senderRecord?.userId?.name || null;
+
+  const { enqueuePromise } = notifyGroupRoleUpdated({
+    recipientId,
+    senderId,
+    groupId,
+    newRole,
+    actorName
+  });
+
+  const notification = await enqueuePromise;
+
+  return {
+    success: true,
+    statusCode: HTTP_STATUS.CREATED,
+    message: 'Group role change notification created',
+    data: notification
   };
 };
 
@@ -394,6 +450,54 @@ const createCommentAddedNotification = async ({
   };
 };
 
+const createChatMessageNotification = async ({
+  senderId,
+  senderName,
+  preview,
+  contextType,
+  groupId,
+  groupName,
+  conversationId,
+  messageId,
+  recipientIds = []
+}) => {
+  const validRecipients = recipientIds
+    .filter(isValidObjectId)
+    .filter(recipientId => recipientId.toString() !== senderId.toString());
+
+  if (validRecipients.length === 0) {
+    return {
+      success: true,
+      statusCode: HTTP_STATUS.OK,
+      message: 'No recipients to notify',
+      data: []
+    };
+  }
+
+  const tasks = validRecipients.map(recipientId =>
+    notifyChatMessage({
+      recipientId,
+      senderId,
+      senderName,
+      preview,
+      contextType,
+      groupId,
+      groupName,
+      conversationId,
+      messageId
+    }).enqueuePromise
+  );
+
+  const notifications = await Promise.all(tasks);
+
+  return {
+    success: true,
+    statusCode: HTTP_STATUS.CREATED,
+    message: 'Chat message notifications created',
+    data: notifications
+  };
+};
+
 const createTaskUnassignmentNotification = async ({
   taskId,
   taskTitle,
@@ -435,12 +539,15 @@ module.exports = {
   publishNotification,
   notifyGroupInvitation,
   notifyGroupNameChange,
+  notifyGroupRoleUpdated,
   notifyTaskCreated,
   createGroupInvitationNotification,
   createGroupNameChangeNotification,
+  createGroupRoleChangeNotification,
   createNewTaskNotification,
   createTaskAssignedNotification,
   createTaskUnassignmentNotification,
   createTaskCompletedNotification,
-  createCommentAddedNotification
+  createCommentAddedNotification,
+  createChatMessageNotification
 };

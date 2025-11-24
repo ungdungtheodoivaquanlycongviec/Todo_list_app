@@ -1,13 +1,24 @@
 const Group = require('../models/Group.model');
 const Task = require('../models/Task.model');
 const User = require('../models/User.model');
+const Folder = require('../models/Folder.model');
 const notificationService = require('./notification.service');
 const {
   LIMITS,
   ERROR_MESSAGES,
   SUCCESS_MESSAGES,
-  HTTP_STATUS
+  HTTP_STATUS,
+  GROUP_ROLE_KEYS,
+  GROUP_ROLES
 } = require('../config/constants');
+const { emitGroupEvent, GROUP_EVENTS } = require('./group.realtime.gateway');
+const {
+  canManageRoles,
+  canManageFolders,
+  canAssignFolderMembers,
+  isReadOnlyRole,
+  canViewAllFolders
+} = require('../utils/groupPermissions');
 // const nodemailer = require('nodemailer'); // No longer needed - using notifications
 const {
   isValidObjectId,
@@ -25,17 +36,39 @@ const normalizeId = value => {
 };
 
 class GroupService {
-  async createGroup({ name, description, creatorId, memberIds = [] }) {
+  async createGroup({ name, description, creatorId, members = [], memberIds = [] }) {
     const sanitizedName = name.trim();
     const sanitizedDescription = description ? description.trim() : '';
 
     const creatorIdStr = normalizeId(creatorId);
-    const uniqueMemberIds = new Set(
-      memberIds
-        .filter(Boolean)
-        .map(id => normalizeId(id))
-        .filter(id => id && id !== creatorIdStr)
-    );
+    const normalizedMembersInput = Array.isArray(members) && members.length > 0
+      ? members
+      : (Array.isArray(memberIds) ? memberIds.map(userId => ({ userId, role: GROUP_ROLE_KEYS.BA })) : []);
+
+    if (normalizedMembersInput.some(entry => entry && !entry.role)) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: 'Each member must include a role'
+      };
+    }
+
+    const uniqueMemberIds = new Map();
+    normalizedMembersInput
+      .filter(Boolean)
+      .forEach(entry => {
+        const userId = normalizeId(entry.userId || entry);
+        if (!userId || userId === creatorIdStr) {
+          return;
+        }
+        if (!entry.role || !GROUP_ROLES.includes(entry.role)) {
+          return;
+        }
+        if (entry.role === GROUP_ROLE_KEYS.PRODUCT_OWNER) {
+          return;
+        }
+        uniqueMemberIds.set(userId, { userId, role: entry.role });
+      });
 
     if (!creatorIdStr) {
       return {
@@ -53,9 +86,9 @@ class GroupService {
       };
     }
 
-    const membersArray = Array.from(uniqueMemberIds);
+    const membersArray = Array.from(uniqueMemberIds.entries());
 
-    if (membersArray.some(id => !isValidObjectId(id))) {
+    if (membersArray.some(([id]) => !isValidObjectId(id))) {
       return {
         success: false,
         statusCode: HTTP_STATUS.BAD_REQUEST,
@@ -63,7 +96,7 @@ class GroupService {
       };
     }
 
-    const users = await User.find({ _id: { $in: membersArray }, isActive: true })
+    const users = await User.find({ _id: { $in: membersArray.map(([id]) => id) }, isActive: true })
       .select('_id name email avatar')
       .lean();
     const validMemberIds = new Set(users.map(user => user._id.toString()));
@@ -73,10 +106,14 @@ class GroupService {
       description: sanitizedDescription,
       createdBy: creatorId,
       members: [
-        { userId: creatorId, role: 'admin', joinedAt: new Date() },
+        { userId: creatorId, role: GROUP_ROLE_KEYS.PRODUCT_OWNER, joinedAt: new Date() },
         ...membersArray
-          .filter(id => validMemberIds.has(id))
-          .map(id => ({ userId: id, role: 'member', joinedAt: new Date() }))
+          .filter(([id]) => validMemberIds.has(id))
+          .map(([id, payload]) => ({
+            userId: id,
+            role: payload.role,
+            joinedAt: new Date()
+          }))
       ]
     });
 
@@ -88,11 +125,114 @@ class GroupService {
       { path: 'createdBy', select: 'name email avatar' }
     ]);
 
+    // Emit realtime event
+    const groupData = group.toObject ? group.toObject() : group;
+    emitGroupEvent(GROUP_EVENTS.created, {
+      group: groupData,
+      recipients: group.members.map(member => normalizeId(member.userId)).filter(Boolean)
+    });
+
     return {
       success: true,
       statusCode: HTTP_STATUS.CREATED,
       message: SUCCESS_MESSAGES.GROUP_CREATED,
       data: group
+    };
+  }
+
+  async updateMemberRole(groupId, requesterId, { memberId, role }) {
+    if (!isValidObjectId(memberId) || !GROUP_ROLES.includes(role)) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: ERROR_MESSAGES.INVALID_ID
+      };
+    }
+
+    if (role === GROUP_ROLE_KEYS.PRODUCT_OWNER) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: 'Cannot assign Product Owner role'
+      };
+    }
+
+    const access = await this.getGroupById(groupId, requesterId);
+    if (!access.success) {
+      return access;
+    }
+
+    const group = access.data;
+    if (!group.isProductOwner(requesterId)) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.FORBIDDEN,
+        message: ERROR_MESSAGES.GROUP_ACCESS_DENIED
+      };
+    }
+
+    const normalizedMemberId = normalizeId(memberId);
+    const memberRecord = group.members.find(member => normalizeId(member.userId) === normalizedMemberId);
+    if (!memberRecord) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.NOT_FOUND,
+        message: ERROR_MESSAGES.GROUP_MEMBER_NOT_FOUND
+      };
+    }
+
+    if (memberRecord.role === GROUP_ROLE_KEYS.PRODUCT_OWNER) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: 'Cannot change Product Owner role'
+      };
+    }
+
+    if (memberRecord.role === role) {
+      return {
+        success: true,
+        statusCode: HTTP_STATUS.OK,
+        message: 'Role unchanged',
+        data: group
+      };
+    }
+
+    await Group.updateOne(
+      { _id: groupId, 'members.userId': memberId },
+      { $set: { 'members.$.role': role } }
+    );
+
+    const updatedGroup = await Group.findById(groupId)
+      .populate('members.userId', 'name email avatar')
+      .populate('createdBy', 'name email avatar');
+
+    try {
+      await notificationService.createGroupRoleChangeNotification({
+        groupId,
+        senderId: requesterId,
+        recipientId: memberId,
+        newRole: role
+      });
+    } catch (notificationError) {
+      console.error('Failed to send role change notification', notificationError);
+    }
+
+    // Emit realtime event
+    const groupData = updatedGroup.toObject ? updatedGroup.toObject() : updatedGroup;
+    emitGroupEvent(GROUP_EVENTS.memberRoleUpdated, {
+      group: groupData,
+      groupId: normalizeId(groupId),
+      memberId: normalizeId(memberId),
+      newRole: role,
+      recipients: updatedGroup.members.map(member => normalizeId(member.userId)).filter(Boolean)
+    });
+
+    return {
+      success: true,
+      statusCode: HTTP_STATUS.OK,
+      message: 'Role updated successfully',
+      data: updatedGroup
     };
   }
 
@@ -259,6 +399,14 @@ class GroupService {
       }
     }
 
+    // Emit realtime event
+    const groupData = updatedGroup.toObject ? updatedGroup.toObject() : updatedGroup;
+    emitGroupEvent(GROUP_EVENTS.updated, {
+      group: groupData,
+      groupId: normalizeId(groupId),
+      recipients: updatedGroup.members.map(member => normalizeId(member.userId)).filter(Boolean)
+    });
+
     return {
       success: true,
       statusCode: HTTP_STATUS.OK,
@@ -282,8 +430,18 @@ class GroupService {
       };
     }
 
+    const groupData = group.toObject ? group.toObject() : group;
+    const recipients = group.members.map(member => normalizeId(member.userId)).filter(Boolean);
+    
     await Group.findByIdAndDelete(groupId);
     await Task.updateMany({ groupId }, { $set: { groupId: null } });
+
+    // Emit realtime event
+    emitGroupEvent(GROUP_EVENTS.deleted, {
+      group: { ...groupData, _id: groupId },
+      groupId: normalizeId(groupId),
+      recipients
+    });
 
     return {
       success: true,
@@ -293,8 +451,8 @@ class GroupService {
     };
   }
 
-  async addMembers(groupId, requesterId, memberIds = []) {
-    if (!Array.isArray(memberIds) || memberIds.length === 0) {
+  async addMembers(groupId, requesterId, members = []) {
+    if (!Array.isArray(members) || members.length === 0) {
       return {
         success: false,
         statusCode: HTTP_STATUS.BAD_REQUEST,
@@ -309,7 +467,7 @@ class GroupService {
 
     const group = access.data;
 
-    if (!group.isAdmin(requesterId)) {
+    if (!group.hasRole(requesterId, [GROUP_ROLE_KEYS.PRODUCT_OWNER, GROUP_ROLE_KEYS.PM])) {
       return {
         success: false,
         statusCode: HTTP_STATUS.FORBIDDEN,
@@ -317,15 +475,14 @@ class GroupService {
       };
     }
 
-    const sanitizedIds = Array.from(
-      new Set(
-        memberIds
-          .filter(Boolean)
-          .map(id => normalizeId(id))
-      )
-    ).filter(id => id && isValidObjectId(id));
+    const sanitizedEntries = members
+      .map(entry => ({
+        userId: normalizeId(entry?.userId || entry),
+        role: entry?.role
+      }))
+      .filter(entry => entry.userId && entry.role);
 
-    if (sanitizedIds.length === 0) {
+    if (sanitizedEntries.length === 0) {
       return {
         success: false,
         statusCode: HTTP_STATUS.BAD_REQUEST,
@@ -333,12 +490,22 @@ class GroupService {
       };
     }
 
-    const currentMemberIds = new Set(
-      group.members.map(member => normalizeId(member.userId))
+    const invalidRole = sanitizedEntries.find(
+      entry => !GROUP_ROLES.includes(entry.role) || entry.role === GROUP_ROLE_KEYS.PRODUCT_OWNER
     );
-    const newIds = sanitizedIds.filter(id => !currentMemberIds.has(id));
 
-    if (newIds.length === 0) {
+    if (invalidRole) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: 'Invalid role supplied for new member'
+      };
+    }
+
+    const currentMemberIds = new Set(group.members.map(member => normalizeId(member.userId)));
+    const newEntries = sanitizedEntries.filter(entry => !currentMemberIds.has(entry.userId));
+
+    if (newEntries.length === 0) {
       return {
         success: false,
         statusCode: HTTP_STATUS.CONFLICT,
@@ -346,7 +513,7 @@ class GroupService {
       };
     }
 
-    if (group.members.length + newIds.length > LIMITS.MAX_MEMBERS_PER_GROUP) {
+    if (group.members.length + newEntries.length > LIMITS.MAX_MEMBERS_PER_GROUP) {
       return {
         success: false,
         statusCode: HTTP_STATUS.BAD_REQUEST,
@@ -354,14 +521,14 @@ class GroupService {
       };
     }
 
-    const users = await User.find({ _id: { $in: newIds }, isActive: true })
+    const users = await User.find({ _id: { $in: newEntries.map(entry => entry.userId) }, isActive: true })
       .select('_id name email avatar')
       .lean();
 
     const activeIds = new Set(users.map(user => user._id.toString()));
-    const validIds = newIds.filter(id => activeIds.has(id));
+    const validEntries = newEntries.filter(entry => activeIds.has(entry.userId));
 
-    if (validIds.length === 0) {
+    if (validEntries.length === 0) {
       return {
         success: false,
         statusCode: HTTP_STATUS.BAD_REQUEST,
@@ -374,7 +541,11 @@ class GroupService {
       {
         $push: {
           members: {
-            $each: validIds.map(id => ({ userId: id, role: 'member', joinedAt: new Date() }))
+            $each: validEntries.map(entry => ({
+              userId: entry.userId,
+              role: entry.role,
+              joinedAt: new Date()
+            }))
           }
         }
       },
@@ -383,13 +554,22 @@ class GroupService {
       .populate('members.userId', 'name email avatar')
       .populate('createdBy', 'name email avatar');
 
+    // Emit realtime event
+    const groupData = updatedGroup.toObject ? updatedGroup.toObject() : updatedGroup;
+    emitGroupEvent(GROUP_EVENTS.memberAdded, {
+      group: groupData,
+      groupId: normalizeId(groupId),
+      addedMemberIds: validEntries.map(entry => entry.userId),
+      recipients: updatedGroup.members.map(member => normalizeId(member.userId)).filter(Boolean)
+    });
+
     return {
       success: true,
       statusCode: HTTP_STATUS.OK,
       message: SUCCESS_MESSAGES.GROUP_MEMBER_ADDED,
       data: {
         group: updatedGroup,
-        addedMemberIds: validIds
+        addedMemberIds: validEntries.map(entry => entry.userId)
       }
     };
   }
@@ -440,13 +620,13 @@ class GroupService {
       };
     }
 
-    if (targetMember.role === 'admin') {
-      const adminCount = group.members.filter(member => member.role === 'admin').length;
+    if (targetMember.role === GROUP_ROLE_KEYS.PRODUCT_OWNER) {
+      const adminCount = group.members.filter(member => member.role === GROUP_ROLE_KEYS.PRODUCT_OWNER).length;
       if (adminCount <= 1) {
         return {
           success: false,
           statusCode: HTTP_STATUS.BAD_REQUEST,
-          message: 'Group must maintain at least one admin'
+          message: 'Group must maintain at least one product owner'
         };
       }
     }
@@ -463,6 +643,15 @@ class GroupService {
       { groupId, 'assignedTo.userId': memberId },
       { $pull: { assignedTo: { userId: memberId } } }
     );
+
+    // Emit realtime event
+    const groupData = updatedGroup.toObject ? updatedGroup.toObject() : updatedGroup;
+    emitGroupEvent(GROUP_EVENTS.memberRemoved, {
+      group: groupData,
+      groupId: normalizeId(groupId),
+      removedMemberId: normalizeId(memberId),
+      recipients: updatedGroup.members.map(member => normalizeId(member.userId)).filter(Boolean)
+    });
 
     return {
       success: true,
@@ -505,13 +694,13 @@ class GroupService {
       };
     }
 
-    if (memberRecord.role === 'admin') {
-      const adminCount = group.members.filter(member => member.role === 'admin').length;
+    if (memberRecord.role === GROUP_ROLE_KEYS.PRODUCT_OWNER) {
+      const adminCount = group.members.filter(member => member.role === GROUP_ROLE_KEYS.PRODUCT_OWNER).length;
       if (adminCount <= 1) {
         return {
           success: false,
           statusCode: HTTP_STATUS.BAD_REQUEST,
-          message: 'Group must have at least one admin'
+          message: 'Group must have at least one product owner'
         };
       }
     }
@@ -652,7 +841,7 @@ class GroupService {
         $push: {
           members: {
             userId: userId,
-            role: 'member',
+            role: GROUP_ROLE_KEYS.BA,
             joinedAt: new Date()
           }
         }
@@ -715,12 +904,20 @@ class GroupService {
     };
   }
 
-  async inviteUserToGroup(groupId, email, inviterId) {
+  async inviteUserToGroup(groupId, email, role, inviterId) {
     if (!isValidObjectId(groupId) || !isValidObjectId(inviterId)) {
       return {
         success: false,
         statusCode: HTTP_STATUS.BAD_REQUEST,
         message: ERROR_MESSAGES.INVALID_ID
+      };
+    }
+
+    if (!role || !GROUP_ROLES.includes(role) || role === GROUP_ROLE_KEYS.PRODUCT_OWNER) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: 'Invalid role supplied for invitation'
       };
     }
 
@@ -748,11 +945,11 @@ class GroupService {
       member.userId.toString() === inviterId.toString()
     );
 
-    if (!inviterMember || inviterMember.role !== 'admin') {
+    if (!inviterMember || inviterMember.role !== GROUP_ROLE_KEYS.PRODUCT_OWNER) {
       return {
         success: false,
         statusCode: HTTP_STATUS.FORBIDDEN,
-        message: 'Only group admins can invite users'
+        message: 'Only the product owner can invite users'
       };
     }
 
@@ -797,7 +994,8 @@ class GroupService {
         inviterId,
         groupId,
         group.name,
-        inviterProfile?.name || null
+        inviterProfile?.name || null,
+        role
       );
       
       if (!notificationResult.success) {

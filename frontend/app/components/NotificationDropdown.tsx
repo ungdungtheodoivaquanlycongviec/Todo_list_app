@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check, X, Users, Clock, Trash2 } from 'lucide-react';
 import { notificationService, Notification } from '../services/notification.service';
 import { useAuth } from '../contexts/AuthContext';
+import { useSocket } from '../hooks/useSocket';
 
 interface NotificationDropdownProps {
   className?: string;
@@ -11,6 +12,7 @@ interface NotificationDropdownProps {
 
 export default function NotificationDropdown({ className = '' }: NotificationDropdownProps) {
   const { setCurrentGroup, setUser } = useAuth();
+  const { socket } = useSocket();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
@@ -22,6 +24,45 @@ export default function NotificationDropdown({ className = '' }: NotificationDro
     loadNotifications();
     loadUnreadCount();
   }, []);
+
+  // Listen for real-time notification updates
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleNewNotification = (data: {
+      eventKey: string;
+      notification: Notification;
+    }) => {
+      console.log('[NotificationDropdown] Received new notification:', data.eventKey);
+      
+      const newNotification = data.notification;
+      
+      // Add new notification to the top of the list
+      setNotifications(prev => {
+        // Check if notification already exists (avoid duplicates)
+        const exists = prev.some(n => n._id === newNotification._id);
+        if (exists) {
+          return prev;
+        }
+        return [newNotification, ...prev].slice(0, 10); // Keep only latest 10
+      });
+      
+      // Update unread count
+      if (!newNotification.isRead) {
+        setUnreadCount(prev => prev + 1);
+      }
+      
+      // Also refresh from server to ensure consistency
+      loadNotifications();
+      loadUnreadCount();
+    };
+
+    socket.on('notifications:new', handleNewNotification);
+
+    return () => {
+      socket.off('notifications:new', handleNewNotification);
+    };
+  }, [socket]);
 
   // Close dropdown when clicking outside
   useEffect(() => {

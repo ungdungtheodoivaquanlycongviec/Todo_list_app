@@ -1,12 +1,33 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { groupService } from '../../services/group.service';
 import { notificationService } from '../../services/notification.service';
 import { Group, GroupMember } from '../../services/types/group.types';
 import { useGroupChange } from '../../hooks/useGroupChange';
 import NoGroupState from '../common/NoGroupState';
+import { Trash2, ChevronDown, AlertTriangle } from 'lucide-react';
+import { useFolder } from '../../contexts/FolderContext';
+import { folderService } from '../../services/folder.service';
+import { Folder } from '../../services/types/folder.types';
+import {
+  DEFAULT_INVITE_ROLE,
+  ROLE_SECTIONS,
+  getRoleLabel,
+  ROLE_SUMMARIES,
+  GROUP_ROLE_KEYS,
+  GroupRoleKey
+} from '../../constants/groupRoles';
+import {
+  getMemberId,
+  getMemberRole,
+  canManageRoles as canManageRolesFor,
+  canAddMembers,
+  canAssignFolderMembers,
+  requiresFolderAssignment as requiresFolderAssignmentHelper
+} from '../../utils/groupRoleUtils';
+import { FolderAccessModal } from '../folders/FolderAccessModal';
 
 interface GroupMembersViewProps {
   groupId?: string;
@@ -14,6 +35,7 @@ interface GroupMembersViewProps {
 
 export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   const { user, currentGroup } = useAuth();
+  const { folders, refreshFolders } = useFolder();
   const [group, setGroup] = useState<Group | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,8 +47,68 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now());
   const [showUpdateNotification, setShowUpdateNotification] = useState(false);
   const [showEditButton, setShowEditButton] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [roleUpdatingMemberId, setRoleUpdatingMemberId] = useState<string | null>(null);
+  const [roleUpdateError, setRoleUpdateError] = useState<string | null>(null);
+  const [folderModalOpen, setFolderModalOpen] = useState(false);
+  const [activeFolderForAssignment, setActiveFolderForAssignment] = useState<Folder | null>(null);
+  const [folderModalSaving, setFolderModalSaving] = useState(false);
+  const [folderModalError, setFolderModalError] = useState<string | null>(null);
 
   const targetGroupId = groupId || currentGroup?._id;
+  const currentUserRole = useMemo(
+    () => getMemberRole(group, user?._id),
+    [group, user?._id]
+  );
+  const canEditRoles = canManageRolesFor(currentUserRole);
+  const canAddMembersCheck = canAddMembers(currentUserRole);
+  const showFolderAssignments = Boolean(group?._id && currentGroup?._id && group?._id === currentGroup?._id);
+  const folderAssignments = useMemo(() => {
+    if (!showFolderAssignments || !Array.isArray(folders)) {
+      return new Map<string, string[]>();
+    }
+
+    const assignmentMap = new Map<string, string[]>();
+    const currentUserId = user?._id;
+    const canAssignFolders = canAssignFolderMembers(currentUserRole);
+    
+    folders.forEach(folder => {
+      if (!folder.memberAccess) return;
+      folder.memberAccess.forEach(access => {
+        if (!access?.userId) return;
+        // Only show assignments for current user, unless user is admin
+        if (!canAssignFolders && access.userId !== currentUserId) {
+          return;
+        }
+        const existing = assignmentMap.get(access.userId) || [];
+        assignmentMap.set(access.userId, [...existing, folder.name]);
+      });
+    });
+
+    return assignmentMap;
+  }, [folders, showFolderAssignments, user?._id, currentUserRole]);
+
+  const getAssignedFolderNames = (memberId?: string | null) => {
+    if (!memberId) return [];
+    return folderAssignments.get(memberId) || [];
+  };
+
+  const assignableFolders = useMemo(() => {
+    if (!showFolderAssignments) return [];
+    return (folders || []).filter(folder => !folder.isDefault);
+  }, [folders, showFolderAssignments]);
+
+  const memberLookup = useMemo(() => {
+    const map = new Map<string, GroupMember>();
+    members.forEach(member => {
+      const id = getMemberId(member);
+      if (id) {
+        map.set(id, member);
+      }
+    });
+    return map;
+  }, [members]);
 
   useEffect(() => {
     if (targetGroupId) {
@@ -40,6 +122,12 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
       loadGroupDetails();
     }
   }, [currentGroup?._id]);
+
+  useEffect(() => {
+    if (!group?._id || !currentGroup?._id) return;
+    if (group._id !== currentGroup._id) return;
+    refreshFolders();
+  }, [group?._id, currentGroup?._id, refreshFolders]);
 
   // Listen for global group change events
   useGroupChange(() => {
@@ -88,6 +176,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
       setGroup(groupData);
       setMembers(groupData.members || []);
       setLastUpdateTime(Date.now());
+      setRoleUpdateError(null);
       
       // Show notification if there are changes and not the initial load
       if (showNotification && hasChanges && group) {
@@ -101,16 +190,68 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
     }
   };
 
-  const handleInviteUser = async (email: string) => {
+  const handleInviteUser = async (email: string, role: string) => {
     if (!targetGroupId) return;
 
     try {
-      await groupService.inviteUserToGroup(targetGroupId, email);
+      await groupService.inviteUserToGroup(targetGroupId, email, role);
       // Reload group details to get updated member list
       await loadGroupDetails();
       setShowInviteModal(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to invite user');
+    }
+  };
+
+  const handleRoleChange = async (member: GroupMember, role: GroupRoleKey) => {
+    if (!group?._id) return;
+    const memberId = getMemberId(member);
+    if (!memberId) return;
+
+    setRoleUpdatingMemberId(memberId);
+    setRoleUpdateError(null);
+
+    try {
+      await groupService.updateMemberRole(group._id, memberId, role);
+      await loadGroupDetails();
+      if (showFolderAssignments) {
+        await refreshFolders();
+      }
+    } catch (err) {
+      setRoleUpdateError(err instanceof Error ? err.message : 'Failed to update member role');
+    } finally {
+      setRoleUpdatingMemberId(null);
+    }
+  };
+
+  const handleOpenFolderModal = (folder: Folder) => {
+    if (!canAssignFolderMembers(currentUserRole)) return;
+    setFolderModalError(null);
+    setActiveFolderForAssignment(folder);
+    setFolderModalOpen(true);
+  };
+
+  const handleCloseFolderModal = () => {
+    if (folderModalSaving) return;
+    setFolderModalOpen(false);
+    setActiveFolderForAssignment(null);
+    setFolderModalError(null);
+  };
+
+  const handleSaveFolderMembers = async (memberIds: string[]) => {
+    if (!group?._id || !activeFolderForAssignment) return;
+    setFolderModalSaving(true);
+    setFolderModalError(null);
+    try {
+      await folderService.setFolderMembers(group._id, activeFolderForAssignment._id, memberIds);
+      await refreshFolders(activeFolderForAssignment._id);
+      await loadGroupDetails(true);
+      setFolderModalOpen(false);
+      setActiveFolderForAssignment(null);
+    } catch (err) {
+      setFolderModalError(err instanceof Error ? err.message : 'Không thể cập nhật truy cập folder');
+    } finally {
+      setFolderModalSaving(false);
     }
   };
 
@@ -130,8 +271,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   };
 
   const handleStartEditName = () => {
-    if (!group) return;
-    console.log('Starting edit name:', { group, user, isAdmin: isCurrentUserAdmin() });
+    if (!group || !canEditRoles) return;
     setEditingName(group.name);
     setIsEditingName(true);
   };
@@ -186,16 +326,21 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
     }
   };
 
-  const getRoleDisplayName = (role: string) => {
-    switch (role) {
-      case 'admin':
-        return 'Project owner';
-      case 'member':
-        return 'Member';
-      default:
-        return role;
+  const handleDeleteGroup = async () => {
+    if (!targetGroupId) return;
+
+    setIsDeleting(true);
+    setError(null);
+    try {
+      await groupService.deleteGroup(targetGroupId);
+      // Reload the page or redirect after successful deletion
+      window.location.href = '/dashboard';
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete group');
+      setIsDeleting(false);
     }
   };
+
 
   const getMemberName = (member: GroupMember) => {
     // Handle populated userId object
@@ -224,49 +369,92 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
     return member.avatar;
   };
 
-  const getStatusDisplay = (member: GroupMember) => {
-    // For now, all members are considered active
-    // You can extend this based on your business logic
+  const renderAccessSummary = (member: GroupMember) => {
+    const summary = ROLE_SUMMARIES[member.role];
+    const memberId = getMemberId(member);
+    const assignedFolders = showFolderAssignments ? getAssignedFolderNames(memberId) : [];
+    const needsFolderAssignment =
+      showFolderAssignments && requiresFolderAssignmentHelper(member.role) && assignedFolders.length === 0;
+
     return (
-      <div className="flex items-center">
-        <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div>
-        <span className="text-sm font-medium text-green-700 dark:text-green-400">Active</span>
+      <div className="text-sm">
+        <p className="font-semibold text-gray-800 dark:text-gray-100">
+          {summary?.summary || '---'}
+        </p>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {summary?.capabilities}
+        </p>
+        {requiresFolderAssignmentHelper(member.role) && showFolderAssignments && (
+          <div className="mt-1 text-xs">
+            {needsFolderAssignment ? (
+              <span className="inline-flex items-center text-amber-600 dark:text-amber-400">
+                <AlertTriangle className="w-3 h-3 mr-1" />
+                Chưa được gán folder
+              </span>
+            ) : (
+              <span className="text-gray-600 dark:text-gray-300">
+                Folder: {assignedFolders.join(', ')}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     );
   };
 
-  const isCurrentUser = (member: GroupMember) => {
-    const memberId = typeof member.userId === 'string' ? member.userId : member.userId._id;
-    return memberId === user?._id;
+  const renderRoleBadge = (role: GroupRoleKey) => {
+    const label = getRoleLabel(role);
+    const gradient = ROLE_SUMMARIES[role]?.badgeColor || 'from-gray-500 to-gray-600';
+    return (
+      <span
+        className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white bg-gradient-to-r ${gradient}`}
+      >
+        {label}
+      </span>
+    );
   };
 
-  const isCurrentUserAdmin = () => {
-    if (!group || !user) {
-      console.log('isCurrentUserAdmin: No group or user', { group: !!group, user: !!user });
-      return false;
+  const renderRoleCell = (member: GroupMember) => {
+    const memberId = getMemberId(member);
+    const isSelf = memberId === user?._id;
+    const isProductOwner = member.role === GROUP_ROLE_KEYS.PRODUCT_OWNER;
+    const allowEdit = canEditRoles && !isProductOwner && !isSelf && Boolean(memberId);
+
+    if (!allowEdit) {
+      return renderRoleBadge(member.role);
     }
-    const currentMember = group.members.find(member => {
-      const memberId = typeof member.userId === 'string' ? member.userId : member.userId._id;
-      return memberId === user._id;
-    });
-    const isAdmin = currentMember?.role === 'admin';
-    console.log('isCurrentUserAdmin:', { 
-      currentMember, 
-      isAdmin, 
-      userRole: currentMember?.role,
-      userId: user._id,
-      members: group.members.map(m => ({ 
-        id: typeof m.userId === 'string' ? m.userId : m.userId._id, 
-        role: m.role 
-      }))
-    });
-    return isAdmin;
+
+    return (
+      <div className="space-y-2">
+        <select
+          value={member.role}
+          onChange={e => handleRoleChange(member, e.target.value as GroupRoleKey)}
+          disabled={roleUpdatingMemberId === memberId}
+          className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-[#2E2E2E] text-sm rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        >
+          {ROLE_SECTIONS.map(section => (
+            <optgroup label={section.title} key={section.title}>
+              {section.roles.map(role => (
+                <option value={role.value} key={role.value}>
+                  {role.label}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+        {roleUpdatingMemberId === memberId && (
+          <p className="text-xs text-blue-600">Đang cập nhật vai trò...</p>
+        )}
+      </div>
+    );
   };
+
+  const isCurrentUser = (member: GroupMember) => getMemberId(member) === user?._id;
 
   const canRemoveMember = (member: GroupMember) => {
-    if (!isCurrentUserAdmin()) return false;
-    if (isCurrentUser(member)) return false; // Can't remove yourself
-    if (member.role === 'admin') return false; // Can't remove other admins (only owner can)
+    if (!canEditRoles) return false;
+    if (isCurrentUser(member)) return false;
+    if (member.role === GROUP_ROLE_KEYS.PRODUCT_OWNER) return false;
     return true;
   };
 
@@ -373,25 +561,22 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
                 >
                   <h1 
                     className="text-2xl font-bold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                    onDoubleClick={isCurrentUserAdmin() ? handleStartEditName : undefined}
-                    title={isCurrentUserAdmin() ? "Double click to edit" : undefined}
+                    onDoubleClick={canEditRoles ? handleStartEditName : undefined}
+                    title={canEditRoles ? 'Double click to edit' : undefined}
                   >
                     {group.name}
                   </h1>
-                  {/* Always show edit button for debugging */}
-                  <button
-                    onClick={handleStartEditName}
-                    className="ml-3 p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2E2E2E] rounded-lg transition-all"
-                    title="Edit group name"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </button>
-                  {/* Debug info */}
-                  <div className="ml-2 text-xs text-gray-500">
-                    Admin: {isCurrentUserAdmin() ? 'Yes' : 'No'}
-                  </div>
+                  {canEditRoles && (
+                    <button
+                      onClick={handleStartEditName}
+                      className="ml-3 p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2E2E2E] rounded-lg transition-all"
+                      title="Edit group name"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -425,31 +610,120 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             </button>
-            <button
-              onClick={() => setShowInviteModal(true)}
-              className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-xl transition-all duration-200 flex items-center shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 font-medium"
-            >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
-              Add people
-            </button>
+            {canEditRoles && (
+              <button
+                onClick={() => setShowDeleteModal(true)}
+                className="p-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                title="Delete group"
+              >
+                <Trash2 className="w-5 h-5" />
+              </button>
+            )}
+            {canAddMembersCheck && (
+              <button
+                onClick={() => setShowInviteModal(true)}
+                className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-xl transition-all duration-200 flex items-center shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 font-medium"
+              >
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                Add people
+              </button>
+            )}
           </div>
         </div>
       </div>
 
+      {canAssignFolderMembers(currentUserRole) && showFolderAssignments && (
+        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Quản lý folder theo vai trò</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Gán các thành viên thực thi vào từng folder để họ có thể tạo/chỉnh sửa nội dung.
+              </p>
+            </div>
+          </div>
+          {assignableFolders.length === 0 ? (
+            <div className="text-sm text-gray-500 dark:text-gray-400">
+              Chưa có folder tùy chỉnh nào. Hãy tạo thêm folder để phân quyền chi tiết.
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {assignableFolders.map(folder => {
+                const assigned = (folder.memberAccess || []).map(access => {
+                  const member = memberLookup.get(access.userId);
+                  const name = member ? getMemberName(member) : 'Thành viên đã rời nhóm';
+                  const roleLabel = member ? getRoleLabel(member.role) : '';
+                  return { userId: access.userId, name, roleLabel };
+                });
+
+                return (
+                  <div
+                    key={folder._id}
+                    className="p-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#151515] shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">{folder.name}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {assigned.length} thành viên được gán
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleOpenFolderModal(folder)}
+                        className="text-xs font-semibold text-blue-600 hover:text-blue-800 dark:text-blue-400"
+                      >
+                        Quản lý truy cập
+                      </button>
+                    </div>
+                    {assigned.length > 0 ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {assigned.slice(0, 3).map(user => (
+                          <span
+                            key={user.userId}
+                            className="text-xs px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200"
+                          >
+                            {user.name} • {user.roleLabel}
+                          </span>
+                        ))}
+                        {assigned.length > 3 && (
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            +{assigned.length - 3} thành viên khác
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" />
+                        Folder chưa được gán cho thành viên nào
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Members List */}
       <div className="p-6">
         <div className="bg-white dark:bg-[#1F1F1F] rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+          {roleUpdateError && (
+            <div className="px-6 py-3 bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300 border-b border-red-100 dark:border-red-800">
+              {roleUpdateError}
+            </div>
+          )}
           {/* Table Header */}
           <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-700 dark:to-gray-600 px-6 py-4 border-b border-gray-200 dark:border-gray-600">
-            <div className={`grid gap-6 items-center ${isCurrentUserAdmin() ? 'grid-cols-5' : 'grid-cols-4'}`}>
-              <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Member</div>
+            <div className={`grid gap-6 items-center ${canEditRoles ? 'grid-cols-5' : 'grid-cols-4'}`}>
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Thành viên</div>
               <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Email</div>
-              <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Role</div>
-              <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Status</div>
-              {isCurrentUserAdmin() && (
-                <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Actions</div>
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Vai trò</div>
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Phạm vi truy cập</div>
+              {canEditRoles && (
+                <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Hành động</div>
               )}
             </div>
           </div>
@@ -473,7 +747,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
                 
                 return (
                   <div key={typeof member.userId === 'string' ? member.userId : member.userId._id} className="px-6 py-5 hover:bg-gray-50 dark:hover:bg-[#2E2E2E] transition-colors">
-                    <div className={`grid gap-6 items-center ${isCurrentUserAdmin() ? 'grid-cols-5' : 'grid-cols-4'}`}>
+                    <div className={`grid gap-6 items-center ${canEditRoles ? 'grid-cols-5' : 'grid-cols-4'}`}>
                       {/* Name with Real Avatar */}
                       <div className="flex items-center">
                         <div className="relative">
@@ -496,7 +770,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
                           >
                             {memberName ? memberName.charAt(0).toUpperCase() : '?'}
                           </div>
-                          {member.role === 'admin' && (
+                          {member.role === GROUP_ROLE_KEYS.PRODUCT_OWNER && (
                             <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-400 rounded-full flex items-center justify-center border border-white dark:border-gray-800">
                               <svg className="w-2.5 h-2.5 text-yellow-800" fill="currentColor" viewBox="0 0 20 20">
                                 <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
@@ -525,33 +799,24 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
 
                       {/* Role */}
                       <div>
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          member.role === 'admin' 
-                            ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' 
-                            : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
-                        }`}>
-                          {member.role === 'admin' && (
-                            <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                            </svg>
-                          )}
-                          {getRoleDisplayName(member.role)}
-                        </span>
+                        {renderRoleCell(member)}
                       </div>
 
-                      {/* Status */}
+                      {/* Access */}
                       <div>
-                        {getStatusDisplay(member)}
+                        {renderAccessSummary(member)}
                       </div>
 
                       {/* Actions */}
-                      {isCurrentUserAdmin() && (
+                      {canEditRoles && (
                         <div className="flex items-center">
                           {canRemoveMember(member) ? (
                             <button
                               onClick={() => {
-                                const memberId = typeof member.userId === 'string' ? member.userId : member.userId._id;
-                                handleRemoveMember(memberId, memberName || 'Unknown');
+                                const memberId = getMemberId(member);
+                                if (memberId) {
+                                  handleRemoveMember(memberId, memberName || 'Unknown');
+                                }
                               }}
                               className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 text-sm font-medium px-3 py-1 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                               title="Remove member"
@@ -572,7 +837,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
         </div>
 
         {/* Add People Link */}
-        {members.length > 0 && (
+        {members.length > 0 && canAddMembersCheck && (
           <div className="mt-4 text-center">
             <button
               onClick={() => setShowInviteModal(true)}
@@ -591,17 +856,39 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
           onInvite={handleInviteUser}
         />
       )}
+
+      {/* Delete Group Modal */}
+      {showDeleteModal && (
+        <DeleteGroupModal
+          groupName={group.name}
+          onClose={() => setShowDeleteModal(false)}
+          onConfirm={handleDeleteGroup}
+          isDeleting={isDeleting}
+        />
+      )}
+
+      {folderModalOpen && activeFolderForAssignment && (
+        <FolderAccessModal
+          folder={activeFolderForAssignment}
+          members={members}
+          onClose={handleCloseFolderModal}
+          onSave={handleSaveFolderMembers}
+          saving={folderModalSaving}
+          error={folderModalError || undefined}
+        />
+      )}
     </div>
   );
 }
 
 interface InviteUserModalProps {
   onClose: () => void;
-  onInvite: (email: string) => void;
+  onInvite: (email: string, role: string) => void;
 }
 
 function InviteUserModal({ onClose, onInvite }: InviteUserModalProps) {
   const [email, setEmail] = useState('');
+  const [role, setRole] = useState<string>(DEFAULT_INVITE_ROLE);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -612,7 +899,7 @@ function InviteUserModal({ onClose, onInvite }: InviteUserModalProps) {
     setLoading(true);
     setError(null);
     try {
-      await onInvite(email.trim());
+      await onInvite(email.trim(), role);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to invite user');
     } finally {
@@ -661,6 +948,34 @@ function InviteUserModal({ onClose, onInvite }: InviteUserModalProps) {
             </div>
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 text-center">
+              Select Role
+            </label>
+            <div className="relative">
+              <select
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                className="w-full border-2 border-gray-200 dark:border-gray-600 rounded-xl px-4 py-4 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-[#2E2E2E] text-gray-900 dark:text-white text-lg transition-all duration-200 appearance-none"
+                required
+                disabled={loading}
+              >
+                {ROLE_SECTIONS.map(section => (
+                  <optgroup key={section.title} label={section.title}>
+                    {section.roles.map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-gray-400">
+                <ChevronDown className="w-5 h-5" />
+              </div>
+            </div>
+          </div>
+
           {error && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4">
               <div className="flex items-center">
@@ -683,7 +998,7 @@ function InviteUserModal({ onClose, onInvite }: InviteUserModalProps) {
             </button>
             <button
               type="submit"
-              disabled={loading || !email.trim()}
+              disabled={loading || !email.trim() || !role}
               className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 text-white py-4 px-6 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none disabled:shadow-none"
             >
               {loading ? (
@@ -708,6 +1023,59 @@ function InviteUserModal({ onClose, onInvite }: InviteUserModalProps) {
           <p className="text-xs text-gray-500 dark:text-gray-400">
             The user will receive an email invitation to join your group
           </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface DeleteGroupModalProps {
+  groupName: string;
+  onClose: () => void;
+  onConfirm: () => void;
+  isDeleting: boolean;
+}
+
+function DeleteGroupModal({ groupName, onClose, onConfirm, isDeleting }: DeleteGroupModalProps) {
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-[#1F1F1F] rounded-2xl p-8 w-full max-w-md mx-4 shadow-2xl border border-gray-100 dark:border-gray-700">
+        <div className="text-center mb-6">
+          <div className="w-16 h-16 mx-auto mb-4 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center">
+            <Trash2 className="w-8 h-8 text-red-600 dark:text-red-400" />
+          </div>
+          <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+            Delete Group
+          </h3>
+          <p className="text-gray-600 dark:text-gray-400 text-sm">
+            Are you sure you want to delete <strong>{groupName}</strong>? This action cannot be undone. All tasks in this group will be ungrouped.
+          </p>
+        </div>
+        
+        <div className="flex space-x-4 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isDeleting}
+            className="flex-1 bg-gray-100 dark:bg-[#2E2E2E] text-gray-700 dark:text-gray-300 py-4 px-6 rounded-xl hover:bg-gray-200 dark:hover:bg-[#3E3E3E] transition-all duration-200 font-medium border border-transparent hover:border-gray-300 dark:hover:border-gray-400 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isDeleting}
+            className="flex-1 bg-red-600 text-white py-4 px-6 rounded-xl hover:bg-red-700 transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none"
+          >
+            {isDeleting ? (
+              <div className="flex items-center justify-center">
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                Deleting...
+              </div>
+            ) : (
+              'Delete Group'
+            )}
+          </button>
         </div>
       </div>
     </div>

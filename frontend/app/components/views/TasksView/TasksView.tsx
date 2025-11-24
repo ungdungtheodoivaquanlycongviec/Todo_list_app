@@ -24,10 +24,14 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../../../contexts/AuthContext";
 import { Group } from "../../../services/types/group.types";
 import { useGroupChange } from "../../../hooks/useGroupChange";
+import { useTaskRealtime } from "../../../hooks/useTaskRealtime";
 import NoGroupState from "../../common/NoGroupState";
+import NoFolderState from "../../common/NoFolderState";
+import { useFolder } from "../../../contexts/FolderContext";
 
 export default function TasksView() {
   const { user: currentUser, currentGroup } = useAuth();
+  const { currentFolder } = useFolder();
   const [activeTasksExpanded, setActiveTasksExpanded] = useState(true);
   const [uncompletedTasksExpanded, setUncompletedTasksExpanded] =
     useState(true);
@@ -75,7 +79,7 @@ export default function TasksView() {
     "Other",
   ];
 
-  // Sort options like Bordio
+  // Sort options
   const sortOptions = [
     { key: "title", label: "Task name", asc: "A → Z", desc: "Z → A" },
     { key: "status", label: "Status", asc: "A → Z", desc: "Z → A" },
@@ -106,6 +110,11 @@ export default function TasksView() {
     },
   ];
 
+  const currentGroupId =
+    (currentGroup && (currentGroup as any)._id) ||
+    (currentGroup && (currentGroup as any).id) ||
+    null;
+
   // Helper để lấy error message
   const getErrorMessage = (error: unknown): string => {
     if (error instanceof Error) {
@@ -116,6 +125,25 @@ export default function TasksView() {
       return String(error.message);
     }
     return "An unknown error occurred";
+  };
+
+  const getTaskFolderId = (task: Task): string | null => {
+    const folder = (task as any)?.folderId;
+    if (!folder) return null;
+    if (typeof folder === "string") return folder;
+    if (typeof folder === "object") {
+      return folder._id || null;
+    }
+    return null;
+  };
+
+  const isTaskInCurrentFolder = (task: Task): boolean => {
+    if (!currentFolder) return true;
+    const taskFolderId = getTaskFolderId(task);
+    if (currentFolder.isDefault) {
+      return !taskFolderId || taskFolderId === currentFolder._id;
+    }
+    return taskFolderId === currentFolder._id;
   };
 
   // NEW: Helper để lấy danh sách assignees chi tiết
@@ -130,8 +158,8 @@ export default function TasksView() {
     };
   }
 
-  const assignees = task.assignedTo
-    .filter(assignment => assignment.userId)
+  const assignees = (task.assignedTo as any[])
+    .filter(assignment => assignment && assignment.userId)
     .map(assignment => {
       // Xử lý cả trường hợp userId là string hoặc object
       let userData;
@@ -154,21 +182,28 @@ export default function TasksView() {
             avatar: currentUser.avatar
           };
         }
-      } else {
+      } else if (assignment.userId && typeof assignment.userId === 'object') {
         // Nếu userId là object (đã populated)
+        const user = assignment.userId as { _id: string; name?: string; email?: string; avatar?: string };
         userData = {
-          _id: assignment.userId._id,
-          name: assignment.userId.name || 'Unknown User',
-          email: assignment.userId.email,
-          avatar: assignment.userId.avatar
+          _id: user._id,
+          name: user.name || 'Unknown User',
+          email: user.email || '',
+          avatar: user.avatar
         };
+      } else {
+        // Fallback nếu userId không hợp lệ
+        return null;
       }
+
+      if (!userData) return null;
 
       return {
         ...userData,
         initial: (userData.name?.charAt(0) || 'U').toUpperCase()
       };
-    });
+    })
+    .filter((assignee): assignee is NonNullable<typeof assignee> => assignee !== null);
 
   const currentUserIsAssigned = currentUser && 
     assignees.some(assignee => assignee._id === currentUser._id);
@@ -260,7 +295,10 @@ export default function TasksView() {
   const fetchTasks = async () => {
     try {
       setLoading(true);
-      const response = await taskService.getAllTasks();
+      const response = await taskService.getAllTasks(
+        { folderId: currentFolder?._id },
+        undefined
+      );
 
       console.log("=== FETCH TASKS DEBUG ===");
       console.log("Full response:", response);
@@ -326,7 +364,9 @@ export default function TasksView() {
   const fetchKanbanData = async () => {
     try {
       setLoading(true);
-      const response = await taskService.getKanbanView();
+      const response = await taskService.getKanbanView({
+        folderId: currentFolder?._id
+      });
 
       console.log("=== FETCH KANBAN DEBUG ===");
       console.log("Kanban response:", response);
@@ -364,7 +404,7 @@ export default function TasksView() {
     } else {
       fetchKanbanData();
     }
-  }, [viewMode]);
+  }, [viewMode, currentFolder?._id]);
 
   // Listen for global group change events
   useGroupChange(() => {
@@ -500,7 +540,8 @@ export default function TasksView() {
         tags: taskData.tags || [],
         estimatedTime: taskData.estimatedTime || "",
         type: taskData.category || "Operational",
-        assignedTo
+        assignedTo,
+        folderId: currentFolder?._id || undefined
       };
 
       console.log('🎯 Creating task with data:', backendTaskData);
@@ -545,6 +586,10 @@ export default function TasksView() {
         prev.filter((task) => task._id !== updatedTask._id)
       );
 
+      if (!isTaskInCurrentFolder(updatedTask)) {
+        return;
+      }
+
       // Add task to appropriate section based on status and due date
       if (updatedTask.status === "completed") {
         setCompletedTasks((prev) => [...prev, updatedTask]);
@@ -554,10 +599,27 @@ export default function TasksView() {
         setActiveTasks((prev) => [...prev, updatedTask]);
       }
     } else {
-      // Refresh kanban data khi có update
       fetchKanbanData();
     }
   };
+
+  useTaskRealtime({
+    onTaskCreated: ({ task, groupId }) => {
+      if (!task) return;
+      if (currentGroupId && groupId && groupId !== currentGroupId) return;
+      handleTaskUpdate(task);
+    },
+    onTaskUpdated: ({ task, groupId }) => {
+      if (!task) return;
+      if (currentGroupId && groupId && groupId !== currentGroupId) return;
+      handleTaskUpdate(task);
+    },
+    onTaskDeleted: ({ taskId, groupId }) => {
+      if (!taskId) return;
+      if (currentGroupId && groupId && groupId !== currentGroupId) return;
+      handleTaskDelete(taskId);
+    }
+  });
 
   const handleTaskDelete = (taskId: string) => {
     if (viewMode === "list") {
@@ -807,7 +869,7 @@ export default function TasksView() {
                 key={column.key}
                 className={`flex-shrink-0 w-92 ${column.color} border rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow duration-200`}
               >
-                {/* Column Header - Enhanced with Bordio style */}
+                {/* Column Header */}
                 <div className="flex items-center justify-between mb-4 p-2 rounded-lg bg-white/50">
                   <div className="flex items-center gap-3">
                     {column.icon}
@@ -1403,6 +1465,11 @@ export default function TasksView() {
     );
   }
 
+  // Check if user has a current folder
+  if (!currentFolder) {
+    return <NoFolderState />;
+  }
+
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       <div className="flex items-center justify-between mb-8">
@@ -1411,6 +1478,11 @@ export default function TasksView() {
           <p className="text-gray-600 mt-1">
             Manage your team's tasks and projects
           </p>
+          {currentFolder && (
+            <p className="text-sm text-gray-500 mt-2">
+              Folder: <span className="font-medium text-gray-800">{currentFolder.name}{currentFolder.isDefault ? ' (Default)' : ''}</span>
+            </p>
+          )}
         </div>
         <div className="flex gap-3 items-center">
           {/* Sort Button - Available for both List and Kanban views */}

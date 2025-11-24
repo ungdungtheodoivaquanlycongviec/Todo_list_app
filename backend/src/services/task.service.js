@@ -1,5 +1,6 @@
 const Task = require('../models/Task.model');
 const Group = require('../models/Group.model');
+const Folder = require('../models/Folder.model');
 const User = require('../models/User.model');
 const { ERROR_MESSAGES, TASK_STATUS, LIMITS, SUCCESS_MESSAGES, HTTP_STATUS, PRIORITY_LEVELS } = require('../config/constants');
 const { 
@@ -15,6 +16,16 @@ const {
 } = require('../utils/dateHelper');
 const fileService = require('./file.service');
 const notificationService = require('./notification.service');
+const { TASK_EVENTS, emitTaskEvent } = require('./task.realtime.gateway');
+const { resolveFolderContext } = require('./folder.service');
+const {
+  canCreateTasks,
+  canWriteInFolder,
+  canViewFolder,
+  canViewAllFolders,
+  requiresFolderAssignment,
+  canAssignFolderMembers
+} = require('../utils/groupPermissions');
 
 const normalizeId = value => {
   if (!value) return null;
@@ -29,6 +40,260 @@ const raiseError = (message, statusCode = HTTP_STATUS.BAD_REQUEST) => {
   const error = new Error(message);
   error.statusCode = statusCode;
   throw error;
+};
+
+const toPlainTask = (taskDoc) => {
+  if (!taskDoc) {
+    return null;
+  }
+  if (typeof taskDoc.toObject === 'function') {
+    return taskDoc.toObject({
+      virtuals: true,
+      getters: true
+    });
+  }
+  return taskDoc;
+};
+
+const buildRecipientList = (task, groupDoc = null) => {
+  const recipients = new Set();
+  const push = (value) => {
+    const normalized = normalizeId(value);
+    if (normalized) {
+      recipients.add(normalized);
+    }
+  };
+
+  if (!task) {
+    return [];
+  }
+
+  push(task.createdBy);
+
+  if (Array.isArray(task.assignedTo)) {
+    task.assignedTo.forEach((assignment) => {
+      if (!assignment) return;
+      const user = assignment.userId || assignment;
+      if (user && typeof user === 'object') {
+        push(user._id || user.id || user);
+      } else {
+        push(user);
+      }
+    });
+  }
+
+  if (groupDoc && Array.isArray(groupDoc.members)) {
+    groupDoc.members.forEach((member) => {
+      if (!member) return;
+      const user = member.userId || member;
+      if (user && typeof user === 'object') {
+        push(user._id || user.id || user);
+      } else {
+        push(user);
+      }
+    });
+  }
+
+  return Array.from(recipients);
+};
+
+const emitTaskRealtime = async ({
+  taskDoc,
+  groupDoc = null,
+  eventKey = TASK_EVENTS.updated,
+  meta = {}
+}) => {
+  if (!taskDoc) {
+    return;
+  }
+
+  const plainTask = toPlainTask(taskDoc);
+  if (!plainTask) {
+    return;
+  }
+
+  const groupId = normalizeId(plainTask.groupId);
+  let resolvedGroup = groupDoc;
+
+  if (!resolvedGroup && groupId) {
+    try {
+      resolvedGroup = await Group.findById(groupId).select('_id members').lean();
+    } catch (error) {
+      console.warn('Failed to resolve group for realtime task event:', error.message);
+    }
+  }
+
+  const recipients = buildRecipientList(plainTask, resolvedGroup);
+
+  const taskId =
+    normalizeId(plainTask._id) ||
+    (typeof plainTask.id === 'string' ? plainTask.id : null);
+
+  const mutationType =
+    meta.mutationType ||
+    (eventKey === TASK_EVENTS.created
+      ? 'create'
+      : eventKey === TASK_EVENTS.deleted
+      ? 'delete'
+      : 'update');
+
+  emitTaskEvent(eventKey, {
+    task: plainTask,
+    taskId,
+    groupId,
+    recipients,
+    meta: {
+      ...meta,
+      mutationType
+    }
+  });
+};
+
+const ensureGroupAccess = async (groupId, requesterId) => {
+  if (!groupId) {
+    raiseError(ERROR_MESSAGES.INVALID_ID);
+  }
+
+  const group = await Group.findById(groupId);
+  if (!group) {
+    raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  if (!group.isMember(requesterId)) {
+    raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
+  }
+
+  const role = group.getMemberRole(requesterId);
+
+  return { group, role };
+};
+
+const enforceFolderAccess = async ({
+  group,
+  groupId,
+  folderId,
+  requesterId,
+  role,
+  requireWrite = false,
+  allowFallback = true
+}) => {
+  if (!group && groupId) {
+    group = await Group.findById(groupId);
+  }
+
+  return resolveFolderContext({
+    groupId: groupId || group?._id,
+    groupDoc: group,
+    folderId,
+    requesterId,
+    allowFallback,
+    access: {
+      role,
+      enforceAssignment: true,
+      requireWrite
+    }
+  });
+};
+
+const buildFolderClauses = folder => {
+  if (!folder) {
+    return [];
+  }
+
+  if (folder.isDefault) {
+    return [
+      {
+        $or: [
+          { folderId: folder._id },
+          { folderId: null },
+          { folderId: { $exists: false } }
+        ]
+      }
+    ];
+  }
+
+  return [{ folderId: folder._id }];
+};
+
+const buildScopedFolderFilter = async ({
+  group,
+  groupId,
+  folderId,
+  requesterId,
+  role
+}) => {
+  if (folderId) {
+    const { folder } = await enforceFolderAccess({
+      group,
+      groupId,
+      folderId,
+      requesterId,
+      role,
+      requireWrite: false
+    });
+    return buildFolderClauses(folder);
+  }
+
+  if (!requiresFolderAssignment(role)) {
+    return [];
+  }
+
+  const assignedFolders = await Folder.find({
+    groupId,
+    'memberAccess.userId': requesterId
+  })
+    .select('_id isDefault')
+    .lean();
+
+  if (!assignedFolders || assignedFolders.length === 0) {
+    raiseError(ERROR_MESSAGES.FOLDER_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
+  }
+
+  const clauses = [];
+  const defaultFolder = assignedFolders.find(folder => folder.isDefault);
+  const scopedFolders = assignedFolders.filter(folder => !folder.isDefault);
+
+  if (scopedFolders.length > 0) {
+    clauses.push({
+      folderId: { $in: scopedFolders.map(folder => folder._id) }
+    });
+  }
+
+  if (defaultFolder) {
+    clauses.push({
+      $or: [
+        { folderId: defaultFolder._id },
+        { folderId: null },
+        { folderId: { $exists: false } }
+      ]
+    });
+  }
+
+  return clauses;
+};
+
+const ensureTaskWriteAccess = async (taskDoc, requesterId) => {
+  if (!taskDoc) {
+    raiseError(ERROR_MESSAGES.TASK_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  const groupId = normalizeId(taskDoc.groupId);
+  if (!groupId) {
+    raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  const { group, role } = await ensureGroupAccess(groupId, requesterId);
+
+  await enforceFolderAccess({
+    group,
+    groupId,
+    folderId: taskDoc.folderId,
+    requesterId,
+    role,
+    requireWrite: true
+  });
+
+  return { group, role };
 };
 
 /**
@@ -51,6 +316,7 @@ class TaskService {
 
     let groupMemberIds = null;
     let targetGroup = null;
+    let requesterRole = null;
 
     if (taskData.groupId) {
       const groupId = normalizeId(taskData.groupId);
@@ -58,19 +324,11 @@ class TaskService {
         raiseError('Invalid groupId format');
       }
 
-      const group = await Group.findById(groupId);
-      if (!group) {
-        raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
-      }
-
+      const { group, role } = await ensureGroupAccess(groupId, creatorId);
       targetGroup = group;
+      requesterRole = role;
 
-      // Check if user is a member of the group (admin or member)
-      const isGroupMember = group.members.some(member => 
-        normalizeId(member.userId) === normalizeId(creatorId)
-      );
-      
-      if (!isGroupMember) {
+      if (!canCreateTasks(requesterRole)) {
         raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
       }
 
@@ -78,6 +336,17 @@ class TaskService {
         group.members.map(member => normalizeId(member.userId)).filter(Boolean)
       );
       taskData.groupId = groupId;
+
+      const { folder } = await enforceFolderAccess({
+        group,
+        groupId,
+        folderId: taskData.folderId,
+        requesterId: creatorId,
+        role: requesterRole,
+        requireWrite: true
+      });
+
+      taskData.folderId = folder ? folder._id : null;
     }
 
     let assignedIds = [];
@@ -87,14 +356,54 @@ class TaskService {
         .filter(Boolean);
     }
 
-    // REMOVED: No longer automatically add creator to assignedTo
-    // Users can now assign tasks to any group members without the creator being forced in
+    // Check if user can assign to others (only PM and Product Owner)
+    const canAssignToOthers = targetGroup ? canAssignFolderMembers(requesterRole) : false;
+    
+    // If user cannot assign to others, they can only assign to themselves
+    if (!canAssignToOthers && assignedIds.length > 0) {
+      // Filter to only allow self-assignment
+      const selfOnly = assignedIds.filter(id => id === creatorId);
+      if (selfOnly.length !== assignedIds.length) {
+        raiseError('Bạn chỉ có thể gán task cho chính mình. Chỉ PM và Product Owner mới có thể gán task cho người khác.', HTTP_STATUS.FORBIDDEN);
+      }
+      assignedIds = selfOnly;
+    }
+
+    // If no assignees specified and user cannot assign to others, auto-assign to creator
+    if (assignedIds.length === 0 && !canAssignToOthers) {
+      assignedIds = [creatorId];
+    }
+
     assignedIds = Array.from(new Set(assignedIds));
 
     if (groupMemberIds) {
       const outsideGroup = assignedIds.filter(id => !groupMemberIds.has(id));
       if (outsideGroup.length > 0) {
         raiseError(ERROR_MESSAGES.USER_NOT_IN_GROUP);
+      }
+    }
+
+    // If task has a folder, verify all assignees have access to that folder
+    if (taskData.folderId && targetGroup) {
+      const folder = await Folder.findById(taskData.folderId);
+      if (folder && !folder.isDefault) {
+        const folderMemberAccess = new Set(
+          (folder.memberAccess || []).map(access => normalizeId(access.userId)).filter(Boolean)
+        );
+        
+        // Admins (PM/Product Owner) can assign to anyone in group, but regular users must have folder access
+        const invalidAssignees = assignedIds.filter(id => {
+          if (canAssignToOthers) {
+            // Admins can assign to anyone in group
+            return false;
+          }
+          // Regular users: assignees must have folder access
+          return !folderMemberAccess.has(id);
+        });
+        
+        if (invalidAssignees.length > 0) {
+          raiseError('Không thể gán task cho người không có quyền truy cập vào folder này.', HTTP_STATUS.FORBIDDEN);
+        }
       }
     }
 
@@ -136,6 +445,16 @@ class TaskService {
       }
     }
 
+    await emitTaskRealtime({
+      taskDoc: populatedTask,
+      groupDoc: targetGroup,
+      eventKey: TASK_EVENTS.created,
+      meta: {
+        mutationType: 'create',
+        source: 'task:create'
+      }
+    });
+
     return populatedTask;
   }
 
@@ -160,7 +479,7 @@ class TaskService {
    * @returns {Promise<Object>} { tasks, pagination }
    */
   async getAllTasks(filters = {}, options = {}, requesterId = null) {
-    const { status, priority, search, groupId } = filters;
+    const { status, priority, search, groupId, folderId } = filters;
     const { sortBy, order, page, limit } = options;
 
     // Validate và sanitize pagination
@@ -179,14 +498,13 @@ class TaskService {
     const sanitizedSortBy = sortValidation.sanitizedSortBy;
     const sanitizedOrder = sortValidation.sanitizedOrder;
 
-    // Build filter object
-    const query = {};
+    const queryFilters = [];
 
     if (status) {
       if (!TASK_STATUS.includes(status)) {
         throw new Error(`Invalid status. Allowed values: ${TASK_STATUS.join(', ')}`);
       }
-      query.status = status;
+      queryFilters.push({ status });
     }
     
     if (priority) {
@@ -194,7 +512,7 @@ class TaskService {
       if (!validPriorities.includes(priority)) {
         throw new Error(`Invalid priority. Allowed values: ${validPriorities.join(', ')}`);
       }
-      query.priority = priority;
+      queryFilters.push({ priority });
     }
 
     if (groupId) {
@@ -202,26 +520,35 @@ class TaskService {
         raiseError('Invalid groupId format');
       }
 
-      const group = await Group.findById(groupId);
-      if (!group) {
-        raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
-      }
+      const { group, role } = await ensureGroupAccess(groupId, requesterId);
 
-      const requesterIdStr = normalizeId(requesterId);
-      if (!requesterIdStr || !group.isMember(requesterIdStr)) {
-        raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
-      }
+      queryFilters.push({ groupId });
 
-      query.groupId = groupId;
+      const folderClauses = await buildScopedFolderFilter({
+        group,
+        groupId,
+        folderId,
+        requesterId,
+        role
+      });
+
+      if (folderClauses.length === 1) {
+        queryFilters.push(folderClauses[0]);
+      } else if (folderClauses.length > 1) {
+        queryFilters.push({ $or: folderClauses });
+      }
     }
 
-    // Text search
     if (search && search.trim()) {
-      query.$or = [
-        { title: { $regex: search.trim(), $options: 'i' } },
-        { description: { $regex: search.trim(), $options: 'i' } }
-      ];
+      queryFilters.push({
+        $or: [
+          { title: { $regex: search.trim(), $options: 'i' } },
+          { description: { $regex: search.trim(), $options: 'i' } }
+        ]
+      });
     }
+
+    const query = queryFilters.length > 0 ? { $and: queryFilters } : {};
 
     // Sorting
     const sortOption = {};
@@ -269,11 +596,14 @@ class TaskService {
       return null;
     }
 
+    const { group: currentGroup, role: initialRole } = await ensureTaskWriteAccess(taskDoc, requesterId);
+
     const requesterIdStr = normalizeId(requesterId);
     const creatorIdStr = normalizeId(taskDoc.createdBy);
 
     let finalGroupId = normalizeId(taskDoc.groupId);
-    let targetGroup = null;
+    let targetGroup = currentGroup;
+    let requesterRole = initialRole;
 
     if (updateData.groupId !== undefined) {
       const requestedGroupId = updateData.groupId ? normalizeId(updateData.groupId) : null;
@@ -305,9 +635,27 @@ class TaskService {
         }
 
         finalGroupId = requestedGroupId;
+        requesterRole = targetGroup.getMemberRole(requesterIdStr);
+        if (!requesterRole) {
+          raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
+        }
       }
     } else if (finalGroupId) {
       targetGroup = await Group.findById(finalGroupId);
+    }
+
+    let folderResolution = null;
+    if ((updateData.folderId !== undefined || updateData.groupId !== undefined) && finalGroupId) {
+      folderResolution = await enforceFolderAccess({
+        group: targetGroup,
+        groupId: finalGroupId,
+        folderId: updateData.folderId,
+        requesterId,
+        role: requesterRole,
+        requireWrite: true
+      });
+    } else if (updateData.folderId !== undefined && !finalGroupId) {
+      raiseError('Cannot assign folder without a valid group', HTTP_STATUS.BAD_REQUEST);
     }
 
     const groupMemberIds = targetGroup
@@ -354,6 +702,7 @@ class TaskService {
     const updatePayload = { ...updateData };
     delete updatePayload.assignedTo;
     delete updatePayload.groupId;
+    delete updatePayload.folderId;
 
     if (updateData.assignedTo !== undefined || groupMemberIds) {
       updatePayload.assignedTo = finalAssignedIds.map(id => ({ userId: id }));
@@ -361,6 +710,10 @@ class TaskService {
 
     if (updateData.groupId !== undefined) {
       updatePayload.groupId = finalGroupId;
+    }
+
+    if (folderResolution) {
+      updatePayload.folderId = folderResolution.folder ? folderResolution.folder._id : null;
     }
 
     const updatedTask = await Task.findByIdAndUpdate(
@@ -415,6 +768,17 @@ class TaskService {
       }
     }
 
+    await emitTaskRealtime({
+      taskDoc: updatedTask,
+      groupDoc: targetGroup,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changedFields: Object.keys(updateData || {}),
+        source: 'task:update'
+      }
+    });
+
     return updatedTask;
   }
 
@@ -423,8 +787,27 @@ class TaskService {
    * @param {String} taskId - ID của task
    * @returns {Promise<Object|null>} Task đã xóa hoặc null
    */
-  async deleteTask(taskId) {
-    const task = await Task.findByIdAndDelete(taskId);
+  async deleteTask(taskId, requesterId = null) {
+    const task = await Task.findById(taskId);
+    if (!task) {
+      return null;
+    }
+
+    await ensureTaskWriteAccess(task, requesterId);
+
+    await Task.deleteOne({ _id: taskId });
+
+    if (task) {
+      await emitTaskRealtime({
+        taskDoc: task,
+        eventKey: TASK_EVENTS.deleted,
+        meta: {
+          mutationType: 'delete',
+          source: 'task:delete'
+        }
+      });
+    }
+
     return task;
   }
 
@@ -434,7 +817,7 @@ class TaskService {
    * @param {Number} month - Tháng (1-12)
    * @returns {Promise<Object>} { year, month, tasksByDate }
    */
-  async getCalendarView(year, month, groupId) {
+  async getCalendarView(year, month, groupId, folderId = null, requesterId = null) {
     // Validate params
     if (!year || !month) {
       throw new Error('Year và month là bắt buộc');
@@ -459,14 +842,35 @@ class TaskService {
     const startDate = getFirstDayOfMonth(yearNum, monthNum);
     const endDate = getLastDayOfMonth(yearNum, monthNum);
 
+    const { group, role } = await ensureGroupAccess(groupId, requesterId);
+    const folderClauses = await buildScopedFolderFilter({
+      group,
+      groupId,
+      folderId,
+      requesterId,
+      role
+    });
+
+    const filters = [
+      { groupId },
+      {
+        dueDate: {
+          $gte: startDate,
+          $lte: endDate
+        }
+      }
+    ];
+
+    if (folderClauses.length === 1) {
+      filters.push(folderClauses[0]);
+    } else if (folderClauses.length > 1) {
+      filters.push({ $or: folderClauses });
+    }
+
+    const query = { $and: filters };
+
     // Query tasks VỚI POPULATE và filter theo group
-    const tasks = await Task.find({
-      dueDate: {
-        $gte: startDate,
-        $lte: endDate
-      },
-      groupId: groupId
-    })
+    const tasks = await Task.find(query)
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
@@ -503,17 +907,16 @@ class TaskService {
    * @returns {Promise<Object>} Kanban board object
    */
   async getKanbanView(filters = {}, requesterId = null) {
-    const { priority, groupId, search } = filters;
+    const { priority, groupId, search, folderId } = filters;
 
-    // Build filter
-    const query = {};
+    const queryFilters = [];
     
     if (priority) {
       const validPriorities = ['low', 'medium', 'high', 'urgent'];
       if (!validPriorities.includes(priority)) {
         throw new Error(`Invalid priority. Allowed values: ${validPriorities.join(', ')}`);
       }
-      query.priority = priority;
+      queryFilters.push({ priority });
     }
     
     if (groupId) {
@@ -521,25 +924,35 @@ class TaskService {
         raiseError('Invalid groupId format');
       }
 
-      const group = await Group.findById(groupId);
-      if (!group) {
-        raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
-      }
+      const { group, role } = await ensureGroupAccess(groupId, requesterId);
 
-      const requesterIdStr = normalizeId(requesterId);
-      if (!requesterIdStr || !group.isMember(requesterIdStr)) {
-        raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
-      }
+      queryFilters.push({ groupId });
 
-      query.groupId = groupId;
+      const folderClauses = await buildScopedFolderFilter({
+        group,
+        groupId,
+        folderId,
+        requesterId,
+        role
+      });
+
+      if (folderClauses.length === 1) {
+        queryFilters.push(folderClauses[0]);
+      } else if (folderClauses.length > 1) {
+        queryFilters.push({ $or: folderClauses });
+      }
     }
 
     if (search && search.trim()) {
-      query.$or = [
-        { title: { $regex: search.trim(), $options: 'i' } },
-        { description: { $regex: search.trim(), $options: 'i' } }
-      ];
+      queryFilters.push({
+        $or: [
+          { title: { $regex: search.trim(), $options: 'i' } },
+          { description: { $regex: search.trim(), $options: 'i' } }
+        ]
+      });
     }
+
+    const query = queryFilters.length > 0 ? { $and: queryFilters } : {};
 
     // Query all tasks VỚI POPULATE
     const tasks = await Task.find(query)
@@ -641,19 +1054,39 @@ class TaskService {
       groupMemberIds = new Set(group.members.map(member => normalizeId(member.userId)).filter(Boolean));
     }
 
-    // Check permissions: user must be either creator, admin of the group, or currently assigned to the task
-    const isCreator = normalizedAssignerId && task.createdBy.toString() === normalizedAssignerId;
-    const isGroupAdmin = group && group.isAdmin(normalizedAssignerId);
-    const isCurrentlyAssigned = normalizedAssignerId && task.assignedTo.some(
-      assignee => normalizeId(assignee.userId) === normalizedAssignerId
-    );
-
-    if (!normalizedAssignerId || (!isCreator && !isGroupAdmin && !isCurrentlyAssigned)) {
+    // Check permissions: only PM and Product Owner can assign tasks to others
+    const assignerRole = group ? group.getMemberRole(normalizedAssignerId) : null;
+    const canAssignToOthers = canAssignFolderMembers(assignerRole);
+    
+    if (!normalizedAssignerId) {
       return {
         success: false,
         statusCode: HTTP_STATUS.FORBIDDEN,
-        message: 'Bạn không có quyền gán người dùng cho task này. Chỉ người tạo task, admin của group, hoặc người được gán mới có thể thực hiện.'
+        message: 'Bạn không có quyền gán người dùng cho task này.'
       };
+    }
+
+    // If user cannot assign to others, they can only assign themselves
+    if (!canAssignToOthers) {
+      // Check if trying to assign to someone other than self
+      const tryingToAssignOthers = sanitizedIds.some(id => id !== normalizedAssignerId);
+      if (tryingToAssignOthers) {
+        return {
+          success: false,
+          statusCode: HTTP_STATUS.FORBIDDEN,
+          message: 'Bạn chỉ có thể gán task cho chính mình. Chỉ PM và Product Owner mới có thể gán task cho người khác.'
+        };
+      }
+      // If no userIds provided or only self, allow self-assignment
+      if (sanitizedIds.length === 0 || (sanitizedIds.length === 1 && sanitizedIds[0] === normalizedAssignerId)) {
+        // Allow self-assignment
+      } else {
+        return {
+          success: false,
+          statusCode: HTTP_STATUS.FORBIDDEN,
+          message: 'Bạn chỉ có thể gán task cho chính mình.'
+        };
+      }
     }
 
     const existingAssigneeIds = new Set(
@@ -676,7 +1109,19 @@ class TaskService {
         return;
       }
 
-      if (id === normalizedAssignerId) {
+      // Allow self-assignment for regular users
+      if (id === normalizedAssignerId && !canAssignToOthers) {
+        // Regular users can assign themselves
+        if (existingAssigneeIds.has(id)) {
+          alreadyAssigned.push(id);
+          return;
+        }
+        filteredIds.push(id);
+        return;
+      }
+
+      // For admins, ignore self-assignment attempts (they can assign others)
+      if (id === normalizedAssignerId && canAssignToOthers) {
         ignoredSelf.push(id);
         return;
       }
@@ -698,6 +1143,38 @@ class TaskService {
           message: ERROR_MESSAGES.USER_NOT_IN_GROUP,
           errors: { notInGroup: outsideGroup }
         };
+      }
+    }
+
+    // If task has a folder, verify all assignees have access to that folder
+    if (task.folderId && group) {
+      const folder = await Folder.findById(task.folderId);
+      if (folder && !folder.isDefault) {
+        const folderMemberAccess = new Set(
+          (folder.memberAccess || []).map(access => normalizeId(access.userId)).filter(Boolean)
+        );
+        
+        // Admins can assign to anyone in group, but regular users must have folder access
+        const invalidAssignees = filteredIds.filter(id => {
+          if (canAssignToOthers) {
+            // Admins can assign to anyone in group
+            return false;
+          }
+          // Regular users: assignees must have folder access (or be self)
+          if (id === normalizedAssignerId) {
+            return false; // Self-assignment is allowed
+          }
+          return !folderMemberAccess.has(id);
+        });
+        
+        if (invalidAssignees.length > 0) {
+          return {
+            success: false,
+            statusCode: HTTP_STATUS.FORBIDDEN,
+            message: 'Không thể gán task cho người không có quyền truy cập vào folder này.',
+            errors: { invalidAssignees }
+          };
+        }
       }
     }
 
@@ -807,6 +1284,18 @@ class TaskService {
       }
     }
 
+    await emitTaskRealtime({
+      taskDoc: populatedTask,
+      groupDoc: group,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'assignee:add',
+        addedUserIds: finalAssignableIds,
+        source: 'task:assign'
+      }
+    });
+
     return {
       success: true,
       statusCode: HTTP_STATUS.OK,
@@ -913,6 +1402,18 @@ class TaskService {
       }
     }
 
+    await emitTaskRealtime({
+      taskDoc: populatedTask,
+      groupDoc: group,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'assignee:remove',
+        removedUserId: userId.toString(),
+        source: 'task:unassign'
+      }
+    });
+
     return {
       success: true,
       statusCode: HTTP_STATUS.OK,
@@ -938,12 +1439,12 @@ class TaskService {
       };
     }
 
-    const { status, priority, search, groupId } = filters;
+    const { status, priority, search, groupId, folderId } = filters;
     const { sortBy, order, page, limit } = options;
 
-    const query = {
-      'assignedTo.userId': userId
-    };
+    const queryFilters = [
+      { 'assignedTo.userId': userId }
+    ];
 
     if (status) {
       if (!TASK_STATUS.includes(status)) {
@@ -953,7 +1454,7 @@ class TaskService {
           message: `Invalid status. Allowed values: ${TASK_STATUS.join(', ')}`
         };
       }
-      query.status = status;
+      queryFilters.push({ status });
     }
 
     if (priority) {
@@ -964,7 +1465,7 @@ class TaskService {
           message: `Invalid priority. Allowed values: ${PRIORITY_LEVELS.join(', ')}`
         };
       }
-      query.priority = priority;
+      queryFilters.push({ priority });
     }
 
     if (groupId) {
@@ -975,15 +1476,41 @@ class TaskService {
           message: 'Invalid groupId format'
         };
       }
-      query.groupId = groupId;
+      queryFilters.push({ groupId });
+
+      if (folderId !== undefined) {
+        const { folder } = await resolveFolderContext({
+          groupId,
+          folderId,
+          requesterId: userId
+        });
+
+        if (folder) {
+          if (folder.isDefault) {
+            queryFilters.push({
+              $or: [
+                { folderId: folder._id },
+                { folderId: null },
+                { folderId: { $exists: false } }
+              ]
+            });
+          } else {
+            queryFilters.push({ folderId: folder._id });
+          }
+        }
+      }
     }
 
     if (search && search.trim()) {
-      query.$or = [
-        { title: { $regex: search.trim(), $options: 'i' } },
-        { description: { $regex: search.trim(), $options: 'i' } }
-      ];
+      queryFilters.push({
+        $or: [
+          { title: { $regex: search.trim(), $options: 'i' } },
+          { description: { $regex: search.trim(), $options: 'i' } }
+        ]
+      });
     }
+
+    const query = queryFilters.length > 1 ? { $and: queryFilters } : queryFilters[0];
 
     const pagination = validatePagination(page, limit);
     const sanitizedPage = pagination.sanitizedPage;
@@ -1346,6 +1873,19 @@ class TaskService {
       }
     }
 
+    const latestComment = task.comments[task.comments.length - 1];
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'comment:add',
+        commentId: normalizeId(latestComment?._id),
+        source: 'task:comment:add'
+      }
+    });
+
     return task;
   }
 
@@ -1408,6 +1948,17 @@ class TaskService {
     await task.populate('assignedTo.userId', 'name email avatar');
     await task.populate('createdBy', 'name email avatar');
     await task.populate('groupId', 'name description');
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'comment:update',
+        commentId: normalizeId(commentId),
+        source: 'task:comment:update'
+      }
+    });
 
     return {
       success: true,
@@ -1473,6 +2024,17 @@ class TaskService {
     await task.populate('assignedTo.userId', 'name email avatar');
     await task.populate('createdBy', 'name email avatar');
     await task.populate('groupId', 'name description');
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'comment:remove',
+        commentId: normalizeId(commentId),
+        source: 'task:comment:delete'
+      }
+    });
 
     return {
       success: true,
@@ -1600,6 +2162,21 @@ class TaskService {
       await task.populate('comments.user', 'name email avatar');
     await task.populate('groupId', 'name description');
 
+      const addedAttachments = newAttachments.length > 0
+        ? task.attachments.slice(-newAttachments.length)
+        : [];
+
+      await emitTaskRealtime({
+        taskDoc: task,
+        eventKey: TASK_EVENTS.updated,
+        meta: {
+          mutationType: 'update',
+          changeType: 'attachment:add',
+          attachmentIds: addedAttachments.map((attachment) => normalizeId(attachment?._id)),
+          source: 'task:attachment:add'
+        }
+      });
+
       return {
         success: true,
         task,
@@ -1675,6 +2252,17 @@ class TaskService {
       await task.populate('createdBy', 'name email avatar');
       await task.populate('comments.user', 'name email avatar');
     await task.populate('groupId', 'name description');
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'attachment:remove',
+        attachmentId: normalizeId(attachmentId),
+        source: 'task:attachment:delete'
+      }
+    });
 
       return {
         success: true,
@@ -1761,6 +2349,19 @@ class TaskService {
     await task.populate('assignedTo.userId', 'name email avatar');
     await task.populate('createdBy', 'name email avatar');
 
+    const latestComment = task.comments[task.comments.length - 1];
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'comment:add',
+        commentId: normalizeId(latestComment?._id),
+        source: 'task:comment:add:file'
+      }
+    });
+
     return task;
   }
 
@@ -1789,6 +2390,16 @@ class TaskService {
     await task.populate('assignedTo.userId', 'name email avatar');
     await task.populate('comments.user', 'name email avatar');
     await task.populate('groupId', 'name description');
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'timer:start',
+        source: 'task:timer:start'
+      }
+    });
 
     return task;
   }
@@ -1840,6 +2451,19 @@ class TaskService {
     await task.populate('comments.user', 'name email avatar');
     await task.populate('groupId', 'name description');
 
+    const latestEntry = task.timeEntries[task.timeEntries.length - 1];
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'timer:stop',
+        timeEntryId: normalizeId(latestEntry?._id),
+        source: 'task:timer:stop'
+      }
+    });
+
     return task;
   }
 
@@ -1877,6 +2501,17 @@ class TaskService {
     await task.populate('comments.user', 'name email avatar');
     await task.populate('groupId', 'name description');
 
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'status:custom',
+        customStatus: task.customStatus,
+        source: 'task:status:custom'
+      }
+    });
+
     return task;
   }
 
@@ -1912,6 +2547,17 @@ class TaskService {
     await task.populate('assignedTo.userId', 'name email avatar');
     await task.populate('comments.user', 'name email avatar');
     await task.populate('groupId', 'name description');
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'repeat:update',
+        repetition: task.repetition,
+        source: 'task:repeat:update'
+      }
+    });
 
     return task;
   }

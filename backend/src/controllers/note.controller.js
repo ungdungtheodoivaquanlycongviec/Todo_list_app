@@ -16,13 +16,18 @@ const { SUCCESS_MESSAGES, ERROR_MESSAGES, HTTP_STATUS } = require('../config/con
 const getAllNotes = asyncHandler(async (req, res) => {
   const userId = req.user._id;
   const currentGroupId = req.user.currentGroupId;
-  const { search, page = 1, limit = 50 } = req.query;
+  const { search, page = 1, limit = 50, folderId } = req.query;
 
   if (!currentGroupId) {
     return sendError(res, 'You must join or create a group to view notes', HTTP_STATUS.FORBIDDEN);
   }
 
-  const notes = await noteService.getAllNotes(userId, currentGroupId, { search, page, limit });
+  const notes = await noteService.getAllNotes(userId, currentGroupId, {
+    search,
+    page,
+    limit,
+    folderId
+  });
 
   sendSuccess(res, { notes }, SUCCESS_MESSAGES.NOTES_FETCHED);
 });

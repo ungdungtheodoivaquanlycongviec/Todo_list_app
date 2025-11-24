@@ -2,12 +2,13 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from './contexts/AuthContext';
+import { FolderProvider } from './contexts/FolderContext';
 
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Bordio - Task Management',
-  description: 'Manage your tasks efficiently with Bordio',
+  title: 'SMA - Software Management Application',
+  description: 'Software Management Application - Manage your projects, tasks, and teams efficiently',
 };
 
 export default function RootLayout({
@@ -19,7 +20,9 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <AuthProvider>
-          {children}
+          <FolderProvider>
+            {children}
+          </FolderProvider>
         </AuthProvider>
       </body>
     </html>

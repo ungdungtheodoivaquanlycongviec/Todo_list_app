@@ -22,6 +22,8 @@ import CreateTaskModal from './TasksView/CreateTaskModal';
 import TaskDetailModal from './TasksView/TaskDetailModal';
 import { useGroupChange } from '../../hooks/useGroupChange';
 import NoGroupState from '../common/NoGroupState';
+import NoFolderState from '../common/NoFolderState';
+import { useFolder } from '../../contexts/FolderContext';
 
 interface CalendarEvent {
   id: string;
@@ -35,6 +37,7 @@ interface CalendarEvent {
 
 export default function CalendarView() {
   const { user: currentUser, currentGroup } = useAuth();
+  const { currentFolder } = useFolder();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [assignedTasksSearch, setAssignedTasksSearch] = useState('');
   const [calendarData, setCalendarData] = useState<any>(null);
@@ -70,7 +73,7 @@ export default function CalendarView() {
   const fetchCalendarData = async (year: number, month: number) => {
     try {
       setLoading(true);
-      const response = await taskService.getCalendarView(year, month);
+      const response = await taskService.getCalendarView(year, month, currentFolder?._id);
       
       console.log('=== FETCH CALENDAR DEBUG ===');
       console.log('Calendar response:', response);
@@ -99,7 +102,7 @@ export default function CalendarView() {
     try {
       setAssignedTasksLoading(true);
       // Backend đã filter theo currentGroupId, chỉ cần filter theo assignedTo ở frontend
-      const response = await taskService.getAllTasks({}, {});
+      const response = await taskService.getAllTasks({ folderId: currentFolder?._id });
       
       const tasksAssignedToUser = response.tasks.filter((task: Task) =>
         task.assignedTo.some((assignee: any) => 
@@ -130,7 +133,7 @@ export default function CalendarView() {
     const month = currentDate.getMonth() + 1;
     fetchCalendarData(year, month);
     fetchAssignedTasks();
-  }, [currentDate, currentUser]);
+  }, [currentDate, currentUser, currentFolder?._id]);
 
   // Listen for global group change events
   useGroupChange(() => {
@@ -339,6 +342,7 @@ export default function CalendarView() {
         tags: taskData.tags || [],
         assignedTo: assignedTo,
         estimatedTime: taskData.estimatedTime || "",
+        folderId: currentFolder?._id || undefined
       };
 
       console.log("Creating task with data:", backendTaskData);
@@ -416,6 +420,11 @@ export default function CalendarView() {
     );
   }
 
+  // Check if user has a current folder
+  if (!currentFolder) {
+    return <NoFolderState />;
+  }
+
   if (loading) {
     return (
       <div className="p-6 flex items-center justify-center min-h-screen bg-gray-50">
@@ -434,6 +443,11 @@ export default function CalendarView() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Calendar</h1>
           <p className="text-gray-600 mt-1">Manage your schedule and deadlines</p>
+          {currentFolder && (
+            <p className="text-sm text-gray-500 mt-1">
+              Folder: <span className="font-medium text-gray-800">{currentFolder.name}</span>
+            </p>
+          )}
         </div>
         
         <div className="flex items-center gap-3">

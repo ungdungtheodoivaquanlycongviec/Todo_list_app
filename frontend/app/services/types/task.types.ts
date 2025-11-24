@@ -62,6 +62,11 @@ export interface Task {
   tags: string[];
   category: string | null;
   groupId: string | null;
+  folderId?: string | {
+    _id: string;
+    name?: string;
+    isDefault?: boolean;
+  } | null;
   estimatedTime?: string;
   attachments: Array<{
     fileName: string;

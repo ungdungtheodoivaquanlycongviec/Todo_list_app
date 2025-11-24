@@ -1,6 +1,7 @@
 const { Server } = require('socket.io');
 const env = require('../config/environment');
 const { registerNotificationListener } = require('../services/realtime.gateway');
+const { registerTaskRealtimeListener } = require('../services/task.realtime.gateway');
 const {
   authenticateSocket,
   SOCKET_ERROR_CODES
@@ -8,6 +9,7 @@ const {
 const { createPresenceService } = require('./presence.service');
 
 const USER_ROOM_PREFIX = 'user:';
+const DIRECT_ROOM_PREFIX = 'direct:';
 const DEFAULT_DEV_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000'];
 
 const buildOrigins = () => {
@@ -23,7 +25,9 @@ const buildOrigins = () => {
     return [];
   }
 
-  return DEFAULT_DEV_ORIGINS;
+  // In development, allow all origins to enable testing from other devices on local network
+  // For production, explicitly set SOCKET_ALLOWED_ORIGINS in environment variables
+  return true; // Allow all origins in development
 };
 
 const resolveRedisOptions = () => {
@@ -109,13 +113,15 @@ const broadcastPresenceUpdate = (namespace, payload) => {
 
 const setupRealtimeServer = async (httpServer) => {
   const allowedOrigins = buildOrigins();
-  if (env.nodeEnv === 'production' && allowedOrigins.length === 0) {
+  if (env.nodeEnv === 'production' && (Array.isArray(allowedOrigins) && allowedOrigins.length === 0)) {
     console.warn('[Realtime] No SOCKET_ALLOWED_ORIGINS configured; allowing all origins (production fallback).');
   }
 
   const io = new Server(httpServer, {
     cors: {
-      origin: allowedOrigins.length > 0 ? allowedOrigins : true,
+      origin: allowedOrigins === true || (Array.isArray(allowedOrigins) && allowedOrigins.length > 0) 
+        ? allowedOrigins 
+        : true,
       credentials: true
     },
     serveClient: false,
@@ -241,16 +247,278 @@ const setupRealtimeServer = async (httpServer) => {
 
   const unregisterNotificationListener = registerNotificationListener(notificationListener);
 
+  const taskRealtimeListener = ({ eventKey, payload }) => {
+    if (!eventKey) {
+      return;
+    }
+
+    const eventName = `tasks:${eventKey}`;
+    const recipients = Array.isArray(payload?.recipients)
+      ? payload.recipients.filter(Boolean)
+      : [];
+
+    if (recipients.length > 0) {
+      const uniqueRecipients = Array.from(new Set(recipients));
+      uniqueRecipients.forEach((userId) => {
+        const roomName = `${USER_ROOM_PREFIX}${userId}`;
+        appNamespace.to(roomName).emit(eventName, {
+          eventKey,
+          payload
+        });
+      });
+      return;
+    }
+
+    appNamespace.emit(eventName, {
+      eventKey,
+      payload
+    });
+  };
+
+  const unregisterTaskListener = registerTaskRealtimeListener(taskRealtimeListener);
+
+  const { registerChatRealtimeListener, CHAT_EVENTS } = require('../services/chat.realtime.gateway');
+  const GROUP_ROOM_PREFIX = 'group:';
+
+  const chatRealtimeListener = ({ eventKey, payload }) => {
+    if (!eventKey || !payload) {
+      return;
+    }
+
+    const normalizeId = (value) => {
+      if (!value) return null;
+      if (typeof value === 'string') return value;
+      if (value.toHexString) return value.toHexString();
+      if (value._id) return value._id.toString();
+      if (value.toString) return value.toString();
+      return null;
+    };
+
+    if (payload.targetType === 'direct') {
+      const normalizedConversationId = normalizeId(payload.conversationId);
+      if (!normalizedConversationId) {
+        return;
+      }
+
+      const roomName = `${DIRECT_ROOM_PREFIX}${normalizedConversationId}`;
+      const messageData = payload.message?.toObject
+        ? payload.message.toObject()
+        : (payload.message?.toJSON ? payload.message.toJSON() : payload.message);
+
+      if (eventKey === CHAT_EVENTS.messageCreated) {
+        appNamespace.in(roomName).emit('direct:message', {
+          type: 'new',
+          conversationId: normalizedConversationId,
+          message: messageData
+        });
+      } else if (eventKey === CHAT_EVENTS.messageUpdated) {
+        appNamespace.in(roomName).emit('direct:message', {
+          type: 'edited',
+          conversationId: normalizedConversationId,
+          message: messageData
+        });
+      } else if (eventKey === CHAT_EVENTS.messageDeleted) {
+        appNamespace.in(roomName).emit('direct:message', {
+          type: 'deleted',
+          conversationId: normalizedConversationId,
+          message: messageData
+        });
+      } else if (eventKey === CHAT_EVENTS.reactionToggled) {
+        appNamespace.in(roomName).emit('direct:reaction', {
+          type: payload.added ? 'added' : 'removed',
+          conversationId: normalizedConversationId,
+          messageId: messageData?._id || payload.message?._id,
+          emoji: payload.emoji,
+          userId: payload.userId,
+          message: messageData
+        });
+      }
+
+      const participantSummaries = Array.isArray(payload.participantSummaries)
+        ? payload.participantSummaries
+        : (Array.isArray(payload.participants)
+            ? payload.participants.map(participantId => ({
+                userId: participantId,
+                summary: null
+              }))
+            : []);
+
+      participantSummaries
+        .map(entry => ({
+          userId: normalizeId(entry.userId),
+          summary: entry.summary || null
+        }))
+        .filter(entry => Boolean(entry.userId))
+        .forEach(entry => {
+          const userRoomName = `${USER_ROOM_PREFIX}${entry.userId}`;
+          appNamespace.to(userRoomName).emit('direct:conversation', {
+            eventKey,
+            conversationId: normalizedConversationId,
+            conversation: entry.summary || null
+          });
+        });
+
+      return;
+    }
+
+    const { message, groupId } = payload;
+    if (!groupId) {
+      return;
+    }
+
+    const normalizedGroupId = normalizeId(groupId);
+    const roomName = `${GROUP_ROOM_PREFIX}${normalizedGroupId}`;
+
+    const messageData = message?.toObject ? message.toObject() : (message?.toJSON ? message.toJSON() : message);
+
+    if (eventKey === CHAT_EVENTS.messageCreated) {
+      appNamespace.in(roomName).emit('chat:message', {
+        type: 'new',
+        message: messageData
+      });
+    } else if (eventKey === CHAT_EVENTS.messageUpdated) {
+      appNamespace.in(roomName).emit('chat:message', {
+        type: 'edited',
+        message: messageData
+      });
+    } else if (eventKey === CHAT_EVENTS.messageDeleted) {
+      appNamespace.in(roomName).emit('chat:message', {
+        type: 'deleted',
+        message: messageData
+      });
+    } else if (eventKey === CHAT_EVENTS.reactionToggled) {
+      appNamespace.in(roomName).emit('chat:reaction', {
+        type: payload.added ? 'added' : 'removed',
+        messageId: messageData?._id || message?._id,
+        emoji: payload.emoji,
+        userId: payload.userId,
+        message: messageData
+      });
+    }
+  };
+
+  const unregisterChatListener = registerChatRealtimeListener(chatRealtimeListener);
+
   // Setup chat handlers
   const { setupChatHandlers } = require('../services/chat.socket');
   setupChatHandlers(appNamespace);
 
+  // Setup folder realtime listener
+  const { registerFolderRealtimeListener, FOLDER_EVENTS } = require('../services/folder.realtime.gateway');
+  
+  const folderRealtimeListener = ({ eventKey, payload }) => {
+    if (!eventKey || !payload) {
+      return;
+    }
+
+    const { folder, groupId, recipients } = payload;
+    if (!groupId) {
+      return;
+    }
+
+    // Normalize groupId
+    const normalizeId = (value) => {
+      if (!value) return null;
+      if (typeof value === 'string') return value;
+      if (value.toHexString) return value.toHexString();
+      if (value._id) return value._id.toString();
+      if (value.toString) return value.toString();
+      return null;
+    };
+    
+    const normalizedGroupId = normalizeId(groupId);
+    const roomName = `${GROUP_ROOM_PREFIX}${normalizedGroupId}`;
+
+    // Convert folder to plain object
+    const folderData = folder?.toObject ? folder.toObject() : (folder?.toJSON ? folder.toJSON() : folder);
+
+    // Emit to both group room and user rooms for better coverage
+    // First, emit to group room (all members in the group will receive)
+    appNamespace.in(roomName).emit('folders:update', {
+      eventKey,
+      folder: folderData,
+      groupId: normalizedGroupId
+    });
+
+    // Also emit to specific user rooms as backup
+    if (Array.isArray(recipients) && recipients.length > 0) {
+      const uniqueRecipients = Array.from(new Set(recipients.map(normalizeId).filter(Boolean)));
+      uniqueRecipients.forEach((userId) => {
+        const userRoomName = `${USER_ROOM_PREFIX}${userId}`;
+        appNamespace.to(userRoomName).emit('folders:update', {
+          eventKey,
+          folder: folderData,
+          groupId: normalizedGroupId
+        });
+      });
+    }
+  };
+
+  const unregisterFolderListener = registerFolderRealtimeListener(folderRealtimeListener);
+
+  // Setup group realtime listener
+  const { registerGroupRealtimeListener, GROUP_EVENTS } = require('../services/group.realtime.gateway');
+  
+  const groupRealtimeListener = ({ eventKey, payload }) => {
+    if (!eventKey || !payload) {
+      return;
+    }
+
+    const { group, groupId, recipients } = payload;
+    
+    // Normalize groupId
+    const normalizeId = (value) => {
+      if (!value) return null;
+      if (typeof value === 'string') return value;
+      if (value.toHexString) return value.toHexString();
+      if (value._id) return value._id.toString();
+      if (value.toString) return value.toString();
+      return null;
+    };
+    
+    const normalizedGroupId = normalizeId(groupId || group?._id);
+    if (!normalizedGroupId) {
+      return;
+    }
+
+    const roomName = `${GROUP_ROOM_PREFIX}${normalizedGroupId}`;
+    const groupData = group?.toObject ? group.toObject() : (group?.toJSON ? group.toJSON() : group);
+
+    // Emit to both group room and user rooms
+    appNamespace.in(roomName).emit('groups:update', {
+      eventKey,
+      group: groupData,
+      groupId: normalizedGroupId
+    });
+
+    // Also emit to specific user rooms
+    if (Array.isArray(recipients) && recipients.length > 0) {
+      const uniqueRecipients = Array.from(new Set(recipients.map(normalizeId).filter(Boolean)));
+      uniqueRecipients.forEach((userId) => {
+        const userRoomName = `${USER_ROOM_PREFIX}${userId}`;
+        appNamespace.to(userRoomName).emit('groups:update', {
+          eventKey,
+          group: groupData,
+          groupId: normalizedGroupId
+        });
+      });
+    }
+  };
+
+  const unregisterGroupListener = registerGroupRealtimeListener(groupRealtimeListener);
+
   console.log(`[Realtime] Socket.IO namespace ${namespacePath} initialized.`);
   console.log('[Realtime] Chat handlers registered.');
+  console.log('[Realtime] Folder handlers registered.');
+  console.log('[Realtime] Group handlers registered.');
 
   const shutdown = async () => {
     try {
       unregisterNotificationListener();
+      unregisterTaskListener();
+      unregisterChatListener();
+      unregisterFolderListener();
+      unregisterGroupListener();
       presence.events.off('presence:update', presenceListener);
       await presence.shutdown();
       await appNamespace.disconnectSockets(true);

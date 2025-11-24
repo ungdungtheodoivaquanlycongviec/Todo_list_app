@@ -107,6 +107,10 @@ groupMessageSchema.index({ replyTo: 1 });
 // Virtual for reaction counts grouped by emoji
 groupMessageSchema.virtual('reactionCounts').get(function() {
   const counts = {};
+  // Ensure reactions is an array before iterating
+  if (!this.reactions || !Array.isArray(this.reactions)) {
+    return [];
+  }
   this.reactions.forEach(reaction => {
     if (!counts[reaction.emoji]) {
       counts[reaction.emoji] = {

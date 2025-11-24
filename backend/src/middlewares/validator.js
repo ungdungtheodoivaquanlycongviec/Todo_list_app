@@ -4,7 +4,9 @@ const {
   ERROR_MESSAGES,
   LIMITS,
   NOTIFICATION_CHANNELS,
-  NOTIFICATION_CATEGORIES
+  NOTIFICATION_CATEGORIES,
+  GROUP_ROLES,
+  GROUP_ROLE_KEYS
 } = require('../config/constants');
 const validator = require('validator');
 const authService = require('../services/auth.service');
@@ -499,9 +501,26 @@ const sanitizeMemberIds = (memberIds = []) => {
   return Array.from(unique);
 };
 
+const sanitizeMemberAssignments = (members = []) => {
+  const unique = new Map();
+  members.forEach(entry => {
+    if (!entry) return;
+    const userId = typeof entry === 'string' ? entry : entry.userId;
+    const role = entry.role || entry?.role;
+    if (!userId) return;
+    const normalized = typeof userId === 'string' ? userId.trim() : String(userId);
+    if (!normalized) return;
+    unique.set(normalized, {
+      userId: normalized,
+      role
+    });
+  });
+  return Array.from(unique.values());
+};
+
 const validateCreateGroup = (req, res, next) => {
   const errors = [];
-  const { name, description, memberIds } = req.body;
+  const { name, description, members } = req.body;
 
   if (!name || !name.trim()) {
     errors.push({ field: 'name', message: 'Group name is required' });
@@ -519,25 +538,29 @@ const validateCreateGroup = (req, res, next) => {
     });
   }
 
-  if (memberIds !== undefined) {
-    if (!Array.isArray(memberIds)) {
-      errors.push({ field: 'memberIds', message: 'memberIds must be an array' });
+  if (members !== undefined) {
+    if (!Array.isArray(members)) {
+      errors.push({ field: 'members', message: 'members must be an array' });
     } else {
-      const sanitized = sanitizeMemberIds(memberIds);
+      const sanitized = sanitizeMemberAssignments(members);
 
-      const invalidIds = sanitized.filter(id => !isValidObjectId(id));
-      if (invalidIds.length > 0) {
-        errors.push({ field: 'memberIds', message: 'memberIds contains invalid id(s)', invalidIds });
+      const invalidEntries = sanitized.filter(entry => !isValidObjectId(entry.userId) || !entry.role || !GROUP_ROLES.includes(entry.role));
+      if (invalidEntries.length > 0) {
+        errors.push({
+          field: 'members',
+          message: 'Each member requires a valid userId and role',
+          invalidEntries
+        });
       }
 
       if (sanitized.length + 1 > LIMITS.MAX_MEMBERS_PER_GROUP) {
         errors.push({
-          field: 'memberIds',
+          field: 'members',
           message: `Groups can have at most ${LIMITS.MAX_MEMBERS_PER_GROUP} members including the creator`
         });
       }
 
-      req.body.memberIds = sanitized;
+      req.body.members = sanitized;
     }
   }
 
@@ -601,24 +624,24 @@ const validateUpdateGroup = (req, res, next) => {
 };
 
 const validateManageGroupMembers = (req, res, next) => {
-  const { memberIds } = req.body;
+  const { members } = req.body;
   const errors = [];
 
-  if (!Array.isArray(memberIds) || memberIds.length === 0) {
-    errors.push({ field: 'memberIds', message: 'memberIds must be a non-empty array' });
+  if (!Array.isArray(members) || members.length === 0) {
+    errors.push({ field: 'members', message: 'members must be a non-empty array' });
   } else {
-    const sanitized = sanitizeMemberIds(memberIds);
+    const sanitized = sanitizeMemberAssignments(members);
 
     if (sanitized.length === 0) {
-      errors.push({ field: 'memberIds', message: 'memberIds must contain at least one valid id' });
+      errors.push({ field: 'members', message: 'members must contain at least one valid assignment' });
     }
 
-    const invalidIds = sanitized.filter(id => !isValidObjectId(id));
-    if (invalidIds.length > 0) {
-      errors.push({ field: 'memberIds', message: 'memberIds contains invalid id(s)', invalidIds });
+    const invalidEntries = sanitized.filter(entry => !isValidObjectId(entry.userId) || !entry.role || !GROUP_ROLES.includes(entry.role));
+    if (invalidEntries.length > 0) {
+      errors.push({ field: 'members', message: 'members contains invalid assignment(s)', invalidEntries });
     }
 
-    req.body.memberIds = sanitized;
+    req.body.members = sanitized;
   }
 
   if (errors.length > 0) {
@@ -639,6 +662,81 @@ const validateGroupMemberParam = (req, res, next) => {
       success: false,
       message: ERROR_MESSAGES.VALIDATION_ERROR,
       errors: [{ field: 'memberId', message: 'memberId is invalid' }]
+    });
+  }
+
+  next();
+};
+
+const validateMemberRoleUpdate = (req, res, next) => {
+  const { role } = req.body;
+  const errors = [];
+
+  if (!role || !GROUP_ROLES.includes(role)) {
+    errors.push({ field: 'role', message: 'role is invalid' });
+  } else if (role === GROUP_ROLE_KEYS.PRODUCT_OWNER) {
+    errors.push({ field: 'role', message: 'Product Owner role cannot be assigned via this action' });
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: ERROR_MESSAGES.VALIDATION_ERROR,
+      errors
+    });
+  }
+
+  next();
+};
+
+const validateGroupInvitation = (req, res, next) => {
+  const { email, role } = req.body || {};
+  const errors = [];
+
+  if (!email || typeof email !== 'string' || !validator.isEmail(email.trim())) {
+    errors.push({ field: 'email', message: 'A valid email is required' });
+  }
+
+  if (!role || !GROUP_ROLES.includes(role)) {
+    errors.push({ field: 'role', message: 'A valid role is required' });
+  } else if (role === GROUP_ROLE_KEYS.PRODUCT_OWNER) {
+    errors.push({ field: 'role', message: 'Product Owner role cannot be assigned' });
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: ERROR_MESSAGES.VALIDATION_ERROR,
+      errors
+    });
+  }
+
+  req.body.email = email.trim().toLowerCase();
+  req.body.role = role;
+
+  next();
+};
+
+const validateFolderMemberAssignments = (req, res, next) => {
+  const { memberIds } = req.body;
+  const errors = [];
+
+  if (!Array.isArray(memberIds)) {
+    errors.push({ field: 'memberIds', message: 'memberIds must be an array' });
+  } else {
+    const sanitized = sanitizeMemberIds(memberIds);
+    const invalidIds = sanitized.filter(id => !isValidObjectId(id));
+    if (invalidIds.length > 0) {
+      errors.push({ field: 'memberIds', message: 'memberIds contains invalid id(s)', invalidIds });
+    }
+    req.body.memberIds = sanitized;
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: ERROR_MESSAGES.VALIDATION_ERROR,
+      errors
     });
   }
 
@@ -798,6 +896,9 @@ module.exports = {
   validateUpdateGroup,
   validateManageGroupMembers,
   validateGroupMemberParam,
+  validateMemberRoleUpdate,
+  validateGroupInvitation,
+  validateFolderMemberAssignments,
   validateNotificationQuery,
   validateNotificationArchive,
   validateNotificationPreferences,

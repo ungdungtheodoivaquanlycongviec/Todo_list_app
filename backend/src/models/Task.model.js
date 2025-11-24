@@ -75,6 +75,12 @@ const taskSchema = new mongoose.Schema(
       ref: 'Group',
       required: [true, 'Group ID is required for task management']
     },
+    folderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Folder',
+      default: null,
+      index: true
+    },
     attachments: {
       type: [
         {
@@ -138,7 +144,7 @@ const taskSchema = new mongoose.Schema(
     // NEW: Start time for tasks
     startTime: {
       type: Date,
-      default: null
+      default: Date.now
     },
     // NEW: Custom status support
     customStatus: {
@@ -270,6 +276,7 @@ taskSchema.methods.getFormattedTotalTime = function() {
 // Indexes cho performance
 taskSchema.index({ createdBy: 1, status: 1 });
 taskSchema.index({ groupId: 1, status: 1 });
+taskSchema.index({ folderId: 1, status: 1 });
 taskSchema.index({ 'assignedTo.userId': 1 });
 taskSchema.index({ dueDate: 1 });
 taskSchema.index({ priority: 1 });

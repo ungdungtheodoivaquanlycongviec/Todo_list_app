@@ -25,10 +25,13 @@ import {
 import { notesService, Note } from '../../services/notes.service';
 import { useGroupChange } from '../../hooks/useGroupChange';
 import { useAuth } from '../../contexts/AuthContext';
+import { useFolder } from '../../contexts/FolderContext';
 import NoGroupState from '../common/NoGroupState';
+import NoFolderState from '../common/NoFolderState';
 
 export default function NotesView() {
   const { currentGroup } = useAuth();
+  const { currentFolder } = useFolder();
   const [notes, setNotes] = useState<Note[]>([]);
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -53,11 +56,13 @@ export default function NotesView() {
   const loadNotes = useCallback(async () => {
     try {
       setLoading(true);
-      const fetchedNotes = await notesService.getAllNotes(searchQuery);
+      const fetchedNotes = await notesService.getAllNotes(searchQuery, 1, 50, currentFolder?._id);
       setNotes(fetchedNotes);
       
-      // Select first note if none selected
-      if (fetchedNotes.length > 0 && !selectedNote) {
+      // Select first note if current selection is not available
+      if (fetchedNotes.length === 0) {
+        setSelectedNote(null);
+      } else if (!selectedNote || !fetchedNotes.find(note => note._id === selectedNote._id)) {
         setSelectedNote(fetchedNotes[0]);
       }
     } catch (error) {
@@ -76,7 +81,7 @@ export default function NotesView() {
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, selectedNote]);
+  }, [searchQuery, selectedNote, currentFolder?._id]);
 
   // Search notes when search query changes
   useEffect(() => {
@@ -91,7 +96,8 @@ export default function NotesView() {
       setSaving(true);
       const newNote = await notesService.createNote({
         title: "Untitled Note",
-        content: ""
+        content: "",
+        folderId: currentFolder?._id
       });
       setNotes([newNote, ...notes]);
       setSelectedNote(newNote);
@@ -207,6 +213,11 @@ export default function NotesView() {
     );
   }
 
+  // Check if user has a current folder
+  if (!currentFolder) {
+    return <NoFolderState />;
+  }
+
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
@@ -214,8 +225,13 @@ export default function NotesView() {
         <div className="p-4 border-b border-gray-200">
           <div className="flex items-center justify-between mb-4">
             {!sidebarCollapsed && (
-              <div className="flex items-center gap-2 transition-opacity duration-500 ease-in-out">
+              <div className="flex flex-col gap-1 transition-opacity duration-500 ease-in-out">
                 <h1 className="text-2xl font-bold text-gray-900">Notes</h1>
+                {currentFolder && (
+                  <span className="text-xs text-gray-500">
+                    Folder: <span className="font-medium text-gray-700">{currentFolder.name}</span>
+                  </span>
+                )}
               </div>
             )}
             <button

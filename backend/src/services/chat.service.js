@@ -2,6 +2,8 @@ const GroupMessage = require('../models/GroupMessage.model');
 const Group = require('../models/Group.model');
 const { HTTP_STATUS, ERROR_MESSAGES } = require('../config/constants');
 const fileService = require('./file.service');
+const { CHAT_EVENTS, emitChatEvent } = require('./chat.realtime.gateway');
+const notificationService = require('./notification.service');
 
 const normalizeId = (value) => {
   if (!value) return null;
@@ -12,15 +14,35 @@ const normalizeId = (value) => {
   return null;
 };
 
+const MAX_PREVIEW_LENGTH = 140;
+const buildMessagePreview = (content, attachments = []) => {
+  const text = typeof content === 'string' ? content.trim() : '';
+  if (text) {
+    return text.length > MAX_PREVIEW_LENGTH ? `${text.slice(0, MAX_PREVIEW_LENGTH)}…` : text;
+  }
+  if (Array.isArray(attachments) && attachments.length > 0) {
+    const first = attachments[0];
+    if (first?.type === 'image') {
+      return '📷 Image attachment';
+    }
+    if (first?.filename) {
+      return `📎 ${first.filename}`;
+    }
+    return '📎 File attachment';
+  }
+  return 'New message';
+};
+
 class ChatService {
   /**
    * Tạo message mới
    * @param {String} groupId - ID của group
    * @param {String} senderId - ID của người gửi
    * @param {Object} messageData - Dữ liệu message
+   * @param {Boolean} skipRealtime - Skip emitting realtime event (for socket handlers)
    * @returns {Promise<Object>} Message đã tạo
    */
-  async createMessage(groupId, senderId, messageData) {
+  async createMessage(groupId, senderId, messageData, skipRealtime = false) {
     const { content, replyTo, attachments = [] } = messageData;
 
     // Verify user is member of group
@@ -80,6 +102,39 @@ class ChatService {
           select: 'name email avatar'
         }
       });
+    }
+
+    // Emit realtime event (skip if called from socket handler)
+    if (!skipRealtime) {
+      emitChatEvent(CHAT_EVENTS.messageCreated, {
+        targetType: 'group',
+        message: savedMessage,
+        groupId: normalizeId(groupId)
+      });
+    }
+
+    const senderName = savedMessage?.senderId?.name || null;
+    const preview = buildMessagePreview(content, attachments);
+    const groupRecipients = group.members
+      .map(member => normalizeId(member.userId))
+      .filter(memberId => memberId && memberId !== normalizedSenderId);
+
+    if (groupRecipients.length > 0) {
+      notificationService
+        .createChatMessageNotification({
+          senderId: normalizedSenderId,
+          senderName,
+          preview,
+          contextType: 'group',
+          groupId: normalizeId(groupId),
+          groupName: group.name,
+          conversationId: null,
+          messageId: savedMessage._id,
+          recipientIds: groupRecipients
+        })
+        .catch(error => {
+          console.error('Failed to dispatch group chat notification:', error);
+        });
     }
 
     return savedMessage;
@@ -166,9 +221,10 @@ class ChatService {
    * @param {String} messageId - ID của message
    * @param {String} emoji - Emoji string
    * @param {String} userId - ID của user
+   * @param {Boolean} skipRealtime - Skip emitting realtime event (for socket handlers)
    * @returns {Promise<Object>} Updated message
    */
-  async toggleReaction(messageId, emoji, userId) {
+  async toggleReaction(messageId, emoji, userId, skipRealtime = false) {
     const message = await GroupMessage.findById(messageId);
     if (!message) {
       const error = new Error('Message not found');
@@ -207,6 +263,18 @@ class ChatService {
       }
     });
 
+    // Emit realtime event (skip if called from socket handler)
+    if (!skipRealtime) {
+      emitChatEvent(CHAT_EVENTS.reactionToggled, {
+        targetType: 'group',
+        message,
+        groupId: normalizeId(message.groupId),
+        emoji,
+        userId: normalizeId(userId),
+        added: result.added
+      });
+    }
+
     return {
       message,
       ...result
@@ -218,9 +286,10 @@ class ChatService {
    * @param {String} messageId - ID của message
    * @param {String} userId - ID của user (phải là người gửi)
    * @param {String} content - Nội dung mới
+   * @param {Boolean} skipRealtime - Skip emitting realtime event (for socket handlers)
    * @returns {Promise<Object>} Updated message
    */
-  async editMessage(messageId, userId, content) {
+  async editMessage(messageId, userId, content, skipRealtime = false) {
     const message = await GroupMessage.findById(messageId);
     if (!message) {
       const error = new Error('Message not found');
@@ -254,6 +323,15 @@ class ChatService {
       }
     });
 
+    // Emit realtime event (skip if called from socket handler)
+    if (!skipRealtime) {
+      emitChatEvent(CHAT_EVENTS.messageUpdated, {
+        targetType: 'group',
+        message,
+        groupId: normalizeId(message.groupId)
+      });
+    }
+
     return message;
   }
 
@@ -261,9 +339,10 @@ class ChatService {
    * Xóa message (soft delete)
    * @param {String} messageId - ID của message
    * @param {String} userId - ID của user (phải là người gửi)
+   * @param {Boolean} skipRealtime - Skip emitting realtime event (for socket handlers)
    * @returns {Promise<Object>} Updated message
    */
-  async deleteMessage(messageId, userId) {
+  async deleteMessage(messageId, userId, skipRealtime = false) {
     const message = await GroupMessage.findById(messageId);
     if (!message) {
       const error = new Error('Message not found');
@@ -292,6 +371,15 @@ class ChatService {
     await message.softDelete();
 
     await message.populate('senderId', 'name email avatar');
+
+    // Emit realtime event (skip if called from socket handler)
+    if (!skipRealtime) {
+      emitChatEvent(CHAT_EVENTS.messageDeleted, {
+        targetType: 'group',
+        message,
+        groupId: normalizeId(message.groupId)
+      });
+    }
 
     return message;
   }

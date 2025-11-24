@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const User = require('../src/models/User.model');
 const Group = require('../src/models/Group.model');
+const { GROUP_ROLE_KEYS } = require('../src/config/constants');
 require('dotenv').config();
 
 async function migrateUsersToPersonalWorkspace() {
@@ -41,7 +42,7 @@ async function migrateUsersToPersonalWorkspace() {
           name: 'Personal Workspace',
           description: 'Your personal workspace for tasks and projects',
           createdBy: user._id,
-          members: [{ userId: user._id, role: 'admin', joinedAt: new Date() }]
+          members: [{ userId: user._id, role: GROUP_ROLE_KEYS.PRODUCT_OWNER, joinedAt: new Date() }]
         });
 
         // Update user's currentGroupId
@@ -70,7 +71,7 @@ async function migrateUsersToPersonalWorkspace() {
             name: 'Personal Workspace',
             description: 'Your personal workspace for tasks and projects',
             createdBy: user._id,
-            members: [{ userId: user._id, role: 'admin', joinedAt: new Date() }]
+            members: [{ userId: user._id, role: GROUP_ROLE_KEYS.PRODUCT_OWNER, joinedAt: new Date() }]
           });
 
           await User.findByIdAndUpdate(user._id, { 
@@ -91,7 +92,7 @@ async function migrateUsersToPersonalWorkspace() {
               name: 'Personal Workspace',
               description: 'Your personal workspace for tasks and projects',
               createdBy: user._id,
-              members: [{ userId: user._id, role: 'admin', joinedAt: new Date() }]
+              members: [{ userId: user._id, role: GROUP_ROLE_KEYS.PRODUCT_OWNER, joinedAt: new Date() }]
             });
 
             await User.findByIdAndUpdate(user._id, { 
