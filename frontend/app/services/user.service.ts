@@ -1,5 +1,5 @@
 import apiClient from './api.client';
-import { User } from './types/auth.types';
+import { User, Language, RegionalPreferences } from './types/auth.types';
 import { ApiResponse } from './types/auth.types';
 
 export const userService = {
@@ -8,6 +8,15 @@ export const userService = {
     const response = await apiClient.patch<ApiResponse<{ user: User }>>(
       '/users/theme',
       { theme }
+    );
+    return response.data.user;
+  },
+
+  // Update user language preference
+  async updateLanguage(language: Language): Promise<User> {
+    const response = await apiClient.patch<ApiResponse<{ user: User }>>(
+      '/users/me/language',
+      { language }
     );
     return response.data.user;
   },

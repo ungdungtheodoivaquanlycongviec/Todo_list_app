@@ -54,6 +54,30 @@ const updateRegionalPreferences = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * @route   PATCH /api/users/me/language
+ * @desc    Update user language preference
+ * @access  Private
+ */
+const updateLanguage = asyncHandler(async (req, res) => {
+  const { language } = req.body;
+  
+  // Validate language
+  const validLanguages = ['en', 'vi'];
+  if (!validLanguages.includes(language)) {
+    return sendError(res, 'Invalid language. Must be one of: en, vi', 400);
+  }
+  
+  try {
+    const updatedUser = await userService.updateLanguage(req.user._id, language);
+    
+    sendSuccess(res, { user: updatedUser }, 'Language updated successfully');
+  } catch (error) {
+    console.error('Update language error:', error);
+    sendError(res, 'Failed to update language', 500);
+  }
+});
+
 const updateProfile = asyncHandler(async (req, res) => {
   const { name, avatar } = req.body;
   
@@ -170,5 +194,6 @@ module.exports = {
   updateNotificationSettings,
   deactivateAccount,
   updateTheme,
-  updateRegionalPreferences
+  updateRegionalPreferences,
+  updateLanguage
 };

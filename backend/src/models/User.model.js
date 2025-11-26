@@ -70,6 +70,13 @@ const userSchema = new mongoose.Schema({
     enum: ['light', 'dark', 'auto'],
     default: 'light'
   },
+
+  // Language preference
+  language: {
+    type: String,
+    enum: ['en', 'vi'],
+    default: 'en'
+  },
   
   // Regional preferences
   regionalPreferences: {
