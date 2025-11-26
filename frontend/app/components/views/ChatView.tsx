@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { useRegional } from '../../contexts/RegionalContext';
 import { chatService, ChatMessage, DirectConversationSummary } from '../../services/chat.service';
 import { useSocket } from '../../hooks/useSocket';
 import {
@@ -21,6 +23,8 @@ import {
 
 export default function ChatView() {
   const { user, currentGroup } = useAuth();
+  const { t } = useLanguage();
+  const { formatTime } = useRegional();
   const { socket, isConnected } = useSocket();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(true);
@@ -764,7 +768,7 @@ export default function ChatView() {
 
   // Delete message
   const handleDelete = async (messageId: string) => {
-    if (!confirm('Are you sure you want to delete this message?')) return;
+    if (!confirm(t('chat.deleteConfirm'))) return;
     if (!socket) return;
 
     if (activeContext === 'group') {
@@ -789,7 +793,7 @@ export default function ChatView() {
     if (!value) return '';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '';
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return formatTime(date);
   };
 
   const handleStartDirectConversation = async () => {
@@ -814,21 +818,21 @@ export default function ChatView() {
 
   const conversationTitle =
     activeContext === 'group'
-      ? currentGroup?.name || 'Chưa chọn nhóm'
-      : activeDirectConversation?.targetUser?.name || 'Chưa chọn chat riêng';
+      ? currentGroup?.name || t('chat.noGroupSelected')
+      : activeDirectConversation?.targetUser?.name || t('chat.noGroupSelected');
 
   const conversationSubtitle =
     activeContext === 'group'
       ? currentGroup
-        ? `${currentGroup.members?.length || 0} thành viên`
+        ? `${currentGroup.members?.length || 0} ${t('chat.members')}`
         : ''
       : activeDirectConversation?.targetUser?.email || '';
 
   const typingLabel =
     typingUsers.size > 0
       ? `${Array.from(typingUsers).length} ${
-          Array.from(typingUsers).length === 1 ? 'person is' : 'people are'
-        } typing...`
+          Array.from(typingUsers).length === 1 ? t('chat.personTyping') : t('chat.peopleTyping')
+        }`
       : '';
 
   return (
@@ -836,7 +840,7 @@ export default function ChatView() {
       <aside className="w-80 border-r border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/40 flex flex-col">
         <div className="p-4 border-b border-gray-200 dark:border-gray-800">
           <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">
-            Group chat
+            {t('chat.groupChat')}
           </p>
           <button
             onClick={() => {
@@ -859,12 +863,12 @@ export default function ChatView() {
             </div>
             <div className="flex-1 text-left">
               <p className="text-sm font-medium">
-                {currentGroup ? currentGroup.name : 'Chưa có nhóm'}
+                {currentGroup ? currentGroup.name : t('chat.noGroup')}
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 {currentGroup
-                  ? `${currentGroup.members?.length || 0} thành viên`
-                  : 'Thêm vào nhóm để chat chung'}
+                  ? `${currentGroup.members?.length || 0} ${t('chat.members')}`
+                  : t('chat.addToGroupToChat')}
               </p>
             </div>
           </button>
@@ -873,7 +877,7 @@ export default function ChatView() {
         <div className="p-4 border-b border-gray-200 dark:border-gray-800">
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              One-on-one chat
+              {t('chat.oneOnOneChat')}
             </p>
             <span className="text-xs text-gray-500 dark:text-gray-400">
               {directConversations.length}
@@ -891,7 +895,7 @@ export default function ChatView() {
                     handleStartDirectConversation();
                   }
                 }}
-                placeholder="Enter email"
+                placeholder={t('chat.enterEmail')}
                 className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -912,7 +916,7 @@ export default function ChatView() {
             </div>
           ) : directConversations.length === 0 ? (
             <div className="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
-              No private chat yet.
+              {t('chat.noPrivateChat')}
             </div>
           ) : (
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -966,14 +970,14 @@ export default function ChatView() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
-                          {conversation.targetUser?.name || 'Thành viên'}
+                          {conversation.targetUser?.name || t('chat.member')}
                         </p>
                         <span className="text-xs text-gray-400">
                           {formatPreviewTime(conversation.lastMessageAt)}
                         </span>
                       </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                        {conversation.lastMessagePreview || 'Chưa có tin nhắn'}
+                        {conversation.lastMessagePreview || t('chat.noMessagePreview')}
                       </p>
                     </div>
                     {conversation.unreadCount > 0 && (
@@ -1015,7 +1019,7 @@ export default function ChatView() {
                 </div>
               ) : messages.length === 0 ? (
                 <div className="text-center text-gray-400 dark:text-gray-500 mt-10">
-                  Chưa có tin nhắn nào. Hãy bắt đầu cuộc trò chuyện!
+                  {t('chat.noMessagesYet')}
                 </div>
               ) : (
                 messages.map(msg => (
@@ -1037,7 +1041,7 @@ export default function ChatView() {
               <div className="border-t border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-800 flex items-center justify-between">
                 <div className="flex-1">
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Đang trả lời {replyingTo.senderId.name}
+                    {t('chat.replyingTo')} {replyingTo.senderId.name}
                   </p>
                   <p className="text-sm text-gray-700 dark:text-gray-300 truncate">
                     {replyingTo.content}
@@ -1069,8 +1073,8 @@ export default function ChatView() {
                     }}
                     placeholder={
                       activeContext === 'group'
-                        ? 'Nhắn tin cho nhóm...'
-                        : 'Nhắn tin cho thành viên...'
+                        ? t('chat.messageToGroup')
+                        : t('chat.messageToDirect')
                     }
                     rows={1}
                     className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
@@ -1151,9 +1155,9 @@ export default function ChatView() {
         ) : (
           <div className="flex-1 flex items-center justify-center text-center text-gray-500 dark:text-gray-400 px-6">
             <div>
-              <p className="text-lg font-semibold mb-2">Please choose the current group or search for members to start a private chat.</p>
+              <p className="text-lg font-semibold mb-2">{t('chat.noGroupSelected')}</p>
               <p className="text-sm">
-                Please choose the current group or search for members to start a private chat.
+                {t('chat.startConversation')}
               </p>
             </div>
           </div>
@@ -1179,6 +1183,8 @@ function MessageItem({
   onDelete: () => void;
   onReaction: (messageId: string, emoji: string) => void;
 }) {
+  const { t } = useLanguage();
+  const { formatTime } = useRegional();
   const isOwn = message.senderId._id === currentUserId;
   const [showMenu, setShowMenu] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
@@ -1351,7 +1357,7 @@ function MessageItem({
               onClick={() => setShowReactions(!showReactions)}
               className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
             >
-              Add reaction
+              {t('chat.addReaction')}
             </button>
             {showReactions && (
               <div className="absolute left-0 bottom-full mb-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-2 shadow-lg z-10">
@@ -1376,7 +1382,7 @@ function MessageItem({
 
         {/* Timestamp */}
         <p className="text-xs text-gray-400 dark:text-gray-500">
-          {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          {formatTime(new Date(message.createdAt))}
         </p>
       </div>
     </div>

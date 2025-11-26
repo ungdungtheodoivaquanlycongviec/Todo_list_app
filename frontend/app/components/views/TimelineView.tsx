@@ -29,6 +29,9 @@ import { useGroupChange } from '../../hooks/useGroupChange';
 import NoGroupState from '../common/NoGroupState';
 import NoFolderState from '../common/NoFolderState';
 import { useFolder } from '../../contexts/FolderContext';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { useRegional } from '../../contexts/RegionalContext';
+import { monthNames, dayNamesShort } from '../../i18n/dateLocales';
 
 type ZoomLevel = 'days' | 'weeks' | 'months' | 'quarters';
 type GroupBy = 'none' | 'folder' | 'category' | 'assignee' | 'status';
@@ -44,6 +47,8 @@ interface TimelineTask extends Task {
 export default function TimelineView() {
   const { user: currentUser, currentGroup } = useAuth();
   const { currentFolder } = useFolder();
+  const { t, language } = useLanguage();
+  const { formatDate, getWeekStartDay } = useRegional();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -713,22 +718,30 @@ const getTaskColor = useCallback((taskId: string) => {
   };
   // Format day cell labels based on zoom
   const getDayCellLabel = (date: Date, index: number) => {
+    const day = date.getDate();
+    const dayOfWeek = date.getDay();
+    const month = date.getMonth();
+    const monthShort = language === 'vi' ? `Th${month + 1}` : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][month];
+    const dayShort = dayNamesShort[language][dayOfWeek];
+    
     switch (zoomLevel) {
       case 'days':
-        return date.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' });
+        return `${dayShort} ${day}`;
       case 'weeks':
-        return date.getDay() === 1
-          ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        // Show label on week start day (Monday=1 or Sunday=0 based on preference)
+        const weekStartDay = getWeekStartDay();
+        return dayOfWeek === weekStartDay
+          ? `${monthShort} ${day}`
           : '';
       case 'months':
-        return date.getDate() % 5 === 0 ? String(date.getDate()) : '';
+        return day % 5 === 0 ? String(day) : '';
       case 'quarters':
-        if (date.getDate() === 1) {
-          return date.toLocaleDateString('en-US', { month: 'short' });
+        if (day === 1) {
+          return monthShort;
         }
-        return date.getDate() % 10 === 0 ? String(date.getDate()) : '';
+        return day % 10 === 0 ? String(day) : '';
       default:
-        return date.toLocaleDateString();
+        return formatDate(date);
     }
   };
 
@@ -764,9 +777,12 @@ const getTaskColor = useCallback((taskId: string) => {
       let label = '';
 
       if (zoomLevel === 'weeks') {
-        label = `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+        const startMonthShort = language === 'vi' ? `Th${startDate.getMonth() + 1}` : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][startDate.getMonth()];
+        const endMonthShort = language === 'vi' ? `Th${endDate.getMonth() + 1}` : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][endDate.getMonth()];
+        label = `${startMonthShort} ${startDate.getDate()} - ${endMonthShort} ${endDate.getDate()}`;
       } else if (zoomLevel === 'months') {
-        label = startDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        const monthName = monthNames[language][startDate.getMonth()];
+        label = `${monthName} ${startDate.getFullYear()}`;
       } else if (zoomLevel === 'quarters') {
         label = `Q${Math.floor(startDate.getMonth() / 3) + 1} ${startDate.getFullYear()}`;
       }
@@ -776,7 +792,7 @@ const getTaskColor = useCallback((taskId: string) => {
     }
 
     return groups;
-  }, [dates, zoomLevel]);
+  }, [dates, zoomLevel, language]);
   const tasksWithPositions = timelineTasks();
   const groups = groupedTasks();
   const today = new Date();
@@ -837,7 +853,7 @@ const getTaskColor = useCallback((taskId: string) => {
                 }`}
                 onClick={() => setZoomLevel(level)}
               >
-                {level}
+                {t(`timeline.${level}`)}
               </button>
             ))}
           </div>
@@ -848,7 +864,7 @@ const getTaskColor = useCallback((taskId: string) => {
             className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm font-medium justify-center w-full sm:w-auto"
           >
             <Plus className="w-4 h-4" />
-            Create
+            {t('common.create')}
           </button>
         </div>
       </div>
@@ -861,7 +877,7 @@ const getTaskColor = useCallback((taskId: string) => {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Search timeline..."
+              placeholder={t('timeline.searchTimeline')}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -876,11 +892,11 @@ const getTaskColor = useCallback((taskId: string) => {
               value={groupBy}
               onChange={(e) => setGroupBy(e.target.value as GroupBy)}
             >
-              <option value="none">No Grouping</option>
-              <option value="folder">Group by Folder</option>
-              <option value="category">Group by Category</option>
-              <option value="assignee">Group by Assignee</option>
-              <option value="status">Group by Status</option>
+              <option value="none">{t('timeline.noGrouping')}</option>
+              <option value="folder">{t('timeline.groupByFolder')}</option>
+              <option value="category">{t('timeline.groupByCategory')}</option>
+              <option value="assignee">{t('timeline.groupByAssignee')}</option>
+              <option value="status">{t('timeline.groupByStatus')}</option>
             </select>
           </div>
         </div>
@@ -899,7 +915,7 @@ const getTaskColor = useCallback((taskId: string) => {
             </button>
             
             <h2 className="text-lg font-semibold text-gray-900">
-              {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+              {monthNames[language][currentDate.getMonth()]} {currentDate.getFullYear()}
             </h2>
             
             <button 
@@ -914,7 +930,7 @@ const getTaskColor = useCallback((taskId: string) => {
             className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium w-full md:w-auto"
             onClick={goToToday}
           >
-            Today
+            {t('timeline.today')}
           </button>
         </div>
 

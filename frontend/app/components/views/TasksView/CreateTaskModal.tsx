@@ -11,6 +11,7 @@ import {
   Bookmark,
   AlertCircle,
 } from "lucide-react";
+import { useLanguage } from "../../../contexts/LanguageContext";
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -27,6 +28,7 @@ export default function CreateTaskModal({
   currentUser,
   initialDueDate,
 }: CreateTaskModalProps) {
+  const { t } = useLanguage();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
@@ -235,10 +237,10 @@ export default function CreateTaskModal({
         <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-[#1F1F1F]">
           <div>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-              Create New Task
+              {t('tasks.createTask')}
             </h2>
             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-              Add a new task to your project
+              {t('tasks.createTaskDesc')}
             </p>
           </div>
           <button
@@ -257,7 +259,7 @@ export default function CreateTaskModal({
               <div className="flex items-center justify-between mb-2">
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
                   <Bookmark className="w-4 h-4" />
-                  Task Title *
+                  {t('tasks.taskName')} *
                 </label>
                 {errors.title && (
                   <span className="flex items-center gap-1 text-xs text-red-500">
@@ -290,14 +292,14 @@ export default function CreateTaskModal({
             <div>
               <label className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
                 <User className="w-4 h-4" />
-                Description
+                {t('tasks.description')}
               </label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={4}
                 className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all resize-none"
-                placeholder="Describe the task in detail..."
+                placeholder={t('tasks.descriptionPlaceholder')}
               />
             </div>
 
@@ -307,7 +309,7 @@ export default function CreateTaskModal({
               <div>
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
                   <Flag className="w-4 h-4" />
-                  Type
+                  {t('tasks.category')}
                 </label>
                 <div className="space-y-2">
                   {categoryOptions.map((option) => (
@@ -348,7 +350,7 @@ export default function CreateTaskModal({
               <div>
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
                   <Flag className="w-4 h-4" />
-                  Priority
+                  {t('tasks.priority')}
                 </label>
                 <div className="space-y-2">
                   {priorityOptions.map((option) => (
@@ -392,7 +394,7 @@ export default function CreateTaskModal({
               <div>
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
                   <Calendar className="w-4 h-4" />
-                  Due Date
+                  {t('tasks.dueDate')}
                 </label>
                 <div className="relative">
                   <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -410,7 +412,7 @@ export default function CreateTaskModal({
               <div>
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
                   <Clock className="w-4 h-4" />
-                  Estimated Time
+                  {t('tasks.estimatedTime')}
                 </label>
                 <div className="flex gap-2">
                   <div className="relative flex-1">
@@ -447,7 +449,7 @@ export default function CreateTaskModal({
             <div>
               <label className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
                 <Tag className="w-4 h-4" />
-                Tags
+                {t('tasks.tags')}
               </label>
               <div className="relative">
                 <Tag className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -456,11 +458,11 @@ export default function CreateTaskModal({
                   value={tags}
                   onChange={(e) => setTags(e.target.value)}
                   className="w-full pl-10 pr-3 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                  placeholder="urgent, important, project-x"
+                  placeholder={t('tasks.tagsPlaceholder')}
                 />
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                Separate tags with commas
+                {t('tasks.tagsHelper')}
               </p>
             </div>
 
@@ -497,7 +499,7 @@ export default function CreateTaskModal({
               disabled={isSubmitting}
               className="px-6 py-3 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               type="submit"
@@ -507,10 +509,10 @@ export default function CreateTaskModal({
               {isSubmitting ? (
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Creating...
+                  {t('common.loading')}
                 </div>
               ) : (
-                "Create Task"
+                t('tasks.createTask')
               )}
             </button>
           </div>

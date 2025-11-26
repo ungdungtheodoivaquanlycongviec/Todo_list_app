@@ -86,7 +86,7 @@ const userSchema = new mongoose.Schema({
     },
     dateFormat: {
       type: String,
-      enum: ['DD MMM YYYY', 'MMM DD, YYYY', 'DD/MM/YYYY', 'MM/DD/YYYY'],
+      enum: ['DD MMM YYYY', 'MMM DD, YYYY', 'DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD'],
       default: 'DD MMM YYYY'
     },
     timeFormat: {

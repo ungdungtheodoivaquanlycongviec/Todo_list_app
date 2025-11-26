@@ -2,8 +2,9 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
 import { userService } from '../services/user.service';
-import { User } from '../services/types/auth.types';
+import { User, Language } from '../services/types/auth.types';
 import { 
   ArrowLeft, 
   User as UserIcon, 
@@ -13,6 +14,7 @@ import {
   Bell,
   Palette,
   Globe,
+  Languages,
   Eye,
   EyeOff,
   Check,
@@ -436,16 +438,31 @@ interface PreferencesTabProps {
 
 function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, setMessage }: PreferencesTabProps) {
   const { updateUser } = useAuth();
+  const { language, setLanguage: setLanguageContext, t } = useLanguage();
   const [theme, setTheme] = useState<ThemeType>(user.theme as ThemeType || 'light');
   const [timeZone, setTimeZone] = useState((user as any).regionalPreferences?.timeZone || 'UTC+00:00');
-  const [dateFormat, setDateFormat] = useState((user as any).regionalPreferences?.dateFormat || 'DD MMM YYYY');
-  const [timeFormat, setTimeFormat] = useState((user as any).regionalPreferences?.timeFormat || '12h');
+  const [dateFormat, setDateFormat] = useState((user as any).regionalPreferences?.dateFormat || 'DD/MM/YYYY');
+  const [timeFormat, setTimeFormat] = useState((user as any).regionalPreferences?.timeFormat || '24h');
   const [weekStart, setWeekStart] = useState((user as any).regionalPreferences?.weekStart || 'monday');
   const [notifications, setNotifications] = useState({
     email: (user as any).notificationSettings?.email ?? true,
     push: (user as any).notificationSettings?.push ?? true,
     desktop: false
   });
+
+  const handleLanguageChange = async (newLanguage: Language) => {
+    try {
+      setLoading(true);
+      setMessage('');
+      await setLanguageContext(newLanguage);
+      setMessage(t('language.updated'));
+      setTimeout(() => setMessage(''), 3000);
+    } catch (error: any) {
+      setMessage(error.response?.data?.message || 'Error updating language');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleNotificationChange = async (key: 'email' | 'push' | 'desktop', value: boolean) => {
     try {
@@ -505,17 +522,34 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
 
   const preferenceSections = [
     {
-      title: "Appearance",
+      title: t('settings.language'),
+      icon: Languages,
+      fields: [
+        {
+          label: t('settings.language'),
+          description: t('language.description'),
+          type: "radio" as const,
+          options: [
+            { value: 'en', label: 'English' },
+            { value: 'vi', label: 'Tiếng Việt' }
+          ],
+          value: language,
+          onChange: handleLanguageChange
+        }
+      ]
+    },
+    {
+      title: t('settings.appearance'),
       icon: Palette,
       fields: [
         {
-          label: "Theme",
-          description: "Choose how the app looks",
+          label: t('settings.appearance'),
+          description: t('theme.description'),
           type: "radio" as const,
           options: [
-            { value: 'light', label: 'Light' },
-            { value: 'dark', label: 'Dark' },
-            { value: 'auto', label: 'Auto (System)' }
+            { value: 'light', label: t('theme.light') },
+            { value: 'dark', label: t('theme.dark') },
+            { value: 'auto', label: t('theme.auto') }
           ],
           value: theme,
           onChange: handleThemeChange
@@ -523,12 +557,12 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
       ]
     },
     {
-      title: "Regional",
+      title: t('settings.regional'),
       icon: Globe,
       fields: [
         {
-          label: "Time Zone",
-          description: "Set your local time zone",
+          label: t('regional.timezone'),
+          description: t('regional.timezoneDesc'),
           type: "select" as const,
           options: [
             { value: 'UTC-12:00', label: 'UTC-12:00' },
@@ -537,6 +571,7 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
             { value: 'UTC-05:00', label: 'UTC-05:00 (Eastern Time)' },
             { value: 'UTC+00:00', label: 'UTC+00:00 (GMT)' },
             { value: 'UTC+01:00', label: 'UTC+01:00 (Central European)' },
+            { value: 'UTC+07:00', label: 'UTC+07:00 (Vietnam)' },
             { value: 'UTC+08:00', label: 'UTC+08:00 (China Standard)' },
             { value: 'UTC+09:00', label: 'UTC+09:00 (Japan Standard)' }
           ],
@@ -544,36 +579,37 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
           onChange: setTimeZone
         },
         {
-          label: "Date Format",
-          description: "Choose how dates are displayed",
+          label: t('regional.dateFormat'),
+          description: t('regional.dateFormatDesc'),
           type: "radio" as const,
           options: [
             { value: 'DD MMM YYYY', label: '31 Dec 2025' },
             { value: 'MMM DD, YYYY', label: 'Dec 31, 2025' },
             { value: 'DD/MM/YYYY', label: '31/12/2025' },
-            { value: 'MM/DD/YYYY', label: '12/31/2025' }
+            { value: 'MM/DD/YYYY', label: '12/31/2025' },
+            { value: 'YYYY-MM-DD', label: '2025-12-31' }
           ],
           value: dateFormat,
           onChange: setDateFormat
         },
         {
-          label: "Time Format",
-          description: "Choose how time is displayed",
+          label: t('regional.timeFormat'),
+          description: t('regional.timeFormatDesc'),
           type: "radio" as const,
           options: [
-            { value: '12h', label: '12 hours (8:00 PM)' },
-            { value: '24h', label: '24 hours (20:00)' }
+            { value: '12h', label: t('regional.12hour') + ' (8:00 PM)' },
+            { value: '24h', label: t('regional.24hour') + ' (20:00)' }
           ],
           value: timeFormat,
           onChange: setTimeFormat
         },
         {
-          label: "Week Starts On",
-          description: "First day of the week",
+          label: t('regional.weekStart'),
+          description: t('regional.weekStartDesc'),
           type: "radio" as const,
           options: [
-            { value: 'monday', label: 'Monday' },
-            { value: 'sunday', label: 'Sunday' }
+            { value: 'monday', label: t('regional.monday') },
+            { value: 'sunday', label: t('regional.sunday') }
           ],
           value: weekStart,
           onChange: setWeekStart
@@ -581,26 +617,26 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
       ]
     },
     {
-      title: "Notifications",
+      title: t('notifications.title'),
       icon: Bell,
       fields: [
         {
-          label: "Email Notifications",
-          description: "Receive updates via email",
+          label: t('notifications.email'),
+          description: t('notifications.emailDesc'),
           type: "toggle" as const,
           value: notifications.email,
           onChange: (value: boolean) => setNotifications(prev => ({ ...prev, email: value }))
         },
         {
-          label: "Push Notifications",
-          description: "Receive browser notifications",
+          label: t('notifications.push'),
+          description: t('notifications.pushDesc'),
           type: "toggle" as const,
           value: notifications.push,
           onChange: (value: boolean) => setNotifications(prev => ({ ...prev, push: value }))
         },
         {
-          label: "Desktop Notifications",
-          description: "Show desktop notifications",
+          label: t('notifications.desktop'),
+          description: t('notifications.desktopDesc'),
           type: "toggle" as const,
           value: notifications.desktop,
           onChange: (value: boolean) => setNotifications(prev => ({ ...prev, desktop: value }))
@@ -657,14 +693,26 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
                                 checked={field.value === option.value}
                                 onChange={async () => {
                                   const newValue = option.value;
-                                  field.onChange(newValue as ThemeType);
+                                  
+                                  // Handle language preference
+                                  if (field.label === t('settings.language')) {
+                                    await handleLanguageChange(newValue as Language);
+                                    return;
+                                  }
+                                  
+                                  // Handle theme
+                                  if (field.label === t('settings.appearance')) {
+                                    field.onChange(newValue as ThemeType);
+                                    return;
+                                  }
                                   
                                   // Handle regional preferences
-                                  if (field.label === 'Date Format') {
+                                  field.onChange(newValue as any);
+                                  if (field.label === t('regional.dateFormat')) {
                                     await handleRegionalPreferenceChange('dateFormat', newValue);
-                                  } else if (field.label === 'Time Format') {
+                                  } else if (field.label === t('regional.timeFormat')) {
                                     await handleRegionalPreferenceChange('timeFormat', newValue);
-                                  } else if (field.label === 'Week Starts On') {
+                                  } else if (field.label === t('regional.weekStart')) {
                                     await handleRegionalPreferenceChange('weekStart', newValue);
                                   }
                                 }}
@@ -922,7 +970,7 @@ function SecurityTab({ loading, setLoading, message, setMessage }: SecurityTabPr
               <li>• Use at least 8 characters</li>
               <li>• Include numbers and symbols</li>
               <li>• Avoid common words</li>
-              <li>• Don't reuse passwords</li>
+              <li>• Don&apos;t reuse passwords</li>
             </ul>
           </div>
 

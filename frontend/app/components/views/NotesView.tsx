@@ -26,12 +26,16 @@ import { notesService, Note } from '../../services/notes.service';
 import { useGroupChange } from '../../hooks/useGroupChange';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFolder } from '../../contexts/FolderContext';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { useRegional } from '../../contexts/RegionalContext';
 import NoGroupState from '../common/NoGroupState';
 import NoFolderState from '../common/NoFolderState';
 
 export default function NotesView() {
   const { currentGroup } = useAuth();
   const { currentFolder } = useFolder();
+  const { t } = useLanguage();
+  const { formatDate } = useRegional();
   const [notes, setNotes] = useState<Note[]>([]);
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -183,13 +187,13 @@ export default function NotesView() {
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
     if (diffDays === 1) {
-      return 'Today';
+      return t('time.today');
     } else if (diffDays === 2) {
-      return 'Yesterday';
+      return t('time.yesterday');
     } else if (diffDays <= 7) {
-      return `${diffDays - 1} days ago`;
+      return t('time.daysAgo', { count: diffDays - 1 });
     } else {
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      return formatDate(date);
     }
   };
 
@@ -200,15 +204,15 @@ export default function NotesView() {
   const getReadingTime = (content: string) => {
     const words = getWordCount(content);
     const minutes = Math.ceil(words / 200);
-    return minutes === 0 ? '< 1 min' : `${minutes} min read`;
+    return minutes === 0 ? t('notes.lessThanMinRead') : `${minutes} ${t('notes.minRead')}`;
   };
 
   // Check if user has a current group
   if (!currentGroup) {
     return (
       <NoGroupState 
-        title="Join or Create a Group to Manage Notes"
-        description="You need to join or create a group to create and manage notes with your team."
+        title={t('groups.joinOrCreate')}
+        description={t('groups.joinOrCreateDesc')}
       />
     );
   }
@@ -226,10 +230,10 @@ export default function NotesView() {
           <div className="flex items-center justify-between mb-4">
             {!sidebarCollapsed && (
               <div className="flex flex-col gap-1 transition-opacity duration-500 ease-in-out">
-                <h1 className="text-2xl font-bold text-gray-900">Notes</h1>
+                <h1 className="text-2xl font-bold text-gray-900">{t('notes.title')}</h1>
                 {currentFolder && (
                   <span className="text-xs text-gray-500">
-                    Folder: <span className="font-medium text-gray-700">{currentFolder.name}</span>
+                    {t('notes.folder')}: <span className="font-medium text-gray-700">{currentFolder.name}</span>
                   </span>
                 )}
               </div>
@@ -255,7 +259,7 @@ export default function NotesView() {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search notes..."
+                placeholder={t('notes.searchNotes')}
                 className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -270,7 +274,7 @@ export default function NotesView() {
                 className="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50 transition-all duration-300 hover:shadow-md"
               >
                 <Plus className="w-4 h-4" />
-                <span className="whitespace-nowrap">New Note</span>
+                <span className="whitespace-nowrap">{t('notes.newNote')}</span>
               </button>
             </div>
           </div>
@@ -283,20 +287,20 @@ export default function NotesView() {
           {loading ? (
             <div className="flex flex-col items-center justify-center h-32 text-gray-500">
               <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
-              <p className="text-sm">Loading notes...</p>
+              <p className="text-sm">{t('notes.loadingNotes')}</p>
             </div>
           ) : notes.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-32 text-gray-500 p-4 text-center">
               <FileText className="w-12 h-12 text-gray-300 mb-2" />
               <p className="text-sm mb-2">
-                {searchQuery ? 'No notes found' : 'No notes yet'}
+                {searchQuery ? t('notes.noNotesFound') : t('notes.noNotes')}
               </p>
               {!searchQuery && (
                 <button
                   onClick={handleAddNote}
                   className="text-blue-500 hover:text-blue-600 font-medium text-sm"
                 >
-                  Create your first note
+                  {t('notes.addFirstNote')}
                 </button>
               )}
             </div>
@@ -333,7 +337,7 @@ export default function NotesView() {
                   
                   {note.content && (
                     <p className="text-sm text-gray-600 mb-2 line-clamp-2 leading-relaxed">
-                      {note.content.replace(/#[^\s]+/g, '').trim() || "No content yet"}
+                      {note.content.replace(/#[^\s]+/g, '').trim() || t('notes.noContent')}
                     </p>
                   )}
 
@@ -344,7 +348,7 @@ export default function NotesView() {
                     </div>
                     {note.content && (
                       <span className="bg-gray-100 px-2 py-1 rounded">
-                        {getWordCount(note.content)} words
+                        {getWordCount(note.content)} {t('notes.words')}
                       </span>
                     )}
                   </div>
@@ -361,7 +365,7 @@ export default function NotesView() {
               onClick={handleAddNote}
               disabled={saving}
               className="w-full bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg flex items-center justify-center disabled:opacity-50 transition-all duration-300 hover:shadow-md"
-              title="New Note"
+              title={t('notes.newNote')}
             >
               <Plus className="w-4 h-4" />
             </button>
@@ -380,12 +384,12 @@ export default function NotesView() {
                   <button
                     onClick={() => setIsPreviewMode(!isPreviewMode)}
                     className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-300"
-                    title={isPreviewMode ? 'Edit mode' : 'Preview mode'}
+                    title={isPreviewMode ? t('notes.editMode') : t('notes.previewMode')}
                   >
                     {isPreviewMode ? <Edit3 className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                   <div className="text-sm text-gray-500 transition-opacity duration-300">
-                    {isPreviewMode ? 'Previewing' : 'Editing'}
+                    {isPreviewMode ? t('notes.previewing') : t('notes.editing')}
                   </div>
                 </div>
 
@@ -393,7 +397,7 @@ export default function NotesView() {
                   {hasUnsavedChanges && (
                     <div className="flex items-center gap-2 text-sm text-orange-500 transition-all duration-300">
                       <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
-                      Unsaved changes
+                      {t('notes.unsavedChanges')}
                     </div>
                   )}
                   
@@ -403,7 +407,7 @@ export default function NotesView() {
                     className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 hover:shadow-md font-medium"
                   >
                     <Save className="w-4 h-4" />
-                    {saving ? 'Saving...' : 'Save'}
+                    {saving ? t('notes.saving') : t('common.save')}
                   </button>
 
                   <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-300">
@@ -415,7 +419,7 @@ export default function NotesView() {
               {/* Note Title */}
               <input
                 type="text"
-                placeholder="Note title..."
+                placeholder={t('notes.noteTitlePlaceholder')}
                 className="w-full text-3xl font-bold text-gray-900 border-none focus:outline-none placeholder-gray-400 bg-transparent transition-all duration-300"
                 value={selectedNote.title}
                 onChange={(e) => handleTitleChange(e.target.value)}
@@ -426,11 +430,11 @@ export default function NotesView() {
               <div className="flex items-center gap-4 mt-3 text-sm text-gray-500 transition-opacity duration-300">
                 <div className="flex items-center gap-1">
                   <Clock className="w-4 h-4" />
-                  Last edited: {formatLastEdited(selectedNote)}
+                  {t('notes.lastEdited')}: {formatLastEdited(selectedNote)}
                 </div>
                 <div className="flex items-center gap-1">
                   <FileText className="w-4 h-4" />
-                  {getWordCount(selectedNote.content)} words
+                  {getWordCount(selectedNote.content)} {t('notes.words')}
                 </div>
                 <div className="flex items-center gap-1">
                   <Eye className="w-4 h-4" />
@@ -445,11 +449,11 @@ export default function NotesView() {
                 <div className="max-w-4xl mx-auto p-8 prose prose-lg transition-all duration-500">
                   <div className="bg-white rounded-xl p-8 border border-gray-200 transition-all duration-300 hover:shadow-sm">
                     <h1 className="text-4xl font-bold text-gray-900 mb-6 transition-colors duration-300">
-                      {selectedNote.title || "Untitled Note"}
+                      {selectedNote.title || t('notes.untitled')}
                     </h1>
                     <div className="text-gray-700 leading-relaxed text-lg whitespace-pre-wrap transition-colors duration-300">
                       {selectedNote.content || (
-                        <div className="text-gray-400 italic">No content yet. Switch to edit mode to start writing.</div>
+                        <div className="text-gray-400 italic">{t('notes.noContentPreview')}</div>
                       )}
                     </div>
                   </div>
@@ -457,7 +461,7 @@ export default function NotesView() {
               ) : (
                 <div className="max-w-4xl mx-auto p-8 transition-all duration-300">
                   <textarea
-                    placeholder="Start writing your note... Use # for tags and ** for bold text"
+                    placeholder={t('notes.noteContentPlaceholder')}
                     className="w-full h-full min-h-[500px] text-gray-700 border-none focus:outline-none resize-none text-lg leading-relaxed bg-transparent placeholder-gray-400 transition-all duration-300"
                     value={selectedNote.content}
                     onChange={(e) => handleContentChange(e.target.value)}
@@ -485,7 +489,7 @@ export default function NotesView() {
                 </div>
                 
                 <div className="flex items-center gap-2 text-sm text-gray-500 transition-opacity duration-300">
-                  <span>{getWordCount(selectedNote.content)} words</span>
+                  <span>{getWordCount(selectedNote.content)} {t('notes.words')}</span>
                   <span>•</span>
                   <span>{getReadingTime(selectedNote.content)}</span>
                 </div>
@@ -497,12 +501,12 @@ export default function NotesView() {
           <div className="flex-1 flex flex-col items-center justify-center text-gray-500 p-8 transition-all duration-500">
             <FileText className="w-24 h-24 text-gray-300 mb-6 transition-all duration-700" />
             <h2 className="text-2xl font-semibold text-gray-400 mb-2 transition-colors duration-300">
-              No note selected
+              {t('notes.noNoteSelected')}
             </h2>
             <p className="text-gray-500 mb-6 text-center max-w-md transition-colors duration-300">
               {notes.length === 0 
-                ? "Get started by creating your first note to capture your thoughts and ideas."
-                : "Select a note from the sidebar or create a new one to start editing."
+                ? t('notes.getStarted')
+                : t('notes.selectOrCreate')
               }
             </p>
             <button
@@ -511,7 +515,7 @@ export default function NotesView() {
               className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg flex items-center gap-2 disabled:opacity-50 transition-all duration-500 hover:shadow-lg transform hover:scale-105 font-medium"
             >
               <Plus className="w-5 h-5" />
-              {saving ? 'Creating...' : 'Create New Note'}
+              {saving ? t('notes.creating') : t('notes.createNewNote')}
             </button>
           </div>
         )}

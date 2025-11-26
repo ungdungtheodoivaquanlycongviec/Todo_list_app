@@ -19,7 +19,7 @@ interface RegionalContextType {
 
 const defaultPreferences: RegionalPreferences = {
   timeZone: 'UTC+00:00',
-  dateFormat: 'DD/MM/YYYY',
+  dateFormat: 'DD MMM YYYY',
   timeFormat: '24h',
   weekStart: 'monday'
 };
@@ -68,8 +68,14 @@ export function RegionalProvider({ children }: { children: ReactNode }) {
     const year = d.getFullYear();
     
     const monthNum = (month + 1).toString().padStart(2, '0');
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthName = monthNames[month];
     
     switch (preferences.dateFormat) {
+      case 'DD MMM YYYY':
+        return `${day} ${monthName} ${year}`;
+      case 'MMM DD, YYYY':
+        return `${monthName} ${day}, ${year}`;
       case 'DD/MM/YYYY':
         return `${day}/${monthNum}/${year}`;
       case 'MM/DD/YYYY':
@@ -77,7 +83,7 @@ export function RegionalProvider({ children }: { children: ReactNode }) {
       case 'YYYY-MM-DD':
         return `${year}-${monthNum}-${day}`;
       default:
-        return `${day}/${monthNum}/${year}`;
+        return `${day} ${monthName} ${year}`;
     }
   }, [convertToUserTimezone, preferences.dateFormat]);
 

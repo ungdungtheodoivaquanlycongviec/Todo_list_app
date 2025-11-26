@@ -28,6 +28,8 @@ import {
   requiresFolderAssignment as requiresFolderAssignmentHelper
 } from '../../utils/groupRoleUtils';
 import { FolderAccessModal } from '../folders/FolderAccessModal';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { useRegional } from '../../contexts/RegionalContext';
 
 interface GroupMembersViewProps {
   groupId?: string;
@@ -36,6 +38,8 @@ interface GroupMembersViewProps {
 export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   const { user, currentGroup } = useAuth();
   const { folders, refreshFolders } = useFolder();
+  const { t } = useLanguage();
+  const { formatTime } = useRegional();
   const [group, setGroup] = useState<Group | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -582,20 +586,20 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
             </div>
             
             <p className="text-gray-600 dark:text-gray-400 mt-2 text-lg">
-              {group.description || 'No description provided'}
+              {group.description || t('groups.noDescription')}
             </p>
             <div className="flex items-center justify-between mt-3">
               <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
                 <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
-                {members.length} member{members.length !== 1 ? 's' : ''}
+                {members.length} {members.length !== 1 ? t('groups.members') : t('groups.member')}
               </div>
               <div className="flex items-center text-xs text-gray-400 dark:text-gray-500">
                 <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                Last updated: {new Date(lastUpdateTime).toLocaleTimeString()}
+                {t('groups.lastUpdated')}: {formatTime(new Date(lastUpdateTime))}
               </div>
             </div>
           </div>

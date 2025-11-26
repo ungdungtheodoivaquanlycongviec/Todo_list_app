@@ -2,7 +2,7 @@ export type Language = 'en' | 'vi';
 
 export interface RegionalPreferences {
   timeZone: string;
-  dateFormat: 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD';
+  dateFormat: 'DD MMM YYYY' | 'MMM DD, YYYY' | 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD';
   timeFormat: '12h' | '24h';
   weekStart: 'sunday' | 'monday';
 }

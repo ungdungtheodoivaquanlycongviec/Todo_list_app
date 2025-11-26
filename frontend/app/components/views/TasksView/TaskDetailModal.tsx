@@ -28,6 +28,8 @@ import { useAuth } from "../../../contexts/AuthContext"
 import { useTaskRealtime } from "../../../hooks/useTaskRealtime"
 import { useFolder } from "../../../contexts/FolderContext"
 import { getMemberRole, canAssignFolderMembers } from "../../../utils/groupRoleUtils"
+import { useLanguage } from "../../../contexts/LanguageContext"
+import { useRegional } from "../../../contexts/RegionalContext"
 
 interface MinimalUser {
   _id: string;
@@ -155,6 +157,8 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
   const { user: currentUser, currentGroup } = useAuth()
   const { currentFolder } = useFolder()
+  const { t } = useLanguage()
+  const { formatDate } = useRegional()
   
   // Check if user can assign to others
   const currentUserRole = currentGroup ? getMemberRole(currentGroup, currentUser?._id) : null
@@ -1156,7 +1160,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
           <div className="flex items-center gap-2 mb-1">
             <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{getUserDisplayName(comment)}</span>
             <span className="text-xs text-gray-500">
-              {new Date(comment.createdAt).toLocaleDateString()}
+              {formatDate(comment.createdAt)}
               {comment.isEdited && " (edited)"}
             </span>
 
@@ -1555,7 +1559,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                         onClick={() => startEditing('dueDate', taskProperties.dueDate)}
                       >
                         <span className="text-sm text-gray-600 dark:text-gray-400">
-                          {taskProperties.dueDate ? new Date(taskProperties.dueDate).toLocaleDateString('en-GB') : "—"}
+                          {taskProperties.dueDate ? formatDate(taskProperties.dueDate) : "—"}
                         </span>
                         <Edit2 className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
@@ -1770,7 +1774,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                         {scheduledWork.map((work, index) => (
                           <div key={index} className="grid grid-cols-4 gap-4 text-sm items-center py-2 border-b border-gray-200 dark:border-gray-600 last:border-0">
                             <span className="text-gray-900 dark:text-gray-100">
-                              {new Date(work.scheduledDate).toLocaleDateString()}
+                              {formatDate(work.scheduledDate)}
                             </span>
                             <span className="text-gray-500">
                               <User className="w-4 h-4 inline mr-1" />
@@ -1835,7 +1839,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                           {timeEntries.map((entry, index) => (
                             <div key={index} className="grid grid-cols-6 gap-4 text-sm items-center py-2 border-b border-gray-200 dark:border-gray-600 last:border-0">
                               <span className="col-span-2 text-gray-900 dark:text-gray-100">
-                                {new Date(entry.date).toLocaleDateString()}
+                                {formatDate(entry.date)}
                               </span>
                               <span className="text-gray-500">
                                 <User className="w-4 h-4 inline mr-1" />

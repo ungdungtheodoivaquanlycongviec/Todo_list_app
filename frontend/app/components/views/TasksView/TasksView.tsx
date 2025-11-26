@@ -22,6 +22,8 @@ import TaskContextMenu from "./TaskContextMenu";
 import TaskDetailModal from "./TaskDetailModal";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../contexts/AuthContext";
+import { useLanguage } from "../../../contexts/LanguageContext";
+import { useRegional } from "../../../contexts/RegionalContext";
 import { Group } from "../../../services/types/group.types";
 import { useGroupChange } from "../../../hooks/useGroupChange";
 import { useTaskRealtime } from "../../../hooks/useTaskRealtime";
@@ -32,6 +34,8 @@ import { useFolder } from "../../../contexts/FolderContext";
 export default function TasksView() {
   const { user: currentUser, currentGroup } = useAuth();
   const { currentFolder } = useFolder();
+  const { t } = useLanguage();
+  const { formatDate } = useRegional();
   const [activeTasksExpanded, setActiveTasksExpanded] = useState(true);
   const [uncompletedTasksExpanded, setUncompletedTasksExpanded] =
     useState(true);
@@ -1006,7 +1010,7 @@ export default function TasksView() {
                                 }`}
                             >
                               <Calendar className="w-3 h-3 inline mr-1" />
-                              {new Date(task.dueDate).toLocaleDateString()}
+                              {formatDate(task.dueDate)}
                             </span>
                           )}
                         </div>
@@ -1197,7 +1201,7 @@ export default function TasksView() {
             >
               <Calendar className="w-3 h-3" />
               {task.dueDate
-                ? new Date(task.dueDate).toLocaleDateString("en-GB")
+                ? formatDate(task.dueDate)
                 : "—"}
               {isOverdue}
             </div>
@@ -1449,7 +1453,7 @@ export default function TasksView() {
       <div className="p-6 flex items-center justify-center">
         <div className="text-center">
           <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading tasks...</p>
+          <p className="text-gray-600">{t('common.loading')}</p>
         </div>
       </div>
     );
@@ -1474,9 +1478,9 @@ export default function TasksView() {
     <div className="p-6 bg-gray-50 min-h-screen">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Tasks</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{t('tasks.title')}</h1>
           <p className="text-gray-600 mt-1">
-            Manage your team's tasks and projects
+            {t('tasks.description') || 'Manage your team\'s tasks and projects'}
           </p>
           {currentFolder && (
             <p className="text-sm text-gray-500 mt-2">
@@ -1520,7 +1524,7 @@ export default function TasksView() {
             className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors shadow-sm"
           >
             <Plus className="w-4 h-4" />
-            Add Task
+            {t('tasks.createTask')}
           </button>
         </div>
       </div>
@@ -1540,7 +1544,7 @@ export default function TasksView() {
                 ) : (
                   <ChevronRight className="w-5 h-5 text-gray-600" />
                 )}
-                <h2 className="font-semibold text-gray-900">Active Tasks</h2>
+                <h2 className="font-semibold text-gray-900">{t('tasks.active')}</h2>
                 <span className="bg-blue-100 text-blue-800 text-sm px-2 py-1 rounded-full">
                   {activeTasks.length}
                 </span>
@@ -1551,13 +1555,13 @@ export default function TasksView() {
               <div>
                 {/* UPDATED: Header Row with adjusted columns */}
                 <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                  <div className="col-span-3">Task</div>
-                  <div className="col-span-1">Status</div>
-                  <div className="col-span-1">Type</div>
-                  <div className="col-span-1">Due Date</div>
-                  <div className="col-span-1">Priority</div>
-                  <div className="col-span-2">Assignee</div>
-                  <div className="col-span-1">Time</div>
+                  <div className="col-span-3">{t('tasks.taskName')}</div>
+                  <div className="col-span-1">{t('tasks.status')}</div>
+                  <div className="col-span-1">{t('tasks.category')}</div>
+                  <div className="col-span-1">{t('tasks.dueDate')}</div>
+                  <div className="col-span-1">{t('tasks.priority')}</div>
+                  <div className="col-span-2">{t('tasks.assignee')}</div>
+                  <div className="col-span-1">{t('tasks.estimatedTime') || 'Time'}</div>
                   <div className="col-span-1"></div>
                 </div>
 
@@ -1571,12 +1575,12 @@ export default function TasksView() {
                     <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                       <Plus className="w-8 h-8 text-gray-400" />
                     </div>
-                    <p className="text-gray-600 mb-2">No active tasks yet</p>
+                    <p className="text-gray-600 mb-2">{t('tasks.noTasks')}</p>
                     <button
                       onClick={handleAddTask}
                       className="text-blue-500 hover:text-blue-600 font-medium"
                     >
-                      Create your first task
+                      {t('tasks.addFirstTask')}
                     </button>
                   </div>
                 )}
@@ -1596,7 +1600,7 @@ export default function TasksView() {
                 ) : (
                   <ChevronRight className="w-5 h-5 text-gray-600" />
                 )}
-                <h2 className="font-semibold text-gray-900">Completed Tasks</h2>
+                <h2 className="font-semibold text-gray-900">{t('tasks.completed')}</h2>
                 <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded-full">
                   {completedTasks.length}
                 </span>
@@ -1607,13 +1611,13 @@ export default function TasksView() {
               <div>
                 {/* UPDATED: Header Row with adjusted columns */}
                 <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                  <div className="col-span-3">Task</div>
-                  <div className="col-span-1">Status</div>
-                  <div className="col-span-1">Type</div>
-                  <div className="col-span-1">Due Date</div>
-                  <div className="col-span-1">Priority</div>
-                  <div className="col-span-2">Assignee</div>
-                  <div className="col-span-1">Time</div>
+                  <div className="col-span-3">{t('tasks.taskName')}</div>
+                  <div className="col-span-1">{t('tasks.status')}</div>
+                  <div className="col-span-1">{t('tasks.category')}</div>
+                  <div className="col-span-1">{t('tasks.dueDate')}</div>
+                  <div className="col-span-1">{t('tasks.priority')}</div>
+                  <div className="col-span-2">{t('tasks.assignee')}</div>
+                  <div className="col-span-1">{t('tasks.estimatedTime') || 'Time'}</div>
                   <div className="col-span-1"></div>
                 </div>
 
@@ -1645,7 +1649,7 @@ export default function TasksView() {
                   <ChevronRight className="w-5 h-5 text-gray-600" />
                 )}
                 <div className="flex items-center gap-2">
-                  <h2 className="font-semibold">Incompleted Tasks</h2>
+                  <h2 className="font-semibold">{t('tasks.uncompleted')}</h2>
                 </div>
                 <span className="bg-red-100 text-red-800 text-sm px-2 py-1 rounded-full">
                   {uncompletedTasks.length}
@@ -1657,13 +1661,13 @@ export default function TasksView() {
               <div>
                 {/* UPDATED: Header Row with adjusted columns */}
                 <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                  <div className="col-span-3">Task</div>
-                  <div className="col-span-1">Status</div>
-                  <div className="col-span-1">Type</div>
-                  <div className="col-span-1">Due Date</div>
-                  <div className="col-span-1">Priority</div>
-                  <div className="col-span-2">Assignee</div>
-                  <div className="col-span-1">Time</div>
+                  <div className="col-span-3">{t('tasks.taskName')}</div>
+                  <div className="col-span-1">{t('tasks.status')}</div>
+                  <div className="col-span-1">{t('tasks.category')}</div>
+                  <div className="col-span-1">{t('tasks.dueDate')}</div>
+                  <div className="col-span-1">{t('tasks.priority')}</div>
+                  <div className="col-span-2">{t('tasks.assignee')}</div>
+                  <div className="col-span-1">{t('tasks.estimatedTime') || 'Time'}</div>
                   <div className="col-span-1"></div>
                 </div>
 
