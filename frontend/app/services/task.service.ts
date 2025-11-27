@@ -355,6 +355,34 @@ export const taskService = {
     return normalizeTaskResponse(data);
   },
 
+  // Add comment with file attachment
+  addCommentWithFile: async (taskId: string, content: string, file: File): Promise<Task> => {
+    const token = authService.getAuthToken();
+    const formData = new FormData();
+    formData.append('content', content);
+    formData.append('file', file);
+
+    const headers: HeadersInit = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/comments/with-file`, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to add comment with file: ${errorText}`);
+    }
+
+    const data = await response.json();
+    return normalizeTaskResponse(data);
+  },
+
   // Upload attachment
   uploadAttachment: async (taskId: string, file: File): Promise<Task> => {
     const token = authService.getAuthToken();

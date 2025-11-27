@@ -297,9 +297,21 @@ export const translations = {
     'chat.peopleTyping': 'people are typing...',
     'chat.personTyping': 'person is typing...',
     'chat.addReaction': 'Add reaction',
+    'chat.clickToView': 'Click to view',
     'chat.member': 'Member',
     'chat.noMessagePreview': 'No messages',
     'chat.deleteConfirm': 'Are you sure you want to delete this message?',
+    'chat.reply': 'Reply',
+    'chat.edit': 'Edit',
+    'chat.delete': 'Delete',
+    
+    // Task Context Menu
+    'taskContextMenu.complete': 'Complete task',
+    'taskContextMenu.startTimer': 'Start timer',
+    'taskContextMenu.changeType': 'Change type',
+    'taskContextMenu.repeat': 'Repeat task',
+    'taskContextMenu.moveTo': 'Move to',
+    'taskContextMenu.delete': 'Delete task',
     
     // Time
     'time.today': 'Today',
@@ -492,6 +504,16 @@ export const translations = {
     // Task Assignee
     'tasks.includesYou': 'Includes you',
     'tasks.assigned': '{{count}} assigned',
+    'tasks.you': 'You',
+    'tasks.unassigned': 'Unassigned',
+    'tasks.assignedToYou': 'Assigned to you',
+    'tasks.noOneAssigned': 'No one assigned to this task',
+    'tasks.youPlus': 'You +{{count}}',
+    'tasks.assignedToYouAnd': 'Assigned to you and {{count}} other',
+    'tasks.assignedToYouAndPlural': 'Assigned to you and {{count}} others',
+    'tasks.assignedTo': 'Assigned to {{name}} ({{email}})',
+    'tasks.youWillBeAssigned': 'You will be assigned as the task creator',
+    'tasks.canChangeAssigneesLater': 'You can add or change assignees later in the task details',
     
     // Sidebar Folder Stats
     'sidebar.tasksCount': '{{count}} tasks',
@@ -848,9 +870,21 @@ export const translations = {
     'chat.peopleTyping': 'người đang nhập...',
     'chat.personTyping': 'người đang nhập...',
     'chat.addReaction': 'Thêm biểu cảm',
+    'chat.clickToView': 'Nhấp để xem',
     'chat.member': 'Thành viên',
     'chat.noMessagePreview': 'Chưa có tin nhắn',
     'chat.deleteConfirm': 'Bạn có chắc chắn muốn xóa tin nhắn này?',
+    'chat.reply': 'Trả lời',
+    'chat.edit': 'Chỉnh sửa',
+    'chat.delete': 'Xóa',
+    
+    // Task Context Menu
+    'taskContextMenu.complete': 'Hoàn thành',
+    'taskContextMenu.startTimer': 'Bắt đầu hẹn giờ',
+    'taskContextMenu.changeType': 'Đổi loại',
+    'taskContextMenu.repeat': 'Lặp lại',
+    'taskContextMenu.moveTo': 'Di chuyển đến',
+    'taskContextMenu.delete': 'Xóa nhiệm vụ',
     
     // Time
     'time.today': 'Hôm nay',
@@ -1043,6 +1077,16 @@ export const translations = {
     // Task Assignee
     'tasks.includesYou': 'Bao gồm bạn',
     'tasks.assigned': '{{count}} được giao',
+    'tasks.you': 'Bạn',
+    'tasks.unassigned': 'Chưa giao',
+    'tasks.assignedToYou': 'Được giao cho bạn',
+    'tasks.noOneAssigned': 'Chưa có ai được giao công việc này',
+    'tasks.youPlus': 'Bạn +{{count}}',
+    'tasks.assignedToYouAnd': 'Được giao cho bạn và {{count}} người khác',
+    'tasks.assignedToYouAndPlural': 'Được giao cho bạn và {{count}} người khác',
+    'tasks.assignedTo': 'Được giao cho {{name}} ({{email}})',
+    'tasks.youWillBeAssigned': 'Bạn sẽ được giao là người tạo công việc',
+    'tasks.canChangeAssigneesLater': 'Bạn có thể thêm hoặc thay đổi người được giao sau trong chi tiết công việc',
     
     // Sidebar Folder Stats
     'sidebar.tasksCount': '{{count}} công việc',

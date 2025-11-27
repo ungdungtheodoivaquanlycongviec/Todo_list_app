@@ -486,13 +486,13 @@ export default function CreateTaskModal({
                   </div>
                   <div className="flex-1">
                     <p className="text-sm text-blue-800 dark:text-blue-200 font-semibold">
-                      You will be assigned as the task creator
+                      {t('tasks.youWillBeAssigned')}
                     </p>
                     <p className="text-xs text-blue-600 dark:text-blue-300">
                       {currentUser.name} • {currentUser.email}
                     </p>
                     <p className="text-xs text-blue-500 dark:text-blue-400 mt-1">
-                      You can add or change assignees later in the task details
+                      {t('tasks.canChangeAssigneesLater')}
                     </p>
                   </div>
                 </div>

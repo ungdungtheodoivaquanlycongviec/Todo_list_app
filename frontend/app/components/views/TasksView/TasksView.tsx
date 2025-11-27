@@ -181,7 +181,7 @@ export default function TasksView() {
         if (currentUser && assignment.userId === currentUser._id) {
           userData = {
             _id: currentUser._id,
-            name: currentUser.name || 'You',
+            name: currentUser.name || t('tasks.you'),
             email: currentUser.email,
             avatar: currentUser.avatar
           };
@@ -226,16 +226,16 @@ export default function TasksView() {
 
     if (!hasAssignees) {
       return {
-        displayText: "Unassigned",
-        tooltip: "No one assigned to this task",
+        displayText: t('tasks.unassigned'),
+        tooltip: t('tasks.noOneAssigned'),
         isCurrentUser: false
       };
     }
 
     if (currentUserIsAssigned && totalCount === 1) {
       return {
-        displayText: "You",
-        tooltip: "Assigned to you",
+        displayText: t('tasks.you'),
+        tooltip: t('tasks.assignedToYou'),
         isCurrentUser: true
       };
     }
@@ -243,8 +243,10 @@ export default function TasksView() {
     if (currentUserIsAssigned && totalCount > 1) {
       const othersCount = totalCount - 1;
       return {
-        displayText: `You +${othersCount}`,
-        tooltip: `Assigned to you and ${othersCount} other${othersCount > 1 ? 's' : ''}`,
+        displayText: t('tasks.youPlus', { count: othersCount }),
+        tooltip: othersCount > 1 
+          ? t('tasks.assignedToYouAndPlural', { count: othersCount })
+          : t('tasks.assignedToYouAnd', { count: othersCount }),
         isCurrentUser: true
       };
     }
@@ -253,7 +255,7 @@ export default function TasksView() {
     if (totalCount === 1) {
       return {
         displayText: assignees[0].name,
-        tooltip: `Assigned to ${assignees[0].name} (${assignees[0].email})`,
+        tooltip: t('tasks.assignedTo', { name: assignees[0].name, email: assignees[0].email }),
         isCurrentUser: false
       };
     }
@@ -1252,7 +1254,7 @@ export default function TasksView() {
                       ? "bg-green-100 text-green-800 border-green-200"
                       : "bg-blue-100 text-blue-800 border-blue-200"
                     }`}
-                  title={`${assignee.name}${assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id ? ' (You)' : ''}`}
+                  title={`${assignee.name}${assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id ? ` (${t('tasks.you')})` : ''}`}
                 >
                   {assignee.avatar ? (
                     <img

@@ -154,6 +154,8 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const [editingCommentContent, setEditingCommentContent] = useState("")
   const [showCommentMenu, setShowCommentMenu] = useState<string | null>(null)
   const [uploadingFiles, setUploadingFiles] = useState(false)
+  const [pendingAttachment, setPendingAttachment] = useState<File | null>(null)
+  const [pendingAttachmentPreview, setPendingAttachmentPreview] = useState<string | null>(null)
 
   const { user: currentUser, currentGroup } = useAuth()
   const { currentFolder } = useFolder()
@@ -830,12 +832,28 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
   // FIXED: Allow comments on all task statuses regardless of due date
   const handleAddComment = useCallback(async () => {
-    if (!comment.trim() || !task) return
+    if ((!comment.trim() && !pendingAttachment) || !task) return
 
     // REMOVED: All restrictions - comments are now available for all tasks without due date dependency
     try {
-      const updatedTask = await taskService.addComment(taskId, comment)
+      setUploadingFiles(true)
+      let updatedTask
+      
+      if (pendingAttachment) {
+        // Use addCommentWithFile when there's an attachment
+        updatedTask = await taskService.addCommentWithFile(taskId, comment.trim(), pendingAttachment)
+      } else {
+        // Use regular addComment for text-only comments
+        updatedTask = await taskService.addComment(taskId, comment)
+      }
+      
+      // Clear comment and attachment
       setComment("")
+      setPendingAttachment(null)
+      if (pendingAttachmentPreview) {
+        URL.revokeObjectURL(pendingAttachmentPreview)
+        setPendingAttachmentPreview(null)
+      }
 
       if (updatedTask.comments && Array.isArray(updatedTask.comments)) {
         const formattedComments: Comment[] = updatedTask.comments.map((comment: any) => ({
@@ -853,8 +871,10 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
     } catch (error) {
       console.error("Error adding comment:", error)
       alert("Failed to add comment: " + (error as Error).message)
+    } finally {
+      setUploadingFiles(false)
     }
-  }, [comment, task, taskId])
+  }, [comment, task, taskId, pendingAttachment, pendingAttachmentPreview])
 
   const handleUpdateComment = useCallback(async (commentId: string) => {
     if (!editingCommentContent.trim() || !currentUser) {
@@ -1018,7 +1038,41 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
     setEditingCommentContent("")
   }, [])
 
-  // File upload handler - FIXED: No restrictions, available for all tasks regardless of due date
+  // Handler for comment attachment - stores file for preview before sending
+  const handleCommentAttachment = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files || files.length === 0) return
+
+    const file = files[0] // Only allow one attachment per comment
+    
+    // Revoke previous preview URL if exists
+    if (pendingAttachmentPreview) {
+      URL.revokeObjectURL(pendingAttachmentPreview)
+    }
+    
+    setPendingAttachment(file)
+    
+    // Create preview URL for images
+    if (file.type.startsWith('image/')) {
+      setPendingAttachmentPreview(URL.createObjectURL(file))
+    } else {
+      setPendingAttachmentPreview(null)
+    }
+    
+    // Clear file input
+    event.target.value = ''
+  }, [pendingAttachmentPreview])
+
+  // Remove pending attachment
+  const removePendingAttachment = useCallback(() => {
+    if (pendingAttachmentPreview) {
+      URL.revokeObjectURL(pendingAttachmentPreview)
+    }
+    setPendingAttachment(null)
+    setPendingAttachmentPreview(null)
+  }, [pendingAttachmentPreview])
+
+  // File upload handler for TASK attachments (not comments)
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
     if (!files || files.length === 0) return
@@ -1233,19 +1287,40 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
           )}
 
           {comment.attachment && comment.attachment.url && comment.attachment.filename && (
-            <div className="mt-2 p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800">
-              <div className="flex items-center gap-2">
-                <Paperclip className="w-3 h-3 text-gray-500" />
-                <span className="text-xs text-gray-600 dark:text-gray-400">{comment.attachment.filename}</span>
-                <a
-                  href={comment.attachment.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-blue-500 hover:text-blue-600 ml-2"
-                >
-                  View
-                </a>
-              </div>
+            <div className="mt-2">
+              {comment.attachment.mimetype?.startsWith('image/') ? (
+                <div className="rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                  <a href={comment.attachment.url} target="_blank" rel="noopener noreferrer">
+                    <img 
+                      src={comment.attachment.url} 
+                      alt={comment.attachment.filename}
+                      className="max-w-full max-h-48 object-contain bg-gray-100 dark:bg-gray-800"
+                    />
+                  </a>
+                </div>
+              ) : (
+                <div className="p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 flex items-center justify-center bg-gray-200 dark:bg-gray-700 rounded">
+                      <Paperclip className="w-4 h-4 text-gray-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{comment.attachment.filename}</p>
+                      {comment.attachment.size && (
+                        <p className="text-xs text-gray-500">{(comment.attachment.size / 1024).toFixed(1)} KB</p>
+                      )}
+                    </div>
+                    <a
+                      href={comment.attachment.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-500 hover:text-blue-600 px-2 py-1 bg-blue-50 dark:bg-blue-900/30 rounded"
+                    >
+                      View
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -2021,15 +2096,44 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
+                    {/* Pending attachment preview */}
+                    {pendingAttachment && (
+                      <div className="mb-2 p-2 border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700">
+                        <div className="flex items-center gap-2">
+                          {pendingAttachmentPreview ? (
+                            <img 
+                              src={pendingAttachmentPreview} 
+                              alt={pendingAttachment.name}
+                              className="w-16 h-16 object-cover rounded"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 flex items-center justify-center bg-gray-200 dark:bg-gray-600 rounded">
+                              <Paperclip className="w-5 h-5 text-gray-500" />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{pendingAttachment.name}</p>
+                            <p className="text-xs text-gray-500">{(pendingAttachment.size / 1024).toFixed(1)} KB</p>
+                          </div>
+                          <button
+                            onClick={removePendingAttachment}
+                            className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                            aria-label="Remove attachment"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     <div className="flex items-end gap-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 p-2">
-                      <label className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-pointer transition-colors flex-shrink-0">
+                      <label className={`p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-pointer transition-colors flex-shrink-0 ${uploadingFiles ? 'opacity-50 pointer-events-none' : ''}`}>
                         <Paperclip className="w-4 h-4" />
                         <input
                           type="file"
                           className="hidden"
-                          onChange={handleFileUpload}
-                          multiple
+                          onChange={handleCommentAttachment}
                           accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                          disabled={uploadingFiles}
                         />
                       </label>
                       <textarea
@@ -2050,14 +2154,19 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                             handleAddComment()
                           }
                         }}
+                        disabled={uploadingFiles}
                       />
                       <button
                         onClick={handleAddComment}
-                        disabled={!comment.trim()}
+                        disabled={(!comment.trim() && !pendingAttachment) || uploadingFiles}
                         className="p-1.5 text-blue-500 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex-shrink-0"
                         aria-label="Send comment"
                       >
-                        <Send className="w-4 h-4" />
+                        {uploadingFiles ? (
+                          <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <Send className="w-4 h-4" />
+                        )}
                       </button>
                     </div>
                   </div>
