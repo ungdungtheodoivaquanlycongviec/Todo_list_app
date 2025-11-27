@@ -363,6 +363,41 @@ body {
   background-color: #4b5563; /* gray-600 */
 }
 
+/* Minimal scrollbar for TaskDetailModal and other areas */
+.scrollbar-minimal {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.scrollbar-minimal:hover {
+  scrollbar-color: #d1d5db transparent; /* gray-300 on hover */
+}
+
+.scrollbar-minimal::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollbar-minimal::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-minimal::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 9999px;
+}
+
+.scrollbar-minimal:hover::-webkit-scrollbar-thumb {
+  background-color: #d1d5db; /* gray-300 */
+}
+
+.dark .scrollbar-minimal:hover {
+  scrollbar-color: #525252 transparent; /* gray-600 on hover */
+}
+
+.dark .scrollbar-minimal:hover::-webkit-scrollbar-thumb {
+  background-color: #525252; /* gray-600 */
+}
+
 .dark body {
   background-color: #1A1A1A !important;
   color: #FFFFFF !important;

@@ -166,12 +166,15 @@ const taskSchema = new mongoose.Schema(
             trim: true
           },
           attachment: {
-            filename: { type: String },
-            url: { type: String },
-            size: { type: Number },
-            mimetype: { type: String },
-            publicId: { type: String },
-            resourceType: { type: String, default: 'image' }
+            type: {
+              filename: { type: String },
+              url: { type: String },
+              size: { type: Number },
+              mimetype: { type: String },
+              publicId: { type: String },
+              resourceType: { type: String }
+            },
+            default: undefined
           },
           createdAt: { 
             type: Date, 

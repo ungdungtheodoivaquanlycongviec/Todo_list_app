@@ -2,6 +2,7 @@
 
 import React from 'react';
 import UserMenu from '../common/UserMenu';
+import LanguageSwitcher from '../common/LanguageSwitcher';
 import NotificationDropdown from '../NotificationDropdown';
 import { User } from '../../services/types/auth.types';
 
@@ -18,7 +19,8 @@ export default function TopBar({ user, onLogout, theme, onThemeChange, onProfile
     <div className="w-full bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
       <div className="px-4 sm:px-6 py-3 md:py-4">
         <div className="flex justify-end">
-          <div className="w-full max-w-full md:max-w-[10vw] lg:max-w-[220px] flex items-center justify-end gap-2 sm:gap-3">
+          <div className="w-full max-w-full md:max-w-[15vw] lg:max-w-[320px] flex items-center justify-end gap-2 sm:gap-3">
+            <LanguageSwitcher />
             <NotificationDropdown />
             <UserMenu 
               currentUser={user} 

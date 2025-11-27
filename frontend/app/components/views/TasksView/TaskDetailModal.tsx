@@ -1232,7 +1232,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
             <p className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">{comment.content}</p>
           )}
 
-          {comment.attachment && (
+          {comment.attachment && comment.attachment.url && comment.attachment.filename && (
             <div className="mt-2 p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800">
               <div className="flex items-center gap-2">
                 <Paperclip className="w-3 h-3 text-gray-500" />
@@ -1514,7 +1514,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
           {/* Main Content */}
           <div className="flex-1 overflow-hidden flex">
             {/* Task Details - 2/3 width */}
-            <div className="w-2/3 border-r border-gray-200 dark:border-gray-700 overflow-auto">
+            <div className="w-2/3 border-r border-gray-200 dark:border-gray-700 overflow-auto scrollbar-minimal">
               <div className="p-6 space-y-6">
                 {/* Task Properties - Interactive */}
                 <div className="space-y-3">
@@ -1977,8 +1977,8 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
             </div>
 
             {/* Comments - 1/3 width - FIXED: Always show comment form for all task statuses regardless of due date */}
-            <div className="w-1/3 overflow-auto flex flex-col">
-              <div className="flex-1 p-6">
+            <div className="w-1/3 flex flex-col h-full overflow-hidden">
+              <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 scrollbar-minimal">
                 <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
                   <MessageSquare className="w-4 h-4" />
                   {t('taskDetail.comments')} ({comments.length})
@@ -1994,10 +1994,10 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                 </div>
               </div>
 
-              <div className="p-6 pt-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+              <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex-shrink-0">
                 {/* FIXED: Always show comment form - no restrictions based on due date or task status */}
-                <div className="flex gap-3">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs text-white font-medium flex-shrink-0 overflow-hidden">
+                <div className="flex gap-3 items-start">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs text-white font-medium flex-shrink-0 overflow-hidden self-start mt-1">
                     {currentUser?.avatar ? (
                       <img 
                         src={currentUser.avatar} 
@@ -2020,14 +2020,30 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                       </div>
                     )}
                   </div>
-                  <div className="flex-1">
-                    <div className="relative">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-end gap-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 p-2">
+                      <label className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-pointer transition-colors flex-shrink-0">
+                        <Paperclip className="w-4 h-4" />
+                        <input
+                          type="file"
+                          className="hidden"
+                          onChange={handleFileUpload}
+                          multiple
+                          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                        />
+                      </label>
                       <textarea
                         value={comment}
                         onChange={(e) => setComment(e.target.value)}
                         placeholder={t('taskDetail.typeMessage')}
-                        rows={3}
-                        className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-12 resize-none"
+                        rows={1}
+                        className="flex-1 min-w-0 bg-transparent text-gray-900 dark:text-gray-100 text-sm focus:outline-none resize-none min-h-[24px] max-h-[80px] py-1"
+                        style={{ height: 'auto', overflowY: 'auto' }}
+                        onInput={(e) => {
+                          const target = e.target as HTMLTextAreaElement;
+                          target.style.height = 'auto';
+                          target.style.height = Math.min(target.scrollHeight, 80) + 'px';
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" && !e.shiftKey) {
                             e.preventDefault()
@@ -2038,7 +2054,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                       <button
                         onClick={handleAddComment}
                         disabled={!comment.trim()}
-                        className="absolute bottom-3 right-3 p-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="p-1.5 text-blue-500 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex-shrink-0"
                         aria-label="Send comment"
                       >
                         <Send className="w-4 h-4" />
