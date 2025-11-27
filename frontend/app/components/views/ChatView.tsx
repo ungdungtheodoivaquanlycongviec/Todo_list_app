@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { useRegional } from '../../contexts/RegionalContext';
 import { chatService, ChatMessage, DirectConversationSummary } from '../../services/chat.service';
 import { useSocket } from '../../hooks/useSocket';
 import {
@@ -16,11 +18,15 @@ import {
   MoreVertical,
   MessageSquare,
   UserPlus,
-  Search
+  Search,
+  FileText,
+  ExternalLink
 } from 'lucide-react';
 
 export default function ChatView() {
   const { user, currentGroup } = useAuth();
+  const { t } = useLanguage();
+  const { formatTime } = useRegional();
   const { socket, isConnected } = useSocket();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(true);
@@ -39,6 +45,8 @@ export default function ChatView() {
   const [hasGroupUnread, setHasGroupUnread] = useState(false);
   const [pendingDirectIndicators, setPendingDirectIndicators] = useState<Record<string, boolean>>({});
   const [hasDirectUnread, setHasDirectUnread] = useState<Set<string>>(new Set());
+  const [pendingAttachment, setPendingAttachment] = useState<File | null>(null);
+  const [pendingAttachmentPreview, setPendingAttachmentPreview] = useState<string | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -578,14 +586,68 @@ export default function ChatView() {
     scrollToBottom();
   }, [messages]);
 
+  // Handle attachment selection (preview before sending)
+  const handleAttachmentSelect = (file: File) => {
+    setPendingAttachment(file);
+    
+    // Create preview for images
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setPendingAttachmentPreview(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setPendingAttachmentPreview(null);
+    }
+  };
+
+  // Remove pending attachment
+  const removePendingAttachment = () => {
+    setPendingAttachment(null);
+    setPendingAttachmentPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (imageInputRef.current) imageInputRef.current.value = '';
+  };
+
+  // Format file size
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
   // Send message
   const handleSend = async () => {
     const content = message.trim();
-    if (!content && !replyingTo && !uploading) return;
+    if (!content && !replyingTo && !pendingAttachment) return;
 
     try {
       if (!socket) {
         throw new Error('Socket connection not available');
+      }
+
+      let attachments: any[] = [];
+
+      // Upload attachment if pending
+      if (pendingAttachment) {
+        setUploading(true);
+        try {
+          if (activeContext === 'group' && currentGroup?._id) {
+            const attachment = await chatService.uploadAttachment(currentGroup._id, pendingAttachment);
+            attachments = [attachment];
+          } else if (activeContext === 'direct' && activeDirectConversation?._id) {
+            const attachment = await chatService.uploadDirectAttachment(activeDirectConversation._id, pendingAttachment);
+            attachments = [attachment];
+          }
+        } catch (uploadError) {
+          console.error('Error uploading attachment:', uploadError);
+          alert('Failed to upload attachment: ' + (uploadError as Error).message);
+          setUploading(false);
+          return;
+        }
       }
 
       if (activeContext === 'group') {
@@ -596,7 +658,7 @@ export default function ChatView() {
             groupId: currentGroup._id,
             content,
             replyTo: replyingTo?._id || null,
-            attachments: []
+            attachments
           },
           (response: any) => {
             if (!response.success) {
@@ -604,8 +666,10 @@ export default function ChatView() {
             } else {
               setMessage('');
               setReplyingTo(null);
+              removePendingAttachment();
               stopTyping();
             }
+            setUploading(false);
           }
         );
       } else if (activeContext === 'direct') {
@@ -616,7 +680,7 @@ export default function ChatView() {
             conversationId: activeDirectConversation._id,
             content,
             replyTo: replyingTo?._id || null,
-            attachments: []
+            attachments
           },
           (response: any) => {
             if (!response.success) {
@@ -624,14 +688,17 @@ export default function ChatView() {
             } else {
               setMessage('');
               setReplyingTo(null);
+              removePendingAttachment();
               stopTyping();
             }
+            setUploading(false);
           }
         );
       }
     } catch (error) {
       console.error('[ChatView] Error sending message:', error);
       alert('Failed to send message: ' + (error as Error).message);
+      setUploading(false);
     }
   };
 
@@ -684,57 +751,6 @@ export default function ChatView() {
     }
   };
 
-  // Upload file
-  const handleFileUpload = async (file: File) => {
-    if (!socket) return;
-
-    try {
-      setUploading(true);
-      if (activeContext === 'group') {
-        if (!currentGroup?._id) return;
-        const attachment = await chatService.uploadAttachment(currentGroup._id, file);
-        socket.emit(
-          'chat:send',
-          {
-            groupId: currentGroup._id,
-            content: '',
-            attachments: [attachment]
-          },
-          (response: any) => {
-            if (!response.success) {
-              alert('Failed to send file: ' + response.error);
-            }
-            setUploading(false);
-          }
-        );
-      } else if (activeContext === 'direct') {
-        if (!activeDirectConversation?._id) return;
-        const attachment = await chatService.uploadDirectAttachment(
-          activeDirectConversation._id,
-          file
-        );
-        socket.emit(
-          'direct:send',
-          {
-            conversationId: activeDirectConversation._id,
-            content: '',
-            attachments: [attachment]
-          },
-          (response: any) => {
-            if (!response.success) {
-              alert('Failed to send file: ' + response.error);
-            }
-            setUploading(false);
-          }
-        );
-      }
-    } catch (error) {
-      console.error('Error uploading file:', error);
-      alert('Failed to upload file: ' + (error as Error).message);
-      setUploading(false);
-    }
-  };
-
   // Toggle reaction
   const handleReaction = async (messageId: string, emoji: string) => {
     if (!socket) return;
@@ -764,7 +780,7 @@ export default function ChatView() {
 
   // Delete message
   const handleDelete = async (messageId: string) => {
-    if (!confirm('Are you sure you want to delete this message?')) return;
+    if (!confirm(t('chat.deleteConfirm'))) return;
     if (!socket) return;
 
     if (activeContext === 'group') {
@@ -789,7 +805,7 @@ export default function ChatView() {
     if (!value) return '';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '';
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return formatTime(date);
   };
 
   const handleStartDirectConversation = async () => {
@@ -814,21 +830,21 @@ export default function ChatView() {
 
   const conversationTitle =
     activeContext === 'group'
-      ? currentGroup?.name || 'Chưa chọn nhóm'
-      : activeDirectConversation?.targetUser?.name || 'Chưa chọn chat riêng';
+      ? currentGroup?.name || t('chat.noGroupSelected')
+      : activeDirectConversation?.targetUser?.name || t('chat.noGroupSelected');
 
   const conversationSubtitle =
     activeContext === 'group'
       ? currentGroup
-        ? `${currentGroup.members?.length || 0} thành viên`
+        ? `${currentGroup.members?.length || 0} ${t('chat.members')}`
         : ''
       : activeDirectConversation?.targetUser?.email || '';
 
   const typingLabel =
     typingUsers.size > 0
       ? `${Array.from(typingUsers).length} ${
-          Array.from(typingUsers).length === 1 ? 'person is' : 'people are'
-        } typing...`
+          Array.from(typingUsers).length === 1 ? t('chat.personTyping') : t('chat.peopleTyping')
+        }`
       : '';
 
   return (
@@ -836,7 +852,7 @@ export default function ChatView() {
       <aside className="w-80 border-r border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/40 flex flex-col">
         <div className="p-4 border-b border-gray-200 dark:border-gray-800">
           <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">
-            Group chat
+            {t('chat.groupChat')}
           </p>
           <button
             onClick={() => {
@@ -859,12 +875,12 @@ export default function ChatView() {
             </div>
             <div className="flex-1 text-left">
               <p className="text-sm font-medium">
-                {currentGroup ? currentGroup.name : 'Chưa có nhóm'}
+                {currentGroup ? currentGroup.name : t('chat.noGroup')}
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 {currentGroup
-                  ? `${currentGroup.members?.length || 0} thành viên`
-                  : 'Thêm vào nhóm để chat chung'}
+                  ? `${currentGroup.members?.length || 0} ${t('chat.members')}`
+                  : t('chat.addToGroupToChat')}
               </p>
             </div>
           </button>
@@ -873,7 +889,7 @@ export default function ChatView() {
         <div className="p-4 border-b border-gray-200 dark:border-gray-800">
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              One-on-one chat
+              {t('chat.oneOnOneChat')}
             </p>
             <span className="text-xs text-gray-500 dark:text-gray-400">
               {directConversations.length}
@@ -891,7 +907,7 @@ export default function ChatView() {
                     handleStartDirectConversation();
                   }
                 }}
-                placeholder="Enter email"
+                placeholder={t('chat.enterEmail')}
                 className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -912,7 +928,7 @@ export default function ChatView() {
             </div>
           ) : directConversations.length === 0 ? (
             <div className="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
-              No private chat yet.
+              {t('chat.noPrivateChat')}
             </div>
           ) : (
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -966,14 +982,14 @@ export default function ChatView() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
-                          {conversation.targetUser?.name || 'Thành viên'}
+                          {conversation.targetUser?.name || t('chat.member')}
                         </p>
                         <span className="text-xs text-gray-400">
                           {formatPreviewTime(conversation.lastMessageAt)}
                         </span>
                       </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                        {conversation.lastMessagePreview || 'Chưa có tin nhắn'}
+                        {conversation.lastMessagePreview || t('chat.noMessagePreview')}
                       </p>
                     </div>
                     {conversation.unreadCount > 0 && (
@@ -1008,14 +1024,14 @@ export default function ChatView() {
 
         {conversationReady ? (
           <>
-            <div className="chat-scroll flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="chat-scroll flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4">
               {messagesLoading ? (
                 <div className="flex items-center justify-center py-10">
                   <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
                 </div>
               ) : messages.length === 0 ? (
                 <div className="text-center text-gray-400 dark:text-gray-500 mt-10">
-                  Chưa có tin nhắn nào. Hãy bắt đầu cuộc trò chuyện!
+                  {t('chat.noMessagesYet')}
                 </div>
               ) : (
                 messages.map(msg => (
@@ -1037,7 +1053,7 @@ export default function ChatView() {
               <div className="border-t border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-800 flex items-center justify-between">
                 <div className="flex-1">
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Đang trả lời {replyingTo.senderId.name}
+                    {t('chat.replyingTo')} {replyingTo.senderId.name}
                   </p>
                   <p className="text-sm text-gray-700 dark:text-gray-300 truncate">
                     {replyingTo.content}
@@ -1052,9 +1068,42 @@ export default function ChatView() {
               </div>
             )}
 
+            {/* Pending Attachment Preview */}
+            {pendingAttachment && (
+              <div className="border-t border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-800">
+                <div className="flex items-center gap-3">
+                  {pendingAttachmentPreview ? (
+                    <img
+                      src={pendingAttachmentPreview}
+                      alt="Preview"
+                      className="w-16 h-16 object-cover rounded-lg border border-gray-200 dark:border-gray-600"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center">
+                      <FileText className="w-6 h-6 text-gray-500" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">
+                      {pendingAttachment.name}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {formatFileSize(pendingAttachment.size)}
+                    </p>
+                  </div>
+                  <button
+                    onClick={removePendingAttachment}
+                    className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="border-t border-gray-200 dark:border-gray-700 p-4">
-              <div className="flex items-end gap-2">
-                <div className="flex-1 relative">
+              <div className="flex items-center gap-2">
+                <div className="flex-1 relative min-w-0">
                   <textarea
                     value={message}
                     onChange={(e) => {
@@ -1069,8 +1118,8 @@ export default function ChatView() {
                     }}
                     placeholder={
                       activeContext === 'group'
-                        ? 'Nhắn tin cho nhóm...'
-                        : 'Nhắn tin cho thành viên...'
+                        ? t('chat.messageToGroup')
+                        : t('chat.messageToDirect')
                     }
                     rows={1}
                     className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
@@ -1102,7 +1151,7 @@ export default function ChatView() {
                     className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
-                      if (file) handleFileUpload(file);
+                      if (file) handleAttachmentSelect(file);
                     }}
                   />
                   <input
@@ -1112,7 +1161,7 @@ export default function ChatView() {
                     className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
-                      if (file) handleFileUpload(file);
+                      if (file) handleAttachmentSelect(file);
                     }}
                   />
 
@@ -1139,10 +1188,14 @@ export default function ChatView() {
 
                   <button
                     onClick={handleSend}
-                    disabled={!message.trim() && !replyingTo && !uploading}
+                    disabled={(!message.trim() && !pendingAttachment) || uploading}
                     className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <Send className="w-5 h-5" />
+                    {uploading ? (
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Send className="w-5 h-5" />
+                    )}
                   </button>
                 </div>
               </div>
@@ -1151,9 +1204,9 @@ export default function ChatView() {
         ) : (
           <div className="flex-1 flex items-center justify-center text-center text-gray-500 dark:text-gray-400 px-6">
             <div>
-              <p className="text-lg font-semibold mb-2">Please choose the current group or search for members to start a private chat.</p>
+              <p className="text-lg font-semibold mb-2">{t('chat.noGroupSelected')}</p>
               <p className="text-sm">
-                Please choose the current group or search for members to start a private chat.
+                {t('chat.startConversation')}
               </p>
             </div>
           </div>
@@ -1179,6 +1232,8 @@ function MessageItem({
   onDelete: () => void;
   onReaction: (messageId: string, emoji: string) => void;
 }) {
+  const { t } = useLanguage();
+  const { formatTime } = useRegional();
   const isOwn = message.senderId._id === currentUserId;
   const [showMenu, setShowMenu] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
@@ -1195,7 +1250,7 @@ function MessageItem({
   const commonEmojis = ['👍', '❤️', '😄', '😂', '😮', '😢', '🙏', '🔥', '👏', '💯'];
 
   return (
-    <div className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : ''}`}>
+    <div className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : ''} group`}>
       {/* Avatar */}
       <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm flex-shrink-0">
         {message.senderId.avatar ? (
@@ -1210,7 +1265,7 @@ function MessageItem({
       </div>
 
       {/* Message content */}
-      <div className={`flex-1 ${isOwn ? 'items-end' : 'items-start'} flex flex-col gap-1 max-w-[70%]`}>
+      <div className={`${isOwn ? 'items-end' : 'items-start'} flex flex-col gap-1 max-w-[70%]`}>
         {/* Sender name */}
         {!isOwn && (
           <p className="text-xs text-gray-500 dark:text-gray-400">{message.senderId.name}</p>
@@ -1224,14 +1279,15 @@ function MessageItem({
           </div>
         )}
 
-        {/* Message bubble */}
-        <div
-          className={`relative group rounded-lg p-3 ${
-            isOwn
-              ? 'bg-blue-500 text-white'
-              : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
-          }`}
-        >
+        {/* Message bubble with menu */}
+        <div className={`flex items-start gap-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
+          <div
+            className={`relative rounded-lg p-3 ${
+              isOwn
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
+            }`}
+          >
           {message.deletedAt ? (
             <p className="text-sm italic opacity-70">Message deleted</p>
           ) : (
@@ -1242,20 +1298,41 @@ function MessageItem({
                   {message.attachments.map((attachment, idx) => (
                     <div key={idx}>
                       {attachment.type === 'image' ? (
-                        <img
-                          src={attachment.url}
-                          alt={attachment.filename}
-                          className="max-w-full rounded-lg max-h-64 object-cover"
-                        />
+                        <a 
+                          href={attachment.url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="block"
+                        >
+                          <img
+                            src={attachment.url}
+                            alt={attachment.filename}
+                            className="max-w-full rounded-lg max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                          />
+                        </a>
                       ) : (
                         <a
                           href={attachment.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-2 p-2 bg-gray-200 dark:bg-gray-700 rounded"
+                          className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
+                            isOwn 
+                              ? 'bg-blue-400/30 border-blue-300/30 hover:bg-blue-400/40' 
+                              : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+                          }`}
                         >
-                          <Paperclip className="w-4 h-4" />
-                          <span className="text-sm">{attachment.filename}</span>
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                            isOwn ? 'bg-blue-300/30' : 'bg-gray-100 dark:bg-gray-600'
+                          }`}>
+                            <FileText className="w-5 h-5" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{attachment.filename}</p>
+                            <p className={`text-xs ${isOwn ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'}`}>
+                              {t('chat.clickToView')}
+                            </p>
+                          </div>
+                          <ExternalLink className="w-4 h-4 flex-shrink-0" />
                         </a>
                       )}
                     </div>
@@ -1274,19 +1351,20 @@ function MessageItem({
               )}
             </>
           )}
+          </div>
 
-          {/* Menu button */}
+          {/* Menu button - outside the bubble */}
           {!message.deletedAt && (
-            <div className={`absolute ${isOwn ? 'left-0' : 'right-0'} top-0 opacity-0 group-hover:opacity-100 transition-opacity`}>
+            <div className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
               <div className="relative">
                 <button
                   onClick={() => setShowMenu(!showMenu)}
-                  className="p-1 hover:bg-black/10 rounded"
+                  className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500 dark:text-gray-400"
                 >
                   <MoreVertical className="w-4 h-4" />
                 </button>
                 {showMenu && (
-                  <div className={`absolute ${isOwn ? 'left-0' : 'right-0'} top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-10 min-w-32`}>
+                  <div className={`absolute ${isOwn ? 'right-0' : 'left-0'} top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-10 min-w-32`}>
                     <button
                       onClick={() => {
                         onReply();
@@ -1295,7 +1373,7 @@ function MessageItem({
                       className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
                     >
                       <Reply className="w-4 h-4" />
-                      Reply
+                      {t('chat.reply')}
                     </button>
                     {isOwn && (
                       <>
@@ -1307,7 +1385,7 @@ function MessageItem({
                           className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
                         >
                           <Edit2 className="w-4 h-4" />
-                          Edit
+                          {t('chat.edit')}
                         </button>
                         <button
                           onClick={() => {
@@ -1317,7 +1395,7 @@ function MessageItem({
                           className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
                         >
                           <Trash2 className="w-4 h-4" />
-                          Delete
+                          {t('chat.delete')}
                         </button>
                       </>
                     )}
@@ -1351,7 +1429,7 @@ function MessageItem({
               onClick={() => setShowReactions(!showReactions)}
               className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
             >
-              Add reaction
+              {t('chat.addReaction')}
             </button>
             {showReactions && (
               <div className="absolute left-0 bottom-full mb-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-2 shadow-lg z-10">
@@ -1376,7 +1454,7 @@ function MessageItem({
 
         {/* Timestamp */}
         <p className="text-xs text-gray-400 dark:text-gray-500">
-          {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          {formatTime(new Date(message.createdAt))}
         </p>
       </div>
     </div>

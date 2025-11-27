@@ -11,6 +11,8 @@ import {
   Bookmark,
   AlertCircle,
 } from "lucide-react";
+import { useLanguage } from "../../../contexts/LanguageContext";
+import { useRegional } from "../../../contexts/RegionalContext";
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -27,6 +29,8 @@ export default function CreateTaskModal({
   currentUser,
   initialDueDate,
 }: CreateTaskModalProps) {
+  const { t } = useLanguage();
+  const { convertFromUserTimezone } = useRegional();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
@@ -50,73 +54,73 @@ export default function CreateTaskModal({
     }
   }, [isOpen, initialDueDate]);
 
-  // Enhanced options
+  // Enhanced options with translations
   const categoryOptions = [
     {
       value: "Operational",
-      label: "Operational",
+      label: t('category.operational'),
       color: "text-blue-600 bg-blue-50",
     },
     {
       value: "Strategic",
-      label: "Strategic",
+      label: t('category.strategic'),
       color: "text-green-600 bg-green-50",
     },
     {
       value: "Financial",
-      label: "Financial",
+      label: t('category.financial'),
       color: "text-yellow-600 bg-yellow-50",
     },
     {
       value: "Technical",
-      label: "Technical",
+      label: t('category.technical'),
       color: "text-purple-600 bg-purple-50",
     },
-    { value: "Other", label: "Other", color: "text-gray-600 bg-gray-50" },
+    { value: "Other", label: t('category.other'), color: "text-gray-600 bg-gray-50" },
   ];
 
   const priorityOptions = [
     {
       value: "None",
-      label: "None",
+      label: t('priority.none'),
       color: "text-gray-500",
       bgColor: "bg-gray-100",
     },
     {
       value: "Low",
-      label: "Low",
+      label: t('priority.low'),
       color: "text-green-600",
       bgColor: "bg-green-100",
     },
     {
       value: "Medium",
-      label: "Medium",
+      label: t('priority.medium'),
       color: "text-yellow-600",
       bgColor: "bg-yellow-100",
     },
     {
       value: "High",
-      label: "High",
+      label: t('priority.high'),
       color: "text-orange-600",
       bgColor: "bg-orange-100",
     },
     {
       value: "Urgent",
-      label: "Urgent",
+      label: t('priority.urgent'),
       color: "text-red-600",
       bgColor: "bg-red-100",
     },
   ];
 
   const estimatedTimeOptions = [
-    { value: "15m", label: "15 minutes" },
-    { value: "30m", label: "30 minutes" },
-    { value: "1h", label: "1 hour" },
-    { value: "2h", label: "2 hours" },
-    { value: "4h", label: "4 hours" },
-    { value: "1d", label: "1 day" },
-    { value: "2d", label: "2 days" },
-    { value: "1w", label: "1 week" },
+    { value: "15m", label: t('time.15minutes') },
+    { value: "30m", label: t('time.30minutes') },
+    { value: "1h", label: t('time.1hour') },
+    { value: "2h", label: t('time.2hours') },
+    { value: "4h", label: t('time.4hours') },
+    { value: "1d", label: t('time.1day') },
+    { value: "2d", label: t('time.2days') },
+    { value: "1w", label: t('time.1week') },
   ];
 
   // Reset form when modal opens/closes
@@ -188,12 +192,19 @@ export default function CreateTaskModal({
     setIsSubmitting(true);
 
     try {
+      // Convert date from user's timezone to UTC for backend storage
+      let dueDateUTC: string | null = null;
+      if (dueDate) {
+        const userDate = new Date(dueDate + 'T23:59:59'); // Set to end of day
+        dueDateUTC = convertFromUserTimezone(userDate).toISOString();
+      }
+
       const taskData = {
         title: title.trim(),
         description: description.trim(),
         category: category || "Other",
         priority,
-        dueDate: dueDate || null,
+        dueDate: dueDateUTC,
         tags: tags
           .split(",")
           .map((tag) => tag.trim())
@@ -235,10 +246,10 @@ export default function CreateTaskModal({
         <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-[#1F1F1F]">
           <div>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-              Create New Task
+              {t('tasks.createTask')}
             </h2>
             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-              Add a new task to your project
+              {t('tasks.createTaskDesc')}
             </p>
           </div>
           <button
@@ -257,7 +268,7 @@ export default function CreateTaskModal({
               <div className="flex items-center justify-between mb-2">
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
                   <Bookmark className="w-4 h-4" />
-                  Task Title *
+                  {t('tasks.taskName')} *
                 </label>
                 {errors.title && (
                   <span className="flex items-center gap-1 text-xs text-red-500">
@@ -290,14 +301,14 @@ export default function CreateTaskModal({
             <div>
               <label className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
                 <User className="w-4 h-4" />
-                Description
+                {t('tasks.description')}
               </label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={4}
                 className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all resize-none"
-                placeholder="Describe the task in detail..."
+                placeholder={t('tasks.descriptionPlaceholder')}
               />
             </div>
 
@@ -307,7 +318,7 @@ export default function CreateTaskModal({
               <div>
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
                   <Flag className="w-4 h-4" />
-                  Type
+                  {t('tasks.category')}
                 </label>
                 <div className="space-y-2">
                   {categoryOptions.map((option) => (
@@ -348,7 +359,7 @@ export default function CreateTaskModal({
               <div>
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
                   <Flag className="w-4 h-4" />
-                  Priority
+                  {t('tasks.priority')}
                 </label>
                 <div className="space-y-2">
                   {priorityOptions.map((option) => (
@@ -392,7 +403,7 @@ export default function CreateTaskModal({
               <div>
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
                   <Calendar className="w-4 h-4" />
-                  Due Date
+                  {t('tasks.dueDate')}
                 </label>
                 <div className="relative">
                   <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -410,7 +421,7 @@ export default function CreateTaskModal({
               <div>
                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
                   <Clock className="w-4 h-4" />
-                  Estimated Time
+                  {t('tasks.estimatedTime')}
                 </label>
                 <div className="flex gap-2">
                   <div className="relative flex-1">
@@ -447,7 +458,7 @@ export default function CreateTaskModal({
             <div>
               <label className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
                 <Tag className="w-4 h-4" />
-                Tags
+                {t('tasks.tags')}
               </label>
               <div className="relative">
                 <Tag className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -456,11 +467,11 @@ export default function CreateTaskModal({
                   value={tags}
                   onChange={(e) => setTags(e.target.value)}
                   className="w-full pl-10 pr-3 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                  placeholder="urgent, important, project-x"
+                  placeholder={t('tasks.tagsPlaceholder')}
                 />
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                Separate tags with commas
+                {t('tasks.tagsHelper')}
               </p>
             </div>
 
@@ -475,13 +486,13 @@ export default function CreateTaskModal({
                   </div>
                   <div className="flex-1">
                     <p className="text-sm text-blue-800 dark:text-blue-200 font-semibold">
-                      You will be assigned as the task creator
+                      {t('tasks.youWillBeAssigned')}
                     </p>
                     <p className="text-xs text-blue-600 dark:text-blue-300">
                       {currentUser.name} • {currentUser.email}
                     </p>
                     <p className="text-xs text-blue-500 dark:text-blue-400 mt-1">
-                      You can add or change assignees later in the task details
+                      {t('tasks.canChangeAssigneesLater')}
                     </p>
                   </div>
                 </div>
@@ -497,7 +508,7 @@ export default function CreateTaskModal({
               disabled={isSubmitting}
               className="px-6 py-3 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               type="submit"
@@ -507,10 +518,10 @@ export default function CreateTaskModal({
               {isSubmitting ? (
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Creating...
+                  {t('common.loading')}
                 </div>
               ) : (
-                "Create Task"
+                t('tasks.createTask')
               )}
             </button>
           </div>

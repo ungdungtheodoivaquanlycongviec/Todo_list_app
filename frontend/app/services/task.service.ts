@@ -355,6 +355,34 @@ export const taskService = {
     return normalizeTaskResponse(data);
   },
 
+  // Add comment with file attachment
+  addCommentWithFile: async (taskId: string, content: string, file: File): Promise<Task> => {
+    const token = authService.getAuthToken();
+    const formData = new FormData();
+    formData.append('content', content);
+    formData.append('file', file);
+
+    const headers: HeadersInit = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/comments/with-file`, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to add comment with file: ${errorText}`);
+    }
+
+    const data = await response.json();
+    return normalizeTaskResponse(data);
+  },
+
   // Upload attachment
   uploadAttachment: async (taskId: string, file: File): Promise<Task> => {
     const token = authService.getAuthToken();
@@ -687,7 +715,7 @@ export const taskService = {
 
   // NEW: Start timer for task
   startTimer: async (taskId: string): Promise<Task> => {
-    const token = getAuthToken();
+    const token = authService.getAuthToken();
     const headers: HeadersInit = {};
 
     if (token) {
@@ -722,7 +750,7 @@ export const taskService = {
 
   // NEW: Stop timer for task
   stopTimer: async (taskId: string): Promise<Task> => {
-    const token = getAuthToken();
+    const token = authService.getAuthToken();
     const headers: HeadersInit = {};
 
     if (token) {
@@ -757,7 +785,7 @@ export const taskService = {
 
   // NEW: Set custom status for task
   setCustomStatus: async (taskId: string, name: string, color: string): Promise<Task> => {
-    const token = getAuthToken();
+    const token = authService.getAuthToken();
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };
@@ -795,7 +823,7 @@ export const taskService = {
 
   // NEW: Set task repetition settings
   setTaskRepetition: async (taskId: string, repetitionSettings: any): Promise<Task> => {
-    const token = getAuthToken();
+    const token = authService.getAuthToken();
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };

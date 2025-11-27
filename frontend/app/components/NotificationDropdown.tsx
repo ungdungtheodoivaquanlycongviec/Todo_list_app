@@ -5,6 +5,8 @@ import { Bell, Check, X, Users, Clock, Trash2 } from 'lucide-react';
 import { notificationService, Notification } from '../services/notification.service';
 import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../hooks/useSocket';
+import { useLanguage } from '../contexts/LanguageContext';
+import { useRegional } from '../contexts/RegionalContext';
 
 interface NotificationDropdownProps {
   className?: string;
@@ -13,6 +15,8 @@ interface NotificationDropdownProps {
 export default function NotificationDropdown({ className = '' }: NotificationDropdownProps) {
   const { setCurrentGroup, setUser } = useAuth();
   const { socket } = useSocket();
+  const { t } = useLanguage();
+  const { convertToUserTimezone } = useRegional();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
@@ -158,14 +162,15 @@ export default function NotificationDropdown({ className = '' }: NotificationDro
   };
 
   const formatTimeAgo = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
+    // Convert both dates to user's timezone for accurate comparison
+    const date = convertToUserTimezone(dateString);
+    const now = convertToUserTimezone(new Date());
     const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
-    if (diffInSeconds < 60) return 'Just now';
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
-    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
-    return `${Math.floor(diffInSeconds / 86400)}d ago`;
+    if (diffInSeconds < 60) return t('notifications.timeAgo.justNow');
+    if (diffInSeconds < 3600) return t('notifications.timeAgo.minutesAgo', { count: Math.floor(diffInSeconds / 60) });
+    if (diffInSeconds < 86400) return t('notifications.timeAgo.hoursAgo', { count: Math.floor(diffInSeconds / 3600) });
+    return t('notifications.timeAgo.daysAgo', { count: Math.floor(diffInSeconds / 86400) });
   };
 
   const getNotificationIcon = (type: string) => {
@@ -202,7 +207,7 @@ export default function NotificationDropdown({ className = '' }: NotificationDro
           {/* Header */}
           <div className="p-4 border-b border-gray-200">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">Notifications</h3>
+              <h3 className="text-lg font-semibold text-gray-900">{t('notifications.title')}</h3>
               {unreadCount > 0 && (
                 <button
                   onClick={async () => {
@@ -216,7 +221,7 @@ export default function NotificationDropdown({ className = '' }: NotificationDro
                   }}
                   className="text-sm text-blue-600 hover:text-blue-800"
                 >
-                  Mark all read
+                  {t('notifications.markAllRead')}
                 </button>
               )}
             </div>
@@ -225,9 +230,9 @@ export default function NotificationDropdown({ className = '' }: NotificationDro
           {/* Notifications List */}
           <div className="max-h-80 overflow-y-auto">
             {loading ? (
-              <div className="p-4 text-center text-gray-500">Loading...</div>
+              <div className="p-4 text-center text-gray-500">{t('common.loading')}</div>
             ) : notifications.length === 0 ? (
-              <div className="p-4 text-center text-gray-500">No notifications</div>
+              <div className="p-4 text-center text-gray-500">{t('notifications.noNotifications')}</div>
             ) : (
               notifications.map((notification) => (
                 <div
@@ -267,14 +272,14 @@ export default function NotificationDropdown({ className = '' }: NotificationDro
                             className="flex items-center space-x-1 px-3 py-1 bg-green-500 text-white text-xs rounded-full hover:bg-green-600 transition-colors"
                           >
                             <Check className="w-3 h-3" />
-                            <span>Accept</span>
+                            <span>{t('notifications.accept')}</span>
                           </button>
                           <button
                             onClick={() => handleDeclineInvitation(notification)}
                             className="flex items-center space-x-1 px-3 py-1 bg-red-500 text-white text-xs rounded-full hover:bg-red-600 transition-colors"
                           >
                             <X className="w-3 h-3" />
-                            <span>Decline</span>
+                            <span>{t('notifications.decline')}</span>
                           </button>
                         </div>
                       )}
@@ -285,7 +290,7 @@ export default function NotificationDropdown({ className = '' }: NotificationDro
                           onClick={() => handleMarkAsRead(notification)}
                           className="mt-2 text-xs text-blue-600 hover:text-blue-800"
                         >
-                          Mark as read
+                          {t('notifications.markAsRead')}
                         </button>
                       )}
                     </div>
@@ -305,7 +310,7 @@ export default function NotificationDropdown({ className = '' }: NotificationDro
                 }}
                 className="w-full text-center text-sm text-blue-600 hover:text-blue-800"
               >
-                View all notifications
+                {t('notifications.viewAll')}
               </button>
             </div>
           )}

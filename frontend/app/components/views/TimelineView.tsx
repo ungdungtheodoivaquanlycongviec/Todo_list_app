@@ -29,6 +29,9 @@ import { useGroupChange } from '../../hooks/useGroupChange';
 import NoGroupState from '../common/NoGroupState';
 import NoFolderState from '../common/NoFolderState';
 import { useFolder } from '../../contexts/FolderContext';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { useRegional } from '../../contexts/RegionalContext';
+import { monthNames, dayNamesShort } from '../../i18n/dateLocales';
 
 type ZoomLevel = 'days' | 'weeks' | 'months' | 'quarters';
 type GroupBy = 'none' | 'folder' | 'category' | 'assignee' | 'status';
@@ -44,6 +47,8 @@ interface TimelineTask extends Task {
 export default function TimelineView() {
   const { user: currentUser, currentGroup } = useAuth();
   const { currentFolder } = useFolder();
+  const { t, language } = useLanguage();
+  const { formatDate, getWeekStartDay } = useRegional();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -237,39 +242,44 @@ const getTaskColor = useCallback((taskId: string) => {
   // Group tasks
   const groupedTasks = useCallback(() => {
     if (groupBy === 'none') {
-      return { 'All Tasks': filteredTasks };
+      return { [t('timeline.allTasks')]: filteredTasks };
     }
 
     const groups: { [key: string]: Task[] } = {};
 
     filteredTasks.forEach(task => {
-      let key = 'Uncategorized';
+      let key = t('timeline.uncategorized');
       
       switch (groupBy) {
         case 'folder':
           if (task.folderId && typeof task.folderId === 'object' && 'name' in task.folderId) {
-            key = task.folderId.name || 'Unnamed Folder';
+            key = task.folderId.name || t('timeline.unnamedFolder');
           } else {
-            key = 'No Folder';
+            key = t('timeline.noFolder');
           }
           break;
         case 'category':
-          key = task.category || 'No Category';
+          // Use category as-is, capitalize first letter
+          if (task.category) {
+            key = task.category.charAt(0).toUpperCase() + task.category.slice(1);
+          } else {
+            key = t('timeline.noCategory');
+          }
           break;
         case 'assignee':
           if (task.assignedTo && task.assignedTo.length > 0) {
             const assignee = task.assignedTo[0];
             if (typeof assignee.userId === 'object' && 'name' in assignee.userId) {
-              key = assignee.userId.name || 'Unnamed User';
+              key = assignee.userId.name || t('timeline.unnamedUser');
             } else {
-              key = 'Assigned';
+              key = t('timeline.assigned');
             }
           } else {
-            key = 'Unassigned';
+            key = t('timeline.unassigned');
           }
           break;
         case 'status':
-          key = task.status || 'todo';
+          key = task.status ? t(`status.${task.status}`) : t('status.todo');
           break;
       }
 
@@ -280,7 +290,7 @@ const getTaskColor = useCallback((taskId: string) => {
     });
 
     return groups;
-  }, [filteredTasks, groupBy]);
+  }, [filteredTasks, groupBy, t]);
 
   // Calculate task position on timeline
   const calculateTaskPosition = useCallback((task: Task): TimelineTask | null => {
@@ -713,22 +723,30 @@ const getTaskColor = useCallback((taskId: string) => {
   };
   // Format day cell labels based on zoom
   const getDayCellLabel = (date: Date, index: number) => {
+    const day = date.getDate();
+    const dayOfWeek = date.getDay();
+    const month = date.getMonth();
+    const monthShort = language === 'vi' ? `Th${month + 1}` : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][month];
+    const dayShort = dayNamesShort[language][dayOfWeek];
+    
     switch (zoomLevel) {
       case 'days':
-        return date.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' });
+        return `${dayShort} ${day}`;
       case 'weeks':
-        return date.getDay() === 1
-          ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        // Show label on week start day (Monday=1 or Sunday=0 based on preference)
+        const weekStartDay = getWeekStartDay();
+        return dayOfWeek === weekStartDay
+          ? `${monthShort} ${day}`
           : '';
       case 'months':
-        return date.getDate() % 5 === 0 ? String(date.getDate()) : '';
+        return day % 5 === 0 ? String(day) : '';
       case 'quarters':
-        if (date.getDate() === 1) {
-          return date.toLocaleDateString('en-US', { month: 'short' });
+        if (day === 1) {
+          return monthShort;
         }
-        return date.getDate() % 10 === 0 ? String(date.getDate()) : '';
+        return day % 10 === 0 ? String(day) : '';
       default:
-        return date.toLocaleDateString();
+        return formatDate(date);
     }
   };
 
@@ -764,9 +782,12 @@ const getTaskColor = useCallback((taskId: string) => {
       let label = '';
 
       if (zoomLevel === 'weeks') {
-        label = `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+        const startMonthShort = language === 'vi' ? `Th${startDate.getMonth() + 1}` : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][startDate.getMonth()];
+        const endMonthShort = language === 'vi' ? `Th${endDate.getMonth() + 1}` : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][endDate.getMonth()];
+        label = `${startMonthShort} ${startDate.getDate()} - ${endMonthShort} ${endDate.getDate()}`;
       } else if (zoomLevel === 'months') {
-        label = startDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        const monthName = monthNames[language][startDate.getMonth()];
+        label = `${monthName} ${startDate.getFullYear()}`;
       } else if (zoomLevel === 'quarters') {
         label = `Q${Math.floor(startDate.getMonth() / 3) + 1} ${startDate.getFullYear()}`;
       }
@@ -776,7 +797,7 @@ const getTaskColor = useCallback((taskId: string) => {
     }
 
     return groups;
-  }, [dates, zoomLevel]);
+  }, [dates, zoomLevel, language]);
   const tasksWithPositions = timelineTasks();
   const groups = groupedTasks();
   const today = new Date();
@@ -788,8 +809,8 @@ const getTaskColor = useCallback((taskId: string) => {
   if (!currentGroup) {
     return (
       <NoGroupState 
-        title="Join or Create a Group to View Timeline"
-        description="You need to join or create a group to view your timeline and manage scheduled tasks."
+        title={t('timeline.joinOrCreate')}
+        description={t('timeline.needGroup')}
       />
     );
   }
@@ -804,7 +825,7 @@ const getTaskColor = useCallback((taskId: string) => {
       <div className="p-6 flex items-center justify-center min-h-screen bg-gray-50">
         <div className="text-center">
           <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading timeline...</p>
+          <p className="text-gray-600">{t('timeline.loading')}</p>
         </div>
       </div>
     );
@@ -815,11 +836,11 @@ const getTaskColor = useCallback((taskId: string) => {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
         <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-gray-900">Timeline</h1>
-          <p className="text-gray-600 mt-1">Plan and track your work over time</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t('timeline.title')}</h1>
+          <p className="text-gray-600 mt-1">{t('timeline.planAndTrack')}</p>
           {currentFolder && (
             <p className="text-sm text-gray-500 mt-1 truncate">
-              Folder: <span className="font-medium text-gray-800 truncate inline-block align-middle max-w-full" title={currentFolder.name}>{currentFolder.name}</span>
+              {t('timeline.folder')}: <span className="font-medium text-gray-800 truncate inline-block align-middle max-w-full" title={currentFolder.name}>{currentFolder.name}</span>
             </p>
           )}
         </div>
@@ -837,7 +858,7 @@ const getTaskColor = useCallback((taskId: string) => {
                 }`}
                 onClick={() => setZoomLevel(level)}
               >
-                {level}
+                {t(`timeline.${level}`)}
               </button>
             ))}
           </div>
@@ -848,7 +869,7 @@ const getTaskColor = useCallback((taskId: string) => {
             className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm font-medium justify-center w-full sm:w-auto"
           >
             <Plus className="w-4 h-4" />
-            Create
+            {t('common.create')}
           </button>
         </div>
       </div>
@@ -861,7 +882,7 @@ const getTaskColor = useCallback((taskId: string) => {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Search timeline..."
+              placeholder={t('timeline.searchTimeline')}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -876,11 +897,11 @@ const getTaskColor = useCallback((taskId: string) => {
               value={groupBy}
               onChange={(e) => setGroupBy(e.target.value as GroupBy)}
             >
-              <option value="none">No Grouping</option>
-              <option value="folder">Group by Folder</option>
-              <option value="category">Group by Category</option>
-              <option value="assignee">Group by Assignee</option>
-              <option value="status">Group by Status</option>
+              <option value="none">{t('timeline.noGrouping')}</option>
+              <option value="folder">{t('timeline.groupByFolder')}</option>
+              <option value="category">{t('timeline.groupByCategory')}</option>
+              <option value="assignee">{t('timeline.groupByAssignee')}</option>
+              <option value="status">{t('timeline.groupByStatus')}</option>
             </select>
           </div>
         </div>
@@ -899,7 +920,7 @@ const getTaskColor = useCallback((taskId: string) => {
             </button>
             
             <h2 className="text-lg font-semibold text-gray-900">
-              {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+              {monthNames[language][currentDate.getMonth()]} {currentDate.getFullYear()}
             </h2>
             
             <button 
@@ -914,7 +935,7 @@ const getTaskColor = useCallback((taskId: string) => {
             className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium w-full md:w-auto"
             onClick={goToToday}
           >
-            Today
+            {t('timeline.today')}
           </button>
         </div>
 
@@ -951,7 +972,7 @@ const getTaskColor = useCallback((taskId: string) => {
               style={{ height: `${headerHeight}px` }}
             >
               <div className="w-[200px] border-r border-gray-200 p-3 font-semibold text-gray-700 bg-gray-50 flex-shrink-0">
-                Work
+                {t('timeline.work')}
               </div>
               <div className="flex-1 flex flex-col overflow-hidden">
                 {periodGroups.length > 0 && (
@@ -1124,15 +1145,15 @@ const getTaskColor = useCallback((taskId: string) => {
               <div className="flex items-center justify-center py-20">
                 <div className="text-center">
                   <CalendarIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500 text-lg mb-2">No tasks in timeline</p>
+                  <p className="text-gray-500 text-lg mb-2">{t('timeline.noTasksInTimeline')}</p>
                   <p className="text-gray-400 text-sm mb-4">
-                    Tasks with start dates and due dates will appear here
+                    {t('timeline.tasksWithDates')}
                   </p>
                   <button
                     onClick={() => setShowCreateModal(true)}
                     className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
                   >
-                    Create Task
+                    {t('timeline.createTask')}
                   </button>
                 </div>
               </div>
@@ -1153,7 +1174,7 @@ const getTaskColor = useCallback((taskId: string) => {
               const dueDate = taskData.dueDate ? new Date(taskData.dueDate) : new Date(startDate.getTime() + 7 * 24 * 60 * 60 * 1000);
               
               const backendTaskData = {
-                title: taskData.title || "Untitled Task",
+                title: taskData.title || t('timeline.untitledTask'),
                 description: taskData.description || "",
                 category: taskData.category || "general",
                 status: "todo",

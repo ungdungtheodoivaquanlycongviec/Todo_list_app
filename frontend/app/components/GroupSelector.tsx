@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
 import { groupService } from '../services/group.service';
 import { Group } from '../services/types/group.types';
 
@@ -11,6 +12,7 @@ interface GroupSelectorProps {
 
 export default function GroupSelector({ onGroupChange }: GroupSelectorProps) {
   const { user, updateUser, setCurrentGroup } = useAuth();
+  const { t } = useLanguage();
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +62,7 @@ export default function GroupSelector({ onGroupChange }: GroupSelectorProps) {
     return (
       <div className="flex items-center justify-center p-4">
         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-        <span className="ml-2 text-gray-600">Loading groups...</span>
+        <span className="ml-2 text-gray-600">{t('groups.loadingGroups')}</span>
       </div>
     );
   }
@@ -73,7 +75,7 @@ export default function GroupSelector({ onGroupChange }: GroupSelectorProps) {
           onClick={loadGroups}
           className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
         >
-          Try again
+          {t('error.tryAgain')}
         </button>
       </div>
     );
@@ -86,30 +88,30 @@ export default function GroupSelector({ onGroupChange }: GroupSelectorProps) {
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-medium text-blue-900">Current Group</h3>
+              <h3 className="font-medium text-blue-900">{t('groups.currentGroup')}</h3>
               <p className="text-blue-700">{currentGroup.name}</p>
               {currentGroup.description && (
                 <p className="text-sm text-blue-600 mt-1">{currentGroup.description}</p>
               )}
             </div>
             <div className="text-sm text-blue-600">
-              {currentGroup.memberCount} member{currentGroup.memberCount !== 1 ? 's' : ''}
+              {currentGroup.memberCount} {t('groups.members').toLowerCase()}{currentGroup.memberCount !== 1 ? '' : ''}
             </div>
           </div>
         </div>
       ) : (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <p className="text-yellow-800">
-            You need to join or create a group to manage tasks.
+            {t('groups.joinOrCreateDesc')}
           </p>
         </div>
       )}
 
       {/* Group List */}
       <div className="space-y-2">
-        <h4 className="font-medium text-gray-900">Your Groups</h4>
+        <h4 className="font-medium text-gray-900">{t('groups.myGroups')}</h4>
         {groups.length === 0 ? (
-          <p className="text-gray-500 text-sm">No groups found</p>
+          <p className="text-gray-500 text-sm">{t('common.noResults')}</p>
         ) : (
           <div className="space-y-2">
             {groups.map(group => (
@@ -130,7 +132,7 @@ export default function GroupSelector({ onGroupChange }: GroupSelectorProps) {
                     )}
                   </div>
                   <div className="text-sm text-gray-500">
-                    {group.memberCount} member{group.memberCount !== 1 ? 's' : ''}
+                    {group.memberCount} {t('groups.members').toLowerCase()}{group.memberCount !== 1 ? '' : ''}
                   </div>
                 </div>
               </div>
@@ -144,7 +146,7 @@ export default function GroupSelector({ onGroupChange }: GroupSelectorProps) {
         onClick={() => setShowCreateModal(true)}
         className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
       >
-        Create New Group
+        {t('groups.createGroup')}
       </button>
 
       {/* Create Group Modal */}
@@ -164,6 +166,7 @@ interface CreateGroupModalProps {
 }
 
 function CreateGroupModal({ onClose, onSubmit }: CreateGroupModalProps) {
+  const { t } = useLanguage();
   const [formData, setFormData] = useState({
     name: '',
     description: ''
@@ -188,32 +191,32 @@ function CreateGroupModal({ onClose, onSubmit }: CreateGroupModalProps) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Create New Group</h3>
+        <h3 className="text-lg font-medium text-gray-900 mb-4">{t('groups.createGroup')}</h3>
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Group Name *
+              {t('groups.name')} *
             </label>
             <input
               type="text"
               value={formData.name}
               onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter group name"
+              placeholder={t('groups.name')}
               required
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Description
+              {t('groups.description')}
             </label>
             <textarea
               value={formData.description}
               onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter group description (optional)"
+              placeholder={t('groups.description')}
               rows={3}
             />
           </div>
@@ -225,14 +228,14 @@ function CreateGroupModal({ onClose, onSubmit }: CreateGroupModalProps) {
               className="flex-1 bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300 transition-colors"
               disabled={loading}
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               type="submit"
               disabled={loading || !formData.name.trim()}
               className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
-              {loading ? 'Creating...' : 'Create Group'}
+              {loading ? t('common.loading') : t('common.create')}
             </button>
           </div>
         </form>

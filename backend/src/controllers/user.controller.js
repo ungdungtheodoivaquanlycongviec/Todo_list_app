@@ -54,13 +54,37 @@ const updateRegionalPreferences = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * @route   PATCH /api/users/me/language
+ * @desc    Update user language preference
+ * @access  Private
+ */
+const updateLanguage = asyncHandler(async (req, res) => {
+  const { language } = req.body;
+  
+  // Validate language
+  const validLanguages = ['en', 'vi'];
+  if (!validLanguages.includes(language)) {
+    return sendError(res, 'Invalid language. Must be one of: en, vi', 400);
+  }
+  
+  try {
+    const updatedUser = await userService.updateLanguage(req.user._id, language);
+    
+    sendSuccess(res, { user: updatedUser }, 'Language updated successfully');
+  } catch (error) {
+    console.error('Update language error:', error);
+    sendError(res, 'Failed to update language', 500);
+  }
+});
+
 const updateProfile = asyncHandler(async (req, res) => {
   const { name, avatar } = req.body;
   
   try {
     const user = await userService.updateProfile(req.user._id, { name, avatar });
     
-    sendSuccess(res, { user }, 'Cập nhật thông tin cá nhân thành công');
+    sendSuccess(res, { user }, 'Profile updated successfully');
   } catch (error) {
     if (error.message.includes('cannot exceed')) {
       return sendError(res, error.message, 400);
@@ -83,7 +107,7 @@ const changePassword = asyncHandler(async (req, res) => {
     sendSuccess(res, null, result.message);
   } catch (error) {
     if (error.message === 'Old password is incorrect') {
-      return sendError(res, 'Mật khẩu cũ không đúng', 400);
+      return sendError(res, 'Old password is incorrect', 400);
     }
     if (error.message.includes('Password must')) {
       return sendError(res, error.message, 400);
@@ -101,12 +125,12 @@ const updateAvatar = asyncHandler(async (req, res) => {
   const { avatar } = req.body;
   
   if (!avatar) {
-    return sendError(res, 'Avatar URL là bắt buộc', 400);
+    return sendError(res, 'Avatar URL is required', 400);
   }
   
   const user = await userService.updateAvatar(req.user._id, avatar);
   
-  sendSuccess(res, { user }, 'Cập nhật avatar thành công');
+  sendSuccess(res, { user }, 'Avatar updated successfully');
 });
 
 /**
@@ -118,16 +142,16 @@ const uploadAvatar = asyncHandler(async (req, res) => {
   const file = req.file;
   
   if (!file) {
-    return sendError(res, 'Không có file nào được upload', 400);
+    return sendError(res, 'No file was uploaded', 400);
   }
   
   try {
     const user = await userService.uploadAvatar(req.user._id, file);
     
-    sendSuccess(res, { user }, 'Upload avatar thành công');
+    sendSuccess(res, { user }, 'Avatar uploaded successfully');
   } catch (error) {
     console.error('Upload avatar error:', error);
-    sendError(res, error.message || 'Lỗi khi upload avatar', 500);
+    sendError(res, error.message || 'Failed to upload avatar', 500);
   }
 });
 
@@ -142,7 +166,7 @@ const updateNotificationSettings = asyncHandler(async (req, res) => {
   try {
     const user = await userService.updateNotificationSettings(req.user._id, settings);
     
-    sendSuccess(res, { user }, 'Cập nhật cài đặt thông báo thành công');
+    sendSuccess(res, { user }, 'Notification settings updated successfully');
   } catch (error) {
     if (error.message.includes('beforeDue')) {
       return sendError(res, error.message, 400);
@@ -170,5 +194,6 @@ module.exports = {
   updateNotificationSettings,
   deactivateAccount,
   updateTheme,
-  updateRegionalPreferences
+  updateRegionalPreferences,
+  updateLanguage
 };

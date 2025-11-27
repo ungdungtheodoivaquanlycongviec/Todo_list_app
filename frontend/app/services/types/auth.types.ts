@@ -1,3 +1,12 @@
+export type Language = 'en' | 'vi';
+
+export interface RegionalPreferences {
+  timeZone: string;
+  dateFormat: 'DD MMM YYYY' | 'MMM DD, YYYY' | 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD';
+  timeFormat: '12h' | '24h';
+  weekStart: 'sunday' | 'monday';
+}
+
 export interface User {
   _id: string;
   email: string;
@@ -5,6 +14,8 @@ export interface User {
   avatar: string | null;
   role: 'user' | 'admin';
   theme: 'light' | 'dark' | 'auto';
+  language: Language;
+  regionalPreferences: RegionalPreferences;
   isActive: boolean;
   isEmailVerified: boolean;
   lastLogin?: string;

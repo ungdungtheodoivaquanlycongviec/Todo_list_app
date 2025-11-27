@@ -2484,14 +2484,11 @@ class TaskService {
       return null;
     }
 
-    // Set custom status
+    // Set custom status (stored separately from main status enum)
     task.customStatus = {
       name,
       color
     };
-
-    // Also update the main status to the custom status
-    task.status = name.toLowerCase().replace(/\s+/g, '_');
 
     await task.save();
 

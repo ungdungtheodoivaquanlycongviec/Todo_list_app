@@ -24,6 +24,9 @@ import { useGroupChange } from '../../hooks/useGroupChange';
 import NoGroupState from '../common/NoGroupState';
 import NoFolderState from '../common/NoFolderState';
 import { useFolder } from '../../contexts/FolderContext';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { useRegional } from '../../contexts/RegionalContext';
+import { monthNames, dayNames, dayNamesShort } from '../../i18n/dateLocales';
 
 interface CalendarEvent {
   id: string;
@@ -38,6 +41,8 @@ interface CalendarEvent {
 export default function CalendarView() {
   const { user: currentUser, currentGroup } = useAuth();
   const { currentFolder } = useFolder();
+  const { t, language } = useLanguage();
+  const { formatDate, getWeekStartDay } = useRegional();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [assignedTasksSearch, setAssignedTasksSearch] = useState('');
   const [calendarData, setCalendarData] = useState<any>(null);
@@ -173,20 +178,26 @@ export default function CalendarView() {
 
   // Lấy thông tin tháng và năm
   const getMonthYearString = (date: Date) => {
-    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    return `${monthNames[language][date.getMonth()]} ${date.getFullYear()}`;
   };
 
   // Lấy thông tin tuần
   const getWeekRangeString = (date: Date) => {
+    const weekStartDay = getWeekStartDay();
     const startOfWeek = new Date(date);
     const day = startOfWeek.getDay();
-    const diff = startOfWeek.getDate() - day;
+    const diff = weekStartDay === 1 
+      ? startOfWeek.getDate() - day + (day === 0 ? -6 : 1) // Monday start
+      : startOfWeek.getDate() - day; // Sunday start
     startOfWeek.setDate(diff);
     
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 6);
     
-    return `${startOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    const startMonth = language === 'vi' ? `Th${startOfWeek.getMonth() + 1}` : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][startOfWeek.getMonth()];
+    const endMonth = language === 'vi' ? `Th${endOfWeek.getMonth() + 1}` : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][endOfWeek.getMonth()];
+    
+    return `${startMonth} ${startOfWeek.getDate()} - ${endMonth} ${endOfWeek.getDate()}, ${endOfWeek.getFullYear()}`;
   };
 
   // Lấy các ngày trong tháng để hiển thị
@@ -196,7 +207,13 @@ export default function CalendarView() {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     
     const firstDayOfMonth = new Date(year, month, 1);
-    const startingDay = firstDayOfMonth.getDay();
+    const weekStartDay = getWeekStartDay();
+    let startingDay = firstDayOfMonth.getDay();
+    
+    // Adjust for week start preference
+    if (weekStartDay === 1) {
+      startingDay = startingDay === 0 ? 6 : startingDay - 1;
+    }
     
     const displayDays = [];
     
@@ -205,7 +222,7 @@ export default function CalendarView() {
       const prevMonthDate = new Date(year, month, -i);
       displayDays.push({
         date: prevMonthDate.getDate(),
-        day: prevMonthDate.toLocaleDateString('en-US', { weekday: 'short' }),
+        day: dayNamesShort[language][prevMonthDate.getDay()],
         fullDate: prevMonthDate,
         dateString: prevMonthDate.toISOString().split('T')[0],
         isCurrentMonth: false
@@ -217,7 +234,7 @@ export default function CalendarView() {
       const date = new Date(year, month, i);
       displayDays.push({
         date: i,
-        day: date.toLocaleDateString('en-US', { weekday: 'short' }),
+        day: dayNamesShort[language][date.getDay()],
         fullDate: date,
         dateString: date.toISOString().split('T')[0],
         isCurrentMonth: true
@@ -229,9 +246,12 @@ export default function CalendarView() {
 
   // Lấy các ngày trong tuần để hiển thị
   const getDisplayWeekDays = () => {
+    const weekStartDay = getWeekStartDay();
     const startOfWeek = new Date(currentDate);
     const day = startOfWeek.getDay();
-    const diff = startOfWeek.getDate() - day;
+    const diff = weekStartDay === 1
+      ? startOfWeek.getDate() - day + (day === 0 ? -6 : 1) // Monday start
+      : startOfWeek.getDate() - day; // Sunday start
     startOfWeek.setDate(diff);
     
     const weekDays = [];
@@ -240,7 +260,7 @@ export default function CalendarView() {
       date.setDate(startOfWeek.getDate() + i);
       weekDays.push({
         date: date.getDate(),
-        day: date.toLocaleDateString('en-US', { weekday: 'long' }),
+        day: dayNames[language][date.getDay()],
         fullDate: date,
         dateString: date.toISOString().split('T')[0],
         isCurrentMonth: date.getMonth() === currentDate.getMonth()
@@ -441,11 +461,11 @@ export default function CalendarView() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Calendar</h1>
-          <p className="text-gray-600 mt-1">Manage your schedule and deadlines</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t('calendar.title')}</h1>
+          <p className="text-gray-600 mt-1">{t('calendar.description')}</p>
           {currentFolder && (
             <p className="text-sm text-gray-500 mt-1">
-              Folder: <span className="font-medium text-gray-800">{currentFolder.name}</span>
+              {t('tasks.folder')}: <span className="font-medium text-gray-800">{currentFolder.name}</span>
             </p>
           )}
         </div>
@@ -462,7 +482,7 @@ export default function CalendarView() {
               onClick={() => setViewMode('month')}
             >
               <CalendarIcon className="w-4 h-4" />
-              Month
+              {t('calendar.month')}
             </button>
             <button
               className={`px-4 py-2 text-sm flex items-center gap-2 transition-colors ${
@@ -473,7 +493,7 @@ export default function CalendarView() {
               onClick={() => setViewMode('week')}
             >
               <CalendarIcon className="w-4 h-4" />
-              Week
+              {t('calendar.week')}
             </button>
           </div>
 
@@ -522,7 +542,7 @@ export default function CalendarView() {
                   className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
                   onClick={goToToday}
                 >
-                  Today
+                  {t('calendar.today')}
                 </button>
               </div>
             </div>
@@ -532,12 +552,18 @@ export default function CalendarView() {
               {viewMode === 'month' ? (
                 /* Month View */
                 <div className="grid grid-cols-7 gap-4">
-                  {/* Day headers */}
-                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                    <div key={day} className="text-center p-3 text-sm font-semibold text-gray-600 bg-gray-50 rounded-lg">
-                      {day}
-                    </div>
-                  ))}
+                  {/* Day headers - respecting week start preference */}
+                  {(() => {
+                    const weekStartDay = getWeekStartDay();
+                    const days = weekStartDay === 1 
+                      ? [dayNamesShort[language][1], dayNamesShort[language][2], dayNamesShort[language][3], dayNamesShort[language][4], dayNamesShort[language][5], dayNamesShort[language][6], dayNamesShort[language][0]]
+                      : dayNamesShort[language];
+                    return days.map((day: string) => (
+                      <div key={day} className="text-center p-3 text-sm font-semibold text-gray-600 bg-gray-50 rounded-lg">
+                        {day}
+                      </div>
+                    ));
+                  })()}
                   
                   {/* Calendar days */}
                   {displayDays.map((dayInfo) => {
@@ -768,15 +794,10 @@ export default function CalendarView() {
               <div className="border-t border-gray-200 p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-semibold text-gray-900">
-                    Tasks for {selectedDate.toLocaleDateString('en-US', { 
-                      weekday: 'long', 
-                      year: 'numeric', 
-                      month: 'long', 
-                      day: 'numeric' 
-                    })}
+                    {t('calendar.tasksFor')} {formatDate(selectedDate)}
                   </h3>
                   <span className="bg-blue-100 text-blue-800 text-sm px-2 py-1 rounded-full">
-                    {getTasksForDate(selectedDate.toISOString().split('T')[0]).length} tasks
+                    {getTasksForDate(selectedDate.toISOString().split('T')[0]).length} {t('nav.tasks').toLowerCase()}
                   </span>
                 </div>
 
@@ -939,7 +960,7 @@ export default function CalendarView() {
                             ? 'bg-orange-100 text-orange-700'
                             : 'bg-gray-100 text-gray-700'
                         }`}>
-                          {new Date(task.dueDate).toLocaleDateString()}
+                          {formatDate(task.dueDate)}
                         </span>
                       )}
                     </div>
@@ -953,7 +974,7 @@ export default function CalendarView() {
                     <User className="w-6 h-6 text-gray-400" />
                   </div>
                   <p className="text-sm">
-                    {assignedTasksSearch ? 'No tasks found' : 'No tasks assigned to you'}
+                    {assignedTasksSearch ? t('common.noResults') : t('calendar.noTasksAssigned')}
                   </p>
                   {!assignedTasksSearch && (
                     <button 

@@ -28,6 +28,9 @@ import {
   requiresFolderAssignment as requiresFolderAssignmentHelper
 } from '../../utils/groupRoleUtils';
 import { FolderAccessModal } from '../folders/FolderAccessModal';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { TranslationKey } from '../../i18n/translations';
+import { useRegional } from '../../contexts/RegionalContext';
 
 interface GroupMembersViewProps {
   groupId?: string;
@@ -36,6 +39,8 @@ interface GroupMembersViewProps {
 export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   const { user, currentGroup } = useAuth();
   const { folders, refreshFolders } = useFolder();
+  const { t } = useLanguage();
+  const { formatTime } = useRegional();
   const [group, setGroup] = useState<Group | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -582,20 +587,20 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
             </div>
             
             <p className="text-gray-600 dark:text-gray-400 mt-2 text-lg">
-              {group.description || 'No description provided'}
+              {group.description || t('groups.noDescription')}
             </p>
             <div className="flex items-center justify-between mt-3">
               <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
                 <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
-                {members.length} member{members.length !== 1 ? 's' : ''}
+                {members.length} {members.length !== 1 ? t('groups.members') : t('groups.member')}
               </div>
               <div className="flex items-center text-xs text-gray-400 dark:text-gray-500">
                 <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                Last updated: {new Date(lastUpdateTime).toLocaleTimeString()}
+                {t('groups.lastUpdated')}: {formatTime(new Date(lastUpdateTime))}
               </div>
             </div>
           </div>
@@ -627,7 +632,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                 </svg>
-                Add people
+                {t('groupMembers.addPeopleButton')}
               </button>
             )}
           </div>
@@ -843,7 +848,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
               onClick={() => setShowInviteModal(true)}
               className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm underline"
             >
-              + Add people
+              {t('groupMembers.addPeople')}
             </button>
           </div>
         )}
@@ -854,6 +859,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
         <InviteUserModal
           onClose={() => setShowInviteModal(false)}
           onInvite={handleInviteUser}
+          t={t}
         />
       )}
 
@@ -884,9 +890,10 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
 interface InviteUserModalProps {
   onClose: () => void;
   onInvite: (email: string, role: string) => void;
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string;
 }
 
-function InviteUserModal({ onClose, onInvite }: InviteUserModalProps) {
+function InviteUserModal({ onClose, onInvite, t }: InviteUserModalProps) {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<string>(DEFAULT_INVITE_ROLE);
   const [loading, setLoading] = useState(false);
@@ -918,17 +925,17 @@ function InviteUserModal({ onClose, onInvite }: InviteUserModalProps) {
             </svg>
           </div>
           <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-            Add Team Member
+            {t('groupMembers.addTeamMember')}
           </h3>
           <p className="text-gray-600 dark:text-gray-400 text-sm">
-            Invite someone to join your group and collaborate together
+            {t('groupMembers.inviteDescription')}
           </p>
         </div>
         
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 text-center">
-              Email Address
+              {t('groupMembers.emailAddress')}
             </label>
             <div className="relative">
               <input
@@ -936,7 +943,7 @@ function InviteUserModal({ onClose, onInvite }: InviteUserModalProps) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full border-2 border-gray-200 dark:border-gray-600 rounded-xl px-4 py-4 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-[#2E2E2E] text-gray-900 dark:text-white text-lg placeholder-gray-400 transition-all duration-200"
-                placeholder="Enter email address"
+                placeholder={t('groupMembers.enterEmail')}
                 required
                 autoFocus
               />
@@ -950,7 +957,7 @@ function InviteUserModal({ onClose, onInvite }: InviteUserModalProps) {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 text-center">
-              Select Role
+              {t('groupMembers.selectRole')}
             </label>
             <div className="relative">
               <select
@@ -994,7 +1001,7 @@ function InviteUserModal({ onClose, onInvite }: InviteUserModalProps) {
               className="flex-1 bg-gray-100 dark:bg-[#2E2E2E] text-gray-700 dark:text-gray-300 py-4 px-6 rounded-xl hover:bg-gray-200 dark:hover:bg-[#3E3E3E] transition-all duration-200 font-medium border border-transparent hover:border-gray-300 dark:hover:border-gray-400"
               disabled={loading}
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               type="submit"
@@ -1004,14 +1011,14 @@ function InviteUserModal({ onClose, onInvite }: InviteUserModalProps) {
               {loading ? (
                 <div className="flex items-center justify-center">
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                  Sending...
+                  {t('groupMembers.sending')}
                 </div>
               ) : (
                 <div className="flex items-center justify-center">
                   <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                   </svg>
-                  Send Invite
+                  {t('groupMembers.sendInvite')}
                 </div>
               )}
             </button>
@@ -1021,7 +1028,7 @@ function InviteUserModal({ onClose, onInvite }: InviteUserModalProps) {
         {/* Tips */}
         <div className="mt-6 text-center">
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            The user will receive an email invitation to join your group
+            {t('groupMembers.inviteHint')}
           </p>
         </div>
       </div>

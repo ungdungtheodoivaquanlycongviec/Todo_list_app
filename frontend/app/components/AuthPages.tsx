@@ -165,7 +165,7 @@ function LoginForm({ onSwitchToSignup }: { onSwitchToSignup: () => void }) {
         </div>
 
         <div className="text-center text-sm mt-4">
-          <span className="text-gray-600">Don't have an account? </span>
+          <span className="text-gray-600">Don&apos;t have an account? </span>
           <button
             type="button"
             onClick={onSwitchToSignup}

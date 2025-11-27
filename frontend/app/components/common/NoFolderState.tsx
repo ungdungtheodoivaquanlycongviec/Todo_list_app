@@ -4,10 +4,12 @@ import React, { useState } from 'react';
 import { FolderPlus, Loader2 } from 'lucide-react';
 import { useFolder } from '../../contexts/FolderContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 export default function NoFolderState() {
   const { createFolder } = useFolder();
   const { currentGroup } = useAuth();
+  const { t } = useLanguage();
   const [folderName, setFolderName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +25,7 @@ export default function NoFolderState() {
       await createFolder(folderName.trim());
       setFolderName('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create folder');
+      setError(err instanceof Error ? err.message : t('error.generic'));
     } finally {
       setLoading(false);
     }
@@ -37,13 +39,13 @@ export default function NoFolderState() {
         </div>
         
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-          No Folders Yet
+          {t('folders.noFolders')}
         </h2>
         
         <p className="text-gray-600 dark:text-gray-400 mb-8">
           {currentGroup
-            ? `Create your first folder in "${currentGroup.name}" to start organizing your tasks and notes.`
-            : 'Create a folder to start organizing your tasks and notes.'}
+            ? t('folders.createFirstFolder', { groupName: currentGroup.name })
+            : t('folders.createFirstFolderNoGroup')}
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -52,7 +54,7 @@ export default function NoFolderState() {
               type="text"
               value={folderName}
               onChange={(e) => setFolderName(e.target.value)}
-              placeholder="Enter folder name"
+              placeholder={t('folders.enterFolderName')}
               className="w-full bg-white dark:bg-[#2E2E2E] text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
               disabled={loading}
               autoFocus
@@ -73,12 +75,12 @@ export default function NoFolderState() {
             {loading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Creating...
+                {t('folders.creating')}
               </>
             ) : (
               <>
                 <FolderPlus className="w-4 h-4" />
-                Create Folder
+                {t('folders.createFolder')}
               </>
             )}
           </button>

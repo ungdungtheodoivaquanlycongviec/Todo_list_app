@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { CheckSquare, Calendar, FileText, Users, Layout, Target, BarChart3, MessageSquare } from 'lucide-react';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 interface ToolsSidebarProps {
   activeView: string;
@@ -9,12 +10,14 @@ interface ToolsSidebarProps {
 }
 
 export default function ToolsSidebar({ activeView, onViewChange }: ToolsSidebarProps) {
+  const { t } = useLanguage();
+  
   const tools = [
-    { id: 'tasks', icon: CheckSquare, label: 'Tasks' },
-    { id: 'calendar', icon: Calendar, label: 'Calendar' },
-    { id: 'notes', icon: FileText, label: 'Notes' },
-    { id: 'chat', icon: MessageSquare, label: 'Chat' },
-    { id: 'members', icon: Users, label: 'Members' },
+    { id: 'tasks', icon: CheckSquare, label: t('nav.tasks') },
+    { id: 'calendar', icon: Calendar, label: t('nav.calendar') },
+    { id: 'notes', icon: FileText, label: t('nav.notes') },
+    { id: 'chat', icon: MessageSquare, label: t('nav.chat') },
+    { id: 'members', icon: Users, label: t('nav.members') },
   ];
 
   return (
@@ -26,7 +29,7 @@ export default function ToolsSidebar({ activeView, onViewChange }: ToolsSidebarP
             <Layout className="w-4 h-4 text-white" />
           </div>
           <span className="text-[10px] xl:text-xs font-medium text-gray-700 dark:text-gray-300">
-            Tools
+            {t('tools.title')}
           </span>
         </div>
       </div>

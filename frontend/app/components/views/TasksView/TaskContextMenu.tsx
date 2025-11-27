@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { Task } from '../../../services/types/task.types';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface TaskContextMenuProps {
   x: number;
@@ -13,14 +14,15 @@ interface TaskContextMenuProps {
 
 export default function TaskContextMenu({ x, y, task, onAction, onClose }: TaskContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const { t } = useLanguage();
   
   const menuItems = [
-    { label: 'Complete task', action: 'complete' },
-    { label: 'Start timer', action: 'start_timer' },
-    { label: 'Change type', action: 'change_type' },
-    { label: 'Repeat task', action: 'repeat' },
-    { label: 'Move to', action: 'move_to' },
-    { label: 'Delete task', action: 'delete', destructive: true },
+    { label: t('taskContextMenu.complete'), action: 'complete' },
+    { label: t('taskContextMenu.startTimer'), action: 'start_timer' },
+    { label: t('taskContextMenu.changeType'), action: 'change_type' },
+    { label: t('taskContextMenu.repeat'), action: 'repeat' },
+    { label: t('taskContextMenu.moveTo'), action: 'move_to' },
+    { label: t('taskContextMenu.delete'), action: 'delete', destructive: true },
   ];
 
   // Đóng menu khi click ra ngoài
@@ -34,13 +36,9 @@ export default function TaskContextMenu({ x, y, task, onAction, onClose }: TaskC
     // Thêm event listener khi component mount
     document.addEventListener('mousedown', handleClickOutside);
 
-    // Ngăn scroll khi menu đang mở
-    document.body.style.overflow = 'hidden';
-
     // Dọn dẹp khi component unmount
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
-      document.body.style.overflow = 'unset';
     };
   }, [onClose]);
 
@@ -67,17 +65,17 @@ export default function TaskContextMenu({ x, y, task, onAction, onClose }: TaskC
   return (
     <div
       ref={menuRef}
-      className="fixed bg-white border border-gray-200 rounded-lg shadow-lg py-2 z-50 min-w-48"
+      className="fixed bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-50 min-w-36"
       style={{ 
-        left: Math.min(x, window.innerWidth - 200), // Đảm bảo menu không vượt khỏi màn hình
+        left: Math.min(x, window.innerWidth - 160), // Đảm bảo menu không vượt khỏi màn hình
         top: Math.min(y, window.innerHeight - 200)
       }}
     >
       {menuItems.map((item) => (
         <button
           key={item.action}
-          className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
-            item.destructive ? 'text-red-600 hover:text-red-800' : 'text-gray-700'
+          className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 ${
+            item.destructive ? 'text-red-600 hover:text-red-800' : 'text-gray-700 dark:text-gray-300'
           }`}
           onClick={() => handleAction(item.action, task)}
         >

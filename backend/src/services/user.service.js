@@ -176,6 +176,29 @@ class UserService {
   }
   
   /**
+   * Update user language preference
+   * @param {String} userId
+   * @param {String} language - 'en' or 'vi'
+   * @returns {Object} - Updated user
+   */
+  async updateLanguage(userId, language) {
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { 
+        language,
+        updatedAt: new Date()
+      },
+      { new: true, runValidators: true }
+    );
+    
+    if (!user) {
+      throw new Error('User not found');
+    }
+    
+    return user.toSafeObject();
+  }
+
+  /**
    * Update regional preferences
    * @param {String} userId
    * @param {Object} preferences - { timeZone, dateFormat, timeFormat, weekStart }

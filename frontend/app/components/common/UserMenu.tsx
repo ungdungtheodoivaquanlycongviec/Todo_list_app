@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Settings, LogOut, Sun, Moon, Monitor, ChevronDown } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { User } from '../../services/types/auth.types';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 interface UserMenuProps {
   currentUser: User;
@@ -20,6 +21,7 @@ export default function UserMenu({
   onThemeChange,
   onProfileClick
 }: UserMenuProps) {
+  const { t } = useLanguage();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showThemeOptions, setShowThemeOptions] = useState(false);
   const [avatarError, setAvatarError] = useState(false); // THÊM STATE CHO AVATAR ERROR
@@ -57,10 +59,10 @@ export default function UserMenu({
 
   const getThemeLabel = () => {
     switch (theme) {
-      case 'light': return 'Light';
-      case 'dark': return 'Dark';
-      case 'auto': return 'Auto';
-      default: return 'Theme';
+      case 'light': return t('userMenu.light');
+      case 'dark': return t('userMenu.dark');
+      case 'auto': return t('userMenu.auto');
+      default: return t('userMenu.theme');
     }
   };
 
@@ -130,7 +132,7 @@ export default function UserMenu({
               className="w-full px-4 py-2 flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-left"
             >
               <Settings className="w-4 h-4 flex-shrink-0" />
-              <span className="text-sm flex-1">Profile settings</span>
+              <span className="text-sm flex-1">{t('userMenu.profileSettings')}</span>
             </button>
 
             {/* Divider */}
@@ -144,7 +146,7 @@ export default function UserMenu({
               >
                 <div className="flex items-center gap-3 flex-1">
                   {getThemeIcon()}
-                  <span className="text-sm">Theme</span>
+                  <span className="text-sm">{t('userMenu.theme')}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-gray-500">{getThemeLabel()}</span>
@@ -168,7 +170,7 @@ export default function UserMenu({
                     }`}
                   >
                     <Sun className="w-4 h-4 flex-shrink-0" />
-                    <span className="flex-1 text-left">Light</span>
+                    <span className="flex-1 text-left">{t('userMenu.light')}</span>
                   </button>
                   <button
                     onClick={() => handleThemeChange('dark')}
@@ -179,7 +181,7 @@ export default function UserMenu({
                     }`}
                   >
                     <Moon className="w-4 h-4 flex-shrink-0" />
-                    <span className="flex-1 text-left">Dark</span>
+                    <span className="flex-1 text-left">{t('userMenu.dark')}</span>
                   </button>
                   <button
                     onClick={() => handleThemeChange('auto')}
@@ -190,7 +192,7 @@ export default function UserMenu({
                     }`}
                   >
                     <Monitor className="w-4 h-4 flex-shrink-0" />
-                    <span className="flex-1 text-left">Auto</span>
+                    <span className="flex-1 text-left">{t('userMenu.auto')}</span>
                   </button>
                 </div>
               )}
@@ -208,7 +210,7 @@ export default function UserMenu({
               className="w-full px-4 py-2 flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 text-red-600 dark:text-red-400 text-left"
             >
               <LogOut className="w-4 h-4 flex-shrink-0" />
-              <span className="text-sm flex-1">Log out</span>
+              <span className="text-sm flex-1">{t('userMenu.logout')}</span>
             </button>
           </div>
         </div>

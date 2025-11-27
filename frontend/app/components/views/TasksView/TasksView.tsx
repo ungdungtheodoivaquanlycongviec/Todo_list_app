@@ -22,6 +22,8 @@ import TaskContextMenu from "./TaskContextMenu";
 import TaskDetailModal from "./TaskDetailModal";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../contexts/AuthContext";
+import { useLanguage } from "../../../contexts/LanguageContext";
+import { useRegional } from "../../../contexts/RegionalContext";
 import { Group } from "../../../services/types/group.types";
 import { useGroupChange } from "../../../hooks/useGroupChange";
 import { useTaskRealtime } from "../../../hooks/useTaskRealtime";
@@ -32,6 +34,8 @@ import { useFolder } from "../../../contexts/FolderContext";
 export default function TasksView() {
   const { user: currentUser, currentGroup } = useAuth();
   const { currentFolder } = useFolder();
+  const { t } = useLanguage();
+  const { formatDate } = useRegional();
   const [activeTasksExpanded, setActiveTasksExpanded] = useState(true);
   const [uncompletedTasksExpanded, setUncompletedTasksExpanded] =
     useState(true);
@@ -79,34 +83,34 @@ export default function TasksView() {
     "Other",
   ];
 
-  // Sort options
+  // Sort options - moved inside component to use translations
   const sortOptions = [
-    { key: "title", label: "Task name", asc: "A → Z", desc: "Z → A" },
-    { key: "status", label: "Status", asc: "A → Z", desc: "Z → A" },
-    { key: "category", label: "Type", asc: "A → Z", desc: "Z → A" },
+    { key: "title", label: t('sort.taskName'), asc: t('sort.aToZ'), desc: t('sort.zToA') },
+    { key: "status", label: t('sort.status'), asc: t('sort.aToZ'), desc: t('sort.zToA') },
+    { key: "category", label: t('sort.type'), asc: t('sort.aToZ'), desc: t('sort.zToA') },
     {
       key: "dueDate",
-      label: "Due date",
-      asc: "Oldest first",
-      desc: "Newest first",
+      label: t('sort.dueDate'),
+      asc: t('sort.oldestFirst'),
+      desc: t('sort.newestFirst'),
     },
     {
       key: "priority",
-      label: "Priority",
-      asc: "Low to high",
-      desc: "High to low",
+      label: t('sort.priority'),
+      asc: t('sort.lowToHigh'),
+      desc: t('sort.highToLow'),
     },
     {
       key: "estimatedTime",
-      label: "Estimated time",
-      asc: "Shortest first",
-      desc: "Longest first",
+      label: t('sort.estimatedTime'),
+      asc: t('sort.shortestFirst'),
+      desc: t('sort.longestFirst'),
     },
     {
       key: "createdAt",
-      label: "Created date",
-      asc: "Oldest first",
-      desc: "Newest first",
+      label: t('sort.createdDate'),
+      asc: t('sort.oldestFirst'),
+      desc: t('sort.newestFirst'),
     },
   ];
 
@@ -177,7 +181,7 @@ export default function TasksView() {
         if (currentUser && assignment.userId === currentUser._id) {
           userData = {
             _id: currentUser._id,
-            name: currentUser.name || 'You',
+            name: currentUser.name || t('tasks.you'),
             email: currentUser.email,
             avatar: currentUser.avatar
           };
@@ -222,16 +226,16 @@ export default function TasksView() {
 
     if (!hasAssignees) {
       return {
-        displayText: "Unassigned",
-        tooltip: "No one assigned to this task",
+        displayText: t('tasks.unassigned'),
+        tooltip: t('tasks.noOneAssigned'),
         isCurrentUser: false
       };
     }
 
     if (currentUserIsAssigned && totalCount === 1) {
       return {
-        displayText: "You",
-        tooltip: "Assigned to you",
+        displayText: t('tasks.you'),
+        tooltip: t('tasks.assignedToYou'),
         isCurrentUser: true
       };
     }
@@ -239,8 +243,10 @@ export default function TasksView() {
     if (currentUserIsAssigned && totalCount > 1) {
       const othersCount = totalCount - 1;
       return {
-        displayText: `You +${othersCount}`,
-        tooltip: `Assigned to you and ${othersCount} other${othersCount > 1 ? 's' : ''}`,
+        displayText: t('tasks.youPlus', { count: othersCount }),
+        tooltip: othersCount > 1 
+          ? t('tasks.assignedToYouAndPlural', { count: othersCount })
+          : t('tasks.assignedToYouAnd', { count: othersCount }),
         isCurrentUser: true
       };
     }
@@ -249,7 +255,7 @@ export default function TasksView() {
     if (totalCount === 1) {
       return {
         displayText: assignees[0].name,
-        tooltip: `Assigned to ${assignees[0].name} (${assignees[0].email})`,
+        tooltip: t('tasks.assignedTo', { name: assignees[0].name, email: assignees[0].email }),
         isCurrentUser: false
       };
     }
@@ -807,7 +813,7 @@ export default function TasksView() {
     const statusColumns = [
       { 
         key: "todo", 
-        title: "To Do", 
+        title: t('kanban.todo'), 
         icon: <div className="w-2 h-2 bg-gray-400 rounded-full" />,
         count: kanbanData.kanbanBoard.todo?.count || 0,
         color: "bg-gray-50 border-gray-200",
@@ -815,7 +821,7 @@ export default function TasksView() {
       },
       { 
         key: "in_progress", 
-        title: "In Progress", 
+        title: t('kanban.inProgress'), 
         icon: <div className="w-2 h-2 bg-blue-500 rounded-full" />,
         count: kanbanData.kanbanBoard.in_progress?.count || 0,
         color: "bg-blue-50 border-blue-200",
@@ -823,7 +829,7 @@ export default function TasksView() {
       },
       { 
         key: "completed", 
-        title: "Completed", 
+        title: t('kanban.completed'), 
         icon: <div className="w-2 h-2 bg-green-500 rounded-full" />,
         count: kanbanData.kanbanBoard.completed?.count || 0,
         color: "bg-green-50 border-green-200",
@@ -831,7 +837,7 @@ export default function TasksView() {
       },
       { 
         key: "incompleted", 
-        title: "Incompleted Tasks", 
+        title: t('kanban.incompleted'), 
         icon: <div className="w-2 h-2 bg-red-500 rounded-full" />,
         count: incompletedTasks.length,
         color: "bg-red-50 border-red-200",
@@ -1006,7 +1012,7 @@ export default function TasksView() {
                                 }`}
                             >
                               <Calendar className="w-3 h-3 inline mr-1" />
-                              {new Date(task.dueDate).toLocaleDateString()}
+                              {formatDate(task.dueDate)}
                             </span>
                           )}
                         </div>
@@ -1034,10 +1040,10 @@ export default function TasksView() {
                     </div>
                     <p className="text-gray-500">
                       {column.key === "incompleted" 
-                        ? "No overdue tasks" 
+                        ? t('kanban.noOverdue') 
                         : column.key === "completed"
-                        ? "No completed tasks"
-                        : "No tasks"
+                        ? t('kanban.noCompleted')
+                        : t('kanban.noTasks')
                       }
                     </p>
                   </div>
@@ -1197,7 +1203,7 @@ export default function TasksView() {
             >
               <Calendar className="w-3 h-3" />
               {task.dueDate
-                ? new Date(task.dueDate).toLocaleDateString("en-GB")
+                ? formatDate(task.dueDate)
                 : "—"}
               {isOverdue}
             </div>
@@ -1248,7 +1254,7 @@ export default function TasksView() {
                       ? "bg-green-100 text-green-800 border-green-200"
                       : "bg-blue-100 text-blue-800 border-blue-200"
                     }`}
-                  title={`${assignee.name}${assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id ? ' (You)' : ''}`}
+                  title={`${assignee.name}${assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id ? ` (${t('tasks.you')})` : ''}`}
                 >
                   {assignee.avatar ? (
                     <img
@@ -1278,7 +1284,7 @@ export default function TasksView() {
               </span>
               {assigneeInfo.totalCount > 0 && (
                 <span className="text-xs text-gray-500 truncate">
-                  {assigneeInfo.currentUserIsAssigned ? 'Includes you' : `${assigneeInfo.totalCount} assigned`}
+                  {assigneeInfo.currentUserIsAssigned ? t('tasks.includesYou') : t('tasks.assigned', { count: assigneeInfo.totalCount })}
                 </span>
               )}
             </div>
@@ -1395,7 +1401,7 @@ export default function TasksView() {
           <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
             <div className="p-2">
               <div className="text-xs font-medium text-gray-500 px-3 py-2 uppercase tracking-wide">
-                Sort by
+                {t('sort.label')}
               </div>
 
               {sortOptions.map((option) => (
@@ -1449,7 +1455,7 @@ export default function TasksView() {
       <div className="p-6 flex items-center justify-center">
         <div className="text-center">
           <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading tasks...</p>
+          <p className="text-gray-600">{t('common.loading')}</p>
         </div>
       </div>
     );
@@ -1474,9 +1480,9 @@ export default function TasksView() {
     <div className="p-6 bg-gray-50 min-h-screen">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Tasks</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{t('tasks.title')}</h1>
           <p className="text-gray-600 mt-1">
-            Manage your team's tasks and projects
+            {t('tasks.description') || 'Manage your team\'s tasks and projects'}
           </p>
           {currentFolder && (
             <p className="text-sm text-gray-500 mt-2">
@@ -1500,7 +1506,7 @@ export default function TasksView() {
               onClick={() => setViewMode("list")}
             >
               <List className="w-4 h-4" />
-              List
+              {t('viewMode.list')}
             </button>
             <button
               className={`px-4 py-2 text-sm flex items-center gap-2 transition-colors ${viewMode === "kanban"
@@ -1510,7 +1516,7 @@ export default function TasksView() {
               onClick={() => setViewMode("kanban")}
             >
               <Layout className="w-4 h-4" />
-              Kanban
+              {t('viewMode.kanban')}
             </button>
           </div>
 
@@ -1520,7 +1526,7 @@ export default function TasksView() {
             className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors shadow-sm"
           >
             <Plus className="w-4 h-4" />
-            Add Task
+            {t('tasks.createTask')}
           </button>
         </div>
       </div>
@@ -1540,7 +1546,7 @@ export default function TasksView() {
                 ) : (
                   <ChevronRight className="w-5 h-5 text-gray-600" />
                 )}
-                <h2 className="font-semibold text-gray-900">Active Tasks</h2>
+                <h2 className="font-semibold text-gray-900">{t('tasks.active')}</h2>
                 <span className="bg-blue-100 text-blue-800 text-sm px-2 py-1 rounded-full">
                   {activeTasks.length}
                 </span>
@@ -1551,13 +1557,13 @@ export default function TasksView() {
               <div>
                 {/* UPDATED: Header Row with adjusted columns */}
                 <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                  <div className="col-span-3">Task</div>
-                  <div className="col-span-1">Status</div>
-                  <div className="col-span-1">Type</div>
-                  <div className="col-span-1">Due Date</div>
-                  <div className="col-span-1">Priority</div>
-                  <div className="col-span-2">Assignee</div>
-                  <div className="col-span-1">Time</div>
+                  <div className="col-span-3">{t('tasks.taskName')}</div>
+                  <div className="col-span-1">{t('tasks.status')}</div>
+                  <div className="col-span-1">{t('tasks.category')}</div>
+                  <div className="col-span-1">{t('tasks.dueDate')}</div>
+                  <div className="col-span-1">{t('tasks.priority')}</div>
+                  <div className="col-span-2">{t('tasks.assignee')}</div>
+                  <div className="col-span-1">{t('tasks.estimatedTime') || 'Time'}</div>
                   <div className="col-span-1"></div>
                 </div>
 
@@ -1571,12 +1577,12 @@ export default function TasksView() {
                     <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                       <Plus className="w-8 h-8 text-gray-400" />
                     </div>
-                    <p className="text-gray-600 mb-2">No active tasks yet</p>
+                    <p className="text-gray-600 mb-2">{t('tasks.noTasks')}</p>
                     <button
                       onClick={handleAddTask}
                       className="text-blue-500 hover:text-blue-600 font-medium"
                     >
-                      Create your first task
+                      {t('tasks.addFirstTask')}
                     </button>
                   </div>
                 )}
@@ -1596,7 +1602,7 @@ export default function TasksView() {
                 ) : (
                   <ChevronRight className="w-5 h-5 text-gray-600" />
                 )}
-                <h2 className="font-semibold text-gray-900">Completed Tasks</h2>
+                <h2 className="font-semibold text-gray-900">{t('tasks.completed')}</h2>
                 <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded-full">
                   {completedTasks.length}
                 </span>
@@ -1607,13 +1613,13 @@ export default function TasksView() {
               <div>
                 {/* UPDATED: Header Row with adjusted columns */}
                 <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                  <div className="col-span-3">Task</div>
-                  <div className="col-span-1">Status</div>
-                  <div className="col-span-1">Type</div>
-                  <div className="col-span-1">Due Date</div>
-                  <div className="col-span-1">Priority</div>
-                  <div className="col-span-2">Assignee</div>
-                  <div className="col-span-1">Time</div>
+                  <div className="col-span-3">{t('tasks.taskName')}</div>
+                  <div className="col-span-1">{t('tasks.status')}</div>
+                  <div className="col-span-1">{t('tasks.category')}</div>
+                  <div className="col-span-1">{t('tasks.dueDate')}</div>
+                  <div className="col-span-1">{t('tasks.priority')}</div>
+                  <div className="col-span-2">{t('tasks.assignee')}</div>
+                  <div className="col-span-1">{t('tasks.estimatedTime') || 'Time'}</div>
                   <div className="col-span-1"></div>
                 </div>
 
@@ -1623,7 +1629,7 @@ export default function TasksView() {
                   ))
                 ) : (
                   <div className="p-8 text-center text-gray-500">
-                    <p className="text-gray-600">No completed tasks yet</p>
+                    <p className="text-gray-600">{t('kanban.noCompletedYet')}</p>
                   </div>
                 )}
               </div>
@@ -1645,7 +1651,7 @@ export default function TasksView() {
                   <ChevronRight className="w-5 h-5 text-gray-600" />
                 )}
                 <div className="flex items-center gap-2">
-                  <h2 className="font-semibold">Incompleted Tasks</h2>
+                  <h2 className="font-semibold">{t('tasks.uncompleted')}</h2>
                 </div>
                 <span className="bg-red-100 text-red-800 text-sm px-2 py-1 rounded-full">
                   {uncompletedTasks.length}
@@ -1657,13 +1663,13 @@ export default function TasksView() {
               <div>
                 {/* UPDATED: Header Row with adjusted columns */}
                 <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                  <div className="col-span-3">Task</div>
-                  <div className="col-span-1">Status</div>
-                  <div className="col-span-1">Type</div>
-                  <div className="col-span-1">Due Date</div>
-                  <div className="col-span-1">Priority</div>
-                  <div className="col-span-2">Assignee</div>
-                  <div className="col-span-1">Time</div>
+                  <div className="col-span-3">{t('tasks.taskName')}</div>
+                  <div className="col-span-1">{t('tasks.status')}</div>
+                  <div className="col-span-1">{t('tasks.category')}</div>
+                  <div className="col-span-1">{t('tasks.dueDate')}</div>
+                  <div className="col-span-1">{t('tasks.priority')}</div>
+                  <div className="col-span-2">{t('tasks.assignee')}</div>
+                  <div className="col-span-1">{t('tasks.estimatedTime') || 'Time'}</div>
                   <div className="col-span-1"></div>
                 </div>
 
@@ -1677,9 +1683,9 @@ export default function TasksView() {
                     <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                       <AlertTriangle className="w-8 h-8 text-gray-400" />
                     </div>
-                    <p className="text-gray-600 mb-2">No overdue tasks</p>
+                    <p className="text-gray-600 mb-2">{t('kanban.noOverdue')}</p>
                     <p className="text-sm text-gray-500">
-                      Tasks that pass their due date will appear here
+                      {t('tasks.noTasks')}
                     </p>
                   </div>
                 )}

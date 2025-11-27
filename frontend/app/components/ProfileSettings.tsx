@@ -2,8 +2,9 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
 import { userService } from '../services/user.service';
-import { User } from '../services/types/auth.types';
+import { User, Language } from '../services/types/auth.types';
 import { 
   ArrowLeft, 
   User as UserIcon, 
@@ -13,6 +14,7 @@ import {
   Bell,
   Palette,
   Globe,
+  Languages,
   Eye,
   EyeOff,
   Check,
@@ -28,6 +30,7 @@ type ThemeType = 'light' | 'dark' | 'auto';
 
 export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
   const { user, updateUserTheme } = useAuth();
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<'profile' | 'preferences' | 'security'>('profile');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -35,9 +38,9 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
   if (!user) return null;
 
   const tabs = [
-    { id: 'profile', label: 'My Profile', icon: UserIcon },
-    { id: 'preferences', label: 'Preferences', icon: Settings },
-    { id: 'security', label: 'Security', icon: Shield }
+    { id: 'profile', label: t('settings.profile'), icon: UserIcon },
+    { id: 'preferences', label: t('settings.preferences'), icon: Settings },
+    { id: 'security', label: t('settings.security'), icon: Shield }
   ];
 
   return (
@@ -54,10 +57,10 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
             </button>
             <div className="flex-1">
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                Account Settings
+                {t('accountSettings.title')}
               </h1>
               <p className="text-gray-600 dark:text-gray-400 mt-1">
-                Manage your profile, preferences, and security settings
+                {t('accountSettings.description')}
               </p>
             </div>
           </div>
@@ -128,6 +131,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
 // MyProfileTab - CHIẾM TOÀN BỘ CHIỀU RỘNG, CĂN TRÁI
 function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
   const { updateUser } = useAuth();
+  const { t } = useLanguage();
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
   const [avatar, setAvatar] = useState(user.avatar || '');
@@ -178,11 +182,11 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
         updatedUser = await userService.updateProfile({ name, avatar });
       }
       
-      setMessage('Profile updated successfully');
+      setMessage(t('profile.updated'));
       setIsEditing(false);
       await updateUser({ name, avatar: updatedUser.avatar });
     } catch (error: any) {
-      setMessage(error.message || 'Error updating profile');
+      setMessage(error.message || t('error.generic'));
     } finally {
       setLoading(false);
     }
@@ -221,9 +225,9 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
     <div className="space-y-8 w-full">
       {/* Header - CĂN TRÁI */}
       <div className="text-left w-full">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Personal Information</h2>
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">{t('profile.personalInfo')}</h2>
         <p className="text-gray-600 dark:text-gray-400 mt-2">
-          Update your personal details and profile picture
+          {t('profile.personalInfoDesc')}
         </p>
       </div>
 
@@ -231,7 +235,7 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
         {/* Avatar Section - CHIẾM TOÀN BỘ CHIỀU RỘNG TRÊN MOBILE */}
         <div className="w-full lg:w-1/3">
           <div className="bg-gray-50 dark:bg-[#2E2E2E] rounded-2xl p-6 w-full">
-            <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-4 text-left">Profile Picture</h3>
+            <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-4 text-left">{t('profile.profilePicture')}</h3>
             
             <div className="flex flex-col items-center space-y-4">
               <div className="relative">
@@ -266,7 +270,7 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
                 <div className="text-center w-full">
                   <label className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 cursor-pointer hover:text-blue-700 justify-center">
                     <Upload className="w-4 h-4" />
-                    Upload new photo
+                    {t('profile.uploadPhoto')}
                     <input
                       type="file"
                       className="hidden"
@@ -275,7 +279,7 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
                     />
                   </label>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    JPG, PNG or GIF. Max 5MB.
+                    {t('profile.photoRequirements')}
                   </p>
                 </div>
               )}
@@ -290,7 +294,7 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
               {/* Name Field */}
               <div className="w-full">
                 <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 text-left">
-                  Full Name
+                  {t('profile.fullName')}
                 </label>
                 <input
                   type="text"
@@ -299,14 +303,14 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
                   onChange={(e) => setName(e.target.value)}
                   disabled={!isEditing}
                   className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-[#2E2E2E] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:text-gray-500 text-left"
-                  placeholder="Enter your full name"
+                  placeholder={t('profile.enterFullName')}
                 />
               </div>
 
               {/* Email Field */}
               <div className="w-full">
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 text-left">
-                  Email Address
+                  {t('profile.email')}
                 </label>
                 <input
                   type="email"
@@ -316,7 +320,7 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
                   className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-100 dark:bg-[#2E2E2E] text-gray-500 dark:text-gray-400 focus:outline-none cursor-not-allowed text-left"
                 />
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-left">
-                  Contact support to change your email address
+                  {t('profile.emailChangeNote')}
                 </p>
               </div>
             </div>
@@ -329,7 +333,7 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
                     onClick={() => setIsEditing(true)}
                     className="px-6 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all shadow-sm hover:shadow-md w-full sm:w-auto text-center"
                   >
-                    Edit Profile
+                    {t('profile.editProfile')}
                   </button>
                 ) : (
                   <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
@@ -341,12 +345,12 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
                       {loading ? (
                         <>
                           <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          Saving...
+                          {t('accountSettings.saving')}
                         </>
                       ) : (
                         <>
                           <Check className="w-4 h-4" />
-                          Save Changes
+                          {t('profile.saveChanges')}
                         </>
                       )}
                     </button>
@@ -359,7 +363,7 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
                       }}
                       className="px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-50 dark:hover:bg-[#2E2E2E] focus:outline-none focus:ring-2 focus:ring-gray-500 transition-all w-full sm:w-auto text-center"
                     >
-                      Cancel
+                      {t('common.cancel')}
                     </button>
                   </div>
                 )}
@@ -370,7 +374,7 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
                 className="px-6 py-3 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all flex items-center gap-2 w-full sm:w-auto justify-center"
               >
                 <Trash2 className="w-4 h-4" />
-                Delete Account
+                {t('profile.deleteAccount')}
               </button>
             </div>
 
@@ -383,10 +387,10 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
                   </div>
                   <div className="flex-1 text-left">
                     <h4 className="text-sm font-medium text-red-800 dark:text-red-300">
-                      Delete Account
+                      {t('profile.deleteConfirmTitle')}
                     </h4>
                     <p className="text-sm text-red-700 dark:text-red-400 mt-1">
-                      Are you sure you want to delete your account? This action cannot be undone and all your data will be permanently lost.
+                      {t('profile.deleteConfirmMessage')}
                     </p>
                     <div className="flex flex-col sm:flex-row gap-3 mt-4">
                       <button
@@ -394,13 +398,13 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
                         disabled={loading}
                         className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 w-full sm:w-auto"
                       >
-                        {loading ? 'Deleting...' : 'Yes, delete my account'}
+                        {loading ? t('accountSettings.deleting') : t('profile.deleteConfirmButton')}
                       </button>
                       <button
                         onClick={() => setIsDeleting(false)}
                         className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm rounded-lg hover:bg-gray-50 dark:hover:bg-[#2E2E2E] focus:outline-none focus:ring-2 focus:ring-gray-500 w-full sm:w-auto"
                       >
-                        Cancel
+                        {t('common.cancel')}
                       </button>
                     </div>
                   </div>
@@ -436,16 +440,31 @@ interface PreferencesTabProps {
 
 function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, setMessage }: PreferencesTabProps) {
   const { updateUser } = useAuth();
+  const { language, setLanguage: setLanguageContext, t } = useLanguage();
   const [theme, setTheme] = useState<ThemeType>(user.theme as ThemeType || 'light');
   const [timeZone, setTimeZone] = useState((user as any).regionalPreferences?.timeZone || 'UTC+00:00');
-  const [dateFormat, setDateFormat] = useState((user as any).regionalPreferences?.dateFormat || 'DD MMM YYYY');
-  const [timeFormat, setTimeFormat] = useState((user as any).regionalPreferences?.timeFormat || '12h');
+  const [dateFormat, setDateFormat] = useState((user as any).regionalPreferences?.dateFormat || 'DD/MM/YYYY');
+  const [timeFormat, setTimeFormat] = useState((user as any).regionalPreferences?.timeFormat || '24h');
   const [weekStart, setWeekStart] = useState((user as any).regionalPreferences?.weekStart || 'monday');
   const [notifications, setNotifications] = useState({
     email: (user as any).notificationSettings?.email ?? true,
     push: (user as any).notificationSettings?.push ?? true,
     desktop: false
   });
+
+  const handleLanguageChange = async (newLanguage: Language) => {
+    try {
+      setLoading(true);
+      setMessage('');
+      await setLanguageContext(newLanguage);
+      setMessage(t('language.updated'));
+      setTimeout(() => setMessage(''), 3000);
+    } catch (error: any) {
+      setMessage(error.response?.data?.message || 'Error updating language');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleNotificationChange = async (key: 'email' | 'push' | 'desktop', value: boolean) => {
     try {
@@ -457,10 +476,10 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
       await notificationService.updatePreferences({ [key]: value });
       
       setNotifications(prev => ({ ...prev, [key]: value }));
-      setMessage('Notification preference updated successfully');
+      setMessage(t('notifications.updated'));
       setTimeout(() => setMessage(''), 3000);
     } catch (error: any) {
-      setMessage(error.response?.data?.message || 'Error updating notification preference');
+      setMessage(error.response?.data?.message || t('error.generic'));
     } finally {
       setLoading(false);
     }
@@ -472,9 +491,9 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
     try {
       await updateUserTheme(newTheme);
       setTheme(newTheme);
-      setMessage('Theme updated successfully');
+      setMessage(t('theme.updated'));
     } catch (error: any) {
-      setMessage(error.response?.data?.message || 'Error updating theme');
+      setMessage(error.response?.data?.message || t('error.generic'));
     } finally {
       setLoading(false);
     }
@@ -494,10 +513,10 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
       else if (preference === 'timeFormat') setTimeFormat(value);
       else if (preference === 'weekStart') setWeekStart(value);
       
-      setMessage('Regional preference updated successfully');
+      setMessage(t('regional.updated'));
       setTimeout(() => setMessage(''), 3000);
     } catch (error: any) {
-      setMessage(error.response?.data?.message || 'Error updating regional preference');
+      setMessage(error.response?.data?.message || t('error.generic'));
     } finally {
       setLoading(false);
     }
@@ -505,17 +524,34 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
 
   const preferenceSections = [
     {
-      title: "Appearance",
+      title: t('settings.language'),
+      icon: Languages,
+      fields: [
+        {
+          label: t('settings.language'),
+          description: t('language.description'),
+          type: "radio" as const,
+          options: [
+            { value: 'en', label: 'English' },
+            { value: 'vi', label: 'Tiếng Việt' }
+          ],
+          value: language,
+          onChange: handleLanguageChange
+        }
+      ]
+    },
+    {
+      title: t('settings.appearance'),
       icon: Palette,
       fields: [
         {
-          label: "Theme",
-          description: "Choose how the app looks",
+          label: t('settings.appearance'),
+          description: t('theme.description'),
           type: "radio" as const,
           options: [
-            { value: 'light', label: 'Light' },
-            { value: 'dark', label: 'Dark' },
-            { value: 'auto', label: 'Auto (System)' }
+            { value: 'light', label: t('theme.light') },
+            { value: 'dark', label: t('theme.dark') },
+            { value: 'auto', label: t('theme.auto') }
           ],
           value: theme,
           onChange: handleThemeChange
@@ -523,12 +559,12 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
       ]
     },
     {
-      title: "Regional",
+      title: t('settings.regional'),
       icon: Globe,
       fields: [
         {
-          label: "Time Zone",
-          description: "Set your local time zone",
+          label: t('regional.timezone'),
+          description: t('regional.timezoneDesc'),
           type: "select" as const,
           options: [
             { value: 'UTC-12:00', label: 'UTC-12:00' },
@@ -537,6 +573,7 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
             { value: 'UTC-05:00', label: 'UTC-05:00 (Eastern Time)' },
             { value: 'UTC+00:00', label: 'UTC+00:00 (GMT)' },
             { value: 'UTC+01:00', label: 'UTC+01:00 (Central European)' },
+            { value: 'UTC+07:00', label: 'UTC+07:00 (Vietnam)' },
             { value: 'UTC+08:00', label: 'UTC+08:00 (China Standard)' },
             { value: 'UTC+09:00', label: 'UTC+09:00 (Japan Standard)' }
           ],
@@ -544,36 +581,37 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
           onChange: setTimeZone
         },
         {
-          label: "Date Format",
-          description: "Choose how dates are displayed",
+          label: t('regional.dateFormat'),
+          description: t('regional.dateFormatDesc'),
           type: "radio" as const,
           options: [
             { value: 'DD MMM YYYY', label: '31 Dec 2025' },
             { value: 'MMM DD, YYYY', label: 'Dec 31, 2025' },
             { value: 'DD/MM/YYYY', label: '31/12/2025' },
-            { value: 'MM/DD/YYYY', label: '12/31/2025' }
+            { value: 'MM/DD/YYYY', label: '12/31/2025' },
+            { value: 'YYYY-MM-DD', label: '2025-12-31' }
           ],
           value: dateFormat,
           onChange: setDateFormat
         },
         {
-          label: "Time Format",
-          description: "Choose how time is displayed",
+          label: t('regional.timeFormat'),
+          description: t('regional.timeFormatDesc'),
           type: "radio" as const,
           options: [
-            { value: '12h', label: '12 hours (8:00 PM)' },
-            { value: '24h', label: '24 hours (20:00)' }
+            { value: '12h', label: t('regional.12hour') + ' (8:00 PM)' },
+            { value: '24h', label: t('regional.24hour') + ' (20:00)' }
           ],
           value: timeFormat,
           onChange: setTimeFormat
         },
         {
-          label: "Week Starts On",
-          description: "First day of the week",
+          label: t('regional.weekStart'),
+          description: t('regional.weekStartDesc'),
           type: "radio" as const,
           options: [
-            { value: 'monday', label: 'Monday' },
-            { value: 'sunday', label: 'Sunday' }
+            { value: 'monday', label: t('regional.monday') },
+            { value: 'sunday', label: t('regional.sunday') }
           ],
           value: weekStart,
           onChange: setWeekStart
@@ -581,26 +619,26 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
       ]
     },
     {
-      title: "Notifications",
+      title: t('notifications.title'),
       icon: Bell,
       fields: [
         {
-          label: "Email Notifications",
-          description: "Receive updates via email",
+          label: t('notifications.email'),
+          description: t('notifications.emailDesc'),
           type: "toggle" as const,
           value: notifications.email,
           onChange: (value: boolean) => setNotifications(prev => ({ ...prev, email: value }))
         },
         {
-          label: "Push Notifications",
-          description: "Receive browser notifications",
+          label: t('notifications.push'),
+          description: t('notifications.pushDesc'),
           type: "toggle" as const,
           value: notifications.push,
           onChange: (value: boolean) => setNotifications(prev => ({ ...prev, push: value }))
         },
         {
-          label: "Desktop Notifications",
-          description: "Show desktop notifications",
+          label: t('notifications.desktop'),
+          description: t('notifications.desktopDesc'),
           type: "toggle" as const,
           value: notifications.desktop,
           onChange: (value: boolean) => setNotifications(prev => ({ ...prev, desktop: value }))
@@ -612,9 +650,9 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
   return (
     <div className="space-y-8 w-full">
       <div className="text-left w-full">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Preferences</h2>
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">{t('preferences.title')}</h2>
         <p className="text-gray-600 dark:text-gray-400 mt-2">
-          Customize your application experience
+          {t('preferences.description')}
         </p>
       </div>
 
@@ -657,14 +695,26 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
                                 checked={field.value === option.value}
                                 onChange={async () => {
                                   const newValue = option.value;
-                                  field.onChange(newValue as ThemeType);
+                                  
+                                  // Handle language preference
+                                  if (field.label === t('settings.language')) {
+                                    await handleLanguageChange(newValue as Language);
+                                    return;
+                                  }
+                                  
+                                  // Handle theme
+                                  if (field.label === t('settings.appearance')) {
+                                    (field.onChange as (value: string) => void)(newValue);
+                                    return;
+                                  }
                                   
                                   // Handle regional preferences
-                                  if (field.label === 'Date Format') {
+                                  (field.onChange as (value: string) => void)(newValue);
+                                  if (field.label === t('regional.dateFormat')) {
                                     await handleRegionalPreferenceChange('dateFormat', newValue);
-                                  } else if (field.label === 'Time Format') {
+                                  } else if (field.label === t('regional.timeFormat')) {
                                     await handleRegionalPreferenceChange('timeFormat', newValue);
-                                  } else if (field.label === 'Week Starts On') {
+                                  } else if (field.label === t('regional.weekStart')) {
                                     await handleRegionalPreferenceChange('weekStart', newValue);
                                   }
                                 }}
@@ -771,6 +821,7 @@ interface SecurityTabProps {
 }
 
 function SecurityTab({ loading, setLoading, message, setMessage }: SecurityTabProps) {
+  const { t } = useLanguage();
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -784,20 +835,20 @@ function SecurityTab({ loading, setLoading, message, setMessage }: SecurityTabPr
     setMessage('');
 
     if (newPassword !== confirmPassword) {
-      setMessage('New passwords do not match');
+      setMessage(t('security.passwordMismatch'));
       setLoading(false);
       return;
     }
 
     if (newPassword.length < 8) {
-      setMessage('Password must be at least 8 characters long');
+      setMessage(t('security.passwordMinLength'));
       setLoading(false);
       return;
     }
 
     try {
       await userService.changePassword(oldPassword, newPassword);
-      setMessage('Password changed successfully');
+      setMessage(t('security.passwordChanged'));
       setOldPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -836,9 +887,9 @@ function SecurityTab({ loading, setLoading, message, setMessage }: SecurityTabPr
   return (
     <div className="space-y-8 w-full">
       <div className="text-left w-full">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Security Settings</h2>
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">{t('security.title')}</h2>
         <p className="text-gray-600 dark:text-gray-400 mt-2">
-          Manage your password and account security
+          {t('security.description')}
         </p>
       </div>
 
@@ -847,18 +898,18 @@ function SecurityTab({ loading, setLoading, message, setMessage }: SecurityTabPr
         <div className="lg:col-span-2">
           <div className="bg-gray-50 dark:bg-[#2E2E2E] rounded-2xl p-6 w-full">
             <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-6 text-left">
-              Change Password
+              {t('security.changePassword')}
             </h3>
 
             <form onSubmit={handleChangePassword} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 text-left">
-                  Current Password
+                  {t('security.currentPassword')}
                 </label>
                 <PasswordInput
                   value={oldPassword}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setOldPassword(e.target.value)}
-                  placeholder="Enter current password"
+                  placeholder={t('security.enterCurrentPassword')}
                   showPassword={showOldPassword}
                   setShowPassword={setShowOldPassword}
                 />
@@ -866,28 +917,28 @@ function SecurityTab({ loading, setLoading, message, setMessage }: SecurityTabPr
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 text-left">
-                  New Password
+                  {t('security.newPassword')}
                 </label>
                 <PasswordInput
                   value={newPassword}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPassword(e.target.value)}
-                  placeholder="Enter new password"
+                  placeholder={t('security.enterNewPassword')}
                   showPassword={showNewPassword}
                   setShowPassword={setShowNewPassword}
                 />
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-left">
-                  Must be at least 8 characters long
+                  {t('security.passwordMinLength')}
                 </p>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 text-left">
-                  Confirm New Password
+                  {t('security.confirmPassword')}
                 </label>
                 <PasswordInput
                   value={confirmPassword}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm new password"
+                  placeholder={t('security.confirmNewPassword')}
                   showPassword={showConfirmPassword}
                   setShowPassword={setShowConfirmPassword}
                 />
@@ -901,10 +952,10 @@ function SecurityTab({ loading, setLoading, message, setMessage }: SecurityTabPr
                 {loading ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Updating Password...
+                    {t('security.updatingPassword')}
                   </>
                 ) : (
-                  'Update Password'
+                  t('security.updatePassword')
                 )}
               </button>
             </form>
@@ -916,23 +967,23 @@ function SecurityTab({ loading, setLoading, message, setMessage }: SecurityTabPr
           <div className="bg-blue-50 dark:bg-blue-900/20 rounded-2xl p-6">
             <Shield className="w-6 h-6 text-blue-600 dark:text-blue-400 mb-3" />
             <h4 className="text-sm font-medium text-blue-900 dark:text-blue-300 mb-2 text-left">
-              Password Tips
+              {t('security.passwordTips')}
             </h4>
             <ul className="text-xs text-blue-700 dark:text-blue-400 space-y-1 text-left">
-              <li>• Use at least 8 characters</li>
-              <li>• Include numbers and symbols</li>
-              <li>• Avoid common words</li>
-              <li>• Don't reuse passwords</li>
+              <li>• {t('security.tipMinChars')}</li>
+              <li>• {t('security.tipNumbers')}</li>
+              <li>• {t('security.tipCommon')}</li>
+              <li>• {t('security.tipReuse')}</li>
             </ul>
           </div>
 
           <div className="bg-gray-50 dark:bg-[#2E2E2E] rounded-2xl p-6">
             <Shield className="w-6 h-6 text-gray-600 dark:text-gray-400 mb-3" />
             <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-2 text-left">
-              Last Changed
+              {t('security.lastChanged')}
             </h4>
             <p className="text-xs text-gray-600 dark:text-gray-400 text-left">
-              Your password was last changed 2 months ago
+              {t('security.lastChangedInfo', { time: '2 months' })}
             </p>
           </div>
         </div>
