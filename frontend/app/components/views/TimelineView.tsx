@@ -242,39 +242,44 @@ const getTaskColor = useCallback((taskId: string) => {
   // Group tasks
   const groupedTasks = useCallback(() => {
     if (groupBy === 'none') {
-      return { 'All Tasks': filteredTasks };
+      return { [t('timeline.allTasks')]: filteredTasks };
     }
 
     const groups: { [key: string]: Task[] } = {};
 
     filteredTasks.forEach(task => {
-      let key = 'Uncategorized';
+      let key = t('timeline.uncategorized');
       
       switch (groupBy) {
         case 'folder':
           if (task.folderId && typeof task.folderId === 'object' && 'name' in task.folderId) {
-            key = task.folderId.name || 'Unnamed Folder';
+            key = task.folderId.name || t('timeline.unnamedFolder');
           } else {
-            key = 'No Folder';
+            key = t('timeline.noFolder');
           }
           break;
         case 'category':
-          key = task.category || 'No Category';
+          // Use category as-is, capitalize first letter
+          if (task.category) {
+            key = task.category.charAt(0).toUpperCase() + task.category.slice(1);
+          } else {
+            key = t('timeline.noCategory');
+          }
           break;
         case 'assignee':
           if (task.assignedTo && task.assignedTo.length > 0) {
             const assignee = task.assignedTo[0];
             if (typeof assignee.userId === 'object' && 'name' in assignee.userId) {
-              key = assignee.userId.name || 'Unnamed User';
+              key = assignee.userId.name || t('timeline.unnamedUser');
             } else {
-              key = 'Assigned';
+              key = t('timeline.assigned');
             }
           } else {
-            key = 'Unassigned';
+            key = t('timeline.unassigned');
           }
           break;
         case 'status':
-          key = task.status || 'todo';
+          key = task.status ? t(`status.${task.status}`) : t('status.todo');
           break;
       }
 
@@ -285,7 +290,7 @@ const getTaskColor = useCallback((taskId: string) => {
     });
 
     return groups;
-  }, [filteredTasks, groupBy]);
+  }, [filteredTasks, groupBy, t]);
 
   // Calculate task position on timeline
   const calculateTaskPosition = useCallback((task: Task): TimelineTask | null => {
@@ -804,8 +809,8 @@ const getTaskColor = useCallback((taskId: string) => {
   if (!currentGroup) {
     return (
       <NoGroupState 
-        title="Join or Create a Group to View Timeline"
-        description="You need to join or create a group to view your timeline and manage scheduled tasks."
+        title={t('timeline.joinOrCreate')}
+        description={t('timeline.needGroup')}
       />
     );
   }
@@ -820,7 +825,7 @@ const getTaskColor = useCallback((taskId: string) => {
       <div className="p-6 flex items-center justify-center min-h-screen bg-gray-50">
         <div className="text-center">
           <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading timeline...</p>
+          <p className="text-gray-600">{t('timeline.loading')}</p>
         </div>
       </div>
     );
@@ -831,11 +836,11 @@ const getTaskColor = useCallback((taskId: string) => {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
         <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-gray-900">Timeline</h1>
-          <p className="text-gray-600 mt-1">Plan and track your work over time</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t('timeline.title')}</h1>
+          <p className="text-gray-600 mt-1">{t('timeline.planAndTrack')}</p>
           {currentFolder && (
             <p className="text-sm text-gray-500 mt-1 truncate">
-              Folder: <span className="font-medium text-gray-800 truncate inline-block align-middle max-w-full" title={currentFolder.name}>{currentFolder.name}</span>
+              {t('timeline.folder')}: <span className="font-medium text-gray-800 truncate inline-block align-middle max-w-full" title={currentFolder.name}>{currentFolder.name}</span>
             </p>
           )}
         </div>
@@ -967,7 +972,7 @@ const getTaskColor = useCallback((taskId: string) => {
               style={{ height: `${headerHeight}px` }}
             >
               <div className="w-[200px] border-r border-gray-200 p-3 font-semibold text-gray-700 bg-gray-50 flex-shrink-0">
-                Work
+                {t('timeline.work')}
               </div>
               <div className="flex-1 flex flex-col overflow-hidden">
                 {periodGroups.length > 0 && (
@@ -1140,15 +1145,15 @@ const getTaskColor = useCallback((taskId: string) => {
               <div className="flex items-center justify-center py-20">
                 <div className="text-center">
                   <CalendarIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500 text-lg mb-2">No tasks in timeline</p>
+                  <p className="text-gray-500 text-lg mb-2">{t('timeline.noTasksInTimeline')}</p>
                   <p className="text-gray-400 text-sm mb-4">
-                    Tasks with start dates and due dates will appear here
+                    {t('timeline.tasksWithDates')}
                   </p>
                   <button
                     onClick={() => setShowCreateModal(true)}
                     className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
                   >
-                    Create Task
+                    {t('timeline.createTask')}
                   </button>
                 </div>
               </div>
@@ -1169,7 +1174,7 @@ const getTaskColor = useCallback((taskId: string) => {
               const dueDate = taskData.dueDate ? new Date(taskData.dueDate) : new Date(startDate.getTime() + 7 * 24 * 60 * 60 * 1000);
               
               const backendTaskData = {
-                title: taskData.title || "Untitled Task",
+                title: taskData.title || t('timeline.untitledTask'),
                 description: taskData.description || "",
                 category: taskData.category || "general",
                 status: "todo",

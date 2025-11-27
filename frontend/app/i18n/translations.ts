@@ -91,6 +91,24 @@ export const translations = {
     'timeline.groupByCategory': 'Group by Category',
     'timeline.groupByAssignee': 'Group by Assignee',
     'timeline.groupByStatus': 'Group by Status',
+    'timeline.planAndTrack': 'Plan and track your work over time',
+    'timeline.folder': 'Folder',
+    'timeline.work': 'Work',
+    'timeline.noTasksInTimeline': 'No tasks in timeline',
+    'timeline.tasksWithDates': 'Tasks with start dates and due dates will appear here',
+    'timeline.createTask': 'Create Task',
+    'timeline.loading': 'Loading timeline...',
+    'timeline.joinOrCreate': 'Join or Create a Group to View Timeline',
+    'timeline.needGroup': 'You need to join or create a group to view your timeline and manage scheduled tasks.',
+    'timeline.allTasks': 'All Tasks',
+    'timeline.uncategorized': 'Uncategorized',
+    'timeline.noFolder': 'No Folder',
+    'timeline.unnamedFolder': 'Unnamed Folder',
+    'timeline.noCategory': 'No Category',
+    'timeline.unnamedUser': 'Unnamed User',
+    'timeline.assigned': 'Assigned',
+    'timeline.unassigned': 'Unassigned',
+    'timeline.untitledTask': 'Untitled Task',
     
     // Calendar
     'calendar.title': 'Calendar',
@@ -322,6 +340,216 @@ export const translations = {
     'success.created': 'Created successfully',
     'success.updated': 'Updated successfully',
     'success.copied': 'Copied to clipboard',
+    
+    // Sidebar - Create Project Modal
+    'sidebar.createProject': 'Create New Project',
+    'sidebar.createProjectDesc': 'Add a new project to your workspace',
+    'sidebar.projectName': 'Project Name',
+    'sidebar.projectNamePlaceholder': 'Enter project name',
+    'sidebar.projectDescription': 'Description (Optional)',
+    'sidebar.projectDescPlaceholder': 'Enter project description',
+    'sidebar.creating': 'Creating...',
+    'sidebar.createProjectBtn': 'Create Project',
+    
+    // Sidebar - Invite Modal
+    'sidebar.inviteTeamMember': 'Invite Team Member',
+    'sidebar.inviteDesc': 'Add someone to your project',
+    'sidebar.invitingTo': 'Inviting to',
+    'sidebar.emailAddress': 'Email Address',
+    'sidebar.emailPlaceholder': 'Enter user\'s email address',
+    'sidebar.assignRole': 'Assign Role',
+    'sidebar.sending': 'Sending...',
+    'sidebar.sendInvitation': 'Send Invitation',
+    
+    // Sort options
+    'sort.taskName': 'Task name',
+    'sort.status': 'Status',
+    'sort.type': 'Type',
+    'sort.dueDate': 'Due date',
+    'sort.priority': 'Priority',
+    'sort.estimatedTime': 'Estimated time',
+    'sort.createdDate': 'Created date',
+    'sort.aToZ': 'A → Z',
+    'sort.zToA': 'Z → A',
+    'sort.oldestFirst': 'Oldest first',
+    'sort.newestFirst': 'Newest first',
+    'sort.lowToHigh': 'Low to high',
+    'sort.highToLow': 'High to low',
+    'sort.shortestFirst': 'Shortest first',
+    'sort.longestFirst': 'Longest first',
+    
+    // Categories
+    'category.operational': 'Operational',
+    'category.strategic': 'Strategic',
+    'category.financial': 'Financial',
+    'category.technical': 'Technical',
+    'category.other': 'Other',
+    
+    // Kanban columns
+    'kanban.todo': 'To Do',
+    'kanban.inProgress': 'In Progress',
+    'kanban.completed': 'Completed',
+    'kanban.incompleted': 'Incompleted Tasks',
+    
+    // Assignee
+    'assignee.addAssignee': '+ Add assignee',
+    'assignee.addAssignees': 'Add Assignees',
+    'assignee.noOneAssigned': 'No one assigned',
+    'assignee.assignSomeone': 'Assign someone',
+    'assignee.assignedTo': 'Assigned to',
+    'assignee.autoAssign': 'Task will be automatically assigned to you',
+    
+    // Time options
+    'time.15minutes': '15 minutes',
+    'time.30minutes': '30 minutes',
+    'time.1hour': '1 hour',
+    'time.2hours': '2 hours',
+    'time.4hours': '4 hours',
+    'time.1day': '1 day',
+    'time.2days': '2 days',
+    'time.1week': '1 week',
+    
+    // Misc
+    'misc.untitledTask': 'Untitled Task',
+    'misc.saveSettings': 'Save Settings',
+    'misc.confirmDeleteFolder': 'Are you sure you want to delete this folder? This will also delete all tasks and notes in this folder.',
+    
+    // Sidebar
+    'sidebar.myProjects': 'My Projects',
+    'sidebar.sharedWithMe': 'Shared with me',
+    'sidebar.loadingProjects': 'Loading projects...',
+    'sidebar.noProjectsYet': 'No projects yet',
+    'sidebar.createFirstProject': 'Create your first project',
+    'sidebar.noSharedProjects': 'No shared projects',
+    'sidebar.searchPlaceholder': 'Search projects, tasks...',
+    
+    // Task Detail
+    'taskDetail.addStatus': 'Add status',
+    'taskDetail.startTime': 'Start time',
+    'taskDetail.stopTimer': 'Stop',
+    'taskDetail.logTime': 'Log time',
+    'taskDetail.repeatTask': 'Repeat task',
+    'taskDetail.description': 'Description',
+    'taskDetail.addDescription': 'Add a description...',
+    'taskDetail.clickToAddDescription': 'Click to add a description...',
+    'taskDetail.scheduledWork': 'Scheduled work',
+    'taskDetail.scheduleWork': 'Schedule work',
+    'taskDetail.noScheduledWork': 'No scheduled work yet',
+    'taskDetail.loggedTime': 'Logged time',
+    'taskDetail.noTimeEntries': 'No time entries yet',
+    'taskDetail.total': 'Total',
+    'taskDetail.files': 'Files',
+    'taskDetail.noFilesAttached': 'No files attached',
+    'taskDetail.attachFile': 'Attach file',
+    'taskDetail.uploading': 'Uploading...',
+    'taskDetail.view': 'View',
+    'taskDetail.comments': 'Comments',
+    'taskDetail.noCommentsYet': 'No comments yet',
+    'taskDetail.typeMessage': 'Type a message...',
+    'taskDetail.date': 'Date',
+    'taskDetail.user': 'User',
+    'taskDetail.billable': 'Billable',
+    'taskDetail.time': 'Time',
+    'taskDetail.addTimeEntry': 'Add Time Entry',
+    'taskDetail.hours': 'Hours',
+    'taskDetail.minutes': 'Minutes',
+    'taskDetail.optionalDescription': 'Optional description',
+    'taskDetail.addEntry': 'Add Entry',
+    'taskDetail.cancel': 'Cancel',
+    'taskDetail.estimatedHours': 'Estimated Hours',
+    'taskDetail.estimatedMinutes': 'Estimated Minutes',
+    'taskDetail.status': 'Status',
+    'taskDetail.scheduled': 'Scheduled',
+    'taskDetail.inProgress': 'In Progress',
+    'taskDetail.completed': 'Completed',
+    'taskDetail.cancelled': 'Cancelled',
+    'taskDetail.delete': 'Delete',
+    'taskDetail.statusLabel': 'Status',
+    'taskDetail.dueDateLabel': 'Due date',
+    'taskDetail.estimatedTimeLabel': 'Estimated time',
+    'taskDetail.typeLabel': 'Type',
+    
+    // Task Types
+    'type.operational': 'Operational',
+    'type.strategic': 'Strategic',
+    'type.tactical': 'Tactical',
+    
+    // Group Members
+    'groupMembers.addTeamMember': 'Add Team Member',
+    'groupMembers.inviteDescription': 'Invite someone to join your group and collaborate together',
+    'groupMembers.emailAddress': 'Email Address',
+    'groupMembers.enterEmail': 'Enter email address',
+    'groupMembers.selectRole': 'Select Role',
+    'groupMembers.sendInvite': 'Send Invite',
+    'groupMembers.sending': 'Sending...',
+    'groupMembers.inviteHint': 'The user will receive an email invitation to join your group',
+    'groupMembers.addPeople': '+ Add people',
+    'groupMembers.addPeopleButton': 'Add people',
+    
+    // Tools Sidebar
+    'tools.title': 'Tools',
+    
+    // Task Assignee
+    'tasks.includesYou': 'Includes you',
+    'tasks.assigned': '{{count}} assigned',
+    
+    // Sidebar Folder Stats
+    'sidebar.tasksCount': '{{count}} tasks',
+    'sidebar.notesCount': '{{count}} notes',
+    'sidebar.membersCount': '{{count}} members',
+    
+    // View Mode
+    'viewMode.list': 'List',
+    'viewMode.kanban': 'Kanban',
+    'sort.label': 'Sort',
+    
+    // Kanban
+    'kanban.noTasks': 'No tasks',
+    'kanban.noCompleted': 'No completed tasks',
+    'kanban.noOverdue': 'No overdue tasks',
+    'kanban.noCompletedYet': 'No completed tasks yet',
+    
+    // User Menu
+    'userMenu.profileSettings': 'Profile settings',
+    'userMenu.theme': 'Theme',
+    'userMenu.light': 'Light',
+    'userMenu.dark': 'Dark',
+    'userMenu.auto': 'Auto',
+    'userMenu.logout': 'Log out',
+    
+    // Account Settings
+    'accountSettings.title': 'Account Settings',
+    'accountSettings.description': 'Manage your profile, preferences, and security settings',
+    'accountSettings.saving': 'Saving...',
+    'accountSettings.deleting': 'Deleting...',
+    
+    // Profile Tab Extended
+    'profile.deleteAccount': 'Delete Account',
+    'profile.deleteConfirmTitle': 'Delete Account',
+    'profile.deleteConfirmMessage': 'Are you sure you want to delete your account? This action cannot be undone and all your data will be permanently lost.',
+    'profile.deleteConfirmButton': 'Yes, delete my account',
+    'profile.enterFullName': 'Enter your full name',
+    
+    // Security Tab Extended
+    'security.title': 'Security Settings',
+    'security.description': 'Manage your password and account security',
+    'security.enterCurrentPassword': 'Enter current password',
+    'security.enterNewPassword': 'Enter new password',
+    'security.confirmNewPassword': 'Confirm new password',
+    'security.passwordMinLength': 'Must be at least 8 characters long',
+    'security.updatePassword': 'Update Password',
+    'security.updatingPassword': 'Updating Password...',
+    'security.passwordTips': 'Password Tips',
+    'security.tipMinChars': 'Use at least 8 characters',
+    'security.tipNumbers': 'Include numbers and symbols',
+    'security.tipCommon': 'Avoid common words',
+    'security.tipReuse': "Don't reuse passwords",
+    'security.lastChanged': 'Last Changed',
+    'security.lastChangedInfo': 'Your password was last changed {{time}} ago',
+    
+    // Preferences Tab Extended
+    'preferences.title': 'Preferences',
+    'preferences.description': 'Customize your application experience',
   },
   
   vi: {
@@ -414,6 +642,24 @@ export const translations = {
     'timeline.groupByCategory': 'Nhóm theo phân loại',
     'timeline.groupByAssignee': 'Nhóm theo người thực hiện',
     'timeline.groupByStatus': 'Nhóm theo trạng thái',
+    'timeline.planAndTrack': 'Lên kế hoạch và theo dõi công việc theo thời gian',
+    'timeline.folder': 'Thư mục',
+    'timeline.work': 'Công việc',
+    'timeline.noTasksInTimeline': 'Không có công việc trên dòng thời gian',
+    'timeline.tasksWithDates': 'Công việc có ngày bắt đầu và ngày đến hạn sẽ hiển thị ở đây',
+    'timeline.createTask': 'Tạo công việc',
+    'timeline.loading': 'Đang tải dòng thời gian...',
+    'timeline.joinOrCreate': 'Tham gia hoặc tạo nhóm để xem dòng thời gian',
+    'timeline.needGroup': 'Bạn cần tham gia hoặc tạo nhóm để xem dòng thời gian và quản lý công việc đã lên lịch.',
+    'timeline.allTasks': 'Tất cả công việc',
+    'timeline.uncategorized': 'Chưa phân loại',
+    'timeline.noFolder': 'Không có thư mục',
+    'timeline.unnamedFolder': 'Thư mục chưa đặt tên',
+    'timeline.noCategory': 'Không có phân loại',
+    'timeline.unnamedUser': 'Người dùng chưa đặt tên',
+    'timeline.assigned': 'Đã giao',
+    'timeline.unassigned': 'Chưa giao',
+    'timeline.untitledTask': 'Công việc chưa đặt tên',
     
     // Calendar
     'calendar.title': 'Lịch',
@@ -645,5 +891,215 @@ export const translations = {
     'success.created': 'Đã tạo thành công',
     'success.updated': 'Đã cập nhật thành công',
     'success.copied': 'Đã sao chép vào clipboard',
+    
+    // Sidebar - Create Project Modal
+    'sidebar.createProject': 'Tạo dự án mới',
+    'sidebar.createProjectDesc': 'Thêm dự án mới vào không gian làm việc của bạn',
+    'sidebar.projectName': 'Tên dự án',
+    'sidebar.projectNamePlaceholder': 'Nhập tên dự án',
+    'sidebar.projectDescription': 'Mô tả (Tùy chọn)',
+    'sidebar.projectDescPlaceholder': 'Nhập mô tả dự án',
+    'sidebar.creating': 'Đang tạo...',
+    'sidebar.createProjectBtn': 'Tạo dự án',
+    
+    // Sidebar - Invite Modal
+    'sidebar.inviteTeamMember': 'Mời thành viên',
+    'sidebar.inviteDesc': 'Thêm người vào dự án của bạn',
+    'sidebar.invitingTo': 'Mời vào',
+    'sidebar.emailAddress': 'Địa chỉ email',
+    'sidebar.emailPlaceholder': 'Nhập địa chỉ email người dùng',
+    'sidebar.assignRole': 'Gán vai trò',
+    'sidebar.sending': 'Đang gửi...',
+    'sidebar.sendInvitation': 'Gửi lời mời',
+    
+    // Sort options
+    'sort.taskName': 'Tên công việc',
+    'sort.status': 'Trạng thái',
+    'sort.type': 'Loại',
+    'sort.dueDate': 'Hạn hoàn thành',
+    'sort.priority': 'Độ ưu tiên',
+    'sort.estimatedTime': 'Thời gian ước tính',
+    'sort.createdDate': 'Ngày tạo',
+    'sort.aToZ': 'A → Z',
+    'sort.zToA': 'Z → A',
+    'sort.oldestFirst': 'Cũ nhất trước',
+    'sort.newestFirst': 'Mới nhất trước',
+    'sort.lowToHigh': 'Thấp đến cao',
+    'sort.highToLow': 'Cao đến thấp',
+    'sort.shortestFirst': 'Ngắn nhất trước',
+    'sort.longestFirst': 'Dài nhất trước',
+    
+    // Categories
+    'category.operational': 'Vận hành',
+    'category.strategic': 'Chiến lược',
+    'category.financial': 'Tài chính',
+    'category.technical': 'Kỹ thuật',
+    'category.other': 'Khác',
+    
+    // Kanban columns
+    'kanban.todo': 'Cần làm',
+    'kanban.inProgress': 'Đang thực hiện',
+    'kanban.completed': 'Hoàn thành',
+    'kanban.incompleted': 'Công việc chưa hoàn thành',
+    
+    // Assignee
+    'assignee.addAssignee': '+ Thêm người thực hiện',
+    'assignee.addAssignees': 'Thêm người thực hiện',
+    'assignee.noOneAssigned': 'Chưa có ai được gán',
+    'assignee.assignSomeone': 'Gán cho ai đó',
+    'assignee.assignedTo': 'Được giao cho',
+    'assignee.autoAssign': 'Công việc sẽ được tự động gán cho bạn',
+    
+    // Time options
+    'time.15minutes': '15 phút',
+    'time.30minutes': '30 phút',
+    'time.1hour': '1 giờ',
+    'time.2hours': '2 giờ',
+    'time.4hours': '4 giờ',
+    'time.1day': '1 ngày',
+    'time.2days': '2 ngày',
+    'time.1week': '1 tuần',
+    
+    // Misc
+    'misc.untitledTask': 'Công việc chưa đặt tên',
+    'misc.saveSettings': 'Lưu cài đặt',
+    'misc.confirmDeleteFolder': 'Bạn có chắc chắn muốn xóa thư mục này? Điều này cũng sẽ xóa tất cả công việc và ghi chú trong thư mục.',
+    
+    // Sidebar
+    'sidebar.myProjects': 'Dự án của tôi',
+    'sidebar.sharedWithMe': 'Được chia sẻ với tôi',
+    'sidebar.loadingProjects': 'Đang tải dự án...',
+    'sidebar.noProjectsYet': 'Chưa có dự án nào',
+    'sidebar.createFirstProject': 'Tạo dự án đầu tiên của bạn',
+    'sidebar.noSharedProjects': 'Không có dự án được chia sẻ',
+    'sidebar.searchPlaceholder': 'Tìm kiếm dự án, công việc...',
+    
+    // Task Detail
+    'taskDetail.addStatus': 'Thêm trạng thái',
+    'taskDetail.startTime': 'Bắt đầu',
+    'taskDetail.stopTimer': 'Dừng',
+    'taskDetail.logTime': 'Ghi thời gian',
+    'taskDetail.repeatTask': 'Lặp lại công việc',
+    'taskDetail.description': 'Mô tả',
+    'taskDetail.addDescription': 'Thêm mô tả...',
+    'taskDetail.clickToAddDescription': 'Nhấp để thêm mô tả...',
+    'taskDetail.scheduledWork': 'Công việc đã lên lịch',
+    'taskDetail.scheduleWork': 'Lên lịch công việc',
+    'taskDetail.noScheduledWork': 'Chưa có công việc được lên lịch',
+    'taskDetail.loggedTime': 'Thời gian đã ghi',
+    'taskDetail.noTimeEntries': 'Chưa có mục thời gian nào',
+    'taskDetail.total': 'Tổng cộng',
+    'taskDetail.files': 'Tệp đính kèm',
+    'taskDetail.noFilesAttached': 'Chưa có tệp đính kèm',
+    'taskDetail.attachFile': 'Đính kèm tệp',
+    'taskDetail.uploading': 'Đang tải lên...',
+    'taskDetail.view': 'Xem',
+    'taskDetail.comments': 'Bình luận',
+    'taskDetail.noCommentsYet': 'Chưa có bình luận nào',
+    'taskDetail.typeMessage': 'Nhập tin nhắn...',
+    'taskDetail.date': 'Ngày',
+    'taskDetail.user': 'Người dùng',
+    'taskDetail.billable': 'Tính phí',
+    'taskDetail.time': 'Thời gian',
+    'taskDetail.addTimeEntry': 'Thêm mục thời gian',
+    'taskDetail.hours': 'Giờ',
+    'taskDetail.minutes': 'Phút',
+    'taskDetail.optionalDescription': 'Mô tả (tùy chọn)',
+    'taskDetail.addEntry': 'Thêm mục',
+    'taskDetail.cancel': 'Hủy',
+    'taskDetail.estimatedHours': 'Giờ dự kiến',
+    'taskDetail.estimatedMinutes': 'Phút dự kiến',
+    'taskDetail.status': 'Trạng thái',
+    'taskDetail.scheduled': 'Đã lên lịch',
+    'taskDetail.inProgress': 'Đang thực hiện',
+    'taskDetail.completed': 'Hoàn thành',
+    'taskDetail.cancelled': 'Đã hủy',
+    'taskDetail.delete': 'Xóa',
+    'taskDetail.statusLabel': 'Trạng thái',
+    'taskDetail.dueDateLabel': 'Ngày hết hạn',
+    'taskDetail.estimatedTimeLabel': 'Thời gian ước tính',
+    'taskDetail.typeLabel': 'Loại',
+    
+    // Task Types
+    'type.operational': 'Vận hành',
+    'type.strategic': 'Chiến lược',
+    'type.tactical': 'Chiến thuật',
+    
+    // Group Members
+    'groupMembers.addTeamMember': 'Thêm thành viên',
+    'groupMembers.inviteDescription': 'Mời ai đó tham gia nhóm của bạn và cùng nhau hợp tác',
+    'groupMembers.emailAddress': 'Địa chỉ Email',
+    'groupMembers.enterEmail': 'Nhập địa chỉ email',
+    'groupMembers.selectRole': 'Chọn vai trò',
+    'groupMembers.sendInvite': 'Gửi lời mời',
+    'groupMembers.sending': 'Đang gửi...',
+    'groupMembers.inviteHint': 'Người dùng sẽ nhận được email mời tham gia nhóm của bạn',
+    'groupMembers.addPeople': '+ Thêm người',
+    'groupMembers.addPeopleButton': 'Thêm người',
+    
+    // Tools Sidebar
+    'tools.title': 'Công cụ',
+    
+    // Task Assignee
+    'tasks.includesYou': 'Bao gồm bạn',
+    'tasks.assigned': '{{count}} được giao',
+    
+    // Sidebar Folder Stats
+    'sidebar.tasksCount': '{{count}} công việc',
+    'sidebar.notesCount': '{{count}} ghi chú',
+    'sidebar.membersCount': '{{count}} thành viên',
+    
+    // View Mode
+    'viewMode.list': 'Danh sách',
+    'viewMode.kanban': 'Bảng Kanban',
+    'sort.label': 'Sắp xếp',
+    
+    // Kanban
+    'kanban.noTasks': 'Không có công việc',
+    'kanban.noCompleted': 'Không có công việc hoàn thành',
+    'kanban.noOverdue': 'Không có công việc quá hạn',
+    'kanban.noCompletedYet': 'Chưa có công việc hoàn thành',
+    
+    // User Menu
+    'userMenu.profileSettings': 'Cài đặt hồ sơ',
+    'userMenu.theme': 'Giao diện',
+    'userMenu.light': 'Sáng',
+    'userMenu.dark': 'Tối',
+    'userMenu.auto': 'Tự động',
+    'userMenu.logout': 'Đăng xuất',
+    
+    // Account Settings
+    'accountSettings.title': 'Cài đặt tài khoản',
+    'accountSettings.description': 'Quản lý hồ sơ, tùy chọn và cài đặt bảo mật của bạn',
+    'accountSettings.saving': 'Đang lưu...',
+    'accountSettings.deleting': 'Đang xóa...',
+    
+    // Profile Tab Extended
+    'profile.deleteAccount': 'Xóa tài khoản',
+    'profile.deleteConfirmTitle': 'Xóa tài khoản',
+    'profile.deleteConfirmMessage': 'Bạn có chắc chắn muốn xóa tài khoản? Hành động này không thể hoàn tác và tất cả dữ liệu của bạn sẽ bị mất vĩnh viễn.',
+    'profile.deleteConfirmButton': 'Có, xóa tài khoản của tôi',
+    'profile.enterFullName': 'Nhập họ tên đầy đủ',
+    
+    // Security Tab Extended
+    'security.title': 'Cài đặt bảo mật',
+    'security.description': 'Quản lý mật khẩu và bảo mật tài khoản của bạn',
+    'security.enterCurrentPassword': 'Nhập mật khẩu hiện tại',
+    'security.enterNewPassword': 'Nhập mật khẩu mới',
+    'security.confirmNewPassword': 'Xác nhận mật khẩu mới',
+    'security.passwordMinLength': 'Phải có ít nhất 8 ký tự',
+    'security.updatePassword': 'Cập nhật mật khẩu',
+    'security.updatingPassword': 'Đang cập nhật mật khẩu...',
+    'security.passwordTips': 'Mẹo tạo mật khẩu',
+    'security.tipMinChars': 'Sử dụng ít nhất 8 ký tự',
+    'security.tipNumbers': 'Bao gồm số và ký hiệu',
+    'security.tipCommon': 'Tránh các từ phổ biến',
+    'security.tipReuse': 'Không sử dụng lại mật khẩu',
+    'security.lastChanged': 'Thay đổi lần cuối',
+    'security.lastChangedInfo': 'Mật khẩu của bạn được thay đổi {{time}} trước',
+    
+    // Preferences Tab Extended
+    'preferences.title': 'Tùy chọn',
+    'preferences.description': 'Tùy chỉnh trải nghiệm ứng dụng của bạn',
   }
 } as const;

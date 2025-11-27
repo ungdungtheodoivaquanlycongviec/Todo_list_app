@@ -158,7 +158,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const { user: currentUser, currentGroup } = useAuth()
   const { currentFolder } = useFolder()
   const { t } = useLanguage()
-  const { formatDate } = useRegional()
+  const { formatDate, convertFromUserTimezone, convertToUserTimezone } = useRegional()
   
   // Check if user can assign to others
   const currentUserRole = currentGroup ? getMemberRole(currentGroup, currentUser?._id) : null
@@ -255,14 +255,14 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            Assigned to ({assigneeInfo.totalCount})
+            {t('assignee.assignedTo')} ({assigneeInfo.totalCount})
           </h4>
           {(canAssignToOthers || assigneeInfo.totalCount === 0) && (
             <button 
               onClick={handleAddAssignee}
               className="text-blue-500 hover:text-blue-600 text-sm"
             >
-              + Add assignee
+              {t('assignee.addAssignee')}
             </button>
           )}
         </div>
@@ -270,18 +270,18 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
         {assigneeInfo.assignees.length === 0 ? (
           <div className="text-center py-4 text-gray-500 dark:text-gray-400 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
             <User className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-            <p className="text-sm">No one assigned</p>
+            <p className="text-sm">{t('assignee.noOneAssigned')}</p>
             {(canAssignToOthers || !currentUser) && (
               <button 
                 onClick={handleAddAssignee}
                 className="text-blue-500 hover:text-blue-600 text-xs mt-1"
               >
-                Assign someone
+                {t('assignee.assignSomeone')}
               </button>
             )}
             {!canAssignToOthers && currentUser && (
               <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                Task sẽ được tự động gán cho bạn
+                {t('assignee.autoAssign')}
               </p>
             )}
           </div>
@@ -344,10 +344,17 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
     setDescription(taskData.description || "")
     setEstimatedTime(taskData.estimatedTime || "")
 
+    // Convert UTC date from backend to user's timezone for display in input
+    let displayDueDate = ""
+    if (taskData.dueDate) {
+      const userDate = convertToUserTimezone(taskData.dueDate)
+      displayDueDate = userDate.toISOString().split('T')[0]
+    }
+
     setTaskProperties({
       title: taskData.title || "",
       status: taskData.status || "todo",
-      dueDate: taskData.dueDate ? new Date(taskData.dueDate).toISOString().split('T')[0] : "",
+      dueDate: displayDueDate,
       estimatedTime: taskData.estimatedTime || "",
       type: (taskData as any).type || "Operational",
       priority: taskData.priority || "medium",
@@ -381,7 +388,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
     } else {
       setComments([])
     }
-  }, [])
+  }, [convertToUserTimezone])
 
   const fetchTaskDetails = useCallback(async () => {
     if (!isOpen || !taskId) return
@@ -469,13 +476,20 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
     try {
       setSaving(true)
       
-      const updateData = { [field]: value }
+      // Convert date fields from user timezone to UTC for backend storage
+      let updateValue = value
+      if (field === 'dueDate' && value) {
+        const userDate = new Date(value + 'T23:59:59') // Set to end of day
+        updateValue = convertFromUserTimezone(userDate).toISOString()
+      }
+      
+      const updateData = { [field]: updateValue }
       const updatedTask = await taskService.updateTask(taskId, updateData)
       
       setTask(updatedTask)
       onTaskUpdate(updatedTask)
       
-      // Update local state
+      // Update local state with the original value (for display)
       setTaskProperties(prev => ({
         ...prev,
         [field]: value
@@ -1242,10 +1256,10 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
   // Time Entry Form Component
   const TimeEntryForm = () => (
     <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 mt-2">
-      <h4 className="text-sm font-medium mb-3">Add Time Entry</h4>
+      <h4 className="text-sm font-medium mb-3">{t('taskDetail.addTimeEntry')}</h4>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="text-xs text-gray-600 dark:text-gray-400">Date</label>
+          <label className="text-xs text-gray-600 dark:text-gray-400">{t('taskDetail.date')}</label>
           <input
             type="date"
             value={newTimeEntry.date}
@@ -1254,7 +1268,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
           />
         </div>
         <div>
-          <label className="text-xs text-gray-600 dark:text-gray-400">Hours</label>
+          <label className="text-xs text-gray-600 dark:text-gray-400">{t('taskDetail.hours')}</label>
           <input
             type="number"
             value={newTimeEntry.hours}
@@ -1263,7 +1277,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
           />
         </div>
         <div>
-          <label className="text-xs text-gray-600 dark:text-gray-400">Minutes</label>
+          <label className="text-xs text-gray-600 dark:text-gray-400">{t('taskDetail.minutes')}</label>
           <input
             type="number"
             value={newTimeEntry.minutes}
@@ -1279,16 +1293,16 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
               onChange={(e) => setNewTimeEntry({...newTimeEntry, billable: e.target.checked})}
               className="mr-2"
             />
-            Billable
+            {t('taskDetail.billable')}
           </label>
         </div>
         <div className="col-span-2">
-          <label className="text-xs text-gray-600 dark:text-gray-400">Description</label>
+          <label className="text-xs text-gray-600 dark:text-gray-400">{t('taskDetail.description')}</label>
           <input
             type="text"
             value={newTimeEntry.description}
             onChange={(e) => setNewTimeEntry({...newTimeEntry, description: e.target.value})}
-            placeholder="Optional description"
+            placeholder={t('taskDetail.optionalDescription')}
             className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded text-sm"
           />
         </div>
@@ -1298,13 +1312,13 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
           onClick={handleAddTimeEntry}
           className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
         >
-          Add Entry
+          {t('taskDetail.addEntry')}
         </button>
         <button
           onClick={() => setShowTimeEntryForm(false)}
           className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm"
         >
-          Cancel
+          {t('taskDetail.cancel')}
         </button>
       </div>
     </div>
@@ -1313,10 +1327,10 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
   // Scheduled Work Form Component
   const ScheduledWorkForm = () => (
     <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 mt-2">
-      <h4 className="text-sm font-medium mb-3">Schedule Work</h4>
+      <h4 className="text-sm font-medium mb-3">{t('taskDetail.scheduleWork')}</h4>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="text-xs text-gray-600 dark:text-gray-400">Date</label>
+          <label className="text-xs text-gray-600 dark:text-gray-400">{t('taskDetail.date')}</label>
           <input
             type="date"
             value={newScheduledWork.scheduledDate}
@@ -1325,7 +1339,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
           />
         </div>
         <div>
-          <label className="text-xs text-gray-600 dark:text-gray-400">Estimated Hours</label>
+          <label className="text-xs text-gray-600 dark:text-gray-400">{t('taskDetail.estimatedHours')}</label>
           <input
             type="number"
             value={newScheduledWork.estimatedHours}
@@ -1334,7 +1348,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
           />
         </div>
         <div>
-          <label className="text-xs text-gray-600 dark:text-gray-400">Estimated Minutes</label>
+          <label className="text-xs text-gray-600 dark:text-gray-400">{t('taskDetail.estimatedMinutes')}</label>
           <input
             type="number"
             value={newScheduledWork.estimatedMinutes}
@@ -1343,25 +1357,25 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
           />
         </div>
         <div>
-          <label className="text-xs text-gray-600 dark:text-gray-400">Status</label>
+          <label className="text-xs text-gray-600 dark:text-gray-400">{t('taskDetail.status')}</label>
           <select
             value={newScheduledWork.status}
             onChange={(e) => setNewScheduledWork({...newScheduledWork, status: e.target.value})}
             className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded text-sm"
           >
-            <option value="scheduled">Scheduled</option>
-            <option value="in-progress">In Progress</option>
-            <option value="completed">Completed</option>
-            <option value="cancelled">Cancelled</option>
+            <option value="scheduled">{t('taskDetail.scheduled')}</option>
+            <option value="in-progress">{t('taskDetail.inProgress')}</option>
+            <option value="completed">{t('taskDetail.completed')}</option>
+            <option value="cancelled">{t('taskDetail.cancelled')}</option>
           </select>
         </div>
         <div className="col-span-2">
-          <label className="text-xs text-gray-600 dark:text-gray-400">Description</label>
+          <label className="text-xs text-gray-600 dark:text-gray-400">{t('taskDetail.description')}</label>
           <input
             type="text"
             value={newScheduledWork.description}
             onChange={(e) => setNewScheduledWork({...newScheduledWork, description: e.target.value})}
-            placeholder="Optional description"
+            placeholder={t('taskDetail.optionalDescription')}
             className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded text-sm"
           />
         </div>
@@ -1371,13 +1385,13 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
           onClick={handleAddScheduledWork}
           className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
         >
-          Schedule Work
+          {t('taskDetail.scheduleWork')}
         </button>
         <button
           onClick={() => setShowScheduledWorkForm(false)}
           className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm"
         >
-          Cancel
+          {t('taskDetail.cancel')}
         </button>
       </div>
     </div>
@@ -1508,7 +1522,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                   <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer group">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <div className={`w-3 h-3 ${getStatusColor(taskProperties.status)} rounded-full flex-shrink-0`}></div>
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Status</span>
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('taskDetail.statusLabel')}</span>
                     </div>
                     {editingField === 'status' ? (
                       <select
@@ -1541,7 +1555,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                   <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer group">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <Calendar className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Due date</span>
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('taskDetail.dueDateLabel')}</span>
                     </div>
                     {editingField === 'dueDate' ? (
                       <input
@@ -1570,7 +1584,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                   <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer group">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <Clock className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Estimated time</span>
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('taskDetail.estimatedTimeLabel')}</span>
                     </div>
                     {editingField === 'estimatedTime' ? (
                       <div className="flex gap-1 flex-1 max-w-40">
@@ -1616,7 +1630,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                   <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer group">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <Flag className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Type</span>
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('taskDetail.typeLabel')}</span>
                     </div>
                     {editingField === 'type' ? (
                       <select
@@ -1650,7 +1664,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                   <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer group">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <Flag className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Priority</span>
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('tasks.priority')}</span>
                     </div>
                     {editingField === 'priority' ? (
                       <select
@@ -1687,7 +1701,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                     className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors shadow-sm"
                   >
                     <Plus className="w-4 h-4" />
-                    Add status
+                    {t('taskDetail.addStatus')}
                   </button>
                   
                   {/* Timer Button */}
@@ -1700,7 +1714,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                     }`}
                   >
                     <PlayCircle className="w-4 h-4" />
-                    {isTimerRunning ? `Stop (${formatElapsedTime(elapsedTime)})` : 'Start time'}
+                    {isTimerRunning ? `${t('taskDetail.stopTimer')} (${formatElapsedTime(elapsedTime)})` : t('taskDetail.startTime')}
                   </button>
                   
                   <button 
@@ -1708,7 +1722,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                     className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors shadow-sm"
                   >
                     <Timer className="w-4 h-4" />
-                    Log time
+                    {t('taskDetail.logTime')}
                   </button>
                   
                   <button 
@@ -1716,7 +1730,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                     className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors shadow-sm"
                   >
                     <RefreshCw className="w-4 h-4" />
-                    Repeat task
+                    {t('taskDetail.repeatTask')}
                   </button>
                 </div>
 
@@ -1725,7 +1739,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
 
                 {/* Description */}
                 <div>
-                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Description</h3>
+                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('taskDetail.description')}</h3>
                   {editingField === 'description' ? (
                     <textarea
                       value={tempValue}
@@ -1749,13 +1763,13 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                 {/* Scheduled Work - Available for all tasks regardless of due date */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Scheduled work</h3>
+                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('taskDetail.scheduledWork')}</h3>
                     <button 
                       onClick={() => setShowScheduledWorkForm(!showScheduledWorkForm)}
                       className="text-blue-500 hover:text-blue-600 text-sm flex items-center gap-1"
                     >
                       <Plus className="w-4 h-4" />
-                      Schedule work
+                      {t('taskDetail.scheduleWork')}
                     </button>
                   </div>
                   
@@ -1766,10 +1780,10 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                     {scheduledWork.length > 0 ? (
                       <>
                         <div className="grid grid-cols-4 gap-4 text-sm text-gray-600 dark:text-gray-400 mb-2">
-                          <span>Date</span>
-                          <span>User</span>
-                          <span>Estimated time</span>
-                          <span>Status</span>
+                          <span>{t('taskDetail.date')}</span>
+                          <span>{t('taskDetail.user')}</span>
+                          <span>{t('taskDetail.estimatedTimeLabel')}</span>
+                          <span>{t('taskDetail.statusLabel')}</span>
                         </div>
                         {scheduledWork.map((work, index) => (
                           <div key={index} className="grid grid-cols-4 gap-4 text-sm items-center py-2 border-b border-gray-200 dark:border-gray-600 last:border-0">
@@ -1805,7 +1819,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                         ))}
                       </>
                     ) : (
-                      <div className="text-center py-4 text-gray-500">No scheduled work yet</div>
+                      <div className="text-center py-4 text-gray-500">{t('taskDetail.noScheduledWork')}</div>
                     )}
                   </div>
                 </div>
@@ -1813,25 +1827,25 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                 {/* Logged Time - Available for all tasks regardless of due date */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Logged time</h3>
-                    <button 
+                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('taskDetail.loggedTime')}</h3>
+                    {/* <button 
                       onClick={() => setShowTimeEntryForm(!showTimeEntryForm)}
                       className="text-blue-500 hover:text-blue-600 text-sm flex items-center gap-1"
                     >
                       <Plus className="w-4 h-4" />
-                      Log time
-                    </button>
+                      {t('taskDetail.logTime')}
+                    </button> */}
                   </div>
 
                   <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
                     {timeEntries.length > 0 ? (
                       <>
                         <div className="grid grid-cols-6 gap-4 text-sm text-gray-600 dark:text-gray-400 mb-2">
-                          <span className="col-span-2">Date</span>
-                          <span>User</span>
-                          <span>Description</span>
-                          <span>Billable</span>
-                          <span>Time</span>
+                          <span className="col-span-2">{t('taskDetail.date')}</span>
+                          <span>{t('taskDetail.user')}</span>
+                          <span>{t('taskDetail.description')}</span>
+                          <span>{t('taskDetail.billable')}</span>
+                          <span>{t('taskDetail.time')}</span>
                         </div>
                         
                         {/* Logged time entries */}
@@ -1868,12 +1882,12 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
 
                         <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
                           <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                            Total: {getTotalLoggedTime()}
+                            {t('taskDetail.total')}: {getTotalLoggedTime()}
                           </span>
                         </div>
                       </>
                     ) : (
-                      <div className="text-center py-4 text-gray-500">No time entries yet</div>
+                      <div className="text-center py-4 text-gray-500">{t('taskDetail.noTimeEntries')}</div>
                     )}
                   </div>
                 </div>
@@ -1882,7 +1896,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                 <div>
                   <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
                     <Paperclip className="w-4 h-4" />
-                    Files ({task.attachments?.length || 0})
+                    {t('taskDetail.files')} ({task.attachments?.length || 0})
                   </h3>
                   <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
                     {task.attachments && task.attachments.length > 0 ? (
@@ -1907,13 +1921,13 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                                 rel="noopener noreferrer"
                                 className="text-blue-500 hover:text-blue-600 text-sm"
                               >
-                                View
+                                {t('taskDetail.view')}
                               </a>
                               <button
                                 onClick={() => handleDeleteAttachment(attachment._id)}
                                 className="text-red-500 hover:text-red-600 text-sm"
                               >
-                                Delete
+                                {t('common.delete')}
                               </button>
                             </div>
                           </div>
@@ -1922,7 +1936,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                     ) : (
                       <div className="text-center py-4 text-gray-500 dark:text-gray-400">
                         <Paperclip className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                        <p className="text-sm">No files attached</p>
+                        <p className="text-sm">{t('taskDetail.noFilesAttached')}</p>
                       </div>
                     )}
                     
@@ -1947,12 +1961,12 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                         {uploadingFiles ? (
                           <>
                             <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
-                            Uploading...
+                            {t('taskDetail.uploading')}
                           </>
                         ) : (
                           <>
                             <Plus className="w-4 h-4" />
-                            Attach file
+                            {t('taskDetail.attachFile')}
                           </>
                         )}
                       </label>
@@ -1967,7 +1981,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
               <div className="flex-1 p-6">
                 <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
                   <MessageSquare className="w-4 h-4" />
-                  Comments ({comments.length})
+                  {t('taskDetail.comments')} ({comments.length})
                 </h3>
                 <div className="space-y-4">
                   {comments.length > 0 ? (
@@ -1975,7 +1989,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                       <CommentItem key={comment._id || `comment-${index}`} comment={comment} index={index} />
                     ))
                   ) : (
-                    <div className="text-center py-8 text-gray-400 dark:text-gray-500 text-sm">No comments yet</div>
+                    <div className="text-center py-8 text-gray-400 dark:text-gray-500 text-sm">{t('taskDetail.noCommentsYet')}</div>
                   )}
                 </div>
               </div>
@@ -2011,7 +2025,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                       <textarea
                         value={comment}
                         onChange={(e) => setComment(e.target.value)}
-                        placeholder="Type a message..."
+                        placeholder={t('taskDetail.typeMessage')}
                         rows={3}
                         className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-12 resize-none"
                         onKeyDown={(e) => {
@@ -2168,13 +2182,13 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                 onClick={handleSaveRepeatSettings}
                 className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
               >
-                Save Settings
+                {t('misc.saveSettings')}
               </button>
               <button
                 onClick={() => setShowRepeatModal(false)}
                 className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           </div>
@@ -2186,7 +2200,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-96 max-w-md mx-4 max-h-[80vh] overflow-y-auto">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-              Add Assignees
+              {t('assignee.addAssignees')}
             </h3>
             
             <div className="space-y-2 max-h-[300px] overflow-y-auto">

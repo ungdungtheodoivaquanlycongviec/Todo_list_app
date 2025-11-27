@@ -315,7 +315,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     // Update user's currentGroupId in localStorage and state
     if (typeof window !== 'undefined' && user) {
-      const updatedUser = { ...user, currentGroupId: group?._id || null };
+      const updatedUser = { ...user, currentGroupId: group?._id ?? undefined };
       localStorage.setItem('user', JSON.stringify(updatedUser));
       setUser(updatedUser);
     }

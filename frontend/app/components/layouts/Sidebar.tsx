@@ -14,6 +14,7 @@ import {
   Check
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { groupService } from '../../services/group.service';
 import { Group } from '../../services/types/group.types';
 import { useFolder } from '../../contexts/FolderContext';
@@ -32,6 +33,7 @@ interface CreateGroupModalProps {
 }
 
 const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSubmit }) => {
+  const { t } = useLanguage();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
@@ -59,8 +61,8 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSubmit }
               <FolderIcon className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Create New Project</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Add a new project to your workspace</p>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('sidebar.createProject')}</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{t('sidebar.createProjectDesc')}</p>
             </div>
           </div>
           <button
@@ -74,14 +76,14 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSubmit }
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Project Name *
+              {t('sidebar.projectName')} *
             </label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full bg-white dark:bg-[#2E2E2E] text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-              placeholder="Enter project name"
+              placeholder={t('sidebar.projectNamePlaceholder')}
               required
               disabled={loading}
             />
@@ -89,13 +91,13 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSubmit }
 
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Description (Optional)
+              {t('sidebar.projectDescription')}
             </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none transition-all duration-200"
-              placeholder="Enter project description"
+              placeholder={t('sidebar.projectDescPlaceholder')}
               rows={3}
               disabled={loading}
             />
@@ -108,7 +110,7 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSubmit }
               className="flex-1 bg-gray-100 dark:bg-[#2E2E2E] text-gray-700 dark:text-gray-300 py-3 px-4 rounded-xl hover:bg-gray-200 dark:hover:bg-[#3E3E3E] transition-all duration-200 font-medium"
               disabled={loading}
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               type="submit"
@@ -118,10 +120,10 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSubmit }
               {loading ? (
                 <div className="flex items-center justify-center">
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                  Creating...
+                  {t('sidebar.creating')}
                 </div>
               ) : (
-                'Create Project'
+                t('sidebar.createProjectBtn')
               )}
             </button>
           </div>
@@ -139,6 +141,7 @@ interface InviteUserModalProps {
 }
 
 const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, onSubmit }) => {
+  const { t } = useLanguage();
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<string>(DEFAULT_INVITE_ROLE);
   const [loading, setLoading] = useState(false);
@@ -168,8 +171,8 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, o
               <Users className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Invite Team Member</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Add someone to your project</p>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('sidebar.inviteTeamMember')}</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{t('sidebar.inviteDesc')}</p>
             </div>
           </div>
           <button
@@ -182,21 +185,21 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, o
 
         <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 mb-4">
           <p className="text-sm text-blue-700 dark:text-blue-300">
-            Inviting to: <strong className="text-blue-800 dark:text-blue-200">{groupName}</strong>
+            {t('sidebar.invitingTo')}: <strong className="text-blue-800 dark:text-blue-200">{groupName}</strong>
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Email Address *
+              {t('sidebar.emailAddress')} *
             </label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full bg-white dark:bg-[#2E2E2E] text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-              placeholder="Enter user's email address"
+              placeholder={t('sidebar.emailPlaceholder')}
               required
               disabled={loading}
             />
@@ -204,7 +207,7 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, o
 
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Assign Role *
+              {t('sidebar.assignRole')} *
             </label>
             <div className="relative">
               <select
@@ -245,7 +248,7 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, o
               className="flex-1 bg-gray-100 dark:bg-[#2E2E2E] text-gray-700 dark:text-gray-300 py-3 px-4 rounded-xl hover:bg-gray-200 dark:hover:bg-[#3E3E3E] transition-all duration-200 font-medium"
               disabled={loading}
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               type="submit"
@@ -255,10 +258,10 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, o
               {loading ? (
                 <div className="flex items-center justify-center">
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                  Sending...
+                  {t('sidebar.sending')}
                 </div>
               ) : (
-                'Send Invitation'
+                t('sidebar.sendInvitation')
               )}
             </button>
           </div>
@@ -269,6 +272,7 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, o
 };
 
 export default function Sidebar() {
+  const { t } = useLanguage();
   const { user, currentGroup, setCurrentGroup } = useAuth();
   const { socket, isConnected } = useSocket();
   const userRole = currentGroup && user ? getMemberRole(currentGroup, user._id) : null;
@@ -945,7 +949,7 @@ export default function Sidebar() {
                               {folder.isDefault && ' • Default'}
                             </p>
                             <p className="text-xs text-gray-500 dark:text-gray-400">
-                              {folder.taskCount ?? 0} tasks • {folder.noteCount ?? 0} notes
+                              {t('sidebar.tasksCount', { count: folder.taskCount ?? 0 })} • {t('sidebar.notesCount', { count: folder.noteCount ?? 0 })}
                             </p>
                           </div>
                         </div>
@@ -1011,7 +1015,7 @@ export default function Sidebar() {
                   {group.name}
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                  {group.members?.length || 0} members
+                  {t('sidebar.membersCount', { count: group.members?.length || 0 })}
                 </p>
               </div>
             </div>
@@ -1084,7 +1088,7 @@ export default function Sidebar() {
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
-            placeholder="Search projects, tasks..."
+            placeholder={t('sidebar.searchPlaceholder')}
             className="w-full bg-white dark:bg-[#2E2E2E] text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 pl-10 pr-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all duration-200"
             onChange={(e) => handleSearch(e.target.value)}
           />
@@ -1107,7 +1111,7 @@ export default function Sidebar() {
               )}
               <FolderIcon className="w-4 h-4 text-gray-500" />
               <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
-                My Projects
+                {t('sidebar.myProjects')}
               </span>
             </button>
             <button
@@ -1122,16 +1126,16 @@ export default function Sidebar() {
           {projectsExpanded && (
             <div className="space-y-3">
               {loading ? (
-                <div className="text-sm py-2 px-3 text-gray-500 dark:text-gray-400">Loading projects...</div>
+                <div className="text-sm py-2 px-3 text-gray-500 dark:text-gray-400">{t('sidebar.loadingProjects')}</div>
               ) : myGroups.length === 0 ? (
                 <div className="text-center py-6">
                   <FolderIcon className="w-8 h-8 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500 dark:text-gray-400">No projects yet</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{t('sidebar.noProjectsYet')}</p>
                   <button
                     onClick={handleAddProject}
                     className="text-blue-600 dark:text-blue-400 text-sm hover:underline mt-1"
                   >
-                    Create your first project
+                    {t('sidebar.createFirstProject')}
                   </button>
                 </div>
               ) : (
@@ -1152,7 +1156,7 @@ export default function Sidebar() {
           >
             <div className="flex items-center space-x-2">
               <Users className="w-4 h-4 text-gray-500" />
-              <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">Shared with me</span>
+              <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">{t('sidebar.sharedWithMe')}</span>
             </div>
             {sharedExpanded ? (
               <ChevronDown className="w-4 h-4 text-gray-400" />
@@ -1165,7 +1169,7 @@ export default function Sidebar() {
               {loading ? (
                 <div className="text-sm py-2 px-3 text-gray-500 dark:text-gray-400">Loading...</div>
               ) : sharedGroups.length === 0 ? (
-                <div className="text-sm py-2 px-3 text-gray-500 dark:text-gray-400">No shared projects</div>
+                <div className="text-sm py-2 px-3 text-gray-500 dark:text-gray-400">{t('sidebar.noSharedProjects')}</div>
               ) : (
                 sharedGroups.map(group => renderGroupCard(group))
               )}

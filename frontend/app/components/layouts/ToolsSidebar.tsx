@@ -29,7 +29,7 @@ export default function ToolsSidebar({ activeView, onViewChange }: ToolsSidebarP
             <Layout className="w-4 h-4 text-white" />
           </div>
           <span className="text-[10px] xl:text-xs font-medium text-gray-700 dark:text-gray-300">
-            Tools
+            {t('tools.title')}
           </span>
         </div>
       </div>

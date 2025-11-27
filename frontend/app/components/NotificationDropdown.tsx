@@ -6,6 +6,7 @@ import { notificationService, Notification } from '../services/notification.serv
 import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../hooks/useSocket';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useRegional } from '../contexts/RegionalContext';
 
 interface NotificationDropdownProps {
   className?: string;
@@ -15,6 +16,7 @@ export default function NotificationDropdown({ className = '' }: NotificationDro
   const { setCurrentGroup, setUser } = useAuth();
   const { socket } = useSocket();
   const { t } = useLanguage();
+  const { convertToUserTimezone } = useRegional();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
@@ -160,8 +162,9 @@ export default function NotificationDropdown({ className = '' }: NotificationDro
   };
 
   const formatTimeAgo = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
+    // Convert both dates to user's timezone for accurate comparison
+    const date = convertToUserTimezone(dateString);
+    const now = convertToUserTimezone(new Date());
     const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
     if (diffInSeconds < 60) return t('notifications.timeAgo.justNow');

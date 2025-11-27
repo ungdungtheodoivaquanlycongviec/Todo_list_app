@@ -83,34 +83,34 @@ export default function TasksView() {
     "Other",
   ];
 
-  // Sort options
+  // Sort options - moved inside component to use translations
   const sortOptions = [
-    { key: "title", label: "Task name", asc: "A → Z", desc: "Z → A" },
-    { key: "status", label: "Status", asc: "A → Z", desc: "Z → A" },
-    { key: "category", label: "Type", asc: "A → Z", desc: "Z → A" },
+    { key: "title", label: t('sort.taskName'), asc: t('sort.aToZ'), desc: t('sort.zToA') },
+    { key: "status", label: t('sort.status'), asc: t('sort.aToZ'), desc: t('sort.zToA') },
+    { key: "category", label: t('sort.type'), asc: t('sort.aToZ'), desc: t('sort.zToA') },
     {
       key: "dueDate",
-      label: "Due date",
-      asc: "Oldest first",
-      desc: "Newest first",
+      label: t('sort.dueDate'),
+      asc: t('sort.oldestFirst'),
+      desc: t('sort.newestFirst'),
     },
     {
       key: "priority",
-      label: "Priority",
-      asc: "Low to high",
-      desc: "High to low",
+      label: t('sort.priority'),
+      asc: t('sort.lowToHigh'),
+      desc: t('sort.highToLow'),
     },
     {
       key: "estimatedTime",
-      label: "Estimated time",
-      asc: "Shortest first",
-      desc: "Longest first",
+      label: t('sort.estimatedTime'),
+      asc: t('sort.shortestFirst'),
+      desc: t('sort.longestFirst'),
     },
     {
       key: "createdAt",
-      label: "Created date",
-      asc: "Oldest first",
-      desc: "Newest first",
+      label: t('sort.createdDate'),
+      asc: t('sort.oldestFirst'),
+      desc: t('sort.newestFirst'),
     },
   ];
 
@@ -811,7 +811,7 @@ export default function TasksView() {
     const statusColumns = [
       { 
         key: "todo", 
-        title: "To Do", 
+        title: t('kanban.todo'), 
         icon: <div className="w-2 h-2 bg-gray-400 rounded-full" />,
         count: kanbanData.kanbanBoard.todo?.count || 0,
         color: "bg-gray-50 border-gray-200",
@@ -819,7 +819,7 @@ export default function TasksView() {
       },
       { 
         key: "in_progress", 
-        title: "In Progress", 
+        title: t('kanban.inProgress'), 
         icon: <div className="w-2 h-2 bg-blue-500 rounded-full" />,
         count: kanbanData.kanbanBoard.in_progress?.count || 0,
         color: "bg-blue-50 border-blue-200",
@@ -827,7 +827,7 @@ export default function TasksView() {
       },
       { 
         key: "completed", 
-        title: "Completed", 
+        title: t('kanban.completed'), 
         icon: <div className="w-2 h-2 bg-green-500 rounded-full" />,
         count: kanbanData.kanbanBoard.completed?.count || 0,
         color: "bg-green-50 border-green-200",
@@ -835,7 +835,7 @@ export default function TasksView() {
       },
       { 
         key: "incompleted", 
-        title: "Incompleted Tasks", 
+        title: t('kanban.incompleted'), 
         icon: <div className="w-2 h-2 bg-red-500 rounded-full" />,
         count: incompletedTasks.length,
         color: "bg-red-50 border-red-200",
@@ -1038,10 +1038,10 @@ export default function TasksView() {
                     </div>
                     <p className="text-gray-500">
                       {column.key === "incompleted" 
-                        ? "No overdue tasks" 
+                        ? t('kanban.noOverdue') 
                         : column.key === "completed"
-                        ? "No completed tasks"
-                        : "No tasks"
+                        ? t('kanban.noCompleted')
+                        : t('kanban.noTasks')
                       }
                     </p>
                   </div>
@@ -1282,7 +1282,7 @@ export default function TasksView() {
               </span>
               {assigneeInfo.totalCount > 0 && (
                 <span className="text-xs text-gray-500 truncate">
-                  {assigneeInfo.currentUserIsAssigned ? 'Includes you' : `${assigneeInfo.totalCount} assigned`}
+                  {assigneeInfo.currentUserIsAssigned ? t('tasks.includesYou') : t('tasks.assigned', { count: assigneeInfo.totalCount })}
                 </span>
               )}
             </div>
@@ -1399,7 +1399,7 @@ export default function TasksView() {
           <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
             <div className="p-2">
               <div className="text-xs font-medium text-gray-500 px-3 py-2 uppercase tracking-wide">
-                Sort by
+                {t('sort.label')}
               </div>
 
               {sortOptions.map((option) => (
@@ -1504,7 +1504,7 @@ export default function TasksView() {
               onClick={() => setViewMode("list")}
             >
               <List className="w-4 h-4" />
-              List
+              {t('viewMode.list')}
             </button>
             <button
               className={`px-4 py-2 text-sm flex items-center gap-2 transition-colors ${viewMode === "kanban"
@@ -1514,7 +1514,7 @@ export default function TasksView() {
               onClick={() => setViewMode("kanban")}
             >
               <Layout className="w-4 h-4" />
-              Kanban
+              {t('viewMode.kanban')}
             </button>
           </div>
 
@@ -1627,7 +1627,7 @@ export default function TasksView() {
                   ))
                 ) : (
                   <div className="p-8 text-center text-gray-500">
-                    <p className="text-gray-600">No completed tasks yet</p>
+                    <p className="text-gray-600">{t('kanban.noCompletedYet')}</p>
                   </div>
                 )}
               </div>
@@ -1681,9 +1681,9 @@ export default function TasksView() {
                     <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                       <AlertTriangle className="w-8 h-8 text-gray-400" />
                     </div>
-                    <p className="text-gray-600 mb-2">No overdue tasks</p>
+                    <p className="text-gray-600 mb-2">{t('kanban.noOverdue')}</p>
                     <p className="text-sm text-gray-500">
-                      Tasks that pass their due date will appear here
+                      {t('tasks.noTasks')}
                     </p>
                   </div>
                 )}

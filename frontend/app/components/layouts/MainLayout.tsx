@@ -7,6 +7,7 @@ import TopBar from './TopBar';
 import ProfileSettings from '../ProfileSettings';
 import { User } from '../../services/types/auth.types';
 import { useFolder } from '../../contexts/FolderContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { Menu, PanelsTopLeft, X } from 'lucide-react';
 
 interface MainLayoutProps {
@@ -32,6 +33,7 @@ export default function MainLayout({
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isToolsSidebarOpen, setIsToolsSidebarOpen] = useState(false);
   const { currentFolder } = useFolder();
+  const { t } = useLanguage();
   const hasFolder = !!currentFolder;
 
   const handleViewChange = (view: string) => {
@@ -158,7 +160,7 @@ export default function MainLayout({
           <div className="absolute inset-0 bg-black/50" onClick={closeAllPanels} />
           <div className="absolute right-0 top-0 h-full w-4/5 max-w-sm bg-white dark:bg-[#1F1F1F] shadow-2xl">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-              <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">Tools</p>
+              <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">{t('tools.title')}</p>
               <button
                 className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
                 onClick={closeAllPanels}

@@ -4,6 +4,7 @@ import React, { createContext, useContext, useMemo, useCallback, ReactNode } fro
 import { useAuth } from './AuthContext';
 import { useLanguage } from './LanguageContext';
 import { RegionalPreferences } from '../services/types/auth.types';
+import { monthNamesShort } from '../i18n/dateLocales';
 
 interface RegionalContextType {
   preferences: RegionalPreferences;
@@ -68,8 +69,8 @@ export function RegionalProvider({ children }: { children: ReactNode }) {
     const year = d.getFullYear();
     
     const monthNum = (month + 1).toString().padStart(2, '0');
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const monthName = monthNames[month];
+    // Use localized month names based on current language
+    const monthName = monthNamesShort[language][month];
     
     switch (preferences.dateFormat) {
       case 'DD MMM YYYY':
@@ -85,7 +86,7 @@ export function RegionalProvider({ children }: { children: ReactNode }) {
       default:
         return `${day} ${monthName} ${year}`;
     }
-  }, [convertToUserTimezone, preferences.dateFormat]);
+  }, [convertToUserTimezone, preferences.dateFormat, language]);
 
   const formatTime = useCallback((date: Date | string): string => {
     const d = convertToUserTimezone(date);

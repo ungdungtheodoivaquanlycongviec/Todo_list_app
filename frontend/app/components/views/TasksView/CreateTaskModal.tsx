@@ -12,6 +12,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { useLanguage } from "../../../contexts/LanguageContext";
+import { useRegional } from "../../../contexts/RegionalContext";
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -29,6 +30,7 @@ export default function CreateTaskModal({
   initialDueDate,
 }: CreateTaskModalProps) {
   const { t } = useLanguage();
+  const { convertFromUserTimezone } = useRegional();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
@@ -52,73 +54,73 @@ export default function CreateTaskModal({
     }
   }, [isOpen, initialDueDate]);
 
-  // Enhanced options
+  // Enhanced options with translations
   const categoryOptions = [
     {
       value: "Operational",
-      label: "Operational",
+      label: t('category.operational'),
       color: "text-blue-600 bg-blue-50",
     },
     {
       value: "Strategic",
-      label: "Strategic",
+      label: t('category.strategic'),
       color: "text-green-600 bg-green-50",
     },
     {
       value: "Financial",
-      label: "Financial",
+      label: t('category.financial'),
       color: "text-yellow-600 bg-yellow-50",
     },
     {
       value: "Technical",
-      label: "Technical",
+      label: t('category.technical'),
       color: "text-purple-600 bg-purple-50",
     },
-    { value: "Other", label: "Other", color: "text-gray-600 bg-gray-50" },
+    { value: "Other", label: t('category.other'), color: "text-gray-600 bg-gray-50" },
   ];
 
   const priorityOptions = [
     {
       value: "None",
-      label: "None",
+      label: t('priority.none'),
       color: "text-gray-500",
       bgColor: "bg-gray-100",
     },
     {
       value: "Low",
-      label: "Low",
+      label: t('priority.low'),
       color: "text-green-600",
       bgColor: "bg-green-100",
     },
     {
       value: "Medium",
-      label: "Medium",
+      label: t('priority.medium'),
       color: "text-yellow-600",
       bgColor: "bg-yellow-100",
     },
     {
       value: "High",
-      label: "High",
+      label: t('priority.high'),
       color: "text-orange-600",
       bgColor: "bg-orange-100",
     },
     {
       value: "Urgent",
-      label: "Urgent",
+      label: t('priority.urgent'),
       color: "text-red-600",
       bgColor: "bg-red-100",
     },
   ];
 
   const estimatedTimeOptions = [
-    { value: "15m", label: "15 minutes" },
-    { value: "30m", label: "30 minutes" },
-    { value: "1h", label: "1 hour" },
-    { value: "2h", label: "2 hours" },
-    { value: "4h", label: "4 hours" },
-    { value: "1d", label: "1 day" },
-    { value: "2d", label: "2 days" },
-    { value: "1w", label: "1 week" },
+    { value: "15m", label: t('time.15minutes') },
+    { value: "30m", label: t('time.30minutes') },
+    { value: "1h", label: t('time.1hour') },
+    { value: "2h", label: t('time.2hours') },
+    { value: "4h", label: t('time.4hours') },
+    { value: "1d", label: t('time.1day') },
+    { value: "2d", label: t('time.2days') },
+    { value: "1w", label: t('time.1week') },
   ];
 
   // Reset form when modal opens/closes
@@ -190,12 +192,19 @@ export default function CreateTaskModal({
     setIsSubmitting(true);
 
     try {
+      // Convert date from user's timezone to UTC for backend storage
+      let dueDateUTC: string | null = null;
+      if (dueDate) {
+        const userDate = new Date(dueDate + 'T23:59:59'); // Set to end of day
+        dueDateUTC = convertFromUserTimezone(userDate).toISOString();
+      }
+
       const taskData = {
         title: title.trim(),
         description: description.trim(),
         category: category || "Other",
         priority,
-        dueDate: dueDate || null,
+        dueDate: dueDateUTC,
         tags: tags
           .split(",")
           .map((tag) => tag.trim())
