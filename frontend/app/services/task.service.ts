@@ -715,7 +715,7 @@ export const taskService = {
 
   // NEW: Start timer for task
   startTimer: async (taskId: string): Promise<Task> => {
-    const token = getAuthToken();
+    const token = authService.getAuthToken();
     const headers: HeadersInit = {};
 
     if (token) {
@@ -750,7 +750,7 @@ export const taskService = {
 
   // NEW: Stop timer for task
   stopTimer: async (taskId: string): Promise<Task> => {
-    const token = getAuthToken();
+    const token = authService.getAuthToken();
     const headers: HeadersInit = {};
 
     if (token) {
@@ -785,7 +785,7 @@ export const taskService = {
 
   // NEW: Set custom status for task
   setCustomStatus: async (taskId: string, name: string, color: string): Promise<Task> => {
-    const token = getAuthToken();
+    const token = authService.getAuthToken();
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };
@@ -823,7 +823,7 @@ export const taskService = {
 
   // NEW: Set task repetition settings
   setTaskRepetition: async (taskId: string, repetitionSettings: any): Promise<Task> => {
-    const token = getAuthToken();
+    const token = authService.getAuthToken();
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };

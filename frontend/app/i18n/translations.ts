@@ -73,6 +73,23 @@ export const translations = {
     'status.pending': 'Pending',
     'status.cancelled': 'Cancelled',
     
+    // Custom Status Modal
+    'customStatus.title': 'Add Custom Status',
+    'customStatus.name': 'Status Name',
+    'customStatus.namePlaceholder': 'e.g., In Review, Blocked, On Hold',
+    'customStatus.color': 'Color',
+    'customStatus.addStatus': 'Add Status',
+    
+    // Repeat Task Modal
+    'repeatTask.title': 'Repeat Task',
+    'repeatTask.enableRepetition': 'Enable task repetition',
+    'repeatTask.repeatEvery': 'Repeat every',
+    'repeatTask.endDate': 'End date (optional)',
+    'repeatTask.daily': 'Day(s)',
+    'repeatTask.weekly': 'Week(s)',
+    'repeatTask.monthly': 'Month(s)',
+    'repeatTask.yearly': 'Year(s)',
+    
     // Timeline
     'timeline.title': 'Timeline',
     'timeline.zoomIn': 'Zoom In',
@@ -161,6 +178,7 @@ export const translations = {
     'theme.dark': 'Dark',
     'theme.auto': 'Auto (System)',
     'theme.description': 'Choose how the app looks',
+    'theme.updated': 'Theme updated successfully',
     
     // Profile
     'profile.personalInfo': 'Personal Information',
@@ -241,6 +259,7 @@ export const translations = {
     'notifications.timeAgo.minutesAgo': '{{count}}m ago',
     'notifications.timeAgo.hoursAgo': '{{count}}h ago',
     'notifications.timeAgo.daysAgo': '{{count}}d ago',
+    'notifications.updated': 'Notification preference updated successfully',
     
     // Notes
     'notes.title': 'Notes',
@@ -646,6 +665,23 @@ export const translations = {
     'status.pending': 'Đang chờ',
     'status.cancelled': 'Đã hủy',
     
+    // Custom Status Modal
+    'customStatus.title': 'Thêm Trạng Thái Tùy Chỉnh',
+    'customStatus.name': 'Tên Trạng Thái',
+    'customStatus.namePlaceholder': 'Ví dụ: Đang Xem Xét, Bị Chặn, Tạm Dừng',
+    'customStatus.color': 'Màu sắc',
+    'customStatus.addStatus': 'Thêm Trạng Thái',
+    
+    // Repeat Task Modal
+    'repeatTask.title': 'Lặp Lại Công Việc',
+    'repeatTask.enableRepetition': 'Bật lặp lại công việc',
+    'repeatTask.repeatEvery': 'Lặp lại mỗi',
+    'repeatTask.endDate': 'Ngày kết thúc (tùy chọn)',
+    'repeatTask.daily': 'Ngày',
+    'repeatTask.weekly': 'Tuần',
+    'repeatTask.monthly': 'Tháng',
+    'repeatTask.yearly': 'Năm',
+    
     // Timeline
     'timeline.title': 'Dòng thời gian',
     'timeline.zoomIn': 'Phóng to',
@@ -734,6 +770,7 @@ export const translations = {
     'theme.dark': 'Tối',
     'theme.auto': 'Tự động (Hệ thống)',
     'theme.description': 'Chọn giao diện ứng dụng',
+    'theme.updated': 'Đã cập nhật giao diện',
     
     // Profile
     'profile.personalInfo': 'Thông tin cá nhân',
@@ -814,6 +851,7 @@ export const translations = {
     'notifications.timeAgo.minutesAgo': '{{count}} phút trước',
     'notifications.timeAgo.hoursAgo': '{{count}} giờ trước',
     'notifications.timeAgo.daysAgo': '{{count}} ngày trước',
+    'notifications.updated': 'Đã cập nhật tùy chọn thông báo',
     
     // Notes
     'notes.title': 'Ghi chú',

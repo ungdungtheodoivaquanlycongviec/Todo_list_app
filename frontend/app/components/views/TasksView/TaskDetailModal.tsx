@@ -2179,22 +2179,22 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
 
       {/* Custom Status Modal */}
       {showCustomStatusModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-96 max-w-md mx-4">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-              Add Custom Status
+              {t('customStatus.title')}
             </h3>
             
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Status Name
+                  {t('customStatus.name')}
                 </label>
                 <input
                   type="text"
                   value={customStatusName}
                   onChange={(e) => setCustomStatusName(e.target.value)}
-                  placeholder="e.g., In Review, Blocked, On Hold"
+                  placeholder={t('customStatus.namePlaceholder')}
                   className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   autoFocus
                 />
@@ -2202,7 +2202,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
               
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Color
+                  {t('customStatus.color')}
                 </label>
                 <div className="flex gap-2">
                   {['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4'].map((color) => (
@@ -2225,13 +2225,13 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                 disabled={!customStatusName.trim()}
                 className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Add Status
+                {t('customStatus.addStatus')}
               </button>
               <button
                 onClick={() => setShowCustomStatusModal(false)}
                 className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           </div>
@@ -2240,10 +2240,10 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
 
       {/* Repeat Task Modal */}
       {showRepeatModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-96 max-w-md mx-4">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-              Repeat Task
+              {t('repeatTask.title')}
             </h3>
             
             <div className="space-y-4">
@@ -2256,7 +2256,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                   className="mr-3"
                 />
                 <label htmlFor="isRepeating" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Enable task repetition
+                  {t('repeatTask.enableRepetition')}
                 </label>
               </div>
               
@@ -2264,7 +2264,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                 <>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Repeat every
+                      {t('repeatTask.repeatEvery')}
                     </label>
                     <div className="flex gap-2">
                       <input
@@ -2279,17 +2279,17 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                         onChange={(e) => setRepeatSettings({...repeatSettings, frequency: e.target.value})}
                         className="flex-1 p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                       >
-                        <option value="daily">Day(s)</option>
-                        <option value="weekly">Week(s)</option>
-                        <option value="monthly">Month(s)</option>
-                        <option value="yearly">Year(s)</option>
+                        <option value="daily">{t('repeatTask.daily')}</option>
+                        <option value="weekly">{t('repeatTask.weekly')}</option>
+                        <option value="monthly">{t('repeatTask.monthly')}</option>
+                        <option value="yearly">{t('repeatTask.yearly')}</option>
                       </select>
                     </div>
                   </div>
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      End date (optional)
+                      {t('repeatTask.endDate')}
                     </label>
                     <input
                       type="date"

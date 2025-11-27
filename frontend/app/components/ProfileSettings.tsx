@@ -182,11 +182,11 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
         updatedUser = await userService.updateProfile({ name, avatar });
       }
       
-      setMessage('Profile updated successfully');
+      setMessage(t('profile.updated'));
       setIsEditing(false);
       await updateUser({ name, avatar: updatedUser.avatar });
     } catch (error: any) {
-      setMessage(error.message || 'Error updating profile');
+      setMessage(error.message || t('error.generic'));
     } finally {
       setLoading(false);
     }
@@ -476,10 +476,10 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
       await notificationService.updatePreferences({ [key]: value });
       
       setNotifications(prev => ({ ...prev, [key]: value }));
-      setMessage('Notification preference updated successfully');
+      setMessage(t('notifications.updated'));
       setTimeout(() => setMessage(''), 3000);
     } catch (error: any) {
-      setMessage(error.response?.data?.message || 'Error updating notification preference');
+      setMessage(error.response?.data?.message || t('error.generic'));
     } finally {
       setLoading(false);
     }
@@ -491,9 +491,9 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
     try {
       await updateUserTheme(newTheme);
       setTheme(newTheme);
-      setMessage('Theme updated successfully');
+      setMessage(t('theme.updated'));
     } catch (error: any) {
-      setMessage(error.response?.data?.message || 'Error updating theme');
+      setMessage(error.response?.data?.message || t('error.generic'));
     } finally {
       setLoading(false);
     }
@@ -513,10 +513,10 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
       else if (preference === 'timeFormat') setTimeFormat(value);
       else if (preference === 'weekStart') setWeekStart(value);
       
-      setMessage('Regional preference updated successfully');
+      setMessage(t('regional.updated'));
       setTimeout(() => setMessage(''), 3000);
     } catch (error: any) {
-      setMessage(error.response?.data?.message || 'Error updating regional preference');
+      setMessage(error.response?.data?.message || t('error.generic'));
     } finally {
       setLoading(false);
     }
