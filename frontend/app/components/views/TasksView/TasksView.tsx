@@ -7,7 +7,6 @@ import {
   ChevronRight,
   List,
   Layout,
-  MoreVertical,
   Clock,
   Calendar,
   User,
@@ -20,6 +19,7 @@ import { Task } from "../../../services/types/task.types";
 import CreateTaskModal from "./CreateTaskModal";
 import TaskContextMenu from "./TaskContextMenu";
 import TaskDetailModal from "./TaskDetailModal";
+import EstimatedTimePicker from "./EstimatedTimePicker";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useLanguage } from "../../../contexts/LanguageContext";
@@ -71,8 +71,6 @@ export default function TasksView() {
     avatar?: string;
   }
 
-  // Estimated time options
-  const estimatedTimeOptions = ["15m", "30m", "1h", "2h", "4h", "1d"];
   const priorityOptions = ["low", "medium", "high", "urgent"];
   const statusOptions = ["todo", "in_progress", "completed"];
   const typeOptions = [
@@ -762,6 +760,24 @@ export default function TasksView() {
     setTempValue("");
   };
 
+  // Save field with a direct value (for picker components)
+  const saveFieldDirect = async (task: Task, field: string, value: string) => {
+    if (value !== (task as any)[field]) {
+      try {
+        const updatedTask = await taskService.updateTask(task._id, {
+          [field]: value,
+        });
+        handleTaskUpdate(updatedTask);
+      } catch (error) {
+        console.error(`Error updating ${field}:`, error);
+        alert(`Failed to update ${field}: ${getErrorMessage(error)}`);
+      }
+    }
+    setEditingTaskId(null);
+    setEditingField(null);
+    setTempValue("");
+  };
+
   const cancelEditing = () => {
     setEditingTaskId(null);
     setEditingField(null);
@@ -1291,38 +1307,17 @@ export default function TasksView() {
           </div>
         </div>
 
-        {/* Estimated Time - Inline editable */}
-        <div className="col-span-1">
+        {/* Estimated Time - Inline editable with scroll picker */}
+        <div className="col-span-2 relative">
           {isEditing && editingField === "estimatedTime" ? (
-            <div className="flex gap-1">
-              <input
-                type="text"
-                value={tempValue}
-                onChange={(e) => setTempValue(e.target.value)}
-                onBlur={() => saveField(task, "estimatedTime")}
-                onKeyDown={(e) => handleKeyDown(e, task, "estimatedTime")}
-                className="flex-1 text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-blue-500"
-                placeholder="1h"
-                autoFocus
-              />
-              <select
-                value=""
-                onChange={(e) => {
-                  if (e.target.value) {
-                    setTempValue(e.target.value);
-                    saveField(task, "estimatedTime");
-                  }
-                }}
-                className="text-xs border border-gray-300 rounded px-1 py-1 bg-white"
-              >
-                <option value="">⏱️</option>
-                {estimatedTimeOptions.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <EstimatedTimePicker
+              value={task.estimatedTime || ""}
+              onSave={(value) => {
+                setTempValue(value);
+                saveFieldDirect(task, "estimatedTime", value);
+              }}
+              onClose={() => setEditingTaskId(null)}
+            />
           ) : (
             <div
               className="text-xs text-gray-600 cursor-pointer hover:bg-gray-100 px-2 py-1 rounded transition-colors flex items-center gap-1"
@@ -1339,19 +1334,6 @@ export default function TasksView() {
               {task.estimatedTime || "—"}
             </div>
           )}
-        </div>
-
-        {/* Actions */}
-        <div className="col-span-1 flex justify-end">
-          <button
-            className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleContextMenu(e as any, task);
-            }}
-          >
-            <MoreVertical className="w-4 h-4" />
-          </button>
         </div>
       </div>
     );
@@ -1563,8 +1545,7 @@ export default function TasksView() {
                   <div className="col-span-1">{t('tasks.dueDate')}</div>
                   <div className="col-span-1">{t('tasks.priority')}</div>
                   <div className="col-span-2">{t('tasks.assignee')}</div>
-                  <div className="col-span-1">{t('tasks.estimatedTime') || 'Time'}</div>
-                  <div className="col-span-1"></div>
+                  <div className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</div>
                 </div>
 
                 {/* Task Rows */}
@@ -1619,8 +1600,7 @@ export default function TasksView() {
                   <div className="col-span-1">{t('tasks.dueDate')}</div>
                   <div className="col-span-1">{t('tasks.priority')}</div>
                   <div className="col-span-2">{t('tasks.assignee')}</div>
-                  <div className="col-span-1">{t('tasks.estimatedTime') || 'Time'}</div>
-                  <div className="col-span-1"></div>
+                  <div className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</div>
                 </div>
 
                 {completedTasks.length > 0 ? (
@@ -1669,8 +1649,7 @@ export default function TasksView() {
                   <div className="col-span-1">{t('tasks.dueDate')}</div>
                   <div className="col-span-1">{t('tasks.priority')}</div>
                   <div className="col-span-2">{t('tasks.assignee')}</div>
-                  <div className="col-span-1">{t('tasks.estimatedTime') || 'Time'}</div>
-                  <div className="col-span-1"></div>
+                  <div className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</div>
                 </div>
 
                 {/* Always show content, even if empty */}

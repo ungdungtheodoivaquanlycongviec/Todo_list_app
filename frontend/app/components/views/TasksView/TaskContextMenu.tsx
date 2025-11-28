@@ -65,16 +65,17 @@ export default function TaskContextMenu({ x, y, task, onAction, onClose }: TaskC
   return (
     <div
       ref={menuRef}
-      className="fixed bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-50 min-w-36"
+      className="fixed bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg py-0.5 z-50 min-w-32"
       style={{ 
-        left: Math.min(x, window.innerWidth - 160), // Đảm bảo menu không vượt khỏi màn hình
-        top: Math.min(y, window.innerHeight - 200)
+        left: Math.min(x, window.innerWidth - 140), // Đảm bảo menu không vượt khỏi màn hình
+        top: Math.min(y, window.innerHeight - 180),
+        width: 200
       }}
     >
       {menuItems.map((item) => (
         <button
           key={item.action}
-          className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 ${
+          className={`w-full text-left px-2.5 py-1 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 ${
             item.destructive ? 'text-red-600 hover:text-red-800' : 'text-gray-700 dark:text-gray-300'
           }`}
           onClick={() => handleAction(item.action, task)}

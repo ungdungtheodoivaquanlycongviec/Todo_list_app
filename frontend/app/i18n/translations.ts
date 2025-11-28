@@ -456,6 +456,10 @@ export const translations = {
     'sidebar.createFirstProject': 'Create your first project',
     'sidebar.noSharedProjects': 'No shared projects',
     'sidebar.searchPlaceholder': 'Search projects, tasks...',
+    'sidebar.folderNamePlaceholder': 'Folder name',
+    'sidebar.creatingFolder': 'Creating...',
+    'sidebar.loadingFolders': 'Loading folders...',
+    'sidebar.noFoldersYet': 'No folders yet. Create one to start organizing.',
     
     // Task Detail
     'taskDetail.addStatus': 'Add status',
@@ -594,6 +598,13 @@ export const translations = {
     // Preferences Tab Extended
     'preferences.title': 'Preferences',
     'preferences.description': 'Customize your application experience',
+    
+    // Time Picker
+    'timePicker.minute': 'm',
+    'timePicker.hour': 'h',
+    'timePicker.day': 'd',
+    'timePicker.month': 'mo',
+    'timePicker.dragToChange': 'Drag or click to change',
   },
   
   vi: {
@@ -1051,6 +1062,10 @@ export const translations = {
     'sidebar.createFirstProject': 'Tạo dự án đầu tiên của bạn',
     'sidebar.noSharedProjects': 'Không có dự án được chia sẻ',
     'sidebar.searchPlaceholder': 'Tìm kiếm dự án, công việc...',
+    'sidebar.folderNamePlaceholder': 'Tên thư mục',
+    'sidebar.creatingFolder': 'Đang tạo...',
+    'sidebar.loadingFolders': 'Đang tải thư mục...',
+    'sidebar.noFoldersYet': 'Chưa có thư mục nào. Tạo một thư mục để bắt đầu sắp xếp.',
     
     // Task Detail
     'taskDetail.addStatus': 'Thêm trạng thái',
@@ -1189,5 +1204,12 @@ export const translations = {
     // Preferences Tab Extended
     'preferences.title': 'Tùy chọn',
     'preferences.description': 'Tùy chỉnh trải nghiệm ứng dụng của bạn',
+    
+    // Time Picker
+    'timePicker.minute': 'phút',
+    'timePicker.hour': 'giờ',
+    'timePicker.day': 'ngày',
+    'timePicker.month': 'tháng',
+    'timePicker.dragToChange': 'Kéo hoặc nhấn để thay đổi',
   }
 } as const;
