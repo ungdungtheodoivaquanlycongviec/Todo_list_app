@@ -28,6 +28,8 @@ export const translations = {
     'common.none': 'None',
     'common.yes': 'Yes',
     'common.no': 'No',
+    'common.clear': 'Clear',
+    'common.done': 'Done',
     
     // Tasks
     'tasks.title': 'Tasks',
@@ -37,6 +39,7 @@ export const translations = {
     'tasks.taskName': 'Task Name',
     'tasks.description': 'Description',
     'tasks.dueDate': 'Due Date',
+    'tasks.selectDueDate': 'Select due date',
     'tasks.startDate': 'Start Date',
     'tasks.priority': 'Priority',
     'tasks.status': 'Status',
@@ -44,10 +47,18 @@ export const translations = {
     'tasks.category': 'Category',
     'tasks.tags': 'Tags',
     'tasks.estimatedTime': 'Estimated Time',
+    'tasks.selectEstimatedTime': 'Select estimated time',
     'tasks.active': 'Active Tasks',
+    'tasks.todo': 'To Do',
+    'tasks.inProgress': 'In Progress',
     'tasks.completed': 'Completed Tasks',
+    'tasks.incomplete': 'Incomplete Tasks',
     'tasks.uncompleted': 'Uncompleted Tasks',
     'tasks.noTasks': 'No tasks yet',
+    'tasks.noTodoTasks': 'No tasks to do',
+    'tasks.noInProgressTasks': 'No tasks in progress',
+    'tasks.noIncompleteTasks': 'No incomplete tasks',
+    'tasks.incompleteDescription': 'Overdue tasks will appear here',
     'tasks.addFirstTask': 'Create your first task to get started',
     'tasks.deleteConfirm': 'Are you sure you want to delete this task?',
     'tasks.subtasks': 'Subtasks',
@@ -70,6 +81,7 @@ export const translations = {
     'status.todo': 'To Do',
     'status.inProgress': 'In Progress',
     'status.completed': 'Completed',
+    'status.incomplete': 'Incomplete',
     'status.pending': 'Pending',
     'status.cancelled': 'Cancelled',
     
@@ -323,6 +335,9 @@ export const translations = {
     'chat.reply': 'Reply',
     'chat.edit': 'Edit',
     'chat.delete': 'Delete',
+    'chat.copy': 'Copy',
+    'chat.copied': 'Copied!',
+    'chat.openInNewTab': 'Open in new tab',
     
     // Task Context Menu
     'taskContextMenu.complete': 'Complete task',
@@ -421,6 +436,10 @@ export const translations = {
     'kanban.inProgress': 'In Progress',
     'kanban.completed': 'Completed',
     'kanban.incompleted': 'Incompleted Tasks',
+    'kanban.incomplete': 'Incomplete',
+    'kanban.noTodo': 'No to do tasks',
+    'kanban.noInProgress': 'No in progress tasks',
+    'kanban.noIncomplete': 'No incomplete tasks',
     
     // Assignee
     'assignee.addAssignee': '+ Add assignee',
@@ -453,6 +472,10 @@ export const translations = {
     'sidebar.createFirstProject': 'Create your first project',
     'sidebar.noSharedProjects': 'No shared projects',
     'sidebar.searchPlaceholder': 'Search projects, tasks...',
+    'sidebar.folderNamePlaceholder': 'Folder name',
+    'sidebar.creatingFolder': 'Creating...',
+    'sidebar.loadingFolders': 'Loading folders...',
+    'sidebar.noFoldersYet': 'No folders yet. Create one to start organizing.',
     
     // Task Detail
     'taskDetail.addStatus': 'Add status',
@@ -543,6 +566,19 @@ export const translations = {
     'viewMode.list': 'List',
     'viewMode.kanban': 'Kanban',
     'sort.label': 'Sort',
+    'sort.filtered': 'Filtered',
+    'sort.filterSort': 'Filter & Sort',
+    'sort.search': 'Search',
+    'sort.searchPlaceholder': 'Search task name...',
+    'sort.searchingFor': 'Searching for',
+    'sort.filterByStatus': 'Filter by Status',
+    'sort.filterByCategory': 'Filter by Category',
+    'sort.allStatuses': 'All Statuses',
+    'sort.allCategories': 'All Categories',
+    'sort.allTypes': 'All Types',
+    'sort.nearest': 'Nearest',
+    'sort.furthest': 'Furthest',
+    'sort.clearAll': 'Clear All Filters',
     
     // Kanban
     'kanban.noTasks': 'No tasks',
@@ -591,6 +627,13 @@ export const translations = {
     // Preferences Tab Extended
     'preferences.title': 'Preferences',
     'preferences.description': 'Customize your application experience',
+    
+    // Time Picker
+    'timePicker.minute': 'm',
+    'timePicker.hour': 'h',
+    'timePicker.day': 'd',
+    'timePicker.month': 'mo',
+    'timePicker.dragToChange': 'Drag or click to change',
   },
   
   vi: {
@@ -620,6 +663,8 @@ export const translations = {
     'common.none': 'Không có',
     'common.yes': 'Có',
     'common.no': 'Không',
+    'common.clear': 'Xóa',
+    'common.done': 'Xong',
     
     // Tasks
     'tasks.title': 'Công việc',
@@ -629,6 +674,7 @@ export const translations = {
     'tasks.taskName': 'Tên công việc',
     'tasks.description': 'Mô tả',
     'tasks.dueDate': 'Hạn hoàn thành',
+    'tasks.selectDueDate': 'Chọn hạn hoàn thành',
     'tasks.startDate': 'Ngày bắt đầu',
     'tasks.priority': 'Độ ưu tiên',
     'tasks.status': 'Trạng thái',
@@ -636,9 +682,17 @@ export const translations = {
     'tasks.category': 'Phân loại',
     'tasks.tags': 'Nhãn',
     'tasks.estimatedTime': 'Thời gian ước tính',
+    'tasks.selectEstimatedTime': 'Chọn thời gian ước tính',
     'tasks.active': 'Công việc đang thực hiện',
     'tasks.completed': 'Công việc đã hoàn thành',
     'tasks.uncompleted': 'Công việc chưa hoàn thành',
+    'tasks.todo': 'Cần làm',
+    'tasks.inProgress': 'Đang thực hiện',
+    'tasks.incomplete': 'Chưa hoàn thành',
+    'tasks.noTodoTasks': 'Không có công việc cần làm',
+    'tasks.noInProgressTasks': 'Không có công việc đang thực hiện',
+    'tasks.noIncompleteTasks': 'Không có công việc chưa hoàn thành',
+    'tasks.incompleteDescription': 'Các công việc quá hạn sẽ được tự động chuyển đến đây',
     'tasks.noTasks': 'Chưa có công việc nào',
     'tasks.addFirstTask': 'Tạo công việc đầu tiên để bắt đầu',
     'tasks.deleteConfirm': 'Bạn có chắc chắn muốn xóa công việc này?',
@@ -662,6 +716,7 @@ export const translations = {
     'status.todo': 'Cần làm',
     'status.inProgress': 'Đang thực hiện',
     'status.completed': 'Hoàn thành',
+    'status.incomplete': 'Chưa hoàn thành',
     'status.pending': 'Đang chờ',
     'status.cancelled': 'Đã hủy',
     
@@ -915,6 +970,9 @@ export const translations = {
     'chat.reply': 'Trả lời',
     'chat.edit': 'Chỉnh sửa',
     'chat.delete': 'Xóa',
+    'chat.copy': 'Sao chép',
+    'chat.copied': 'Đã sao chép!',
+    'chat.openInNewTab': 'Mở trong tab mới',
     
     // Task Context Menu
     'taskContextMenu.complete': 'Hoàn thành',
@@ -1013,6 +1071,10 @@ export const translations = {
     'kanban.inProgress': 'Đang thực hiện',
     'kanban.completed': 'Hoàn thành',
     'kanban.incompleted': 'Công việc chưa hoàn thành',
+    'kanban.incomplete': 'Chưa hoàn thành',
+    'kanban.noTodo': 'Không có công việc cần làm',
+    'kanban.noInProgress': 'Không có công việc đang thực hiện',
+    'kanban.noIncomplete': 'Không có công việc chưa hoàn thành',
     
     // Assignee
     'assignee.addAssignee': '+ Thêm người thực hiện',
@@ -1045,6 +1107,10 @@ export const translations = {
     'sidebar.createFirstProject': 'Tạo dự án đầu tiên của bạn',
     'sidebar.noSharedProjects': 'Không có dự án được chia sẻ',
     'sidebar.searchPlaceholder': 'Tìm kiếm dự án, công việc...',
+    'sidebar.folderNamePlaceholder': 'Tên thư mục',
+    'sidebar.creatingFolder': 'Đang tạo...',
+    'sidebar.loadingFolders': 'Đang tải thư mục...',
+    'sidebar.noFoldersYet': 'Chưa có thư mục nào. Tạo một thư mục để bắt đầu sắp xếp.',
     
     // Task Detail
     'taskDetail.addStatus': 'Thêm trạng thái',
@@ -1135,6 +1201,19 @@ export const translations = {
     'viewMode.list': 'Danh sách',
     'viewMode.kanban': 'Bảng Kanban',
     'sort.label': 'Sắp xếp',
+    'sort.filtered': 'Đã lọc',
+    'sort.filterSort': 'Lọc & Sắp xếp',
+    'sort.search': 'Tìm kiếm',
+    'sort.searchPlaceholder': 'Tìm tên công việc...',
+    'sort.searchingFor': 'Đang tìm',
+    'sort.filterByStatus': 'Lọc theo trạng thái',
+    'sort.filterByCategory': 'Lọc theo danh mục',
+    'sort.allStatuses': 'Tất cả trạng thái',
+    'sort.allCategories': 'Tất cả danh mục',
+    'sort.allTypes': 'Tất cả loại',
+    'sort.nearest': 'Gần nhất',
+    'sort.furthest': 'Xa nhất',
+    'sort.clearAll': 'Xóa tất cả bộ lọc',
     
     // Kanban
     'kanban.noTasks': 'Không có công việc',
@@ -1183,5 +1262,12 @@ export const translations = {
     // Preferences Tab Extended
     'preferences.title': 'Tùy chọn',
     'preferences.description': 'Tùy chỉnh trải nghiệm ứng dụng của bạn',
+    
+    // Time Picker
+    'timePicker.minute': 'phút',
+    'timePicker.hour': 'giờ',
+    'timePicker.day': 'ngày',
+    'timePicker.month': 'tháng',
+    'timePicker.dragToChange': 'Kéo hoặc nhấn để thay đổi',
   }
 } as const;

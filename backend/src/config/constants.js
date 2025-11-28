@@ -4,7 +4,7 @@
 
 const PRIORITY_LEVELS = ['low', 'medium', 'high', 'critical', 'urgent'];
 
-const TASK_STATUS = ['todo', 'in_progress', 'completed', 'archived'];
+const TASK_STATUS = ['todo', 'in_progress', 'completed', 'incomplete', 'archived'];
 
 const TASK_TYPES = ['Operational', 'Strategic', 'Financial', 'Technical', 'Other'];
 

@@ -473,6 +473,37 @@ class TaskService {
   }
 
   /**
+   * Update overdue tasks to 'incomplete' status
+   * Tasks with dueDate in the past and status of 'todo' or 'in_progress' will be marked as 'incomplete'
+   * @param {String} groupId - Optional group ID to limit scope
+   * @returns {Promise<Number>} Number of tasks updated
+   */
+  async updateOverdueTasks(groupId = null) {
+    const now = new Date();
+    // Set to start of today for comparison (end of previous day)
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    const query = {
+      dueDate: { $lt: todayStart },
+      status: { $in: ['todo', 'in_progress'] }
+    };
+
+    if (groupId) {
+      query.groupId = groupId;
+    }
+
+    const result = await Task.updateMany(query, {
+      $set: { status: 'incomplete' }
+    });
+
+    if (result.modifiedCount > 0) {
+      console.log(`[TaskService] Updated ${result.modifiedCount} overdue tasks to 'incomplete' status`);
+    }
+
+    return result.modifiedCount;
+  }
+
+  /**
    * Lấy danh sách tasks với filter, sort, pagination
    * @param {Object} filters - Object chứa các filter
    * @param {Object} options - Options cho sort, pagination
@@ -481,6 +512,11 @@ class TaskService {
   async getAllTasks(filters = {}, options = {}, requesterId = null) {
     const { status, priority, search, groupId, folderId } = filters;
     const { sortBy, order, page, limit } = options;
+
+    // Update overdue tasks before fetching
+    if (groupId) {
+      await this.updateOverdueTasks(groupId);
+    }
 
     // Validate và sanitize pagination
     const paginationValidation = validatePagination(page, limit);
@@ -909,6 +945,11 @@ class TaskService {
   async getKanbanView(filters = {}, requesterId = null) {
     const { priority, groupId, search, folderId } = filters;
 
+    // Update overdue tasks before fetching
+    if (groupId) {
+      await this.updateOverdueTasks(groupId);
+    }
+
     const queryFilters = [];
     
     if (priority) {
@@ -974,6 +1015,10 @@ class TaskService {
         count: 0
       },
       completed: {
+        tasks: [],
+        count: 0
+      },
+      incomplete: {
         tasks: [],
         count: 0
       },

@@ -816,7 +816,7 @@ export default function Sidebar() {
           <form onSubmit={handleFolderFormSubmit} className="space-y-2">
             <input
               type="text"
-              placeholder="Folder name"
+              placeholder={t('sidebar.folderNamePlaceholder') || 'Folder name'}
               value={folderFormState.name}
               onChange={(e) =>
                 setFolderFormState(prev => ({
@@ -837,7 +837,7 @@ export default function Sidebar() {
                 onClick={closeFolderForm}
                 disabled={folderFormState.loading}
               >
-                Cancel
+                {t('common.cancel') || 'Cancel'}
               </button>
               <button
                 type="submit"
@@ -847,10 +847,10 @@ export default function Sidebar() {
                 {folderFormState.loading ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Creating...
+                    {t('sidebar.creatingFolder') || 'Creating...'}
                   </>
                 ) : (
-                  'Create'
+                  t('common.create') || 'Create'
                 )}
               </button>
             </div>
@@ -860,13 +860,13 @@ export default function Sidebar() {
         {folderState.loading ? (
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <Loader2 className="w-4 h-4 animate-spin" />
-            Loading folders...
+            {t('sidebar.loadingFolders') || 'Loading folders...'}
           </div>
         ) : folderState.error ? (
           <div className="text-sm text-red-500">{folderState.error}</div>
         ) : folderState.folders.length === 0 ? (
           <div className="text-sm text-gray-500 dark:text-gray-400">
-            No folders yet. Create one to start organizing.
+            {t('sidebar.noFoldersYet') || 'No folders yet. Create one to start organizing.'}
           </div>
         ) : (
           <div className="space-y-2">

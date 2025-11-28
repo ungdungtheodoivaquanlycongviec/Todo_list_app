@@ -21,6 +21,7 @@ import {
   Plus,
   User,
   RefreshCw,
+  ExternalLink,
 } from "lucide-react"
 import type { Task } from "../../../services/types/task.types"
 import { taskService } from "../../../services/task.service"
@@ -30,6 +31,7 @@ import { useFolder } from "../../../contexts/FolderContext"
 import { getMemberRole, canAssignFolderMembers } from "../../../utils/groupRoleUtils"
 import { useLanguage } from "../../../contexts/LanguageContext"
 import { useRegional } from "../../../contexts/RegionalContext"
+import EstimatedTimePicker from "./EstimatedTimePicker"
 
 interface MinimalUser {
   _id: string;
@@ -156,6 +158,8 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const [uploadingFiles, setUploadingFiles] = useState(false)
   const [pendingAttachment, setPendingAttachment] = useState<File | null>(null)
   const [pendingAttachmentPreview, setPendingAttachmentPreview] = useState<string | null>(null)
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null)
+  const [showEstimatedTimePicker, setShowEstimatedTimePicker] = useState(false)
 
   const { user: currentUser, currentGroup } = useAuth()
   const { currentFolder } = useFolder()
@@ -174,7 +178,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const estimatedTimeOptions = ["15m", "30m", "1h", "2h", "4h", "1d", "2d", "1w"]
   const taskTypeOptions = ["Operational", "Strategic", "Financial", "Technical", "Other"]
   const priorityOptions = ["low", "medium", "high", "urgent"]
-  const statusOptions = ["todo", "in_progress", "completed", "archived"]
+  const statusOptions = ["todo", "in_progress", "completed", "incomplete", "archived"]
   
   // State for assign functionality
   const [showAssignModal, setShowAssignModal] = useState(false)
@@ -680,6 +684,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
     switch (status) {
       case 'completed': return 'bg-green-500'
       case 'in_progress': return 'bg-yellow-500'
+      case 'incomplete': return 'bg-red-500'
       case 'archived': return 'bg-gray-500'
       default: return 'bg-blue-500'
     }
@@ -1287,17 +1292,19 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
           )}
 
           {comment.attachment && comment.attachment.url && comment.attachment.filename && (
-            <div className="mt-2">
+            <div className="mt-2 inline-block">
               {comment.attachment.mimetype?.startsWith('image/') ? (
-                <div className="rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
-                  <a href={comment.attachment.url} target="_blank" rel="noopener noreferrer">
-                    <img 
-                      src={comment.attachment.url} 
-                      alt={comment.attachment.filename}
-                      className="max-w-full max-h-48 object-contain bg-gray-100 dark:bg-gray-800"
-                    />
-                  </a>
-                </div>
+                <button 
+                  type="button"
+                  onClick={() => setLightboxImage(comment.attachment!.url)}
+                  className="cursor-pointer rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 inline-block"
+                >
+                  <img 
+                    src={comment.attachment.url} 
+                    alt={comment.attachment.filename}
+                    className="max-w-full max-h-48 object-contain block"
+                  />
+                </button>
               ) : (
                 <div className="p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800">
                   <div className="flex items-center gap-2">
@@ -1326,7 +1333,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
         </div>
       </div>
     )
-  }, [editingCommentId, editingCommentContent, showCommentMenu, isCommentOwner, getUserInitial, getUserDisplayName, getUserAvatar, CommentMenu, startEditingComment, handleDeleteComment, handleUpdateComment, cancelEditingComment])
+  }, [editingCommentId, editingCommentContent, showCommentMenu, isCommentOwner, getUserInitial, getUserDisplayName, getUserAvatar, CommentMenu, startEditingComment, handleDeleteComment, handleUpdateComment, cancelEditingComment, formatDate, setLightboxImage])
 
   // Time Entry Form Component
   const TimeEntryForm = () => (
@@ -1648,7 +1655,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                         onClick={() => startEditing('dueDate', taskProperties.dueDate)}
                       >
                         <span className="text-sm text-gray-600 dark:text-gray-400">
-                          {taskProperties.dueDate ? formatDate(taskProperties.dueDate) : "—"}
+                          {task.dueDate ? formatDate(task.dueDate) : "—"}
                         </span>
                         <Edit2 className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
@@ -1656,48 +1663,27 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                   </div>
 
                   {/* Estimated Time */}
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer group">
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer group relative">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <Clock className="w-4 h-4 text-gray-500 flex-shrink-0" />
                       <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('taskDetail.estimatedTimeLabel')}</span>
                     </div>
-                    {editingField === 'estimatedTime' ? (
-                      <div className="flex gap-1 flex-1 max-w-40">
-                        <input
-                          type="text"
-                          value={tempValue}
-                          onChange={(e) => setTempValue(e.target.value)}
-                          onBlur={() => saveField('estimatedTime')}
-                          onKeyDown={(e) => handleKeyDown(e, 'estimatedTime')}
-                          className="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="1h 30m"
-                          autoFocus
-                        />
-                        <select
-                          value=""
-                          onChange={(e) => {
-                            if (e.target.value) {
-                              handleQuickTimeSelect(e.target.value)
-                            }
-                          }}
-                          className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="">Quick</option>
-                          {estimatedTimeOptions.map((opt) => (
-                            <option key={opt} value={opt}>
-                              {opt}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    ) : (
-                      <div 
-                        className="flex items-center gap-2 flex-1 justify-end"
-                        onClick={() => startEditing('estimatedTime', taskProperties.estimatedTime)}
-                      >
-                        <span className="text-sm text-gray-600 dark:text-gray-400">{taskProperties.estimatedTime || "—"}</span>
-                        <Edit2 className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
+                    <div 
+                      className="flex items-center gap-2 flex-1 justify-end"
+                      onClick={() => setShowEstimatedTimePicker(true)}
+                    >
+                      <span className="text-sm text-gray-600 dark:text-gray-400">{taskProperties.estimatedTime || "—"}</span>
+                      <Edit2 className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    {showEstimatedTimePicker && (
+                      <EstimatedTimePicker
+                        value={taskProperties.estimatedTime}
+                        onSave={(value) => {
+                          saveFieldToDatabase('estimatedTime', value);
+                          setShowEstimatedTimePicker(false);
+                        }}
+                        onClose={() => setShowEstimatedTimePicker(false)}
+                      />
                     )}
                   </div>
 
@@ -2461,6 +2447,40 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox for viewing images */}
+      {lightboxImage && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div className="relative max-w-[90vw] max-h-[90vh]">
+            <button
+              type="button"
+              onClick={() => setLightboxImage(null)}
+              className="absolute -top-10 right-0 p-2 text-white hover:text-gray-300 transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <img 
+              src={lightboxImage} 
+              alt="Full size preview"
+              className="max-w-full max-h-[85vh] object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <a
+              href={lightboxImage}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="absolute -bottom-10 left-1/2 transform -translate-x-1/2 flex items-center gap-2 text-white hover:text-gray-300 text-sm whitespace-nowrap"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ExternalLink className="w-4 h-4 flex-shrink-0" />
+              <span>{t('chat.openInNewTab')}</span>
+            </a>
           </div>
         </div>
       )}

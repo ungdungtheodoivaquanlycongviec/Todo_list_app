@@ -7,19 +7,22 @@ import {
   ChevronRight,
   List,
   Layout,
-  MoreVertical,
   Clock,
   Calendar,
   User,
   Flag,
   ArrowUpDown,
   AlertTriangle,
+  Search,
+  X,
+  Filter,
 } from "lucide-react";
 import { taskService } from "../../../services/task.service";
 import { Task } from "../../../services/types/task.types";
 import CreateTaskModal from "./CreateTaskModal";
 import TaskContextMenu from "./TaskContextMenu";
 import TaskDetailModal from "./TaskDetailModal";
+import EstimatedTimePicker from "./EstimatedTimePicker";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useLanguage } from "../../../contexts/LanguageContext";
@@ -35,13 +38,14 @@ export default function TasksView() {
   const { user: currentUser, currentGroup } = useAuth();
   const { currentFolder } = useFolder();
   const { t } = useLanguage();
-  const { formatDate } = useRegional();
-  const [activeTasksExpanded, setActiveTasksExpanded] = useState(true);
-  const [uncompletedTasksExpanded, setUncompletedTasksExpanded] =
-    useState(true);
+  const { formatDate, convertFromUserTimezone, convertToUserTimezone } = useRegional();
+  const [todoTasksExpanded, setTodoTasksExpanded] = useState(true);
+  const [inProgressTasksExpanded, setInProgressTasksExpanded] = useState(true);
+  const [incompleteTasksExpanded, setIncompleteTasksExpanded] = useState(true);
   const [completedTasksExpanded, setCompletedTasksExpanded] = useState(true);
-  const [activeTasks, setActiveTasks] = useState<Task[]>([]);
-  const [uncompletedTasks, setUncompletedTasks] = useState<Task[]>([]);
+  const [todoTasks, setTodoTasks] = useState<Task[]>([]);
+  const [inProgressTasks, setInProgressTasks] = useState<Task[]>([]);
+  const [incompleteTasks, setIncompleteTasks] = useState<Task[]>([]);
   const [completedTasks, setCompletedTasks] = useState<Task[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
@@ -57,11 +61,23 @@ export default function TasksView() {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [tempValue, setTempValue] = useState("");
-  const [sortConfig, setSortConfig] = useState<{
-    key: string;
-    direction: "asc" | "desc";
-  } | null>(null);
+  // Separate sort configs for each task section
+  const [sortConfigs, setSortConfigs] = useState<{
+    todo: Array<{ key: string; direction: "asc" | "desc" }>;
+    inProgress: Array<{ key: string; direction: "asc" | "desc" }>;
+    completed: Array<{ key: string; direction: "asc" | "desc" }>;
+    incomplete: Array<{ key: string; direction: "asc" | "desc" }>;
+  }>({
+    todo: [],
+    inProgress: [],
+    completed: [],
+    incomplete: []
+  });
   const [showSortDropdown, setShowSortDropdown] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeSearchQuery, setActiveSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const router = useRouter();
 
   interface MinimalUser {
@@ -71,10 +87,8 @@ export default function TasksView() {
     avatar?: string;
   }
 
-  // Estimated time options
-  const estimatedTimeOptions = ["15m", "30m", "1h", "2h", "4h", "1d"];
   const priorityOptions = ["low", "medium", "high", "urgent"];
-  const statusOptions = ["todo", "in_progress", "completed"];
+  const statusOptions = ["todo", "in_progress", "completed", "incomplete"];
   const typeOptions = [
     "Operational",
     "Strategic",
@@ -86,13 +100,11 @@ export default function TasksView() {
   // Sort options - moved inside component to use translations
   const sortOptions = [
     { key: "title", label: t('sort.taskName'), asc: t('sort.aToZ'), desc: t('sort.zToA') },
-    { key: "status", label: t('sort.status'), asc: t('sort.aToZ'), desc: t('sort.zToA') },
-    { key: "category", label: t('sort.type'), asc: t('sort.aToZ'), desc: t('sort.zToA') },
     {
       key: "dueDate",
       label: t('sort.dueDate'),
-      asc: t('sort.oldestFirst'),
-      desc: t('sort.newestFirst'),
+      asc: t('sort.nearest') || 'Nearest',
+      desc: t('sort.furthest') || 'Furthest',
     },
     {
       key: "priority",
@@ -275,8 +287,9 @@ export default function TasksView() {
     if (task.status === "completed") return false;
 
     try {
-      const dueDate = new Date(task.dueDate);
-      const today = new Date();
+      // Convert UTC date from backend to user's timezone for comparison
+      const dueDate = convertToUserTimezone(task.dueDate);
+      const today = convertToUserTimezone(new Date());
 
       // Reset time part for accurate date comparison
       const dueDateOnly = new Date(
@@ -312,32 +325,39 @@ export default function TasksView() {
       const tasks = response?.tasks || [];
       console.log("Total tasks:", tasks.length);
 
-      const active: Task[] = [];
-      const uncompleted: Task[] = [];
+      const todo: Task[] = [];
+      const inProgress: Task[] = [];
+      const incomplete: Task[] = [];
       const completed: Task[] = [];
 
       tasks.forEach((task: Task) => {
         if (!task || !task._id) return; // Skip invalid tasks
 
-        if (task.status === "completed") {
-          completed.push(task);
-        } else {
-          // Check if task is overdue for uncompleted section
-          if (isTaskOverdue(task)) {
-            uncompleted.push(task);
-          } else {
-            active.push(task);
-          }
+        switch (task.status) {
+          case "completed":
+            completed.push(task);
+            break;
+          case "incomplete":
+            incomplete.push(task);
+            break;
+          case "in_progress":
+            inProgress.push(task);
+            break;
+          case "todo":
+          default:
+            todo.push(task);
+            break;
         }
       });
 
-      console.log("Active tasks:", active.length);
-      console.log("Uncompleted tasks (overdue):", uncompleted.length);
+      console.log("Todo tasks:", todo.length);
+      console.log("In Progress tasks:", inProgress.length);
+      console.log("Incomplete tasks:", incomplete.length);
       console.log("Completed tasks:", completed.length);
-      console.log("Uncompleted tasks details:", uncompleted);
 
-      setActiveTasks(active);
-      setUncompletedTasks(uncompleted);
+      setTodoTasks(todo);
+      setInProgressTasks(inProgress);
+      setIncompleteTasks(incomplete);
       setCompletedTasks(completed);
     } catch (error) {
       const errorMessage = getErrorMessage(error);
@@ -358,8 +378,9 @@ export default function TasksView() {
       // For other errors, show alert
       alert("Failed to fetch tasks: " + errorMessage);
 
-      setActiveTasks([]);
-      setUncompletedTasks([]);
+      setTodoTasks([]);
+      setInProgressTasks([]);
+      setIncompleteTasks([]);
       setCompletedTasks([]);
     } finally {
       setLoading(false);
@@ -422,51 +443,62 @@ export default function TasksView() {
     }
   });
 
-  // Sort tasks function
-  const sortTasks = (tasks: Task[]) => {
-    if (!sortConfig) return tasks;
+  // Sort tasks function - supports multiple sort configs per section
+  const sortTasks = (tasks: Task[], section: 'todo' | 'inProgress' | 'completed' | 'incomplete' = 'todo') => {
+    const sectionSortConfigs = sortConfigs[section];
+    if (sectionSortConfigs.length === 0) return tasks;
 
-    const sortedTasks = [...tasks].sort((a, b) => {
-      let aValue: any = a[sortConfig.key as keyof Task];
-      let bValue: any = b[sortConfig.key as keyof Task];
-
-      // Handle special cases
-      switch (sortConfig.key) {
+    const getSortValue = (task: Task, key: string): any => {
+      const value = task[key as keyof Task];
+      
+      switch (key) {
+        case "title":
+          return (value || "").toString().toLowerCase();
         case "dueDate":
         case "createdAt":
-          aValue = aValue
-            ? new Date(aValue).getTime()
-            : Number.MAX_SAFE_INTEGER;
-          bValue = bValue
-            ? new Date(bValue).getTime()
-            : Number.MAX_SAFE_INTEGER;
-          break;
+          if (!value) return Number.MAX_SAFE_INTEGER;
+          // Normalize to date only (ignore time) for proper comparison
+          const date = new Date(value as string);
+          // Set to start of day to ensure same-day dates are treated as equal
+          return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
         case "priority":
-          const priorityOrder = {
-            urgent: 0,
-            critical: 1,
+          // For "low to high" (asc), we want low priority first, so low=0, high=3, urgent=4
+          // For "high to low" (desc), the sort will reverse this order
+          const priorityOrder: { [key: string]: number } = {
+            low: 0,
+            medium: 1,
             high: 2,
-            medium: 3,
-            low: 4,
+            critical: 3,
+            urgent: 4,
           };
-          aValue = priorityOrder[aValue as keyof typeof priorityOrder] ?? 5;
-          bValue = priorityOrder[bValue as keyof typeof priorityOrder] ?? 5;
-          break;
+          return priorityOrder[value as string] ?? -1;
         case "estimatedTime":
-          // Convert time strings to minutes for sorting
-          aValue = convertTimeToMinutes(aValue || "");
-          bValue = convertTimeToMinutes(bValue || "");
-          break;
+          return convertTimeToMinutes((value || "") as string);
+        case "status":
+          const statusOrder: { [key: string]: number } = { todo: 0, in_progress: 1, completed: 2 };
+          return statusOrder[value as string] ?? 3;
+        case "category":
+          return (value || "").toString().toLowerCase();
         default:
-          aValue = aValue || "";
-          bValue = bValue || "";
+          return value || "";
       }
+    };
 
-      if (aValue < bValue) {
-        return sortConfig.direction === "asc" ? -1 : 1;
-      }
-      if (aValue > bValue) {
-        return sortConfig.direction === "asc" ? 1 : -1;
+    const sortedTasks = [...tasks].sort((a, b) => {
+      // Iterate through sort configs in order - first config is the primary sort
+      // Each subsequent config is used as a tiebreaker when previous configs are equal
+      for (const config of sectionSortConfigs) {
+        const aValue = getSortValue(a, config.key);
+        const bValue = getSortValue(b, config.key);
+
+        // Compare values - if they're equal, continue to the next sort config
+        if (aValue < bValue) {
+          return config.direction === "asc" ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return config.direction === "asc" ? 1 : -1;
+        }
+        // Values are equal, continue to next sort config (for multi-level sorting)
       }
       return 0;
     });
@@ -487,40 +519,66 @@ export default function TasksView() {
     return hours * 60 + minutes;
   };
 
-  // Handle sort selection
-  const handleSortSelect = (key: string, direction: "asc" | "desc") => {
-    setSortConfig({ key, direction });
+  // Handle sort selection - toggle sort config (add/remove/update) for a specific section
+  const handleSortSelect = (key: string, direction: "asc" | "desc", section: 'todo' | 'inProgress' | 'completed' | 'incomplete' = 'todo') => {
+    setSortConfigs(prev => {
+      const sectionConfigs = prev[section];
+      const existingIndex = sectionConfigs.findIndex(c => c.key === key);
+      
+      let newSectionConfigs;
+      if (existingIndex >= 0) {
+        // If same key and direction, remove it
+        if (sectionConfigs[existingIndex].direction === direction) {
+          newSectionConfigs = sectionConfigs.filter((_, i) => i !== existingIndex);
+        } else {
+          // If same key but different direction, update it
+          newSectionConfigs = sectionConfigs.map((c, i) => i === existingIndex ? { key, direction } : c);
+        }
+      } else {
+        // Add new sort config
+        newSectionConfigs = [...sectionConfigs, { key, direction }];
+      }
+      
+      return { ...prev, [section]: newSectionConfigs };
+    });
+  };
+
+  // Clear sort for all sections or a specific section
+  const handleClearSort = (section?: 'todo' | 'inProgress' | 'completed' | 'incomplete') => {
+    if (section) {
+      setSortConfigs(prev => ({ ...prev, [section]: [] }));
+    } else {
+      setSortConfigs({ todo: [], inProgress: [], completed: [], incomplete: [] });
+    }
     setShowSortDropdown(false);
   };
 
-  // Clear sort
-  const handleClearSort = () => {
-    setSortConfig(null);
-    setShowSortDropdown(false);
+  // Get current sort display text for a section
+  const getCurrentSortText = (section: 'todo' | 'inProgress' | 'completed' | 'incomplete' = 'todo') => {
+    const sectionConfigs = sortConfigs[section];
+    if (sectionConfigs.length === 0) return "Sort";
+
+    return sectionConfigs.map(config => {
+      const option = sortOptions.find((opt) => opt.key === config.key);
+      if (!option) return "";
+      return `${option.label} ${config.direction === "asc" ? "↑" : "↓"}`;
+    }).filter(Boolean).join(", ");
   };
 
-  // Get current sort display text
-  const getCurrentSortText = () => {
-    if (!sortConfig) return "Sort";
-
-    const option = sortOptions.find((opt) => opt.key === sortConfig.key);
-    if (!option) return "Sort";
-
-    const directionText =
-      sortConfig.direction === "asc" ? option.asc : option.desc;
-    return `${option.label} • ${directionText}`;
-  };
-
-  // Get sort indicator for Kanban columns
+  // Get sort indicator for Kanban columns (uses todo section for kanban)
   const getSortIndicator = () => {
-    if (!sortConfig) return null;
+    const sectionConfigs = sortConfigs.todo;
+    if (sectionConfigs.length === 0) return null;
     
-    const option = sortOptions.find((opt) => opt.key === sortConfig.key);
-    if (!option) return null;
+    const labels = sectionConfigs.map(config => {
+      const option = sortOptions.find((opt) => opt.key === config.key);
+      if (!option) return "";
+      return `${option.label} ${config.direction === "asc" ? "↑" : "↓"}`;
+    }).filter(Boolean).join(", ");
     
     return (
       <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full border border-blue-200">
-        Sorted by {option.label} {sortConfig.direction === "asc" ? "↑" : "↓"}
+        Sorted by {labels}
       </div>
     );
   };
@@ -582,10 +640,13 @@ export default function TasksView() {
 
     if (viewMode === "list") {
       // Remove task from all sections
-      setActiveTasks((prev) =>
+      setTodoTasks((prev) =>
         prev.filter((task) => task._id !== updatedTask._id)
       );
-      setUncompletedTasks((prev) =>
+      setInProgressTasks((prev) =>
+        prev.filter((task) => task._id !== updatedTask._id)
+      );
+      setIncompleteTasks((prev) =>
         prev.filter((task) => task._id !== updatedTask._id)
       );
       setCompletedTasks((prev) =>
@@ -596,13 +657,21 @@ export default function TasksView() {
         return;
       }
 
-      // Add task to appropriate section based on status and due date
-      if (updatedTask.status === "completed") {
-        setCompletedTasks((prev) => [...prev, updatedTask]);
-      } else if (isTaskOverdue(updatedTask)) {
-        setUncompletedTasks((prev) => [...prev, updatedTask]);
-      } else {
-        setActiveTasks((prev) => [...prev, updatedTask]);
+      // Add task to appropriate section based on status
+      switch (updatedTask.status) {
+        case "completed":
+          setCompletedTasks((prev) => [...prev, updatedTask]);
+          break;
+        case "incomplete":
+          setIncompleteTasks((prev) => [...prev, updatedTask]);
+          break;
+        case "in_progress":
+          setInProgressTasks((prev) => [...prev, updatedTask]);
+          break;
+        case "todo":
+        default:
+          setTodoTasks((prev) => [...prev, updatedTask]);
+          break;
       }
     } else {
       fetchKanbanData();
@@ -629,8 +698,9 @@ export default function TasksView() {
 
   const handleTaskDelete = (taskId: string) => {
     if (viewMode === "list") {
-      setActiveTasks((prev) => prev.filter((task) => task._id !== taskId));
-      setUncompletedTasks((prev) => prev.filter((task) => task._id !== taskId));
+      setTodoTasks((prev) => prev.filter((task) => task._id !== taskId));
+      setInProgressTasks((prev) => prev.filter((task) => task._id !== taskId));
+      setIncompleteTasks((prev) => prev.filter((task) => task._id !== taskId));
       setCompletedTasks((prev) => prev.filter((task) => task._id !== taskId));
     } else {
       fetchKanbanData();
@@ -722,6 +792,8 @@ export default function TasksView() {
         return "bg-blue-100 text-blue-800 border-blue-200";
       case "completed":
         return "bg-green-100 text-green-800 border-green-200";
+      case "incomplete":
+        return "bg-red-100 text-red-800 border-red-200";
       default:
         return "bg-gray-100 text-gray-800 border-gray-200";
     }
@@ -748,8 +820,40 @@ export default function TasksView() {
   const saveField = async (task: Task, field: string) => {
     if (tempValue !== (task as any)[field]) {
       try {
+        // Convert date fields from user timezone to UTC for backend storage
+        let updateValue: any = tempValue;
+        if (field === 'dueDate' && tempValue) {
+          const userDate = new Date(tempValue + 'T23:59:59'); // Set to end of day
+          updateValue = convertFromUserTimezone(userDate).toISOString();
+        }
+        
         const updatedTask = await taskService.updateTask(task._id, {
-          [field]: tempValue,
+          [field]: updateValue,
+        });
+        handleTaskUpdate(updatedTask);
+      } catch (error) {
+        console.error(`Error updating ${field}:`, error);
+        alert(`Failed to update ${field}: ${getErrorMessage(error)}`);
+      }
+    }
+    setEditingTaskId(null);
+    setEditingField(null);
+    setTempValue("");
+  };
+
+  // Save field with a direct value (for picker components)
+  const saveFieldDirect = async (task: Task, field: string, value: string) => {
+    if (value !== (task as any)[field]) {
+      try {
+        // Convert date fields from user timezone to UTC for backend storage
+        let updateValue: any = value;
+        if (field === 'dueDate' && value) {
+          const userDate = new Date(value + 'T23:59:59'); // Set to end of day
+          updateValue = convertFromUserTimezone(userDate).toISOString();
+        }
+        
+        const updatedTask = await taskService.updateTask(task._id, {
+          [field]: updateValue,
         });
         handleTaskUpdate(updatedTask);
       } catch (error) {
@@ -799,17 +903,6 @@ export default function TasksView() {
       );
     }
 
-    // Calculate incompleted tasks (overdue tasks)
-    const allTasks = [
-      ...(kanbanData.kanbanBoard.todo?.tasks || []),
-      ...(kanbanData.kanbanBoard.in_progress?.tasks || []),
-      ...(kanbanData.kanbanBoard.completed?.tasks || []),
-    ];
-
-    const incompletedTasks = allTasks.filter(task => 
-      task && isTaskOverdue(task) && task.status !== "completed"
-    );
-
     const statusColumns = [
       { 
         key: "todo", 
@@ -836,25 +929,20 @@ export default function TasksView() {
         textColor: "text-green-700"
       },
       { 
-        key: "incompleted", 
-        title: t('kanban.incompleted'), 
+        key: "incomplete", 
+        title: t('kanban.incomplete') || 'Incomplete', 
         icon: <div className="w-2 h-2 bg-red-500 rounded-full" />,
-        count: incompletedTasks.length,
+        count: kanbanData.kanbanBoard.incomplete?.count || 0,
         color: "bg-red-50 border-red-200",
         textColor: "text-red-700"
       },
     ];
 
     const getTasksForColumn = (columnKey: string) => {
-      let tasks = [];
-      if (columnKey === "incompleted") {
-        tasks = incompletedTasks;
-      } else {
-        tasks = kanbanData.kanbanBoard[columnKey]?.tasks || [];
-      }
+      const tasks = kanbanData.kanbanBoard[columnKey]?.tasks || [];
       
-      // Apply sorting to Kanban tasks
-      return sortTasks(tasks);
+      // Apply filtering and sorting to Kanban tasks (use 'todo' section for Kanban)
+      return sortTasks(filterTasks(tasks), 'todo');
     };
 
     return (
@@ -1028,7 +1116,7 @@ export default function TasksView() {
                 {columnTasks.length === 0 && (
                   <div className="text-center py-8 text-gray-400 text-sm">
                     <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                      {column.key === "incompleted" ? (
+                      {column.key === "incomplete" ? (
                         <AlertTriangle className="w-6 h-6" />
                       ) : column.key === "completed" ? (
                         <div className="w-6 h-6 bg-green-200 rounded-full flex items-center justify-center">
@@ -1039,8 +1127,8 @@ export default function TasksView() {
                       )}
                     </div>
                     <p className="text-gray-500">
-                      {column.key === "incompleted" 
-                        ? t('kanban.noOverdue') 
+                      {column.key === "incomplete" 
+                        ? t('kanban.noIncomplete') || 'No incomplete tasks'
                         : column.key === "completed"
                         ? t('kanban.noCompleted')
                         : t('kanban.noTasks')
@@ -1192,12 +1280,14 @@ export default function TasksView() {
                 }`}
               onClick={(e) => {
                 e.stopPropagation();
+                // Convert UTC date from backend to user timezone for the date picker
+                const displayDate = task.dueDate
+                  ? convertToUserTimezone(task.dueDate).toISOString().split("T")[0]
+                  : "";
                 startEditing(
                   task._id,
                   "dueDate",
-                  task.dueDate
-                    ? new Date(task.dueDate).toISOString().split("T")[0]
-                    : ""
+                  displayDate
                 );
               }}
             >
@@ -1291,38 +1381,17 @@ export default function TasksView() {
           </div>
         </div>
 
-        {/* Estimated Time - Inline editable */}
-        <div className="col-span-1">
+        {/* Estimated Time - Inline editable with scroll picker */}
+        <div className="col-span-2 relative">
           {isEditing && editingField === "estimatedTime" ? (
-            <div className="flex gap-1">
-              <input
-                type="text"
-                value={tempValue}
-                onChange={(e) => setTempValue(e.target.value)}
-                onBlur={() => saveField(task, "estimatedTime")}
-                onKeyDown={(e) => handleKeyDown(e, task, "estimatedTime")}
-                className="flex-1 text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-blue-500"
-                placeholder="1h"
-                autoFocus
-              />
-              <select
-                value=""
-                onChange={(e) => {
-                  if (e.target.value) {
-                    setTempValue(e.target.value);
-                    saveField(task, "estimatedTime");
-                  }
-                }}
-                className="text-xs border border-gray-300 rounded px-1 py-1 bg-white"
-              >
-                <option value="">⏱️</option>
-                {estimatedTimeOptions.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <EstimatedTimePicker
+              value={task.estimatedTime || ""}
+              onSave={(value) => {
+                setTempValue(value);
+                saveFieldDirect(task, "estimatedTime", value);
+              }}
+              onClose={() => setEditingTaskId(null)}
+            />
           ) : (
             <div
               className="text-xs text-gray-600 cursor-pointer hover:bg-gray-100 px-2 py-1 rounded transition-colors flex items-center gap-1"
@@ -1340,115 +1409,266 @@ export default function TasksView() {
             </div>
           )}
         </div>
-
-        {/* Actions */}
-        <div className="col-span-1 flex justify-end">
-          <button
-            className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleContextMenu(e as any, task);
-            }}
-          >
-            <MoreVertical className="w-4 h-4" />
-          </button>
-        </div>
       </div>
     );
   };
 
-  // Sort Dropdown Component (unchanged)
-  const SortDropdown = () => {
-    const dropdownRef = useRef<HTMLDivElement>(null);
+  // Filter tasks by search query, status, and category
+  const filterTasks = (tasks: Task[]) => {
+    let filtered = tasks;
+    
+    // Apply search filter
+    if (activeSearchQuery.trim()) {
+      const query = activeSearchQuery.toLowerCase();
+      filtered = filtered.filter(task => 
+        task.title?.toLowerCase().includes(query)
+      );
+    }
+    
+    // Apply status filter
+    if (statusFilter) {
+      filtered = filtered.filter(task => task.status === statusFilter);
+    }
+    
+    // Apply category filter
+    if (categoryFilter) {
+      filtered = filtered.filter(task => task.category === categoryFilter);
+    }
+    
+    return filtered;
+  };
 
-    // Handle click outside to close dropdown
-    useEffect(() => {
-      const handleClickOutside = (event: MouseEvent) => {
-        if (
-          dropdownRef.current &&
-          !dropdownRef.current.contains(event.target as Node)
-        ) {
-          setShowSortDropdown(false);
+  // Handle search
+  const handleSearch = () => {
+    setActiveSearchQuery(searchQuery);
+  };
+
+  // Clear all filters
+  const handleClearFilters = () => {
+    setSearchQuery("");
+    setActiveSearchQuery("");
+    setStatusFilter(null);
+    setCategoryFilter(null);
+    setShowSortDropdown(false);
+  };
+
+  // Handle column header click for sorting - section specific
+  // New sort becomes PRIMARY (inserted at beginning), existing sorts become secondary
+  // Handle column header click for sorting - section specific
+  // New sort becomes PRIMARY (inserted at beginning), existing sorts become secondary
+  const handleColumnSort = (key: string, section: 'todo' | 'inProgress' | 'completed' | 'incomplete') => {
+    setSortConfigs(prev => {
+      const sectionConfigs = prev[section];
+      const existingIndex = sectionConfigs.findIndex(c => c.key === key);
+      
+      let newSectionConfigs;
+      if (existingIndex >= 0) {
+        const currentDirection = sectionConfigs[existingIndex].direction;
+        if (currentDirection === "asc") {
+          // Change to desc and move to primary position (beginning)
+          const updated = { key, direction: "desc" as const };
+          newSectionConfigs = [updated, ...sectionConfigs.filter((_, i) => i !== existingIndex)];
+        } else {
+          // Remove this sort
+          newSectionConfigs = sectionConfigs.filter((_, i) => i !== existingIndex);
         }
-      };
+      } else {
+        // Add new sort config as PRIMARY (at beginning) with asc direction
+        newSectionConfigs = [{ key, direction: "asc" as const }, ...sectionConfigs];
+      }
+      
+      return { ...prev, [section]: newSectionConfigs };
+    });
+  };
 
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => {
-        document.removeEventListener("mousedown", handleClickOutside);
-      };
-    }, []);
-
+  // Get sort indicator for a column - section specific
+  const getColumnSortIndicator = (key: string, section: 'todo' | 'inProgress' | 'completed' | 'incomplete') => {
+    const sectionConfigs = sortConfigs[section];
+    const config = sectionConfigs.find(c => c.key === key);
+    const index = sectionConfigs.findIndex(c => c.key === key);
+    
+    if (!config) return null;
+    
     return (
-      <div className="relative" ref={dropdownRef}>
-        <button
-          className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm text-gray-700 min-w-[120px] justify-between"
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowSortDropdown(!showSortDropdown);
-          }}
-        >
-          <div className="flex items-center gap-2">
-            <ArrowUpDown className="w-4 h-4" />
-            <span className="truncate">{getCurrentSortText()}</span>
-          </div>
-          <ChevronDown
-            className={`w-4 h-4 transition-transform flex-shrink-0 ${showSortDropdown ? "rotate-180" : ""
-              }`}
-          />
-        </button>
+      <span className="inline-flex items-center gap-1 ml-1">
+        <span className={`text-blue-600 ${config.direction === "asc" ? "" : "rotate-180 inline-block"}`}>
+          ↑
+        </span>
+        {sectionConfigs.length > 1 && (
+          <span className="text-xs bg-blue-500 text-white px-1 py-0.5 rounded-full min-w-[16px] text-center">
+            {index + 1}
+          </span>
+        )}
+      </span>
+    );
+  };
 
-        {showSortDropdown && (
-          <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-            <div className="p-2">
-              <div className="text-xs font-medium text-gray-500 px-3 py-2 uppercase tracking-wide">
-                {t('sort.label')}
+  // Sortable column header component - section specific
+  const SortableColumnHeader = ({ sortKey, section, children, className = "" }: { sortKey: string; section: 'todo' | 'inProgress' | 'completed' | 'incomplete'; children: React.ReactNode; className?: string }) => (
+    <div
+      className={`cursor-pointer hover:text-blue-600 transition-colors select-none flex items-center ${className}`}
+      onClick={() => handleColumnSort(sortKey, section)}
+      title="Click to sort"
+    >
+      {children}
+      {getColumnSortIndicator(sortKey, section)}
+    </div>
+  );
+
+  // Check if any filter is active
+  const hasActiveFilters = activeSearchQuery || statusFilter || categoryFilter;
+
+  // Sort Dropdown ref for click outside detection
+  const sortDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Handle click outside to close sort dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        sortDropdownRef.current &&
+        !sortDropdownRef.current.contains(event.target as Node)
+      ) {
+        setShowSortDropdown(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  // Sort Dropdown Component - rendered inline to avoid recreation issues
+  const renderSortDropdown = () => (
+    <div className="relative" ref={sortDropdownRef}>
+      <button
+        className={`flex items-center gap-2 px-3 py-2 border rounded-lg hover:bg-gray-50 transition-colors text-sm min-w-[100px] justify-between ${
+          hasActiveFilters 
+            ? "bg-blue-50 border-blue-300 text-blue-700" 
+            : "bg-white border-gray-300 text-gray-700"
+        }`}
+        onClick={(e) => {
+          e.stopPropagation();
+          setShowSortDropdown(!showSortDropdown);
+        }}
+      >
+        <div className="flex items-center gap-2">
+          <Filter className="w-4 h-4" />
+          <span className="truncate">
+            {hasActiveFilters ? t('sort.filtered') || 'Filtered' : 'Filter'}
+          </span>
+        </div>
+        <ChevronDown
+          className={`w-4 h-4 transition-transform flex-shrink-0 ${showSortDropdown ? "rotate-180" : ""
+            }`}
+        />
+      </button>
+
+      {showSortDropdown && (
+        <div className="absolute top-full right-0 mt-1 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-[70vh] overflow-y-auto">
+          <div className="p-3 space-y-4">
+            {/* Search Section */}
+            <div>
+              <div className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">
+                {t('sort.search') || 'Search'}
               </div>
-
-              {sortOptions.map((option) => (
-                <div
-                  key={option.key}
-                  className="border-b border-gray-100 last:border-0"
-                >
-                  <div className="px-3 py-1 text-sm font-medium text-gray-700">
-                    {option.label}
-                  </div>
-                  <button
-                    className="w-full text-left px-6 py-2 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between"
-                    onClick={() => handleSortSelect(option.key, "asc")}
-                  >
-                    <span>{option.asc}</span>
-                    {sortConfig?.key === option.key &&
-                      sortConfig.direction === "asc" && (
-                        <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                      )}
-                  </button>
-                  <button
-                    className="w-full text-left px-6 py-2 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between"
-                    onClick={() => handleSortSelect(option.key, "desc")}
-                  >
-                    <span>{option.desc}</span>
-                    {sortConfig?.key === option.key &&
-                      sortConfig.direction === "desc" && (
-                        <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                      )}
-                  </button>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        setActiveSearchQuery(searchQuery);
+                      }
+                    }}
+                    placeholder={t('sort.searchPlaceholder') || 'Search task name...'}
+                    className="w-full pl-3 pr-8 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    autoComplete="off"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSearchQuery("");
+                        setActiveSearchQuery("");
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
-              ))}
-
-              {sortConfig && (
                 <button
-                  className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 mt-2 border-t border-gray-100"
-                  onClick={handleClearSort}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveSearchQuery(searchQuery);
+                  }}
+                  className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex-shrink-0"
                 >
-                  Clear sort
+                  <Search className="w-4 h-4" />
                 </button>
+              </div>
+              {activeSearchQuery && (
+                <div className="mt-2 text-xs text-blue-600">
+                  {t('sort.searchingFor') || 'Searching for'}: &quot;{activeSearchQuery}&quot;
+                </div>
               )}
             </div>
+
+            {/* Status Filter */}
+            <div>
+              <div className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">
+                {t('sort.filterByStatus') || 'Filter by Status'}
+              </div>
+              <select
+                value={statusFilter || ""}
+                onChange={(e) => setStatusFilter(e.target.value || null)}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+              >
+                <option value="">{t('sort.allStatuses') || 'All Statuses'}</option>
+                <option value="todo">{t('status.todo') || 'Todo'}</option>
+                <option value="in_progress">{t('status.inProgress') || 'In Progress'}</option>
+                <option value="completed">{t('status.completed') || 'Completed'}</option>
+                <option value="incomplete">{t('status.incomplete') || 'Incomplete'}</option>
+              </select>
+            </div>
+
+            {/* Category Filter */}
+            <div>
+              <div className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">
+                {t('sort.filterByCategory') || 'Filter by Category'}
+              </div>
+              <select
+                value={categoryFilter || ""}
+                onChange={(e) => setCategoryFilter(e.target.value || null)}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+              >
+                <option value="">{t('sort.allCategories') || 'All Categories'}</option>
+                <option value="Operational">{t('category.operational') || 'Operational'}</option>
+                <option value="Strategic">{t('category.strategic') || 'Strategic'}</option>
+                <option value="Financial">{t('category.financial') || 'Financial'}</option>
+                <option value="Technical">{t('category.technical') || 'Technical'}</option>
+                <option value="Other">{t('category.other') || 'Other'}</option>
+              </select>
+            </div>
+
+            {/* Clear All Button */}
+            {hasActiveFilters && (
+              <button
+                className="w-full text-center px-3 py-2 text-sm text-red-600 hover:bg-red-50 border border-red-200 rounded-lg transition-colors"
+                onClick={handleClearFilters}
+              >
+                {t('sort.clearAll') || 'Clear All Filters'}
+              </button>
+            )}
           </div>
-        )}
-      </div>
-    );
-  };
+        </div>
+      )}
+    </div>
+  );
 
   if (loading) {
     return (
@@ -1493,7 +1713,7 @@ export default function TasksView() {
         <div className="flex gap-3 items-center">
           {/* Sort Button - Available for both List and Kanban views */}
           <div className="relative">
-            <SortDropdown />
+            {renderSortDropdown()}
           </div>
 
           {/* View Mode Toggle */}
@@ -1534,164 +1754,219 @@ export default function TasksView() {
       {/* Main Content */}
       {viewMode === "list" ? (
         <div className="space-y-6">
-          {/* Active Tasks Section */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div
-              className="p-6 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
-              onClick={() => setActiveTasksExpanded(!activeTasksExpanded)}
-            >
-              <div className="flex items-center gap-3">
-                {activeTasksExpanded ? (
-                  <ChevronDown className="w-5 h-5 text-gray-600" />
-                ) : (
-                  <ChevronRight className="w-5 h-5 text-gray-600" />
-                )}
-                <h2 className="font-semibold text-gray-900">{t('tasks.active')}</h2>
-                <span className="bg-blue-100 text-blue-800 text-sm px-2 py-1 rounded-full">
-                  {activeTasks.length}
-                </span>
-              </div>
-            </div>
-
-            {activeTasksExpanded && (
-              <div>
-                {/* UPDATED: Header Row with adjusted columns */}
-                <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                  <div className="col-span-3">{t('tasks.taskName')}</div>
-                  <div className="col-span-1">{t('tasks.status')}</div>
-                  <div className="col-span-1">{t('tasks.category')}</div>
-                  <div className="col-span-1">{t('tasks.dueDate')}</div>
-                  <div className="col-span-1">{t('tasks.priority')}</div>
-                  <div className="col-span-2">{t('tasks.assignee')}</div>
-                  <div className="col-span-1">{t('tasks.estimatedTime') || 'Time'}</div>
-                  <div className="col-span-1"></div>
+          {/* Todo Tasks Section */}
+          {(!statusFilter || statusFilter === "todo") && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div
+                className="p-6 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() => setTodoTasksExpanded(!todoTasksExpanded)}
+              >
+                <div className="flex items-center gap-3">
+                  {todoTasksExpanded ? (
+                    <ChevronDown className="w-5 h-5 text-gray-600" />
+                  ) : (
+                    <ChevronRight className="w-5 h-5 text-gray-600" />
+                  )}
+                  <h2 className="font-semibold text-gray-900">{t('tasks.todo') || 'To Do'}</h2>
+                  <span className="bg-gray-100 text-gray-800 text-sm px-2 py-1 rounded-full">
+                    {hasActiveFilters ? `${filterTasks(todoTasks).length}/${todoTasks.length}` : todoTasks.length}
+                  </span>
                 </div>
-
-                {/* Task Rows */}
-                {activeTasks.length > 0 ? (
-                  sortTasks(activeTasks).map((task) => (
-                    <TaskRow key={task._id} task={task} />
-                  ))
-                ) : (
-                  <div className="p-8 text-center text-gray-500">
-                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Plus className="w-8 h-8 text-gray-400" />
-                    </div>
-                    <p className="text-gray-600 mb-2">{t('tasks.noTasks')}</p>
-                    <button
-                      onClick={handleAddTask}
-                      className="text-blue-500 hover:text-blue-600 font-medium"
-                    >
-                      {t('tasks.addFirstTask')}
-                    </button>
-                  </div>
-                )}
               </div>
-            )}
-          </div>
+
+              {todoTasksExpanded && (
+                <div>
+                  {/* Header Row with sortable columns */}
+                  <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                    <SortableColumnHeader sortKey="title" section="todo" className="col-span-3">{t('tasks.taskName')}</SortableColumnHeader>
+                    <div className="col-span-1">{t('tasks.status')}</div>
+                    <div className="col-span-1">{t('tasks.category')}</div>
+                    <SortableColumnHeader sortKey="dueDate" section="todo" className="col-span-1">{t('tasks.dueDate')}</SortableColumnHeader>
+                    <SortableColumnHeader sortKey="priority" section="todo" className="col-span-1">{t('tasks.priority')}</SortableColumnHeader>
+                    <div className="col-span-2">{t('tasks.assignee')}</div>
+                    <SortableColumnHeader sortKey="estimatedTime" section="todo" className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</SortableColumnHeader>
+                  </div>
+
+                  {/* Task Rows */}
+                  {filterTasks(todoTasks).length > 0 ? (
+                    sortTasks(filterTasks(todoTasks), 'todo').map((task) => (
+                      <TaskRow key={task._id} task={task} />
+                    ))
+                  ) : (
+                    <div className="p-8 text-center text-gray-500">
+                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Plus className="w-8 h-8 text-gray-400" />
+                      </div>
+                      <p className="text-gray-600 mb-2">{t('tasks.noTodoTasks') || 'No tasks to do'}</p>
+                      <button
+                        onClick={handleAddTask}
+                        className="text-blue-500 hover:text-blue-600 font-medium"
+                      >
+                        {t('tasks.addFirstTask')}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* In Progress Tasks Section */}
+          {(!statusFilter || statusFilter === "in_progress") && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div
+                className="p-6 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() => setInProgressTasksExpanded(!inProgressTasksExpanded)}
+              >
+                <div className="flex items-center gap-3">
+                  {inProgressTasksExpanded ? (
+                    <ChevronDown className="w-5 h-5 text-gray-600" />
+                  ) : (
+                    <ChevronRight className="w-5 h-5 text-gray-600" />
+                  )}
+                  <h2 className="font-semibold text-gray-900">{t('tasks.inProgress') || 'In Progress'}</h2>
+                  <span className="bg-blue-100 text-blue-800 text-sm px-2 py-1 rounded-full">
+                    {hasActiveFilters ? `${filterTasks(inProgressTasks).length}/${inProgressTasks.length}` : inProgressTasks.length}
+                  </span>
+                </div>
+              </div>
+
+              {inProgressTasksExpanded && (
+                <div>
+                  {/* Header Row with sortable columns */}
+                  <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                    <SortableColumnHeader sortKey="title" section="inProgress" className="col-span-3">{t('tasks.taskName')}</SortableColumnHeader>
+                    <div className="col-span-1">{t('tasks.status')}</div>
+                    <div className="col-span-1">{t('tasks.category')}</div>
+                    <SortableColumnHeader sortKey="dueDate" section="inProgress" className="col-span-1">{t('tasks.dueDate')}</SortableColumnHeader>
+                    <SortableColumnHeader sortKey="priority" section="inProgress" className="col-span-1">{t('tasks.priority')}</SortableColumnHeader>
+                    <div className="col-span-2">{t('tasks.assignee')}</div>
+                    <SortableColumnHeader sortKey="estimatedTime" section="inProgress" className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</SortableColumnHeader>
+                  </div>
+
+                  {/* Task Rows */}
+                  {filterTasks(inProgressTasks).length > 0 ? (
+                    sortTasks(filterTasks(inProgressTasks), 'inProgress').map((task) => (
+                      <TaskRow key={task._id} task={task} />
+                    ))
+                  ) : (
+                    <div className="p-8 text-center text-gray-500">
+                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Clock className="w-8 h-8 text-gray-400" />
+                      </div>
+                      <p className="text-gray-600 mb-2">{t('tasks.noInProgressTasks') || 'No tasks in progress'}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Completed Tasks Section */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div
-              className="p-6 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
-              onClick={() => setCompletedTasksExpanded(!completedTasksExpanded)}
-            >
-              <div className="flex items-center gap-3">
-                {completedTasksExpanded ? (
-                  <ChevronDown className="w-5 h-5 text-gray-600" />
-                ) : (
-                  <ChevronRight className="w-5 h-5 text-gray-600" />
-                )}
-                <h2 className="font-semibold text-gray-900">{t('tasks.completed')}</h2>
-                <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded-full">
-                  {completedTasks.length}
-                </span>
-              </div>
-            </div>
-
-            {completedTasksExpanded && (
-              <div>
-                {/* UPDATED: Header Row with adjusted columns */}
-                <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                  <div className="col-span-3">{t('tasks.taskName')}</div>
-                  <div className="col-span-1">{t('tasks.status')}</div>
-                  <div className="col-span-1">{t('tasks.category')}</div>
-                  <div className="col-span-1">{t('tasks.dueDate')}</div>
-                  <div className="col-span-1">{t('tasks.priority')}</div>
-                  <div className="col-span-2">{t('tasks.assignee')}</div>
-                  <div className="col-span-1">{t('tasks.estimatedTime') || 'Time'}</div>
-                  <div className="col-span-1"></div>
+          {(!statusFilter || statusFilter === "completed") && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div
+                className="p-6 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() => setCompletedTasksExpanded(!completedTasksExpanded)}
+              >
+                <div className="flex items-center gap-3">
+                  {completedTasksExpanded ? (
+                    <ChevronDown className="w-5 h-5 text-gray-600" />
+                  ) : (
+                    <ChevronRight className="w-5 h-5 text-gray-600" />
+                  )}
+                  <h2 className="font-semibold text-gray-900">{t('tasks.completed')}</h2>
+                  <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded-full">
+                    {hasActiveFilters ? `${filterTasks(completedTasks).length}/${completedTasks.length}` : completedTasks.length}
+                  </span>
                 </div>
+              </div>
 
-                {completedTasks.length > 0 ? (
-                  sortTasks(completedTasks).map((task) => (
-                    <TaskRow key={task._id} task={task} isCompleted={true} />
-                  ))
-                ) : (
-                  <div className="p-8 text-center text-gray-500">
-                    <p className="text-gray-600">{t('kanban.noCompletedYet')}</p>
+              {completedTasksExpanded && (
+                <div>
+                  {/* Header Row with sortable columns */}
+                  <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                    <SortableColumnHeader sortKey="title" section="completed" className="col-span-3">{t('tasks.taskName')}</SortableColumnHeader>
+                    <div className="col-span-1">{t('tasks.status')}</div>
+                    <div className="col-span-1">{t('tasks.category')}</div>
+                    <SortableColumnHeader sortKey="dueDate" section="completed" className="col-span-1">{t('tasks.dueDate')}</SortableColumnHeader>
+                    <SortableColumnHeader sortKey="priority" section="completed" className="col-span-1">{t('tasks.priority')}</SortableColumnHeader>
+                    <div className="col-span-2">{t('tasks.assignee')}</div>
+                    <SortableColumnHeader sortKey="estimatedTime" section="completed" className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</SortableColumnHeader>
                   </div>
-                )}
-              </div>
-            )}
-          </div>
 
-          {/* Uncompleted Tasks Section */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div
-              className="p-6 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
-              onClick={() =>
-                setUncompletedTasksExpanded(!uncompletedTasksExpanded)
-              }
-            >
-              <div className="flex items-center gap-3">
-                {uncompletedTasksExpanded ? (
-                  <ChevronDown className="w-5 h-5 text-gray-600" />
-                ) : (
-                  <ChevronRight className="w-5 h-5 text-gray-600" />
-                )}
-                <div className="flex items-center gap-2">
-                  <h2 className="font-semibold">{t('tasks.uncompleted')}</h2>
-                </div>
-                <span className="bg-red-100 text-red-800 text-sm px-2 py-1 rounded-full">
-                  {uncompletedTasks.length}
-                </span>
-              </div>
-            </div>
-
-            {uncompletedTasksExpanded && (
-              <div>
-                {/* UPDATED: Header Row with adjusted columns */}
-                <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                  <div className="col-span-3">{t('tasks.taskName')}</div>
-                  <div className="col-span-1">{t('tasks.status')}</div>
-                  <div className="col-span-1">{t('tasks.category')}</div>
-                  <div className="col-span-1">{t('tasks.dueDate')}</div>
-                  <div className="col-span-1">{t('tasks.priority')}</div>
-                  <div className="col-span-2">{t('tasks.assignee')}</div>
-                  <div className="col-span-1">{t('tasks.estimatedTime') || 'Time'}</div>
-                  <div className="col-span-1"></div>
-                </div>
-
-                {/* Always show content, even if empty */}
-                {uncompletedTasks.length > 0 ? (
-                  sortTasks(uncompletedTasks).map((task) => (
-                    <TaskRow key={task._id} task={task} isOverdue={true} />
-                  ))
-                ) : (
-                  <div className="p-8 text-center text-gray-500">
-                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <AlertTriangle className="w-8 h-8 text-gray-400" />
+                  {filterTasks(completedTasks).length > 0 ? (
+                    sortTasks(filterTasks(completedTasks), 'completed').map((task) => (
+                      <TaskRow key={task._id} task={task} isCompleted={true} />
+                    ))
+                  ) : (
+                    <div className="p-8 text-center text-gray-500">
+                      <p className="text-gray-600">{t('kanban.noCompletedYet')}</p>
                     </div>
-                    <p className="text-gray-600 mb-2">{t('kanban.noOverdue')}</p>
-                    <p className="text-sm text-gray-500">
-                      {t('tasks.noTasks')}
-                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Incomplete Tasks Section */}
+          {(!statusFilter || statusFilter === "incomplete") && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div
+                className="p-6 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() =>
+                  setIncompleteTasksExpanded(!incompleteTasksExpanded)
+                }
+              >
+                <div className="flex items-center gap-3">
+                  {incompleteTasksExpanded ? (
+                    <ChevronDown className="w-5 h-5 text-gray-600" />
+                  ) : (
+                    <ChevronRight className="w-5 h-5 text-gray-600" />
+                  )}
+                  <div className="flex items-center gap-2">
+                    <h2 className="font-semibold text-red-700">{t('tasks.incomplete') || 'Incomplete'}</h2>
+                    <AlertTriangle className="w-4 h-4 text-red-500" />
                   </div>
-                )}
+                  <span className="bg-red-100 text-red-800 text-sm px-2 py-1 rounded-full">
+                    {hasActiveFilters ? `${filterTasks(incompleteTasks).length}/${incompleteTasks.length}` : incompleteTasks.length}
+                  </span>
+                </div>
               </div>
-            )}
-          </div>
+
+              {incompleteTasksExpanded && (
+                <div>
+                  {/* Header Row with sortable columns */}
+                  <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                    <SortableColumnHeader sortKey="title" section="incomplete" className="col-span-3">{t('tasks.taskName')}</SortableColumnHeader>
+                    <div className="col-span-1">{t('tasks.status')}</div>
+                    <div className="col-span-1">{t('tasks.category')}</div>
+                    <SortableColumnHeader sortKey="dueDate" section="incomplete" className="col-span-1">{t('tasks.dueDate')}</SortableColumnHeader>
+                    <SortableColumnHeader sortKey="priority" section="incomplete" className="col-span-1">{t('tasks.priority')}</SortableColumnHeader>
+                    <div className="col-span-2">{t('tasks.assignee')}</div>
+                    <SortableColumnHeader sortKey="estimatedTime" section="incomplete" className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</SortableColumnHeader>
+                  </div>
+
+                  {/* Always show content, even if empty */}
+                  {filterTasks(incompleteTasks).length > 0 ? (
+                    sortTasks(filterTasks(incompleteTasks), 'incomplete').map((task) => (
+                      <TaskRow key={task._id} task={task} isOverdue={true} />
+                    ))
+                  ) : (
+                    <div className="p-8 text-center text-gray-500">
+                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <AlertTriangle className="w-8 h-8 text-gray-400" />
+                      </div>
+                      <p className="text-gray-600 mb-2">{t('tasks.noIncompleteTasks') || 'No incomplete tasks'}</p>
+                      <p className="text-sm text-gray-500">
+                        {t('tasks.incompleteDescription') || 'Overdue tasks will appear here'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <KanbanView />
