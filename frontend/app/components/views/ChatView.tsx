@@ -20,7 +20,10 @@ import {
   UserPlus,
   Search,
   FileText,
-  ExternalLink
+  ExternalLink,
+  Plus,
+  Copy,
+  Check
 } from 'lucide-react';
 
 export default function ChatView() {
@@ -33,7 +36,6 @@ export default function ChatView() {
   const [message, setMessage] = useState('');
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
   const [activeContext, setActiveContext] = useState<'group' | 'direct'>('group');
@@ -191,7 +193,6 @@ export default function ChatView() {
   useEffect(() => {
     setTypingUsers(new Set());
     setReplyingTo(null);
-    setEditingMessage(null);
 
     if (activeContext === 'group') {
       if (currentGroup?._id) {
@@ -798,6 +799,25 @@ export default function ChatView() {
     }
   };
 
+  // Edit message
+  const handleEditMessage = async (messageId: string, newContent: string) => {
+    if (!socket || !newContent.trim()) return;
+
+    if (activeContext === 'group') {
+      socket.emit('chat:edit', { messageId, content: newContent.trim() }, (response: any) => {
+        if (!response.success) {
+          alert('Failed to edit message: ' + response.error);
+        }
+      });
+    } else if (activeContext === 'direct') {
+      socket.emit('direct:edit', { messageId, content: newContent.trim() }, (response: any) => {
+        if (!response.success) {
+          alert('Failed to edit message: ' + response.error);
+        }
+      });
+    }
+  };
+
   // Common emojis
   const commonEmojis = ['👍', '❤️', '😄', '😂', '😮', '😢', '🙏', '🔥', '👏', '💯'];
 
@@ -1040,9 +1060,9 @@ export default function ChatView() {
                     message={msg}
                     currentUserId={user?._id || ''}
                     onReply={() => setReplyingTo(msg)}
-                    onEdit={() => setEditingMessage(msg)}
                     onDelete={() => handleDelete(msg._id)}
                     onReaction={handleReaction}
+                    onEditMessage={handleEditMessage}
                   />
                 ))
               )}
@@ -1221,22 +1241,48 @@ function MessageItem({
   message,
   currentUserId,
   onReply,
-  onEdit,
   onDelete,
-  onReaction
+  onReaction,
+  onEditMessage
 }: {
   message: ChatMessage;
   currentUserId: string;
   onReply: () => void;
-  onEdit: () => void;
   onDelete: () => void;
   onReaction: (messageId: string, emoji: string) => void;
+  onEditMessage: (messageId: string, newContent: string) => void;
 }) {
   const { t } = useLanguage();
   const { formatTime } = useRegional();
   const isOwn = message.senderId._id === currentUserId;
   const [showMenu, setShowMenu] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
+  const [showExpandedEmojis, setShowExpandedEmojis] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState(message.content || "");
+
+  // Extended emoji list for expanded view
+  const extendedEmojis = [
+    '👍', '❤️', '😄', '😂', '😮', '😢', '🙏', '🔥', '👏', '💯',
+    '😍', '🤔', '😅', '😊', '🎉', '💪', '✨', '🙌', '😎', '💕',
+    '😘', '🤣', '😁', '👀', '🤝', '💡', '⭐', '🌟', '💖', '🥰'
+  ];
+
+  // Copy message to clipboard
+  const handleCopy = async () => {
+    if (message.content) {
+      try {
+        await navigator.clipboard.writeText(message.content);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+        setShowMenu(false);
+      } catch (err) {
+        console.error('Failed to copy:', err);
+      }
+    }
+  };
 
   // Group reactions by emoji
   const reactionGroups = message.reactions?.reduce((acc, reaction) => {
@@ -1279,184 +1325,324 @@ function MessageItem({
           </div>
         )}
 
-        {/* Message bubble with menu */}
-        <div className={`flex items-start gap-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
-          <div
-            className={`relative rounded-lg p-3 ${
-              isOwn
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
-            }`}
-          >
-          {message.deletedAt ? (
-            <p className="text-sm italic opacity-70">Message deleted</p>
-          ) : (
-            <>
-              {/* Attachments */}
-              {message.attachments && message.attachments.length > 0 && (
-                <div className="space-y-2 mb-2">
-                  {message.attachments.map((attachment, idx) => (
-                    <div key={idx}>
-                      {attachment.type === 'image' ? (
-                        <a 
-                          href={attachment.url} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="block"
-                        >
-                          <img
-                            src={attachment.url}
-                            alt={attachment.filename}
-                            className="max-w-full rounded-lg max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                          />
-                        </a>
-                      ) : (
-                        <a
-                          href={attachment.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
-                            isOwn 
-                              ? 'bg-blue-400/30 border-blue-300/30 hover:bg-blue-400/40' 
-                              : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
-                          }`}
-                        >
-                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                            isOwn ? 'bg-blue-300/30' : 'bg-gray-100 dark:bg-gray-600'
-                          }`}>
-                            <FileText className="w-5 h-5" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{attachment.filename}</p>
-                            <p className={`text-xs ${isOwn ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'}`}>
-                              {t('chat.clickToView')}
-                            </p>
-                          </div>
-                          <ExternalLink className="w-4 h-4 flex-shrink-0" />
-                        </a>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Content */}
-              {message.content && (
-                <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
-              )}
-
-              {/* Edited indicator */}
-              {message.editedAt && (
-                <p className="text-xs opacity-70 mt-1">(edited)</p>
-              )}
-            </>
-          )}
-          </div>
-
-          {/* Menu button - outside the bubble */}
-          {!message.deletedAt && (
-            <div className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-              <div className="relative">
-                <button
-                  onClick={() => setShowMenu(!showMenu)}
-                  className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500 dark:text-gray-400"
-                >
-                  <MoreVertical className="w-4 h-4" />
-                </button>
-                {showMenu && (
-                  <div className={`absolute ${isOwn ? 'right-0' : 'left-0'} top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-10 min-w-32`}>
-                    <button
-                      onClick={() => {
-                        onReply();
-                        setShowMenu(false);
-                      }}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-                    >
-                      <Reply className="w-4 h-4" />
-                      {t('chat.reply')}
-                    </button>
-                    {isOwn && (
-                      <>
-                        <button
-                          onClick={() => {
-                            onEdit();
-                            setShowMenu(false);
-                          }}
-                          className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                          {t('chat.edit')}
-                        </button>
-                        <button
-                          onClick={() => {
-                            onDelete();
-                            setShowMenu(false);
-                          }}
-                          className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          {t('chat.delete')}
-                        </button>
-                      </>
-                    )}
+        {/* Message bubble with menu and reactions */}
+        <div className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'}`}>
+          <div className={`flex items-center gap-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
+            {/* Message bubble */}
+            <div
+              className={`relative rounded-2xl px-4 py-2 ${
+                isOwn
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
+              }`}
+            >
+            {message.deletedAt ? (
+              <p className="text-sm italic opacity-70">Message deleted</p>
+            ) : (
+              <>
+                {/* Attachments */}
+                {message.attachments && message.attachments.length > 0 && (
+                  <div className="space-y-2 mb-2">
+                    {message.attachments.map((attachment, idx) => (
+                      <div key={idx}>
+                        {attachment.type === 'image' ? (
+                          <button
+                            onClick={() => setLightboxImage(attachment.url)}
+                            className="block cursor-pointer"
+                          >
+                            <img
+                              src={attachment.url}
+                              alt={attachment.filename}
+                              className="max-w-full rounded-lg max-h-64 object-cover hover:opacity-90 transition-opacity"
+                            />
+                          </button>
+                        ) : (
+                          <a
+                            href={attachment.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
+                              isOwn 
+                                ? 'bg-blue-400/30 border-blue-300/30 hover:bg-blue-400/40' 
+                                : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+                            }`}
+                          >
+                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                              isOwn ? 'bg-blue-300/30' : 'bg-gray-100 dark:bg-gray-600'
+                            }`}>
+                              <FileText className="w-5 h-5" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{attachment.filename}</p>
+                              <p className={`text-xs ${isOwn ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'}`}>
+                                {t('chat.clickToView')}
+                              </p>
+                            </div>
+                            <ExternalLink className="w-4 h-4 flex-shrink-0" />
+                          </a>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
-              </div>
+
+                {/* Content */}
+                {isEditing ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      rows={3}
+                      className={`w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${
+                        isOwn 
+                          ? 'bg-blue-400 border-blue-300 text-white placeholder-blue-200'
+                          : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100'
+                      }`}
+                      autoFocus
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          onEditMessage(message._id, editContent);
+                          setIsEditing(false);
+                        }}
+                        disabled={!editContent.trim()}
+                        className="flex items-center gap-1 px-3 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600 disabled:opacity-50"
+                      >
+                        <Check className="w-3 h-3" />
+                        {t('common.save')}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditContent(message.content || "");
+                          setIsEditing(false);
+                        }}
+                        className="flex items-center gap-1 px-3 py-1 bg-gray-500 text-white rounded text-xs hover:bg-gray-600"
+                      >
+                        <X className="w-3 h-3" />
+                        {t('common.cancel')}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  message.content && (
+                    <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                  )
+                )}
+
+                {/* Edited indicator */}
+                {message.editedAt && (
+                  <p className="text-xs opacity-70 mt-1">(edited)</p>
+                )}
+              </>
+            )}
             </div>
-          )}
-        </div>
 
-        {/* Reactions */}
-        {Object.keys(reactionGroups).length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-1">
-            {Object.entries(reactionGroups).map(([emoji, reactions]) => (
-              <button
-                key={emoji}
-                onClick={() => onReaction(message._id, emoji)}
-                className="text-xs px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600"
-                title={reactions.map((r: any) => r.userId).join(', ')}
-              >
-                {emoji} {reactions.length}
-              </button>
-            ))}
-          </div>
-        )}
+            {/* Quick actions - appears on hover */}
+            {!message.deletedAt && (
+              <div className={`flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ${isOwn ? 'flex-row-reverse' : ''}`}>
+                {/* Quick reaction button */}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowReactions(!showReactions)}
+                    className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                    title={t('chat.addReaction')}
+                  >
+                    <Smile className="w-4 h-4" />
+                  </button>
+                  
+                  {/* Reaction picker popup */}
+                  {showReactions && (
+                    <div className={`absolute ${isOwn ? 'right-0' : 'left-0'} bottom-full mb-2 z-20`}>
+                      <div className={`bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-lg ${showExpandedEmojis ? 'p-3 w-72' : 'px-2 py-1.5'}`}>
+                        {!showExpandedEmojis ? (
+                          /* Quick emoji row */
+                          <div className="flex items-center gap-0.5">
+                            {commonEmojis.slice(0, 6).map((emoji) => (
+                              <button
+                                key={emoji}
+                                onClick={() => {
+                                  onReaction(message._id, emoji);
+                                  setShowReactions(false);
+                                  setShowExpandedEmojis(false);
+                                }}
+                                className="w-8 h-8 flex items-center justify-center text-xl hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-all hover:scale-125"
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                            <div className="w-px h-6 bg-gray-200 dark:bg-gray-600 mx-1" />
+                            <button
+                              onClick={() => setShowExpandedEmojis(true)}
+                              className="w-8 h-8 flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+                              title="More emojis"
+                            >
+                              <Plus className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          /* Expanded emoji grid */
+                          <div>
+                            <div className="grid grid-cols-8 gap-1">
+                              {extendedEmojis.map((emoji, idx) => (
+                                <button
+                                  key={`${emoji}-${idx}`}
+                                  onClick={() => {
+                                    onReaction(message._id, emoji);
+                                    setShowReactions(false);
+                                    setShowExpandedEmojis(false);
+                                  }}
+                                  className="w-8 h-8 flex items-center justify-center text-xl hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-all hover:scale-110"
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                            </div>
+                            <button
+                              onClick={() => setShowExpandedEmojis(false)}
+                              className="mt-2 w-full text-xs text-center text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                            >
+                              ← Back
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
-        {/* Add reaction button */}
-        {!message.deletedAt && (
-          <div className="relative">
-            <button
-              onClick={() => setShowReactions(!showReactions)}
-              className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-            >
-              {t('chat.addReaction')}
-            </button>
-            {showReactions && (
-              <div className="absolute left-0 bottom-full mb-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-2 shadow-lg z-10">
-                <div className="flex gap-2">
-                  {commonEmojis.map((emoji) => (
-                    <button
-                      key={emoji}
-                      onClick={() => {
-                        onReaction(message._id, emoji);
-                        setShowReactions(false);
-                      }}
-                      className="text-xl hover:bg-gray-100 dark:hover:bg-gray-700 rounded p-1"
-                    >
-                      {emoji}
-                    </button>
-                  ))}
+                {/* Reply button */}
+                <button
+                  onClick={onReply}
+                  className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                  title={t('chat.reply')}
+                >
+                  <Reply className="w-4 h-4" />
+                </button>
+
+                {/* More options menu */}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowMenu(!showMenu)}
+                    className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                  >
+                    <MoreVertical className="w-4 h-4" />
+                  </button>
+                  {showMenu && (
+                    <div className={`absolute ${isOwn ? 'right-0' : 'left-0'} top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-20 min-w-36`}>
+                      {/* Copy button - available for all messages with content */}
+                      {message.content && (
+                        <button
+                          onClick={handleCopy}
+                          className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                        >
+                          {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                          {copied ? t('chat.copied') : t('chat.copy')}
+                        </button>
+                      )}
+                      {isOwn && (
+                        <>
+                          <button
+                            onClick={() => {
+                              setEditContent(message.content || "");
+                              setIsEditing(true);
+                              setShowMenu(false);
+                            }}
+                            className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                            {t('chat.edit')}
+                          </button>
+                          <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
+                          <button
+                            onClick={() => {
+                              onDelete();
+                              setShowMenu(false);
+                            }}
+                            className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            {t('chat.delete')}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
           </div>
-        )}
+
+          {/* Reactions display - below the bubble */}
+          {Object.keys(reactionGroups).length > 0 && (
+            <div className={`flex flex-wrap gap-1 mt-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>
+              {Object.entries(reactionGroups).map(([emoji, reactions]) => {
+                const hasReacted = reactions.some((r: any) => r.userId === currentUserId);
+                return (
+                  <button
+                    key={emoji}
+                    onClick={() => onReaction(message._id, emoji)}
+                    className={`inline-flex items-center gap-1 text-sm px-2 py-0.5 rounded-full border transition-colors ${
+                      hasReacted
+                        ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
+                        : 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                    }`}
+                    title={reactions.map((r: any) => r.userId).join(', ')}
+                  >
+                    <span>{emoji}</span>
+                    <span className="text-xs font-medium">{reactions.length}</span>
+                  </button>
+                );
+              })}
+              
+              {/* Add more reactions button */}
+              <button
+                onClick={() => setShowReactions(!showReactions)}
+                className="inline-flex items-center justify-center w-6 h-6 rounded-full border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                title={t('chat.addReaction')}
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Timestamp */}
-        <p className="text-xs text-gray-400 dark:text-gray-500">
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
           {formatTime(new Date(message.createdAt))}
         </p>
       </div>
+
+      {/* Image Lightbox Modal */}
+      {lightboxImage && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={() => setLightboxImage(null)}
+        >
+          <button
+            onClick={() => setLightboxImage(null)}
+            className="absolute top-4 right-4 p-2 text-white/80 hover:text-white bg-black/40 hover:bg-black/60 rounded-full transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <img
+            src={lightboxImage}
+            alt="Full size"
+            className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <a
+            href={lightboxImage}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="absolute bottom-4 right-4 px-4 py-2 text-sm text-white bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors flex items-center gap-2 whitespace-nowrap"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ExternalLink className="w-4 h-4 flex-shrink-0" />
+            <span>{t('chat.openInNewTab')}</span>
+          </a>
+        </div>
+      )}
     </div>
   );
 }

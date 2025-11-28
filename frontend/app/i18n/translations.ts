@@ -323,6 +323,9 @@ export const translations = {
     'chat.reply': 'Reply',
     'chat.edit': 'Edit',
     'chat.delete': 'Delete',
+    'chat.copy': 'Copy',
+    'chat.copied': 'Copied!',
+    'chat.openInNewTab': 'Open in new tab',
     
     // Task Context Menu
     'taskContextMenu.complete': 'Complete task',
@@ -915,6 +918,9 @@ export const translations = {
     'chat.reply': 'Trả lời',
     'chat.edit': 'Chỉnh sửa',
     'chat.delete': 'Xóa',
+    'chat.copy': 'Sao chép',
+    'chat.copied': 'Đã sao chép!',
+    'chat.openInNewTab': 'Mở trong tab mới',
     
     // Task Context Menu
     'taskContextMenu.complete': 'Hoàn thành',

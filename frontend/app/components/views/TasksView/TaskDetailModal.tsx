@@ -21,6 +21,7 @@ import {
   Plus,
   User,
   RefreshCw,
+  ExternalLink,
 } from "lucide-react"
 import type { Task } from "../../../services/types/task.types"
 import { taskService } from "../../../services/task.service"
@@ -156,6 +157,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const [uploadingFiles, setUploadingFiles] = useState(false)
   const [pendingAttachment, setPendingAttachment] = useState<File | null>(null)
   const [pendingAttachmentPreview, setPendingAttachmentPreview] = useState<string | null>(null)
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null)
 
   const { user: currentUser, currentGroup } = useAuth()
   const { currentFolder } = useFolder()
@@ -1287,17 +1289,19 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
           )}
 
           {comment.attachment && comment.attachment.url && comment.attachment.filename && (
-            <div className="mt-2">
+            <div className="mt-2 inline-block">
               {comment.attachment.mimetype?.startsWith('image/') ? (
-                <div className="rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
-                  <a href={comment.attachment.url} target="_blank" rel="noopener noreferrer">
-                    <img 
-                      src={comment.attachment.url} 
-                      alt={comment.attachment.filename}
-                      className="max-w-full max-h-48 object-contain bg-gray-100 dark:bg-gray-800"
-                    />
-                  </a>
-                </div>
+                <button 
+                  type="button"
+                  onClick={() => setLightboxImage(comment.attachment!.url)}
+                  className="cursor-pointer rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 inline-block"
+                >
+                  <img 
+                    src={comment.attachment.url} 
+                    alt={comment.attachment.filename}
+                    className="max-w-full max-h-48 object-contain block"
+                  />
+                </button>
               ) : (
                 <div className="p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800">
                   <div className="flex items-center gap-2">
@@ -1326,7 +1330,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
         </div>
       </div>
     )
-  }, [editingCommentId, editingCommentContent, showCommentMenu, isCommentOwner, getUserInitial, getUserDisplayName, getUserAvatar, CommentMenu, startEditingComment, handleDeleteComment, handleUpdateComment, cancelEditingComment])
+  }, [editingCommentId, editingCommentContent, showCommentMenu, isCommentOwner, getUserInitial, getUserDisplayName, getUserAvatar, CommentMenu, startEditingComment, handleDeleteComment, handleUpdateComment, cancelEditingComment, formatDate, setLightboxImage])
 
   // Time Entry Form Component
   const TimeEntryForm = () => (
@@ -2461,6 +2465,40 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox for viewing images */}
+      {lightboxImage && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div className="relative max-w-[90vw] max-h-[90vh]">
+            <button
+              type="button"
+              onClick={() => setLightboxImage(null)}
+              className="absolute -top-10 right-0 p-2 text-white hover:text-gray-300 transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <img 
+              src={lightboxImage} 
+              alt="Full size preview"
+              className="max-w-full max-h-[85vh] object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <a
+              href={lightboxImage}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="absolute -bottom-10 left-1/2 transform -translate-x-1/2 flex items-center gap-2 text-white hover:text-gray-300 text-sm whitespace-nowrap"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ExternalLink className="w-4 h-4 flex-shrink-0" />
+              <span>{t('chat.openInNewTab')}</span>
+            </a>
           </div>
         </div>
       )}
