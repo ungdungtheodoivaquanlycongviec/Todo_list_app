@@ -13,6 +13,9 @@ import {
   Flag,
   ArrowUpDown,
   AlertTriangle,
+  Search,
+  X,
+  Filter,
 } from "lucide-react";
 import { taskService } from "../../../services/task.service";
 import { Task } from "../../../services/types/task.types";
@@ -57,11 +60,21 @@ export default function TasksView() {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [tempValue, setTempValue] = useState("");
-  const [sortConfig, setSortConfig] = useState<{
-    key: string;
-    direction: "asc" | "desc";
-  } | null>(null);
+  // Separate sort configs for each task section
+  const [sortConfigs, setSortConfigs] = useState<{
+    active: Array<{ key: string; direction: "asc" | "desc" }>;
+    completed: Array<{ key: string; direction: "asc" | "desc" }>;
+    uncompleted: Array<{ key: string; direction: "asc" | "desc" }>;
+  }>({
+    active: [],
+    completed: [],
+    uncompleted: []
+  });
   const [showSortDropdown, setShowSortDropdown] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeSearchQuery, setActiveSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const router = useRouter();
 
   interface MinimalUser {
@@ -84,13 +97,11 @@ export default function TasksView() {
   // Sort options - moved inside component to use translations
   const sortOptions = [
     { key: "title", label: t('sort.taskName'), asc: t('sort.aToZ'), desc: t('sort.zToA') },
-    { key: "status", label: t('sort.status'), asc: t('sort.aToZ'), desc: t('sort.zToA') },
-    { key: "category", label: t('sort.type'), asc: t('sort.aToZ'), desc: t('sort.zToA') },
     {
       key: "dueDate",
       label: t('sort.dueDate'),
-      asc: t('sort.oldestFirst'),
-      desc: t('sort.newestFirst'),
+      asc: t('sort.nearest') || 'Nearest',
+      desc: t('sort.furthest') || 'Furthest',
     },
     {
       key: "priority",
@@ -421,51 +432,62 @@ export default function TasksView() {
     }
   });
 
-  // Sort tasks function
-  const sortTasks = (tasks: Task[]) => {
-    if (!sortConfig) return tasks;
+  // Sort tasks function - supports multiple sort configs per section
+  const sortTasks = (tasks: Task[], section: 'active' | 'completed' | 'uncompleted' = 'active') => {
+    const sectionSortConfigs = sortConfigs[section];
+    if (sectionSortConfigs.length === 0) return tasks;
 
-    const sortedTasks = [...tasks].sort((a, b) => {
-      let aValue: any = a[sortConfig.key as keyof Task];
-      let bValue: any = b[sortConfig.key as keyof Task];
-
-      // Handle special cases
-      switch (sortConfig.key) {
+    const getSortValue = (task: Task, key: string): any => {
+      const value = task[key as keyof Task];
+      
+      switch (key) {
+        case "title":
+          return (value || "").toString().toLowerCase();
         case "dueDate":
         case "createdAt":
-          aValue = aValue
-            ? new Date(aValue).getTime()
-            : Number.MAX_SAFE_INTEGER;
-          bValue = bValue
-            ? new Date(bValue).getTime()
-            : Number.MAX_SAFE_INTEGER;
-          break;
+          if (!value) return Number.MAX_SAFE_INTEGER;
+          // Normalize to date only (ignore time) for proper comparison
+          const date = new Date(value as string);
+          // Set to start of day to ensure same-day dates are treated as equal
+          return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
         case "priority":
-          const priorityOrder = {
-            urgent: 0,
-            critical: 1,
+          // For "low to high" (asc), we want low priority first, so low=0, high=3, urgent=4
+          // For "high to low" (desc), the sort will reverse this order
+          const priorityOrder: { [key: string]: number } = {
+            low: 0,
+            medium: 1,
             high: 2,
-            medium: 3,
-            low: 4,
+            critical: 3,
+            urgent: 4,
           };
-          aValue = priorityOrder[aValue as keyof typeof priorityOrder] ?? 5;
-          bValue = priorityOrder[bValue as keyof typeof priorityOrder] ?? 5;
-          break;
+          return priorityOrder[value as string] ?? -1;
         case "estimatedTime":
-          // Convert time strings to minutes for sorting
-          aValue = convertTimeToMinutes(aValue || "");
-          bValue = convertTimeToMinutes(bValue || "");
-          break;
+          return convertTimeToMinutes((value || "") as string);
+        case "status":
+          const statusOrder: { [key: string]: number } = { todo: 0, in_progress: 1, completed: 2 };
+          return statusOrder[value as string] ?? 3;
+        case "category":
+          return (value || "").toString().toLowerCase();
         default:
-          aValue = aValue || "";
-          bValue = bValue || "";
+          return value || "";
       }
+    };
 
-      if (aValue < bValue) {
-        return sortConfig.direction === "asc" ? -1 : 1;
-      }
-      if (aValue > bValue) {
-        return sortConfig.direction === "asc" ? 1 : -1;
+    const sortedTasks = [...tasks].sort((a, b) => {
+      // Iterate through sort configs in order - first config is the primary sort
+      // Each subsequent config is used as a tiebreaker when previous configs are equal
+      for (const config of sectionSortConfigs) {
+        const aValue = getSortValue(a, config.key);
+        const bValue = getSortValue(b, config.key);
+
+        // Compare values - if they're equal, continue to the next sort config
+        if (aValue < bValue) {
+          return config.direction === "asc" ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return config.direction === "asc" ? 1 : -1;
+        }
+        // Values are equal, continue to next sort config (for multi-level sorting)
       }
       return 0;
     });
@@ -486,40 +508,66 @@ export default function TasksView() {
     return hours * 60 + minutes;
   };
 
-  // Handle sort selection
-  const handleSortSelect = (key: string, direction: "asc" | "desc") => {
-    setSortConfig({ key, direction });
+  // Handle sort selection - toggle sort config (add/remove/update) for a specific section
+  const handleSortSelect = (key: string, direction: "asc" | "desc", section: 'active' | 'completed' | 'uncompleted' = 'active') => {
+    setSortConfigs(prev => {
+      const sectionConfigs = prev[section];
+      const existingIndex = sectionConfigs.findIndex(c => c.key === key);
+      
+      let newSectionConfigs;
+      if (existingIndex >= 0) {
+        // If same key and direction, remove it
+        if (sectionConfigs[existingIndex].direction === direction) {
+          newSectionConfigs = sectionConfigs.filter((_, i) => i !== existingIndex);
+        } else {
+          // If same key but different direction, update it
+          newSectionConfigs = sectionConfigs.map((c, i) => i === existingIndex ? { key, direction } : c);
+        }
+      } else {
+        // Add new sort config
+        newSectionConfigs = [...sectionConfigs, { key, direction }];
+      }
+      
+      return { ...prev, [section]: newSectionConfigs };
+    });
+  };
+
+  // Clear sort for all sections or a specific section
+  const handleClearSort = (section?: 'active' | 'completed' | 'uncompleted') => {
+    if (section) {
+      setSortConfigs(prev => ({ ...prev, [section]: [] }));
+    } else {
+      setSortConfigs({ active: [], completed: [], uncompleted: [] });
+    }
     setShowSortDropdown(false);
   };
 
-  // Clear sort
-  const handleClearSort = () => {
-    setSortConfig(null);
-    setShowSortDropdown(false);
+  // Get current sort display text for a section
+  const getCurrentSortText = (section: 'active' | 'completed' | 'uncompleted' = 'active') => {
+    const sectionConfigs = sortConfigs[section];
+    if (sectionConfigs.length === 0) return "Sort";
+
+    return sectionConfigs.map(config => {
+      const option = sortOptions.find((opt) => opt.key === config.key);
+      if (!option) return "";
+      return `${option.label} ${config.direction === "asc" ? "↑" : "↓"}`;
+    }).filter(Boolean).join(", ");
   };
 
-  // Get current sort display text
-  const getCurrentSortText = () => {
-    if (!sortConfig) return "Sort";
-
-    const option = sortOptions.find((opt) => opt.key === sortConfig.key);
-    if (!option) return "Sort";
-
-    const directionText =
-      sortConfig.direction === "asc" ? option.asc : option.desc;
-    return `${option.label} • ${directionText}`;
-  };
-
-  // Get sort indicator for Kanban columns
+  // Get sort indicator for Kanban columns (uses active section for kanban)
   const getSortIndicator = () => {
-    if (!sortConfig) return null;
+    const sectionConfigs = sortConfigs.active;
+    if (sectionConfigs.length === 0) return null;
     
-    const option = sortOptions.find((opt) => opt.key === sortConfig.key);
-    if (!option) return null;
+    const labels = sectionConfigs.map(config => {
+      const option = sortOptions.find((opt) => opt.key === config.key);
+      if (!option) return "";
+      return `${option.label} ${config.direction === "asc" ? "↑" : "↓"}`;
+    }).filter(Boolean).join(", ");
     
     return (
       <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full border border-blue-200">
-        Sorted by {option.label} {sortConfig.direction === "asc" ? "↑" : "↓"}
+        Sorted by {labels}
       </div>
     );
   };
@@ -884,8 +932,8 @@ export default function TasksView() {
         tasks = kanbanData.kanbanBoard[columnKey]?.tasks || [];
       }
       
-      // Apply sorting to Kanban tasks
-      return sortTasks(tasks);
+      // Apply filtering and sorting to Kanban tasks (use 'active' section for Kanban)
+      return sortTasks(filterTasks(tasks), 'active');
     };
 
     return (
@@ -1356,98 +1404,259 @@ export default function TasksView() {
     );
   };
 
-  // Sort Dropdown Component (unchanged)
-  const SortDropdown = () => {
-    const dropdownRef = useRef<HTMLDivElement>(null);
+  // Filter tasks by search query, status, and category
+  const filterTasks = (tasks: Task[]) => {
+    let filtered = tasks;
+    
+    // Apply search filter
+    if (activeSearchQuery.trim()) {
+      const query = activeSearchQuery.toLowerCase();
+      filtered = filtered.filter(task => 
+        task.title?.toLowerCase().includes(query)
+      );
+    }
+    
+    // Apply status filter
+    if (statusFilter) {
+      filtered = filtered.filter(task => task.status === statusFilter);
+    }
+    
+    // Apply category filter
+    if (categoryFilter) {
+      filtered = filtered.filter(task => task.category === categoryFilter);
+    }
+    
+    return filtered;
+  };
 
-    // Handle click outside to close dropdown
-    useEffect(() => {
-      const handleClickOutside = (event: MouseEvent) => {
-        if (
-          dropdownRef.current &&
-          !dropdownRef.current.contains(event.target as Node)
-        ) {
-          setShowSortDropdown(false);
+  // Handle search
+  const handleSearch = () => {
+    setActiveSearchQuery(searchQuery);
+  };
+
+  // Clear all filters
+  const handleClearFilters = () => {
+    setSearchQuery("");
+    setActiveSearchQuery("");
+    setStatusFilter(null);
+    setCategoryFilter(null);
+    setShowSortDropdown(false);
+  };
+
+  // Handle column header click for sorting - section specific
+  // New sort becomes PRIMARY (inserted at beginning), existing sorts become secondary
+  const handleColumnSort = (key: string, section: 'active' | 'completed' | 'uncompleted') => {
+    setSortConfigs(prev => {
+      const sectionConfigs = prev[section];
+      const existingIndex = sectionConfigs.findIndex(c => c.key === key);
+      
+      let newSectionConfigs;
+      if (existingIndex >= 0) {
+        const currentDirection = sectionConfigs[existingIndex].direction;
+        if (currentDirection === "asc") {
+          // Change to desc and move to primary position (beginning)
+          const updated = { key, direction: "desc" as const };
+          newSectionConfigs = [updated, ...sectionConfigs.filter((_, i) => i !== existingIndex)];
+        } else {
+          // Remove this sort
+          newSectionConfigs = sectionConfigs.filter((_, i) => i !== existingIndex);
         }
-      };
+      } else {
+        // Add new sort config as PRIMARY (at beginning) with asc direction
+        newSectionConfigs = [{ key, direction: "asc" as const }, ...sectionConfigs];
+      }
+      
+      return { ...prev, [section]: newSectionConfigs };
+    });
+  };
 
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => {
-        document.removeEventListener("mousedown", handleClickOutside);
-      };
-    }, []);
-
+  // Get sort indicator for a column - section specific
+  const getColumnSortIndicator = (key: string, section: 'active' | 'completed' | 'uncompleted') => {
+    const sectionConfigs = sortConfigs[section];
+    const config = sectionConfigs.find(c => c.key === key);
+    const index = sectionConfigs.findIndex(c => c.key === key);
+    
+    if (!config) return null;
+    
     return (
-      <div className="relative" ref={dropdownRef}>
-        <button
-          className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm text-gray-700 min-w-[120px] justify-between"
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowSortDropdown(!showSortDropdown);
-          }}
-        >
-          <div className="flex items-center gap-2">
-            <ArrowUpDown className="w-4 h-4" />
-            <span className="truncate">{getCurrentSortText()}</span>
-          </div>
-          <ChevronDown
-            className={`w-4 h-4 transition-transform flex-shrink-0 ${showSortDropdown ? "rotate-180" : ""
-              }`}
-          />
-        </button>
-
-        {showSortDropdown && (
-          <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-            <div className="p-2">
-              <div className="text-xs font-medium text-gray-500 px-3 py-2 uppercase tracking-wide">
-                {t('sort.label')}
-              </div>
-
-              {sortOptions.map((option) => (
-                <div
-                  key={option.key}
-                  className="border-b border-gray-100 last:border-0"
-                >
-                  <div className="px-3 py-1 text-sm font-medium text-gray-700">
-                    {option.label}
-                  </div>
-                  <button
-                    className="w-full text-left px-6 py-2 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between"
-                    onClick={() => handleSortSelect(option.key, "asc")}
-                  >
-                    <span>{option.asc}</span>
-                    {sortConfig?.key === option.key &&
-                      sortConfig.direction === "asc" && (
-                        <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                      )}
-                  </button>
-                  <button
-                    className="w-full text-left px-6 py-2 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between"
-                    onClick={() => handleSortSelect(option.key, "desc")}
-                  >
-                    <span>{option.desc}</span>
-                    {sortConfig?.key === option.key &&
-                      sortConfig.direction === "desc" && (
-                        <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                      )}
-                  </button>
-                </div>
-              ))}
-
-              {sortConfig && (
-                <button
-                  className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 mt-2 border-t border-gray-100"
-                  onClick={handleClearSort}
-                >
-                  Clear sort
-                </button>
-              )}
-            </div>
-          </div>
+      <span className="inline-flex items-center gap-1 ml-1">
+        <span className={`text-blue-600 ${config.direction === "asc" ? "" : "rotate-180 inline-block"}`}>
+          ↑
+        </span>
+        {sectionConfigs.length > 1 && (
+          <span className="text-xs bg-blue-500 text-white px-1 py-0.5 rounded-full min-w-[16px] text-center">
+            {index + 1}
+          </span>
         )}
-      </div>
+      </span>
     );
   };
+
+  // Sortable column header component - section specific
+  const SortableColumnHeader = ({ sortKey, section, children, className = "" }: { sortKey: string; section: 'active' | 'completed' | 'uncompleted'; children: React.ReactNode; className?: string }) => (
+    <div
+      className={`cursor-pointer hover:text-blue-600 transition-colors select-none flex items-center ${className}`}
+      onClick={() => handleColumnSort(sortKey, section)}
+      title="Click to sort"
+    >
+      {children}
+      {getColumnSortIndicator(sortKey, section)}
+    </div>
+  );
+
+  // Check if any filter is active
+  const hasActiveFilters = activeSearchQuery || statusFilter || categoryFilter;
+
+  // Sort Dropdown ref for click outside detection
+  const sortDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Handle click outside to close sort dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        sortDropdownRef.current &&
+        !sortDropdownRef.current.contains(event.target as Node)
+      ) {
+        setShowSortDropdown(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  // Sort Dropdown Component - rendered inline to avoid recreation issues
+  const renderSortDropdown = () => (
+    <div className="relative" ref={sortDropdownRef}>
+      <button
+        className={`flex items-center gap-2 px-3 py-2 border rounded-lg hover:bg-gray-50 transition-colors text-sm min-w-[100px] justify-between ${
+          hasActiveFilters 
+            ? "bg-blue-50 border-blue-300 text-blue-700" 
+            : "bg-white border-gray-300 text-gray-700"
+        }`}
+        onClick={(e) => {
+          e.stopPropagation();
+          setShowSortDropdown(!showSortDropdown);
+        }}
+      >
+        <div className="flex items-center gap-2">
+          <Filter className="w-4 h-4" />
+          <span className="truncate">
+            {hasActiveFilters ? t('sort.filtered') || 'Filtered' : 'Filter'}
+          </span>
+        </div>
+        <ChevronDown
+          className={`w-4 h-4 transition-transform flex-shrink-0 ${showSortDropdown ? "rotate-180" : ""
+            }`}
+        />
+      </button>
+
+      {showSortDropdown && (
+        <div className="absolute top-full right-0 mt-1 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-[70vh] overflow-y-auto">
+          <div className="p-3 space-y-4">
+            {/* Search Section */}
+            <div>
+              <div className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">
+                {t('sort.search') || 'Search'}
+              </div>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        setActiveSearchQuery(searchQuery);
+                      }
+                    }}
+                    placeholder={t('sort.searchPlaceholder') || 'Search task name...'}
+                    className="w-full pl-3 pr-8 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    autoComplete="off"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSearchQuery("");
+                        setActiveSearchQuery("");
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveSearchQuery(searchQuery);
+                  }}
+                  className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex-shrink-0"
+                >
+                  <Search className="w-4 h-4" />
+                </button>
+              </div>
+              {activeSearchQuery && (
+                <div className="mt-2 text-xs text-blue-600">
+                  {t('sort.searchingFor') || 'Searching for'}: &quot;{activeSearchQuery}&quot;
+                </div>
+              )}
+            </div>
+
+            {/* Status Filter */}
+            <div>
+              <div className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">
+                {t('sort.filterByStatus') || 'Filter by Status'}
+              </div>
+              <select
+                value={statusFilter || ""}
+                onChange={(e) => setStatusFilter(e.target.value || null)}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+              >
+                <option value="">{t('sort.allStatuses') || 'All Statuses'}</option>
+                <option value="todo">{t('status.todo') || 'Todo'}</option>
+                <option value="in_progress">{t('status.inProgress') || 'In Progress'}</option>
+                <option value="completed">{t('status.completed') || 'Completed'}</option>
+              </select>
+            </div>
+
+            {/* Category Filter */}
+            <div>
+              <div className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">
+                {t('sort.filterByCategory') || 'Filter by Category'}
+              </div>
+              <select
+                value={categoryFilter || ""}
+                onChange={(e) => setCategoryFilter(e.target.value || null)}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+              >
+                <option value="">{t('sort.allCategories') || 'All Categories'}</option>
+                <option value="Operational">{t('category.operational') || 'Operational'}</option>
+                <option value="Strategic">{t('category.strategic') || 'Strategic'}</option>
+                <option value="Financial">{t('category.financial') || 'Financial'}</option>
+                <option value="Technical">{t('category.technical') || 'Technical'}</option>
+                <option value="Other">{t('category.other') || 'Other'}</option>
+              </select>
+            </div>
+
+            {/* Clear All Button */}
+            {hasActiveFilters && (
+              <button
+                className="w-full text-center px-3 py-2 text-sm text-red-600 hover:bg-red-50 border border-red-200 rounded-lg transition-colors"
+                onClick={handleClearFilters}
+              >
+                {t('sort.clearAll') || 'Clear All Filters'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   if (loading) {
     return (
@@ -1492,7 +1701,7 @@ export default function TasksView() {
         <div className="flex gap-3 items-center">
           {/* Sort Button - Available for both List and Kanban views */}
           <div className="relative">
-            <SortDropdown />
+            {renderSortDropdown()}
           </div>
 
           {/* View Mode Toggle */}
@@ -1547,27 +1756,27 @@ export default function TasksView() {
                 )}
                 <h2 className="font-semibold text-gray-900">{t('tasks.active')}</h2>
                 <span className="bg-blue-100 text-blue-800 text-sm px-2 py-1 rounded-full">
-                  {activeTasks.length}
+                  {hasActiveFilters ? `${filterTasks(activeTasks).length}/${activeTasks.length}` : activeTasks.length}
                 </span>
               </div>
             </div>
 
             {activeTasksExpanded && (
               <div>
-                {/* UPDATED: Header Row with adjusted columns */}
+                {/* Header Row with sortable columns */}
                 <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                  <div className="col-span-3">{t('tasks.taskName')}</div>
+                  <SortableColumnHeader sortKey="title" section="active" className="col-span-3">{t('tasks.taskName')}</SortableColumnHeader>
                   <div className="col-span-1">{t('tasks.status')}</div>
                   <div className="col-span-1">{t('tasks.category')}</div>
-                  <div className="col-span-1">{t('tasks.dueDate')}</div>
-                  <div className="col-span-1">{t('tasks.priority')}</div>
+                  <SortableColumnHeader sortKey="dueDate" section="active" className="col-span-1">{t('tasks.dueDate')}</SortableColumnHeader>
+                  <SortableColumnHeader sortKey="priority" section="active" className="col-span-1">{t('tasks.priority')}</SortableColumnHeader>
                   <div className="col-span-2">{t('tasks.assignee')}</div>
-                  <div className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</div>
+                  <SortableColumnHeader sortKey="estimatedTime" section="active" className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</SortableColumnHeader>
                 </div>
 
                 {/* Task Rows */}
-                {activeTasks.length > 0 ? (
-                  sortTasks(activeTasks).map((task) => (
+                {filterTasks(activeTasks).length > 0 ? (
+                  sortTasks(filterTasks(activeTasks), 'active').map((task) => (
                     <TaskRow key={task._id} task={task} />
                   ))
                 ) : (
@@ -1602,26 +1811,26 @@ export default function TasksView() {
                 )}
                 <h2 className="font-semibold text-gray-900">{t('tasks.completed')}</h2>
                 <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded-full">
-                  {completedTasks.length}
+                  {hasActiveFilters ? `${filterTasks(completedTasks).length}/${completedTasks.length}` : completedTasks.length}
                 </span>
               </div>
             </div>
 
             {completedTasksExpanded && (
               <div>
-                {/* UPDATED: Header Row with adjusted columns */}
+                {/* Header Row with sortable columns */}
                 <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                  <div className="col-span-3">{t('tasks.taskName')}</div>
+                  <SortableColumnHeader sortKey="title" section="completed" className="col-span-3">{t('tasks.taskName')}</SortableColumnHeader>
                   <div className="col-span-1">{t('tasks.status')}</div>
                   <div className="col-span-1">{t('tasks.category')}</div>
-                  <div className="col-span-1">{t('tasks.dueDate')}</div>
-                  <div className="col-span-1">{t('tasks.priority')}</div>
+                  <SortableColumnHeader sortKey="dueDate" section="completed" className="col-span-1">{t('tasks.dueDate')}</SortableColumnHeader>
+                  <SortableColumnHeader sortKey="priority" section="completed" className="col-span-1">{t('tasks.priority')}</SortableColumnHeader>
                   <div className="col-span-2">{t('tasks.assignee')}</div>
-                  <div className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</div>
+                  <SortableColumnHeader sortKey="estimatedTime" section="completed" className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</SortableColumnHeader>
                 </div>
 
-                {completedTasks.length > 0 ? (
-                  sortTasks(completedTasks).map((task) => (
+                {filterTasks(completedTasks).length > 0 ? (
+                  sortTasks(filterTasks(completedTasks), 'completed').map((task) => (
                     <TaskRow key={task._id} task={task} isCompleted={true} />
                   ))
                 ) : (
@@ -1651,27 +1860,27 @@ export default function TasksView() {
                   <h2 className="font-semibold">{t('tasks.uncompleted')}</h2>
                 </div>
                 <span className="bg-red-100 text-red-800 text-sm px-2 py-1 rounded-full">
-                  {uncompletedTasks.length}
+                  {hasActiveFilters ? `${filterTasks(uncompletedTasks).length}/${uncompletedTasks.length}` : uncompletedTasks.length}
                 </span>
               </div>
             </div>
 
             {uncompletedTasksExpanded && (
               <div>
-                {/* UPDATED: Header Row with adjusted columns */}
+                {/* Header Row with sortable columns */}
                 <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                  <div className="col-span-3">{t('tasks.taskName')}</div>
+                  <SortableColumnHeader sortKey="title" section="uncompleted" className="col-span-3">{t('tasks.taskName')}</SortableColumnHeader>
                   <div className="col-span-1">{t('tasks.status')}</div>
                   <div className="col-span-1">{t('tasks.category')}</div>
-                  <div className="col-span-1">{t('tasks.dueDate')}</div>
-                  <div className="col-span-1">{t('tasks.priority')}</div>
+                  <SortableColumnHeader sortKey="dueDate" section="uncompleted" className="col-span-1">{t('tasks.dueDate')}</SortableColumnHeader>
+                  <SortableColumnHeader sortKey="priority" section="uncompleted" className="col-span-1">{t('tasks.priority')}</SortableColumnHeader>
                   <div className="col-span-2">{t('tasks.assignee')}</div>
-                  <div className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</div>
+                  <SortableColumnHeader sortKey="estimatedTime" section="uncompleted" className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</SortableColumnHeader>
                 </div>
 
                 {/* Always show content, even if empty */}
-                {uncompletedTasks.length > 0 ? (
-                  sortTasks(uncompletedTasks).map((task) => (
+                {filterTasks(uncompletedTasks).length > 0 ? (
+                  sortTasks(filterTasks(uncompletedTasks), 'uncompleted').map((task) => (
                     <TaskRow key={task._id} task={task} isOverdue={true} />
                   ))
                 ) : (

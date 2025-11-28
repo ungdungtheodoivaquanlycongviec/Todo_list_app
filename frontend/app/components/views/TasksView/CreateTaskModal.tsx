@@ -424,7 +424,7 @@ export default function CreateTaskModal({
                     onClick={() => setShowDatePicker(true)}
                   >
                     <span className={dueDate ? "" : "text-gray-400"}>
-                      {dueDate ? formatDate(dueDate) : t('tasks.selectDueDate') || "Select due date"}
+                      {dueDate ? formatDate(dueDate + 'T12:00:00Z') : t('tasks.selectDueDate') || "Select due date"}
                     </span>
                   </div>
                   {showDatePicker && (

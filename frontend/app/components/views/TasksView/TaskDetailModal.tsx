@@ -1654,7 +1654,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                         onClick={() => startEditing('dueDate', taskProperties.dueDate)}
                       >
                         <span className="text-sm text-gray-600 dark:text-gray-400">
-                          {taskProperties.dueDate ? formatDate(taskProperties.dueDate) : "—"}
+                          {task.dueDate ? formatDate(task.dueDate) : "—"}
                         </span>
                         <Edit2 className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
