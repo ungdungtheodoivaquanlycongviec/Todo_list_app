@@ -268,7 +268,7 @@ export default function EstimatedTimePicker({ value, onSave, onClose }: Estimate
       if (!isDraggingNumber && !isDraggingUnit) return;
       
       const now = Date.now();
-      const deltaY = dragStartY.current - e.clientY;
+      const deltaY = e.clientY - dragStartY.current; // Reversed: drag down = value up
       const deltaTime = now - lastMoveTime.current;
       
       // Calculate velocity (pixels per millisecond, scaled up)
@@ -365,42 +365,46 @@ export default function EstimatedTimePicker({ value, onSave, onClose }: Estimate
       onClick={(e) => e.stopPropagation()}
     >
       <div className="flex items-center justify-center gap-4">
-        {/* Number Column */}
-        <div className="flex flex-col items-center select-none">
+        {/* Number Column - entire column is draggable */}
+        <div 
+          className={`flex flex-col items-center select-none cursor-ns-resize rounded-lg p-1 transition-all ${
+            isDraggingNumber ? 'bg-blue-50' : 'hover:bg-gray-50'
+          }`}
+          onMouseDown={handleNumberMouseDown}
+        >
           {/* +2 above */}
           <div 
-            className="text-sm text-gray-300 h-6 flex items-center justify-center cursor-pointer hover:text-gray-400 transition-colors"
-            onClick={() => changeNumber(2)}
+            className="text-sm text-gray-300 h-6 flex items-center justify-center hover:text-gray-400 transition-colors"
+            onClick={(e) => { e.stopPropagation(); changeNumber(2); }}
           >
             {String(getWrappedValue(number, 2, maxNumber)).padStart(2, '0')}
           </div>
           {/* +1 above */}
           <div 
-            className="text-base text-gray-400 h-7 flex items-center justify-center cursor-pointer hover:text-gray-500 transition-colors"
-            onClick={() => changeNumber(1)}
+            className="text-base text-gray-400 h-7 flex items-center justify-center hover:text-gray-500 transition-colors"
+            onClick={(e) => { e.stopPropagation(); changeNumber(1); }}
           >
             {String(getWrappedValue(number, 1, maxNumber)).padStart(2, '0')}
           </div>
-          {/* Current value - draggable */}
+          {/* Current value */}
           <div
-            className={`w-14 h-12 flex items-center justify-center bg-blue-50 rounded-lg border-2 border-blue-200 text-2xl font-bold text-blue-600 cursor-ns-resize transition-all ${
+            className={`w-14 h-12 flex items-center justify-center bg-blue-50 rounded-lg border-2 border-blue-200 text-2xl font-bold text-blue-600 transition-all ${
               isDraggingNumber ? 'bg-blue-100 border-blue-400 scale-105' : ''
             }`}
-            onMouseDown={handleNumberMouseDown}
           >
             {String(number).padStart(2, '0')}
           </div>
           {/* -1 below */}
           <div 
-            className="text-base text-gray-400 h-7 flex items-center justify-center cursor-pointer hover:text-gray-500 transition-colors"
-            onClick={() => changeNumber(-1)}
+            className="text-base text-gray-400 h-7 flex items-center justify-center hover:text-gray-500 transition-colors"
+            onClick={(e) => { e.stopPropagation(); changeNumber(-1); }}
           >
             {String(getWrappedValue(number, -1, maxNumber)).padStart(2, '0')}
           </div>
           {/* -2 below */}
           <div 
-            className="text-sm text-gray-300 h-6 flex items-center justify-center cursor-pointer hover:text-gray-400 transition-colors"
-            onClick={() => changeNumber(-2)}
+            className="text-sm text-gray-300 h-6 flex items-center justify-center hover:text-gray-400 transition-colors"
+            onClick={(e) => { e.stopPropagation(); changeNumber(-2); }}
           >
             {String(getWrappedValue(number, -2, maxNumber)).padStart(2, '0')}
           </div>
@@ -409,42 +413,46 @@ export default function EstimatedTimePicker({ value, onSave, onClose }: Estimate
         {/* Separator */}
         <div className="text-2xl font-bold text-gray-300 self-center">:</div>
 
-        {/* Unit Column */}
-        <div className="flex flex-col items-center select-none">
+        {/* Unit Column - entire column is draggable */}
+        <div 
+          className={`flex flex-col items-center select-none cursor-ns-resize rounded-lg p-1 transition-all ${
+            isDraggingUnit ? 'bg-blue-50' : 'hover:bg-gray-50'
+          }`}
+          onMouseDown={handleUnitMouseDown}
+        >
           {/* +2 above */}
           <div 
-            className="text-sm text-gray-300 h-6 flex items-center justify-center cursor-pointer hover:text-gray-400 transition-colors min-w-[40px]"
-            onClick={() => changeUnit(2)}
+            className="text-sm text-gray-300 h-6 flex items-center justify-center hover:text-gray-400 transition-colors min-w-[40px]"
+            onClick={(e) => { e.stopPropagation(); changeUnit(2); }}
           >
             {getUnitLabel(unitOrder[getWrappedUnitIndex(currentUnitIndex, 2)])}
           </div>
           {/* +1 above */}
           <div 
-            className="text-base text-gray-400 h-7 flex items-center justify-center cursor-pointer hover:text-gray-500 transition-colors min-w-[40px]"
-            onClick={() => changeUnit(1)}
+            className="text-base text-gray-400 h-7 flex items-center justify-center hover:text-gray-500 transition-colors min-w-[40px]"
+            onClick={(e) => { e.stopPropagation(); changeUnit(1); }}
           >
             {getUnitLabel(unitOrder[getWrappedUnitIndex(currentUnitIndex, 1)])}
           </div>
-          {/* Current value - draggable */}
+          {/* Current value */}
           <div
-            className={`w-14 h-12 flex items-center justify-center bg-blue-50 rounded-lg border-2 border-blue-200 text-xl font-bold text-blue-600 cursor-ns-resize transition-all ${
+            className={`w-14 h-12 flex items-center justify-center bg-blue-50 rounded-lg border-2 border-blue-200 text-xl font-bold text-blue-600 transition-all ${
               isDraggingUnit ? 'bg-blue-100 border-blue-400 scale-105' : ''
             }`}
-            onMouseDown={handleUnitMouseDown}
           >
             {getUnitLabel(unit)}
           </div>
           {/* -1 below */}
           <div 
-            className="text-base text-gray-400 h-7 flex items-center justify-center cursor-pointer hover:text-gray-500 transition-colors min-w-[40px]"
-            onClick={() => changeUnit(-1)}
+            className="text-base text-gray-400 h-7 flex items-center justify-center hover:text-gray-500 transition-colors min-w-[40px]"
+            onClick={(e) => { e.stopPropagation(); changeUnit(-1); }}
           >
             {getUnitLabel(unitOrder[getWrappedUnitIndex(currentUnitIndex, -1)])}
           </div>
           {/* -2 below */}
           <div 
-            className="text-sm text-gray-300 h-6 flex items-center justify-center cursor-pointer hover:text-gray-400 transition-colors min-w-[40px]"
-            onClick={() => changeUnit(-2)}
+            className="text-sm text-gray-300 h-6 flex items-center justify-center hover:text-gray-400 transition-colors min-w-[40px]"
+            onClick={(e) => { e.stopPropagation(); changeUnit(-2); }}
           >
             {getUnitLabel(unitOrder[getWrappedUnitIndex(currentUnitIndex, -2)])}
           </div>

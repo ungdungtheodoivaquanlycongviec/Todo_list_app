@@ -35,7 +35,7 @@ export default function TasksView() {
   const { user: currentUser, currentGroup } = useAuth();
   const { currentFolder } = useFolder();
   const { t } = useLanguage();
-  const { formatDate } = useRegional();
+  const { formatDate, convertFromUserTimezone, convertToUserTimezone } = useRegional();
   const [activeTasksExpanded, setActiveTasksExpanded] = useState(true);
   const [uncompletedTasksExpanded, setUncompletedTasksExpanded] =
     useState(true);
@@ -273,8 +273,9 @@ export default function TasksView() {
     if (task.status === "completed") return false;
 
     try {
-      const dueDate = new Date(task.dueDate);
-      const today = new Date();
+      // Convert UTC date from backend to user's timezone for comparison
+      const dueDate = convertToUserTimezone(task.dueDate);
+      const today = convertToUserTimezone(new Date());
 
       // Reset time part for accurate date comparison
       const dueDateOnly = new Date(
@@ -746,8 +747,15 @@ export default function TasksView() {
   const saveField = async (task: Task, field: string) => {
     if (tempValue !== (task as any)[field]) {
       try {
+        // Convert date fields from user timezone to UTC for backend storage
+        let updateValue: any = tempValue;
+        if (field === 'dueDate' && tempValue) {
+          const userDate = new Date(tempValue + 'T23:59:59'); // Set to end of day
+          updateValue = convertFromUserTimezone(userDate).toISOString();
+        }
+        
         const updatedTask = await taskService.updateTask(task._id, {
-          [field]: tempValue,
+          [field]: updateValue,
         });
         handleTaskUpdate(updatedTask);
       } catch (error) {
@@ -764,8 +772,15 @@ export default function TasksView() {
   const saveFieldDirect = async (task: Task, field: string, value: string) => {
     if (value !== (task as any)[field]) {
       try {
+        // Convert date fields from user timezone to UTC for backend storage
+        let updateValue: any = value;
+        if (field === 'dueDate' && value) {
+          const userDate = new Date(value + 'T23:59:59'); // Set to end of day
+          updateValue = convertFromUserTimezone(userDate).toISOString();
+        }
+        
         const updatedTask = await taskService.updateTask(task._id, {
-          [field]: value,
+          [field]: updateValue,
         });
         handleTaskUpdate(updatedTask);
       } catch (error) {
@@ -1208,12 +1223,14 @@ export default function TasksView() {
                 }`}
               onClick={(e) => {
                 e.stopPropagation();
+                // Convert UTC date from backend to user timezone for the date picker
+                const displayDate = task.dueDate
+                  ? convertToUserTimezone(task.dueDate).toISOString().split("T")[0]
+                  : "";
                 startEditing(
                   task._id,
                   "dueDate",
-                  task.dueDate
-                    ? new Date(task.dueDate).toISOString().split("T")[0]
-                    : ""
+                  displayDate
                 );
               }}
             >

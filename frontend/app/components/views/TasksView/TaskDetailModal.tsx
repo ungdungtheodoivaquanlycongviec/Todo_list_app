@@ -31,6 +31,7 @@ import { useFolder } from "../../../contexts/FolderContext"
 import { getMemberRole, canAssignFolderMembers } from "../../../utils/groupRoleUtils"
 import { useLanguage } from "../../../contexts/LanguageContext"
 import { useRegional } from "../../../contexts/RegionalContext"
+import EstimatedTimePicker from "./EstimatedTimePicker"
 
 interface MinimalUser {
   _id: string;
@@ -158,6 +159,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const [pendingAttachment, setPendingAttachment] = useState<File | null>(null)
   const [pendingAttachmentPreview, setPendingAttachmentPreview] = useState<string | null>(null)
   const [lightboxImage, setLightboxImage] = useState<string | null>(null)
+  const [showEstimatedTimePicker, setShowEstimatedTimePicker] = useState(false)
 
   const { user: currentUser, currentGroup } = useAuth()
   const { currentFolder } = useFolder()
@@ -1660,48 +1662,27 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                   </div>
 
                   {/* Estimated Time */}
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer group">
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer group relative">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <Clock className="w-4 h-4 text-gray-500 flex-shrink-0" />
                       <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('taskDetail.estimatedTimeLabel')}</span>
                     </div>
-                    {editingField === 'estimatedTime' ? (
-                      <div className="flex gap-1 flex-1 max-w-40">
-                        <input
-                          type="text"
-                          value={tempValue}
-                          onChange={(e) => setTempValue(e.target.value)}
-                          onBlur={() => saveField('estimatedTime')}
-                          onKeyDown={(e) => handleKeyDown(e, 'estimatedTime')}
-                          className="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="1h 30m"
-                          autoFocus
-                        />
-                        <select
-                          value=""
-                          onChange={(e) => {
-                            if (e.target.value) {
-                              handleQuickTimeSelect(e.target.value)
-                            }
-                          }}
-                          className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="">Quick</option>
-                          {estimatedTimeOptions.map((opt) => (
-                            <option key={opt} value={opt}>
-                              {opt}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    ) : (
-                      <div 
-                        className="flex items-center gap-2 flex-1 justify-end"
-                        onClick={() => startEditing('estimatedTime', taskProperties.estimatedTime)}
-                      >
-                        <span className="text-sm text-gray-600 dark:text-gray-400">{taskProperties.estimatedTime || "—"}</span>
-                        <Edit2 className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
+                    <div 
+                      className="flex items-center gap-2 flex-1 justify-end"
+                      onClick={() => setShowEstimatedTimePicker(true)}
+                    >
+                      <span className="text-sm text-gray-600 dark:text-gray-400">{taskProperties.estimatedTime || "—"}</span>
+                      <Edit2 className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    {showEstimatedTimePicker && (
+                      <EstimatedTimePicker
+                        value={taskProperties.estimatedTime}
+                        onSave={(value) => {
+                          saveFieldToDatabase('estimatedTime', value);
+                          setShowEstimatedTimePicker(false);
+                        }}
+                        onClose={() => setShowEstimatedTimePicker(false)}
+                      />
                     )}
                   </div>
 

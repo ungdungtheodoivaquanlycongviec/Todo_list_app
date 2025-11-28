@@ -28,6 +28,8 @@ export const translations = {
     'common.none': 'None',
     'common.yes': 'Yes',
     'common.no': 'No',
+    'common.clear': 'Clear',
+    'common.done': 'Done',
     
     // Tasks
     'tasks.title': 'Tasks',
@@ -37,6 +39,7 @@ export const translations = {
     'tasks.taskName': 'Task Name',
     'tasks.description': 'Description',
     'tasks.dueDate': 'Due Date',
+    'tasks.selectDueDate': 'Select due date',
     'tasks.startDate': 'Start Date',
     'tasks.priority': 'Priority',
     'tasks.status': 'Status',
@@ -44,6 +47,7 @@ export const translations = {
     'tasks.category': 'Category',
     'tasks.tags': 'Tags',
     'tasks.estimatedTime': 'Estimated Time',
+    'tasks.selectEstimatedTime': 'Select estimated time',
     'tasks.active': 'Active Tasks',
     'tasks.completed': 'Completed Tasks',
     'tasks.uncompleted': 'Uncompleted Tasks',
@@ -634,6 +638,8 @@ export const translations = {
     'common.none': 'Không có',
     'common.yes': 'Có',
     'common.no': 'Không',
+    'common.clear': 'Xóa',
+    'common.done': 'Xong',
     
     // Tasks
     'tasks.title': 'Công việc',
@@ -643,6 +649,7 @@ export const translations = {
     'tasks.taskName': 'Tên công việc',
     'tasks.description': 'Mô tả',
     'tasks.dueDate': 'Hạn hoàn thành',
+    'tasks.selectDueDate': 'Chọn hạn hoàn thành',
     'tasks.startDate': 'Ngày bắt đầu',
     'tasks.priority': 'Độ ưu tiên',
     'tasks.status': 'Trạng thái',
@@ -650,6 +657,7 @@ export const translations = {
     'tasks.category': 'Phân loại',
     'tasks.tags': 'Nhãn',
     'tasks.estimatedTime': 'Thời gian ước tính',
+    'tasks.selectEstimatedTime': 'Chọn thời gian ước tính',
     'tasks.active': 'Công việc đang thực hiện',
     'tasks.completed': 'Công việc đã hoàn thành',
     'tasks.uncompleted': 'Công việc chưa hoàn thành',

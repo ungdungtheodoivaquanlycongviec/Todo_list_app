@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useLanguage } from "../../../contexts/LanguageContext";
 import { useRegional } from "../../../contexts/RegionalContext";
+import EstimatedTimePicker from "./EstimatedTimePicker";
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -30,7 +31,6 @@ export default function CreateTaskModal({
   initialDueDate,
 }: CreateTaskModalProps) {
   const { t } = useLanguage();
-  const { convertFromUserTimezone } = useRegional();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
@@ -38,21 +38,25 @@ export default function CreateTaskModal({
   const [dueDate, setDueDate] = useState("");
   const [tags, setTags] = useState("");
   const [estimatedTime, setEstimatedTime] = useState("");
+  const [showEstimatedTimePicker, setShowEstimatedTimePicker] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<{ title?: string }>({});
 
   const modalRef = useRef<HTMLDivElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
 
+  const { convertFromUserTimezone, convertToUserTimezone, formatDate } = useRegional();
+
   // Set initial due date when modal opens
   useEffect(() => {
     if (isOpen && initialDueDate) {
-      const dateString = initialDueDate.toISOString().split('T')[0];
-      const timeString = initialDueDate.toTimeString().split(' ')[0].substring(0, 5);
+      // Convert the initial date to user's timezone for display
+      const userDate = convertToUserTimezone(initialDueDate);
+      const dateString = userDate.toISOString().split('T')[0];
       setDueDate(dateString);
-      // You might want to add a time field if needed
     }
-  }, [isOpen, initialDueDate]);
+  }, [isOpen, initialDueDate, convertToUserTimezone]);
 
   // Enhanced options with translations
   const categoryOptions = [
@@ -148,16 +152,22 @@ export default function CreateTaskModal({
   // Handle click outside to close modal
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
-        handleClose();
+      // Don't close if clicking inside the modal
+      if (modalRef.current && modalRef.current.contains(e.target as Node)) {
+        return;
       }
+      // Don't close if a picker is open (they render via portal)
+      if (showEstimatedTimePicker || showDatePicker) {
+        return;
+      }
+      handleClose();
     };
 
     if (isOpen) {
       document.addEventListener("mousedown", handleClickOutside);
     }
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isOpen]);
+  }, [isOpen, showEstimatedTimePicker, showDatePicker]);
 
   const resetForm = () => {
     setTitle("");
@@ -167,6 +177,8 @@ export default function CreateTaskModal({
     setDueDate("");
     setTags("");
     setEstimatedTime("");
+    setShowEstimatedTimePicker(false);
+    setShowDatePicker(false);
     setErrors({});
     setIsSubmitting(false);
   };
@@ -406,14 +418,52 @@ export default function CreateTaskModal({
                   {t('tasks.dueDate')}
                 </label>
                 <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                    min={getMinDate()}
-                    className="w-full pl-10 pr-3 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                  />
+                  <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 z-10" />
+                  <div
+                    className="w-full pl-10 pr-3 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 cursor-pointer hover:border-blue-400 transition-all flex items-center"
+                    onClick={() => setShowDatePicker(true)}
+                  >
+                    <span className={dueDate ? "" : "text-gray-400"}>
+                      {dueDate ? formatDate(dueDate) : t('tasks.selectDueDate') || "Select due date"}
+                    </span>
+                  </div>
+                  {showDatePicker && (
+                    <div 
+                      className="absolute top-full left-0 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl shadow-lg z-50 p-3"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="date"
+                        value={dueDate}
+                        onChange={(e) => {
+                          setDueDate(e.target.value);
+                          setShowDatePicker(false);
+                        }}
+                        min={getMinDate()}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        autoFocus
+                      />
+                      <div className="flex justify-between mt-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDueDate("");
+                            setShowDatePicker(false);
+                          }}
+                          className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                        >
+                          {t('common.clear') || 'Clear'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowDatePicker(false)}
+                          className="text-sm text-blue-500 hover:text-blue-700"
+                        >
+                          {t('common.done') || 'Done'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -423,33 +473,26 @@ export default function CreateTaskModal({
                   <Clock className="w-4 h-4" />
                   {t('tasks.estimatedTime')}
                 </label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="text"
-                      value={estimatedTime}
-                      onChange={(e) => setEstimatedTime(e.target.value)}
-                      className="w-full pl-10 pr-3 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                      placeholder="e.g., 2h 30m"
-                    />
-                  </div>
-                  <select
-                    value=""
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        setEstimatedTime(e.target.value);
-                      }
-                    }}
-                    className="px-3 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all min-w-20"
+                <div className="relative">
+                  <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 z-10" />
+                  <div
+                    className="w-full pl-10 pr-3 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 cursor-pointer hover:border-blue-400 transition-all flex items-center"
+                    onClick={() => setShowEstimatedTimePicker(true)}
                   >
-                    <option value="">Quick select</option>
-                    {estimatedTimeOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                    <span className={estimatedTime ? "" : "text-gray-400"}>
+                      {estimatedTime || t('tasks.selectEstimatedTime') || "Select estimated time"}
+                    </span>
+                  </div>
+                  {showEstimatedTimePicker && (
+                    <EstimatedTimePicker
+                      value={estimatedTime}
+                      onSave={(value) => {
+                        setEstimatedTime(value);
+                        setShowEstimatedTimePicker(false);
+                      }}
+                      onClose={() => setShowEstimatedTimePicker(false)}
+                    />
+                  )}
                 </div>
               </div>
             </div>
