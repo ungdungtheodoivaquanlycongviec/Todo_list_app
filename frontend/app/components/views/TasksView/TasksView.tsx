@@ -39,12 +39,13 @@ export default function TasksView() {
   const { currentFolder } = useFolder();
   const { t } = useLanguage();
   const { formatDate, convertFromUserTimezone, convertToUserTimezone } = useRegional();
-  const [activeTasksExpanded, setActiveTasksExpanded] = useState(true);
-  const [uncompletedTasksExpanded, setUncompletedTasksExpanded] =
-    useState(true);
+  const [todoTasksExpanded, setTodoTasksExpanded] = useState(true);
+  const [inProgressTasksExpanded, setInProgressTasksExpanded] = useState(true);
+  const [incompleteTasksExpanded, setIncompleteTasksExpanded] = useState(true);
   const [completedTasksExpanded, setCompletedTasksExpanded] = useState(true);
-  const [activeTasks, setActiveTasks] = useState<Task[]>([]);
-  const [uncompletedTasks, setUncompletedTasks] = useState<Task[]>([]);
+  const [todoTasks, setTodoTasks] = useState<Task[]>([]);
+  const [inProgressTasks, setInProgressTasks] = useState<Task[]>([]);
+  const [incompleteTasks, setIncompleteTasks] = useState<Task[]>([]);
   const [completedTasks, setCompletedTasks] = useState<Task[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
@@ -62,13 +63,15 @@ export default function TasksView() {
   const [tempValue, setTempValue] = useState("");
   // Separate sort configs for each task section
   const [sortConfigs, setSortConfigs] = useState<{
-    active: Array<{ key: string; direction: "asc" | "desc" }>;
+    todo: Array<{ key: string; direction: "asc" | "desc" }>;
+    inProgress: Array<{ key: string; direction: "asc" | "desc" }>;
     completed: Array<{ key: string; direction: "asc" | "desc" }>;
-    uncompleted: Array<{ key: string; direction: "asc" | "desc" }>;
+    incomplete: Array<{ key: string; direction: "asc" | "desc" }>;
   }>({
-    active: [],
+    todo: [],
+    inProgress: [],
     completed: [],
-    uncompleted: []
+    incomplete: []
   });
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -85,7 +88,7 @@ export default function TasksView() {
   }
 
   const priorityOptions = ["low", "medium", "high", "urgent"];
-  const statusOptions = ["todo", "in_progress", "completed"];
+  const statusOptions = ["todo", "in_progress", "completed", "incomplete"];
   const typeOptions = [
     "Operational",
     "Strategic",
@@ -322,32 +325,39 @@ export default function TasksView() {
       const tasks = response?.tasks || [];
       console.log("Total tasks:", tasks.length);
 
-      const active: Task[] = [];
-      const uncompleted: Task[] = [];
+      const todo: Task[] = [];
+      const inProgress: Task[] = [];
+      const incomplete: Task[] = [];
       const completed: Task[] = [];
 
       tasks.forEach((task: Task) => {
         if (!task || !task._id) return; // Skip invalid tasks
 
-        if (task.status === "completed") {
-          completed.push(task);
-        } else {
-          // Check if task is overdue for uncompleted section
-          if (isTaskOverdue(task)) {
-            uncompleted.push(task);
-          } else {
-            active.push(task);
-          }
+        switch (task.status) {
+          case "completed":
+            completed.push(task);
+            break;
+          case "incomplete":
+            incomplete.push(task);
+            break;
+          case "in_progress":
+            inProgress.push(task);
+            break;
+          case "todo":
+          default:
+            todo.push(task);
+            break;
         }
       });
 
-      console.log("Active tasks:", active.length);
-      console.log("Uncompleted tasks (overdue):", uncompleted.length);
+      console.log("Todo tasks:", todo.length);
+      console.log("In Progress tasks:", inProgress.length);
+      console.log("Incomplete tasks:", incomplete.length);
       console.log("Completed tasks:", completed.length);
-      console.log("Uncompleted tasks details:", uncompleted);
 
-      setActiveTasks(active);
-      setUncompletedTasks(uncompleted);
+      setTodoTasks(todo);
+      setInProgressTasks(inProgress);
+      setIncompleteTasks(incomplete);
       setCompletedTasks(completed);
     } catch (error) {
       const errorMessage = getErrorMessage(error);
@@ -368,8 +378,9 @@ export default function TasksView() {
       // For other errors, show alert
       alert("Failed to fetch tasks: " + errorMessage);
 
-      setActiveTasks([]);
-      setUncompletedTasks([]);
+      setTodoTasks([]);
+      setInProgressTasks([]);
+      setIncompleteTasks([]);
       setCompletedTasks([]);
     } finally {
       setLoading(false);
@@ -433,7 +444,7 @@ export default function TasksView() {
   });
 
   // Sort tasks function - supports multiple sort configs per section
-  const sortTasks = (tasks: Task[], section: 'active' | 'completed' | 'uncompleted' = 'active') => {
+  const sortTasks = (tasks: Task[], section: 'todo' | 'inProgress' | 'completed' | 'incomplete' = 'todo') => {
     const sectionSortConfigs = sortConfigs[section];
     if (sectionSortConfigs.length === 0) return tasks;
 
@@ -509,7 +520,7 @@ export default function TasksView() {
   };
 
   // Handle sort selection - toggle sort config (add/remove/update) for a specific section
-  const handleSortSelect = (key: string, direction: "asc" | "desc", section: 'active' | 'completed' | 'uncompleted' = 'active') => {
+  const handleSortSelect = (key: string, direction: "asc" | "desc", section: 'todo' | 'inProgress' | 'completed' | 'incomplete' = 'todo') => {
     setSortConfigs(prev => {
       const sectionConfigs = prev[section];
       const existingIndex = sectionConfigs.findIndex(c => c.key === key);
@@ -533,17 +544,17 @@ export default function TasksView() {
   };
 
   // Clear sort for all sections or a specific section
-  const handleClearSort = (section?: 'active' | 'completed' | 'uncompleted') => {
+  const handleClearSort = (section?: 'todo' | 'inProgress' | 'completed' | 'incomplete') => {
     if (section) {
       setSortConfigs(prev => ({ ...prev, [section]: [] }));
     } else {
-      setSortConfigs({ active: [], completed: [], uncompleted: [] });
+      setSortConfigs({ todo: [], inProgress: [], completed: [], incomplete: [] });
     }
     setShowSortDropdown(false);
   };
 
   // Get current sort display text for a section
-  const getCurrentSortText = (section: 'active' | 'completed' | 'uncompleted' = 'active') => {
+  const getCurrentSortText = (section: 'todo' | 'inProgress' | 'completed' | 'incomplete' = 'todo') => {
     const sectionConfigs = sortConfigs[section];
     if (sectionConfigs.length === 0) return "Sort";
 
@@ -554,9 +565,9 @@ export default function TasksView() {
     }).filter(Boolean).join(", ");
   };
 
-  // Get sort indicator for Kanban columns (uses active section for kanban)
+  // Get sort indicator for Kanban columns (uses todo section for kanban)
   const getSortIndicator = () => {
-    const sectionConfigs = sortConfigs.active;
+    const sectionConfigs = sortConfigs.todo;
     if (sectionConfigs.length === 0) return null;
     
     const labels = sectionConfigs.map(config => {
@@ -629,10 +640,13 @@ export default function TasksView() {
 
     if (viewMode === "list") {
       // Remove task from all sections
-      setActiveTasks((prev) =>
+      setTodoTasks((prev) =>
         prev.filter((task) => task._id !== updatedTask._id)
       );
-      setUncompletedTasks((prev) =>
+      setInProgressTasks((prev) =>
+        prev.filter((task) => task._id !== updatedTask._id)
+      );
+      setIncompleteTasks((prev) =>
         prev.filter((task) => task._id !== updatedTask._id)
       );
       setCompletedTasks((prev) =>
@@ -643,13 +657,21 @@ export default function TasksView() {
         return;
       }
 
-      // Add task to appropriate section based on status and due date
-      if (updatedTask.status === "completed") {
-        setCompletedTasks((prev) => [...prev, updatedTask]);
-      } else if (isTaskOverdue(updatedTask)) {
-        setUncompletedTasks((prev) => [...prev, updatedTask]);
-      } else {
-        setActiveTasks((prev) => [...prev, updatedTask]);
+      // Add task to appropriate section based on status
+      switch (updatedTask.status) {
+        case "completed":
+          setCompletedTasks((prev) => [...prev, updatedTask]);
+          break;
+        case "incomplete":
+          setIncompleteTasks((prev) => [...prev, updatedTask]);
+          break;
+        case "in_progress":
+          setInProgressTasks((prev) => [...prev, updatedTask]);
+          break;
+        case "todo":
+        default:
+          setTodoTasks((prev) => [...prev, updatedTask]);
+          break;
       }
     } else {
       fetchKanbanData();
@@ -676,8 +698,9 @@ export default function TasksView() {
 
   const handleTaskDelete = (taskId: string) => {
     if (viewMode === "list") {
-      setActiveTasks((prev) => prev.filter((task) => task._id !== taskId));
-      setUncompletedTasks((prev) => prev.filter((task) => task._id !== taskId));
+      setTodoTasks((prev) => prev.filter((task) => task._id !== taskId));
+      setInProgressTasks((prev) => prev.filter((task) => task._id !== taskId));
+      setIncompleteTasks((prev) => prev.filter((task) => task._id !== taskId));
       setCompletedTasks((prev) => prev.filter((task) => task._id !== taskId));
     } else {
       fetchKanbanData();
@@ -769,6 +792,8 @@ export default function TasksView() {
         return "bg-blue-100 text-blue-800 border-blue-200";
       case "completed":
         return "bg-green-100 text-green-800 border-green-200";
+      case "incomplete":
+        return "bg-red-100 text-red-800 border-red-200";
       default:
         return "bg-gray-100 text-gray-800 border-gray-200";
     }
@@ -878,17 +903,6 @@ export default function TasksView() {
       );
     }
 
-    // Calculate incompleted tasks (overdue tasks)
-    const allTasks = [
-      ...(kanbanData.kanbanBoard.todo?.tasks || []),
-      ...(kanbanData.kanbanBoard.in_progress?.tasks || []),
-      ...(kanbanData.kanbanBoard.completed?.tasks || []),
-    ];
-
-    const incompletedTasks = allTasks.filter(task => 
-      task && isTaskOverdue(task) && task.status !== "completed"
-    );
-
     const statusColumns = [
       { 
         key: "todo", 
@@ -915,25 +929,20 @@ export default function TasksView() {
         textColor: "text-green-700"
       },
       { 
-        key: "incompleted", 
-        title: t('kanban.incompleted'), 
+        key: "incomplete", 
+        title: t('kanban.incomplete') || 'Incomplete', 
         icon: <div className="w-2 h-2 bg-red-500 rounded-full" />,
-        count: incompletedTasks.length,
+        count: kanbanData.kanbanBoard.incomplete?.count || 0,
         color: "bg-red-50 border-red-200",
         textColor: "text-red-700"
       },
     ];
 
     const getTasksForColumn = (columnKey: string) => {
-      let tasks = [];
-      if (columnKey === "incompleted") {
-        tasks = incompletedTasks;
-      } else {
-        tasks = kanbanData.kanbanBoard[columnKey]?.tasks || [];
-      }
+      const tasks = kanbanData.kanbanBoard[columnKey]?.tasks || [];
       
-      // Apply filtering and sorting to Kanban tasks (use 'active' section for Kanban)
-      return sortTasks(filterTasks(tasks), 'active');
+      // Apply filtering and sorting to Kanban tasks (use 'todo' section for Kanban)
+      return sortTasks(filterTasks(tasks), 'todo');
     };
 
     return (
@@ -1107,7 +1116,7 @@ export default function TasksView() {
                 {columnTasks.length === 0 && (
                   <div className="text-center py-8 text-gray-400 text-sm">
                     <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                      {column.key === "incompleted" ? (
+                      {column.key === "incomplete" ? (
                         <AlertTriangle className="w-6 h-6" />
                       ) : column.key === "completed" ? (
                         <div className="w-6 h-6 bg-green-200 rounded-full flex items-center justify-center">
@@ -1118,8 +1127,8 @@ export default function TasksView() {
                       )}
                     </div>
                     <p className="text-gray-500">
-                      {column.key === "incompleted" 
-                        ? t('kanban.noOverdue') 
+                      {column.key === "incomplete" 
+                        ? t('kanban.noIncomplete') || 'No incomplete tasks'
                         : column.key === "completed"
                         ? t('kanban.noCompleted')
                         : t('kanban.noTasks')
@@ -1445,7 +1454,9 @@ export default function TasksView() {
 
   // Handle column header click for sorting - section specific
   // New sort becomes PRIMARY (inserted at beginning), existing sorts become secondary
-  const handleColumnSort = (key: string, section: 'active' | 'completed' | 'uncompleted') => {
+  // Handle column header click for sorting - section specific
+  // New sort becomes PRIMARY (inserted at beginning), existing sorts become secondary
+  const handleColumnSort = (key: string, section: 'todo' | 'inProgress' | 'completed' | 'incomplete') => {
     setSortConfigs(prev => {
       const sectionConfigs = prev[section];
       const existingIndex = sectionConfigs.findIndex(c => c.key === key);
@@ -1471,7 +1482,7 @@ export default function TasksView() {
   };
 
   // Get sort indicator for a column - section specific
-  const getColumnSortIndicator = (key: string, section: 'active' | 'completed' | 'uncompleted') => {
+  const getColumnSortIndicator = (key: string, section: 'todo' | 'inProgress' | 'completed' | 'incomplete') => {
     const sectionConfigs = sortConfigs[section];
     const config = sectionConfigs.find(c => c.key === key);
     const index = sectionConfigs.findIndex(c => c.key === key);
@@ -1493,7 +1504,7 @@ export default function TasksView() {
   };
 
   // Sortable column header component - section specific
-  const SortableColumnHeader = ({ sortKey, section, children, className = "" }: { sortKey: string; section: 'active' | 'completed' | 'uncompleted'; children: React.ReactNode; className?: string }) => (
+  const SortableColumnHeader = ({ sortKey, section, children, className = "" }: { sortKey: string; section: 'todo' | 'inProgress' | 'completed' | 'incomplete'; children: React.ReactNode; className?: string }) => (
     <div
       className={`cursor-pointer hover:text-blue-600 transition-colors select-none flex items-center ${className}`}
       onClick={() => handleColumnSort(sortKey, section)}
@@ -1621,6 +1632,7 @@ export default function TasksView() {
                 <option value="todo">{t('status.todo') || 'Todo'}</option>
                 <option value="in_progress">{t('status.inProgress') || 'In Progress'}</option>
                 <option value="completed">{t('status.completed') || 'Completed'}</option>
+                <option value="incomplete">{t('status.incomplete') || 'Incomplete'}</option>
               </select>
             </div>
 
@@ -1742,161 +1754,219 @@ export default function TasksView() {
       {/* Main Content */}
       {viewMode === "list" ? (
         <div className="space-y-6">
-          {/* Active Tasks Section */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div
-              className="p-6 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
-              onClick={() => setActiveTasksExpanded(!activeTasksExpanded)}
-            >
-              <div className="flex items-center gap-3">
-                {activeTasksExpanded ? (
-                  <ChevronDown className="w-5 h-5 text-gray-600" />
-                ) : (
-                  <ChevronRight className="w-5 h-5 text-gray-600" />
-                )}
-                <h2 className="font-semibold text-gray-900">{t('tasks.active')}</h2>
-                <span className="bg-blue-100 text-blue-800 text-sm px-2 py-1 rounded-full">
-                  {hasActiveFilters ? `${filterTasks(activeTasks).length}/${activeTasks.length}` : activeTasks.length}
-                </span>
-              </div>
-            </div>
-
-            {activeTasksExpanded && (
-              <div>
-                {/* Header Row with sortable columns */}
-                <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                  <SortableColumnHeader sortKey="title" section="active" className="col-span-3">{t('tasks.taskName')}</SortableColumnHeader>
-                  <div className="col-span-1">{t('tasks.status')}</div>
-                  <div className="col-span-1">{t('tasks.category')}</div>
-                  <SortableColumnHeader sortKey="dueDate" section="active" className="col-span-1">{t('tasks.dueDate')}</SortableColumnHeader>
-                  <SortableColumnHeader sortKey="priority" section="active" className="col-span-1">{t('tasks.priority')}</SortableColumnHeader>
-                  <div className="col-span-2">{t('tasks.assignee')}</div>
-                  <SortableColumnHeader sortKey="estimatedTime" section="active" className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</SortableColumnHeader>
+          {/* Todo Tasks Section */}
+          {(!statusFilter || statusFilter === "todo") && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div
+                className="p-6 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() => setTodoTasksExpanded(!todoTasksExpanded)}
+              >
+                <div className="flex items-center gap-3">
+                  {todoTasksExpanded ? (
+                    <ChevronDown className="w-5 h-5 text-gray-600" />
+                  ) : (
+                    <ChevronRight className="w-5 h-5 text-gray-600" />
+                  )}
+                  <h2 className="font-semibold text-gray-900">{t('tasks.todo') || 'To Do'}</h2>
+                  <span className="bg-gray-100 text-gray-800 text-sm px-2 py-1 rounded-full">
+                    {hasActiveFilters ? `${filterTasks(todoTasks).length}/${todoTasks.length}` : todoTasks.length}
+                  </span>
                 </div>
-
-                {/* Task Rows */}
-                {filterTasks(activeTasks).length > 0 ? (
-                  sortTasks(filterTasks(activeTasks), 'active').map((task) => (
-                    <TaskRow key={task._id} task={task} />
-                  ))
-                ) : (
-                  <div className="p-8 text-center text-gray-500">
-                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Plus className="w-8 h-8 text-gray-400" />
-                    </div>
-                    <p className="text-gray-600 mb-2">{t('tasks.noTasks')}</p>
-                    <button
-                      onClick={handleAddTask}
-                      className="text-blue-500 hover:text-blue-600 font-medium"
-                    >
-                      {t('tasks.addFirstTask')}
-                    </button>
-                  </div>
-                )}
               </div>
-            )}
-          </div>
+
+              {todoTasksExpanded && (
+                <div>
+                  {/* Header Row with sortable columns */}
+                  <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                    <SortableColumnHeader sortKey="title" section="todo" className="col-span-3">{t('tasks.taskName')}</SortableColumnHeader>
+                    <div className="col-span-1">{t('tasks.status')}</div>
+                    <div className="col-span-1">{t('tasks.category')}</div>
+                    <SortableColumnHeader sortKey="dueDate" section="todo" className="col-span-1">{t('tasks.dueDate')}</SortableColumnHeader>
+                    <SortableColumnHeader sortKey="priority" section="todo" className="col-span-1">{t('tasks.priority')}</SortableColumnHeader>
+                    <div className="col-span-2">{t('tasks.assignee')}</div>
+                    <SortableColumnHeader sortKey="estimatedTime" section="todo" className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</SortableColumnHeader>
+                  </div>
+
+                  {/* Task Rows */}
+                  {filterTasks(todoTasks).length > 0 ? (
+                    sortTasks(filterTasks(todoTasks), 'todo').map((task) => (
+                      <TaskRow key={task._id} task={task} />
+                    ))
+                  ) : (
+                    <div className="p-8 text-center text-gray-500">
+                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Plus className="w-8 h-8 text-gray-400" />
+                      </div>
+                      <p className="text-gray-600 mb-2">{t('tasks.noTodoTasks') || 'No tasks to do'}</p>
+                      <button
+                        onClick={handleAddTask}
+                        className="text-blue-500 hover:text-blue-600 font-medium"
+                      >
+                        {t('tasks.addFirstTask')}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* In Progress Tasks Section */}
+          {(!statusFilter || statusFilter === "in_progress") && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div
+                className="p-6 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() => setInProgressTasksExpanded(!inProgressTasksExpanded)}
+              >
+                <div className="flex items-center gap-3">
+                  {inProgressTasksExpanded ? (
+                    <ChevronDown className="w-5 h-5 text-gray-600" />
+                  ) : (
+                    <ChevronRight className="w-5 h-5 text-gray-600" />
+                  )}
+                  <h2 className="font-semibold text-gray-900">{t('tasks.inProgress') || 'In Progress'}</h2>
+                  <span className="bg-blue-100 text-blue-800 text-sm px-2 py-1 rounded-full">
+                    {hasActiveFilters ? `${filterTasks(inProgressTasks).length}/${inProgressTasks.length}` : inProgressTasks.length}
+                  </span>
+                </div>
+              </div>
+
+              {inProgressTasksExpanded && (
+                <div>
+                  {/* Header Row with sortable columns */}
+                  <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                    <SortableColumnHeader sortKey="title" section="inProgress" className="col-span-3">{t('tasks.taskName')}</SortableColumnHeader>
+                    <div className="col-span-1">{t('tasks.status')}</div>
+                    <div className="col-span-1">{t('tasks.category')}</div>
+                    <SortableColumnHeader sortKey="dueDate" section="inProgress" className="col-span-1">{t('tasks.dueDate')}</SortableColumnHeader>
+                    <SortableColumnHeader sortKey="priority" section="inProgress" className="col-span-1">{t('tasks.priority')}</SortableColumnHeader>
+                    <div className="col-span-2">{t('tasks.assignee')}</div>
+                    <SortableColumnHeader sortKey="estimatedTime" section="inProgress" className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</SortableColumnHeader>
+                  </div>
+
+                  {/* Task Rows */}
+                  {filterTasks(inProgressTasks).length > 0 ? (
+                    sortTasks(filterTasks(inProgressTasks), 'inProgress').map((task) => (
+                      <TaskRow key={task._id} task={task} />
+                    ))
+                  ) : (
+                    <div className="p-8 text-center text-gray-500">
+                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Clock className="w-8 h-8 text-gray-400" />
+                      </div>
+                      <p className="text-gray-600 mb-2">{t('tasks.noInProgressTasks') || 'No tasks in progress'}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Completed Tasks Section */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div
-              className="p-6 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
-              onClick={() => setCompletedTasksExpanded(!completedTasksExpanded)}
-            >
-              <div className="flex items-center gap-3">
-                {completedTasksExpanded ? (
-                  <ChevronDown className="w-5 h-5 text-gray-600" />
-                ) : (
-                  <ChevronRight className="w-5 h-5 text-gray-600" />
-                )}
-                <h2 className="font-semibold text-gray-900">{t('tasks.completed')}</h2>
-                <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded-full">
-                  {hasActiveFilters ? `${filterTasks(completedTasks).length}/${completedTasks.length}` : completedTasks.length}
-                </span>
-              </div>
-            </div>
-
-            {completedTasksExpanded && (
-              <div>
-                {/* Header Row with sortable columns */}
-                <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                  <SortableColumnHeader sortKey="title" section="completed" className="col-span-3">{t('tasks.taskName')}</SortableColumnHeader>
-                  <div className="col-span-1">{t('tasks.status')}</div>
-                  <div className="col-span-1">{t('tasks.category')}</div>
-                  <SortableColumnHeader sortKey="dueDate" section="completed" className="col-span-1">{t('tasks.dueDate')}</SortableColumnHeader>
-                  <SortableColumnHeader sortKey="priority" section="completed" className="col-span-1">{t('tasks.priority')}</SortableColumnHeader>
-                  <div className="col-span-2">{t('tasks.assignee')}</div>
-                  <SortableColumnHeader sortKey="estimatedTime" section="completed" className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</SortableColumnHeader>
+          {(!statusFilter || statusFilter === "completed") && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div
+                className="p-6 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() => setCompletedTasksExpanded(!completedTasksExpanded)}
+              >
+                <div className="flex items-center gap-3">
+                  {completedTasksExpanded ? (
+                    <ChevronDown className="w-5 h-5 text-gray-600" />
+                  ) : (
+                    <ChevronRight className="w-5 h-5 text-gray-600" />
+                  )}
+                  <h2 className="font-semibold text-gray-900">{t('tasks.completed')}</h2>
+                  <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded-full">
+                    {hasActiveFilters ? `${filterTasks(completedTasks).length}/${completedTasks.length}` : completedTasks.length}
+                  </span>
                 </div>
+              </div>
 
-                {filterTasks(completedTasks).length > 0 ? (
-                  sortTasks(filterTasks(completedTasks), 'completed').map((task) => (
-                    <TaskRow key={task._id} task={task} isCompleted={true} />
-                  ))
-                ) : (
-                  <div className="p-8 text-center text-gray-500">
-                    <p className="text-gray-600">{t('kanban.noCompletedYet')}</p>
+              {completedTasksExpanded && (
+                <div>
+                  {/* Header Row with sortable columns */}
+                  <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                    <SortableColumnHeader sortKey="title" section="completed" className="col-span-3">{t('tasks.taskName')}</SortableColumnHeader>
+                    <div className="col-span-1">{t('tasks.status')}</div>
+                    <div className="col-span-1">{t('tasks.category')}</div>
+                    <SortableColumnHeader sortKey="dueDate" section="completed" className="col-span-1">{t('tasks.dueDate')}</SortableColumnHeader>
+                    <SortableColumnHeader sortKey="priority" section="completed" className="col-span-1">{t('tasks.priority')}</SortableColumnHeader>
+                    <div className="col-span-2">{t('tasks.assignee')}</div>
+                    <SortableColumnHeader sortKey="estimatedTime" section="completed" className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</SortableColumnHeader>
                   </div>
-                )}
-              </div>
-            )}
-          </div>
 
-          {/* Uncompleted Tasks Section */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div
-              className="p-6 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
-              onClick={() =>
-                setUncompletedTasksExpanded(!uncompletedTasksExpanded)
-              }
-            >
-              <div className="flex items-center gap-3">
-                {uncompletedTasksExpanded ? (
-                  <ChevronDown className="w-5 h-5 text-gray-600" />
-                ) : (
-                  <ChevronRight className="w-5 h-5 text-gray-600" />
-                )}
-                <div className="flex items-center gap-2">
-                  <h2 className="font-semibold">{t('tasks.uncompleted')}</h2>
-                </div>
-                <span className="bg-red-100 text-red-800 text-sm px-2 py-1 rounded-full">
-                  {hasActiveFilters ? `${filterTasks(uncompletedTasks).length}/${uncompletedTasks.length}` : uncompletedTasks.length}
-                </span>
-              </div>
-            </div>
-
-            {uncompletedTasksExpanded && (
-              <div>
-                {/* Header Row with sortable columns */}
-                <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                  <SortableColumnHeader sortKey="title" section="uncompleted" className="col-span-3">{t('tasks.taskName')}</SortableColumnHeader>
-                  <div className="col-span-1">{t('tasks.status')}</div>
-                  <div className="col-span-1">{t('tasks.category')}</div>
-                  <SortableColumnHeader sortKey="dueDate" section="uncompleted" className="col-span-1">{t('tasks.dueDate')}</SortableColumnHeader>
-                  <SortableColumnHeader sortKey="priority" section="uncompleted" className="col-span-1">{t('tasks.priority')}</SortableColumnHeader>
-                  <div className="col-span-2">{t('tasks.assignee')}</div>
-                  <SortableColumnHeader sortKey="estimatedTime" section="uncompleted" className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</SortableColumnHeader>
-                </div>
-
-                {/* Always show content, even if empty */}
-                {filterTasks(uncompletedTasks).length > 0 ? (
-                  sortTasks(filterTasks(uncompletedTasks), 'uncompleted').map((task) => (
-                    <TaskRow key={task._id} task={task} isOverdue={true} />
-                  ))
-                ) : (
-                  <div className="p-8 text-center text-gray-500">
-                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <AlertTriangle className="w-8 h-8 text-gray-400" />
+                  {filterTasks(completedTasks).length > 0 ? (
+                    sortTasks(filterTasks(completedTasks), 'completed').map((task) => (
+                      <TaskRow key={task._id} task={task} isCompleted={true} />
+                    ))
+                  ) : (
+                    <div className="p-8 text-center text-gray-500">
+                      <p className="text-gray-600">{t('kanban.noCompletedYet')}</p>
                     </div>
-                    <p className="text-gray-600 mb-2">{t('kanban.noOverdue')}</p>
-                    <p className="text-sm text-gray-500">
-                      {t('tasks.noTasks')}
-                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Incomplete Tasks Section */}
+          {(!statusFilter || statusFilter === "incomplete") && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div
+                className="p-6 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() =>
+                  setIncompleteTasksExpanded(!incompleteTasksExpanded)
+                }
+              >
+                <div className="flex items-center gap-3">
+                  {incompleteTasksExpanded ? (
+                    <ChevronDown className="w-5 h-5 text-gray-600" />
+                  ) : (
+                    <ChevronRight className="w-5 h-5 text-gray-600" />
+                  )}
+                  <div className="flex items-center gap-2">
+                    <h2 className="font-semibold text-red-700">{t('tasks.incomplete') || 'Incomplete'}</h2>
+                    <AlertTriangle className="w-4 h-4 text-red-500" />
                   </div>
-                )}
+                  <span className="bg-red-100 text-red-800 text-sm px-2 py-1 rounded-full">
+                    {hasActiveFilters ? `${filterTasks(incompleteTasks).length}/${incompleteTasks.length}` : incompleteTasks.length}
+                  </span>
+                </div>
               </div>
-            )}
-          </div>
+
+              {incompleteTasksExpanded && (
+                <div>
+                  {/* Header Row with sortable columns */}
+                  <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                    <SortableColumnHeader sortKey="title" section="incomplete" className="col-span-3">{t('tasks.taskName')}</SortableColumnHeader>
+                    <div className="col-span-1">{t('tasks.status')}</div>
+                    <div className="col-span-1">{t('tasks.category')}</div>
+                    <SortableColumnHeader sortKey="dueDate" section="incomplete" className="col-span-1">{t('tasks.dueDate')}</SortableColumnHeader>
+                    <SortableColumnHeader sortKey="priority" section="incomplete" className="col-span-1">{t('tasks.priority')}</SortableColumnHeader>
+                    <div className="col-span-2">{t('tasks.assignee')}</div>
+                    <SortableColumnHeader sortKey="estimatedTime" section="incomplete" className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</SortableColumnHeader>
+                  </div>
+
+                  {/* Always show content, even if empty */}
+                  {filterTasks(incompleteTasks).length > 0 ? (
+                    sortTasks(filterTasks(incompleteTasks), 'incomplete').map((task) => (
+                      <TaskRow key={task._id} task={task} isOverdue={true} />
+                    ))
+                  ) : (
+                    <div className="p-8 text-center text-gray-500">
+                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <AlertTriangle className="w-8 h-8 text-gray-400" />
+                      </div>
+                      <p className="text-gray-600 mb-2">{t('tasks.noIncompleteTasks') || 'No incomplete tasks'}</p>
+                      <p className="text-sm text-gray-500">
+                        {t('tasks.incompleteDescription') || 'Overdue tasks will appear here'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <KanbanView />

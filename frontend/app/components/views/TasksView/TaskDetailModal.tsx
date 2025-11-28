@@ -178,7 +178,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const estimatedTimeOptions = ["15m", "30m", "1h", "2h", "4h", "1d", "2d", "1w"]
   const taskTypeOptions = ["Operational", "Strategic", "Financial", "Technical", "Other"]
   const priorityOptions = ["low", "medium", "high", "urgent"]
-  const statusOptions = ["todo", "in_progress", "completed", "archived"]
+  const statusOptions = ["todo", "in_progress", "completed", "incomplete", "archived"]
   
   // State for assign functionality
   const [showAssignModal, setShowAssignModal] = useState(false)
@@ -684,6 +684,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
     switch (status) {
       case 'completed': return 'bg-green-500'
       case 'in_progress': return 'bg-yellow-500'
+      case 'incomplete': return 'bg-red-500'
       case 'archived': return 'bg-gray-500'
       default: return 'bg-blue-500'
     }
