@@ -403,6 +403,9 @@ const setupRealtimeServer = async (httpServer) => {
   const { setupChatHandlers } = require('../services/chat.socket');
   setupChatHandlers(appNamespace);
 
+  const { setupMeetingHandlers } = require('../services/meeting.socket');
+  setupMeetingHandlers(appNamespace);
+
   // Setup folder realtime listener
   const { registerFolderRealtimeListener, FOLDER_EVENTS } = require('../services/folder.realtime.gateway');
   

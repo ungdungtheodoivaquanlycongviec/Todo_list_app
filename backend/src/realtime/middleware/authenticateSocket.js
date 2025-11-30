@@ -1,4 +1,5 @@
 const authService = require('../../services/auth.service');
+const User = require('../../models/User.model');
 
 const SOCKET_ERROR_CODES = {
   unauthorized: 'socket_error:unauthorized',
@@ -48,6 +49,15 @@ const authenticateSocket = async (socket, next) => {
     socket.data.userId = decoded.id;
     socket.data.userEmail = decoded.email || null;
     socket.data.tokenIssuedAt = decoded.iat || null;
+
+    // Get user name for notifications
+    try {
+      const user = await User.findById(decoded.id).select('name').lean();
+      socket.data.userName = user?.name || decoded.email || 'User';
+    } catch (error) {
+      console.error('[Socket] Error fetching user name:', error);
+      socket.data.userName = decoded.email || 'User';
+    }
 
     return next();
   } catch (error) {

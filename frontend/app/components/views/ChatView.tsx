@@ -6,6 +6,9 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useRegional } from '../../contexts/RegionalContext';
 import { chatService, ChatMessage, DirectConversationSummary } from '../../services/chat.service';
 import { useSocket } from '../../hooks/useSocket';
+import { MeetingConfig } from '../../services/meeting.service';
+import MeetingView from './MeetingView';
+import IncomingCallNotification from './IncomingCallNotification';
 import {
   Send,
   Paperclip,
@@ -23,7 +26,9 @@ import {
   ExternalLink,
   Plus,
   Copy,
-  Check
+  Check,
+  Video,
+  Phone
 } from 'lucide-react';
 
 export default function ChatView() {
@@ -49,6 +54,16 @@ export default function ChatView() {
   const [hasDirectUnread, setHasDirectUnread] = useState<Set<string>>(new Set());
   const [pendingAttachment, setPendingAttachment] = useState<File | null>(null);
   const [pendingAttachmentPreview, setPendingAttachmentPreview] = useState<string | null>(null);
+  const [activeMeeting, setActiveMeeting] = useState<MeetingConfig | null>(null);
+  const [incomingCall, setIncomingCall] = useState<{
+    meetingId: string;
+    type: 'group' | 'direct';
+    callerId: string;
+    callerName: string;
+    groupName?: string;
+    groupId?: string;
+    conversationId?: string;
+  } | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -163,19 +178,32 @@ export default function ChatView() {
     [activeDirectConversation?._id]
   );
 
-  const handleDirectConversationEvent = useCallback(
-    (data: { conversationId: string; conversation?: DirectConversationSummary | null }) => {
-      if (data.conversation) {
-        upsertDirectConversation({
-          ...data.conversation,
-          _id: data.conversation._id || data.conversationId
-        });
-      } else {
-        loadDirectConversations();
-      }
-    },
-    [upsertDirectConversation, loadDirectConversations]
-  );
+    const handleDirectConversationEvent = useCallback(
+      (data: { conversationId: string; conversation?: DirectConversationSummary | null }) => {
+        if (data.conversation) {
+          const updatedConversation = {
+            ...data.conversation,
+            _id: data.conversation._id || data.conversationId
+          };
+          upsertDirectConversation(updatedConversation);
+          
+          // Nếu conversation có unread count > 0 và không đang xem, hiển thị green dot
+          if (updatedConversation.unreadCount > 0) {
+            const isActiveConversation = 
+              activeContext === 'direct' &&
+              activeDirectConversation?._id === updatedConversation._id;
+            
+            if (!isActiveConversation) {
+              setPendingDirectIndicators(prev => ({ ...prev, [updatedConversation._id]: true }));
+              setHasDirectUnread(prev => new Set(prev).add(updatedConversation._id));
+            }
+          }
+        } else {
+          loadDirectConversations();
+        }
+      },
+      [upsertDirectConversation, loadDirectConversations, activeContext, activeDirectConversation?._id]
+    );
 
   useEffect(() => {
     if (activeContext === 'group') {
@@ -414,26 +442,80 @@ export default function ChatView() {
       conversationId: string;
       message: ChatMessage;
     }) => {
-      if (activeContext !== 'direct') {
-        return;
-      }
-      if (!activeDirectConversation?._id || data.conversationId !== activeDirectConversation._id) {
-        return;
-      }
+      console.log('[ChatView] handleDirectMessage called:', {
+        conversationId: data.conversationId,
+        activeContext,
+        activeDirectConversationId: activeDirectConversation?._id,
+        messageId: data.message._id,
+        senderId: data.message.senderId?._id,
+        userId: user?._id
+      });
 
-      if (data.type === 'new') {
-        setMessages(prev => {
-          const exists = prev.some(msg => msg._id === data.message._id);
-          if (exists) {
-            return prev;
-          }
-          return [...prev, data.message];
-        });
-        scrollToBottom();
+      const isActiveConversation = 
+        activeContext === 'direct' &&
+        activeDirectConversation?._id === data.conversationId;
+
+      // Nếu đang xem conversation này, cập nhật messages
+      if (isActiveConversation) {
+        console.log('[ChatView] Message for active conversation, updating messages');
+        if (data.type === 'new') {
+          setMessages(prev => {
+            const exists = prev.some(msg => msg._id === data.message._id);
+            if (exists) {
+              return prev;
+            }
+            return [...prev, data.message];
+          });
+          scrollToBottom();
+        } else {
+          setMessages(prev =>
+            prev.map(msg => (msg._id === data.message._id ? data.message : msg))
+          );
+        }
       } else {
-        setMessages(prev =>
-          prev.map(msg => (msg._id === data.message._id ? data.message : msg))
-        );
+        // Nếu không đang xem conversation này, cập nhật unread indicators và conversation list
+        if (data.type === 'new') {
+          const isFromOtherUser = data.message.senderId?._id && data.message.senderId._id !== user?._id;
+          console.log('[ChatView] Message for inactive conversation, isFromOtherUser:', isFromOtherUser);
+          
+          if (isFromOtherUser) {
+            console.log('[ChatView] Updating unread indicators for conversation:', data.conversationId);
+            // Cập nhật unread indicators
+            setPendingDirectIndicators(prev => {
+              const next = { ...prev, [data.conversationId]: true };
+              console.log('[ChatView] Updated pendingDirectIndicators:', next);
+              return next;
+            });
+            setHasDirectUnread(prev => {
+              const next = new Set(prev).add(data.conversationId);
+              console.log('[ChatView] Updated hasDirectUnread:', Array.from(next));
+              return next;
+            });
+            
+            // Cập nhật conversation trong list với unread count và last message
+            setDirectConversations(prev => {
+              const index = prev.findIndex(conv => conv._id === data.conversationId);
+              if (index >= 0) {
+                const updated = [...prev];
+                const conversation = updated[index];
+                updated[index] = {
+                  ...conversation,
+                  unreadCount: (conversation.unreadCount || 0) + 1,
+                  lastMessagePreview: data.message.content?.slice(0, 140) || conversation.lastMessagePreview || 'New message',
+                  lastMessageAt: data.message.createdAt || conversation.lastMessageAt || new Date().toISOString()
+                };
+                // Di chuyển conversation lên đầu danh sách
+                const [moved] = updated.splice(index, 1);
+                console.log('[ChatView] Moved conversation to top:', moved._id);
+                return [moved, ...updated];
+              }
+              // Nếu không tìm thấy, reload danh sách
+              console.log('[ChatView] Conversation not found in list, reloading...');
+              loadDirectConversations();
+              return prev;
+            });
+          }
+        }
       }
     };
 
@@ -521,10 +603,12 @@ export default function ChatView() {
     const handleNotification = (payload: any) => {
       const notification = payload?.notification || payload;
       const eventKey = notification?.eventKey || payload?.eventKey;
+      console.log('[ChatView] Received notification:', eventKey, notification);
       if (eventKey !== 'CHAT_MESSAGE_OFFLINE') {
         return;
       }
       const data = notification?.data || {};
+      console.log('[ChatView] Processing notification data:', data);
       
       if (data.contextType === 'group') {
         if (currentGroup?._id && data.groupId === currentGroup._id && activeContext === 'group') {
@@ -534,19 +618,33 @@ export default function ChatView() {
           setHasGroupUnread(true);
         }
       } else if (data.contextType === 'direct') {
-        if (!data.conversationId) return;
+        if (!data.conversationId) {
+          console.log('[ChatView] No conversationId in notification data');
+          return;
+        }
+        
+        console.log('[ChatView] Processing direct chat notification for conversation:', data.conversationId);
         
         // THÊM LOGIC MỚI: Hiển thị chấm xanh cho direct chat
         if (
           activeContext === 'direct' &&
           activeDirectConversation?._id === data.conversationId
         ) {
+          console.log('[ChatView] User is viewing this conversation, skipping notification');
           return;
         }
         
         // Cập nhật cả pending indicators và direct unread
-        setPendingDirectIndicators(prev => ({ ...prev, [data.conversationId]: true }));
-        setHasDirectUnread(prev => new Set(prev).add(data.conversationId));
+        setPendingDirectIndicators(prev => {
+          const next = { ...prev, [data.conversationId]: true };
+          console.log('[ChatView] Updated pendingDirectIndicators from notification:', next);
+          return next;
+        });
+        setHasDirectUnread(prev => {
+          const next = new Set(prev).add(data.conversationId);
+          console.log('[ChatView] Updated hasDirectUnread from notification:', Array.from(next));
+          return next;
+        });
       }
     };
   
@@ -1028,7 +1126,7 @@ export default function ChatView() {
       <section className="flex-1 flex flex-col min-h-0">
         <div className="border-b border-gray-200 dark:border-gray-700 p-4">
           <div className="flex items-center justify-between">
-            <div>
+            <div className="flex-1">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                 {conversationTitle}
               </h2>
@@ -1036,9 +1134,57 @@ export default function ChatView() {
                 <p className="text-sm text-gray-500 dark:text-gray-400">{conversationSubtitle}</p>
               )}
             </div>
-            {typingLabel && (
-              <p className="text-sm text-gray-500 dark:text-gray-400">{typingLabel}</p>
-            )}
+            <div className="flex items-center gap-2">
+              {typingLabel && (
+                <p className="text-sm text-gray-500 dark:text-gray-400">{typingLabel}</p>
+              )}
+              {conversationReady && (
+                <>
+                  <button
+                    onClick={() => {
+                      if (activeContext === 'group' && currentGroup?._id) {
+                        setActiveMeeting({
+                          meetingId: `group-${currentGroup._id}-${Date.now()}`,
+                          type: 'group',
+                          groupId: currentGroup._id
+                        });
+                      } else if (activeContext === 'direct' && activeDirectConversation?._id) {
+                        setActiveMeeting({
+                          meetingId: `direct-${activeDirectConversation._id}-${Date.now()}`,
+                          type: 'direct',
+                          conversationId: activeDirectConversation._id
+                        });
+                      }
+                    }}
+                    className="p-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                    title="Start video call"
+                  >
+                    <Video className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (activeContext === 'group' && currentGroup?._id) {
+                        setActiveMeeting({
+                          meetingId: `group-${currentGroup._id}-${Date.now()}`,
+                          type: 'group',
+                          groupId: currentGroup._id
+                        });
+                      } else if (activeContext === 'direct' && activeDirectConversation?._id) {
+                        setActiveMeeting({
+                          meetingId: `direct-${activeDirectConversation._id}-${Date.now()}`,
+                          type: 'direct',
+                          conversationId: activeDirectConversation._id
+                        });
+                      }
+                    }}
+                    className="p-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                    title="Start audio call"
+                  >
+                    <Phone className="w-5 h-5" />
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1232,6 +1378,46 @@ export default function ChatView() {
           </div>
         )}
       </section>
+
+      {/* Meeting View */}
+      {activeMeeting && (
+        <MeetingView
+          config={activeMeeting}
+          onClose={() => setActiveMeeting(null)}
+          title={
+            activeMeeting.type === 'group'
+              ? currentGroup?.name || 'Group Meeting'
+              : activeDirectConversation?.targetUser?.name || 'Direct Meeting'
+          }
+        />
+      )}
+
+      {/* Incoming Call Notification */}
+      {incomingCall && (
+        <IncomingCallNotification
+          meetingId={incomingCall.meetingId}
+          type={incomingCall.type}
+          callerName={incomingCall.callerName}
+          groupName={incomingCall.groupName}
+          onAccept={() => {
+            const config: MeetingConfig = {
+              meetingId: incomingCall.meetingId,
+              type: incomingCall.type,
+              ...(incomingCall.type === 'group' && incomingCall.groupId
+                ? { groupId: incomingCall.groupId }
+                : {}),
+              ...(incomingCall.type === 'direct' && incomingCall.conversationId
+                ? { conversationId: incomingCall.conversationId }
+                : {})
+            };
+            setIncomingCall(null);
+            setActiveMeeting(config);
+          }}
+          onDecline={() => {
+            setIncomingCall(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1641,8 +1827,8 @@ function MessageItem({
             <ExternalLink className="w-4 h-4 flex-shrink-0" />
             <span>{t('chat.openInNewTab')}</span>
           </a>
-        </div>
-      )}
+          </div>
+        )}
     </div>
   );
 }

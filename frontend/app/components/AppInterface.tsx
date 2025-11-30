@@ -8,6 +8,7 @@ import TimelineView from './views/TimelineView';
 import NotesView from './views/NotesView';
 import ChatView from './views/ChatView';
 import GroupMembersView from './views/GroupMembersView';
+import ChatbotWidget from './common/ChatbotWidget';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function AppInterface() {
@@ -89,15 +90,18 @@ export default function AppInterface() {
   }
 
   return (
-    <MainLayout 
-      activeView={activeView} 
-      onViewChange={setActiveView}
-      user={user}
-      onLogout={logout}
-      theme={user.theme} // Sử dụng theme từ user
-      onThemeChange={handleThemeChange} // Sử dụng hàm mới
-    >
-      {renderActiveView()}
-    </MainLayout>
+    <>
+      <MainLayout 
+        activeView={activeView} 
+        onViewChange={setActiveView}
+        user={user}
+        onLogout={logout}
+        theme={user.theme} // Sử dụng theme từ user
+        onThemeChange={handleThemeChange} // Sử dụng hàm mới
+      >
+        {renderActiveView()}
+      </MainLayout>
+      <ChatbotWidget />
+    </>
   );
 }
