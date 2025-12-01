@@ -109,6 +109,71 @@ def has_special_day_today() -> bool:
     return bool(get_today_special_day_label())
 
 
+def save_recommended_tasks(token: Optional[str], context: Optional[Dict[str, Any]]) -> None:
+    """
+    Gửi danh sách task được đề xuất gần nhất lên backend để lưu lại cho user hiện tại.
+    Dựa trên context.tasks.activeTaskDetails.
+    """
+    if not token or not context:
+        return
+
+    tasks_info = context.get("tasks") or {}
+    details = tasks_info.get("activeTaskDetails") or []
+    task_ids = [item.get("id") for item in details if item.get("id")]
+
+    if not task_ids:
+        return
+
+    url = f"{BACKEND_API_URL}/chatbot/recommended-tasks"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        _debug_log("Saving recommended tasks", count=len(task_ids))
+        resp = requests.post(url, headers=headers, json={"taskIds": task_ids}, timeout=5)
+        _debug_log("Save recommended tasks response", status=resp.status_code)
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.exception("Error while saving recommended tasks: %s", exc)
+
+
+def evaluate_recommended_tasks(token: Optional[str]) -> Optional[Dict[str, Any]]:
+    """
+    Hỏi backend trạng thái hoàn thành của các task được đề xuất:
+    - allCompleted
+    - anyCompleted
+    - noneCompleted
+    - hasRecommended
+    """
+    if not token:
+        return None
+
+    url = f"{BACKEND_API_URL}/chatbot/recommended-tasks/evaluate"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+    }
+
+    try:
+        _debug_log("Evaluating recommended tasks")
+        resp = requests.get(url, headers=headers, timeout=5)
+        _debug_log("Evaluate recommended tasks response", status=resp.status_code)
+
+        if resp.status_code != 200:
+            return None
+
+        data = resp.json()
+        result = data.get("data") if isinstance(data, dict) else None
+        if not result:
+            result = data
+        return result
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.exception("Error while evaluating recommended tasks: %s", exc)
+        return None
+
+
 def replace_placeholders(template: str, context: Optional[Dict[str, Any]]) -> str:
     """
     Thay thế các placeholders trong câu trả lời bằng dữ liệu thật từ context.

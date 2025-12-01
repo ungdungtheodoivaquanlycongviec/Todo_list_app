@@ -3,6 +3,8 @@ const { sendSuccess, sendError } = require('../utils/response');
 const taskService = require('../services/task.service');
 const User = require('../models/User.model');
 const Task = require('../models/Task.model');
+const ChatbotState = require('../models/ChatbotState.model');
+const mongoose = require('mongoose');
 const { HTTP_STATUS } = require('../config/constants');
 
 /**
@@ -53,8 +55,8 @@ const getChatbotContext = asyncHandler(async (req, res) => {
     .limit(20)
     .lean();
 
-  // Format tasks thành danh sách đơn giản
-  const activeTasks = todayTasks
+  // Danh sách task đang active cho user (chi tiết)
+  const activeTaskDetails = todayTasks
     .filter(task => {
       // Lọc tasks được assign cho user hoặc không có dueDate hoặc dueDate hôm nay
       const isAssignedToUser = task.assignedTo?.some(
@@ -66,8 +68,17 @@ const getChatbotContext = asyncHandler(async (req, res) => {
       
       return isAssignedToUser || !task.dueDate || isDueToday;
     })
-    .map(task => task.title)
+    .map(task => ({
+      id: task._id.toString(),
+      title: task.title,
+      status: task.status,
+      priority: task.priority,
+      dueDate: task.dueDate
+    }))
     .slice(0, 10); // Giới hạn 10 tasks
+
+  // Danh sách title để dùng cho placeholders cũ
+  const activeTasks = activeTaskDetails.map(task => task.title);
 
   // Lấy ngày hiện tại
   const currentDate = formatDate(today);
@@ -85,7 +96,8 @@ const getChatbotContext = asyncHandler(async (req, res) => {
     tasks: {
       activeTasks: activeTasks,
       activeTasksCount: activeTasks.length,
-      todayTasksCount: todayTasks.length
+      todayTasksCount: todayTasks.length,
+      activeTaskDetails
     },
     date: {
       current_date: currentDate,
@@ -158,8 +170,130 @@ function formatDateVN(date) {
   return `${dayName}, ngày ${day} ${month} năm ${year}`;
 }
 
+/**
+ * @desc    Lưu danh sách task được chatbot đề xuất gần nhất cho user
+ * @route   POST /api/chatbot/recommended-tasks
+ * @access  Private
+ */
+const saveRecommendedTasks = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const currentGroupId = req.user.currentGroupId;
+  const { taskIds } = req.body || {};
+
+  if (!currentGroupId) {
+    return sendError(res, 'You must join or create a group to use the chatbot', HTTP_STATUS.FORBIDDEN);
+  }
+
+  if (!Array.isArray(taskIds) || taskIds.length === 0) {
+    return sendError(res, 'taskIds must be a non-empty array', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  const objectIds = taskIds
+    .filter(id => typeof id === 'string' && id.trim())
+    .map(id => new mongoose.Types.ObjectId(id));
+
+  if (objectIds.length === 0) {
+    return sendError(res, 'No valid taskIds provided', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  const state = await ChatbotState.findOneAndUpdate(
+    { userId, groupId: currentGroupId },
+    { recommendedTaskIds: objectIds },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  ).lean();
+
+  return sendSuccess(
+    res,
+    {
+      userId: state.userId,
+      groupId: state.groupId,
+      recommendedTaskIds: state.recommendedTaskIds
+    },
+    'Recommended tasks saved successfully'
+  );
+});
+
+/**
+ * @desc    Đánh giá trạng thái các task được đề xuất dựa trên database
+ * @route   GET /api/chatbot/recommended-tasks/evaluate
+ * @access  Private
+ */
+const evaluateRecommendedTasks = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const currentGroupId = req.user.currentGroupId;
+
+  if (!currentGroupId) {
+    return sendError(res, 'You must join or create a group to use the chatbot', HTTP_STATUS.FORBIDDEN);
+  }
+
+  const state = await ChatbotState.findOne({
+    userId,
+    groupId: currentGroupId
+  })
+    .select('recommendedTaskIds')
+    .lean();
+
+  if (!state || !state.recommendedTaskIds || state.recommendedTaskIds.length === 0) {
+    return sendSuccess(
+      res,
+      {
+        hasRecommended: false,
+        total: 0,
+        completed: 0,
+        anyCompleted: false,
+        allCompleted: false,
+        noneCompleted: true
+      },
+      'No recommended tasks found for this user'
+    );
+  }
+
+  const tasks = await Task.find({
+    _id: { $in: state.recommendedTaskIds },
+    groupId: currentGroupId
+  })
+    .select('status')
+    .lean();
+
+  if (!tasks || tasks.length === 0) {
+    return sendSuccess(
+      res,
+      {
+        hasRecommended: false,
+        total: 0,
+        completed: 0,
+        anyCompleted: false,
+        allCompleted: false,
+        noneCompleted: true
+      },
+      'No tasks found for recommended task IDs'
+    );
+  }
+
+  const total = tasks.length;
+  const completed = tasks.filter(task => task.status === 'completed').length;
+  const anyCompleted = completed > 0;
+  const allCompleted = completed === total;
+  const noneCompleted = completed === 0;
+
+  return sendSuccess(
+    res,
+    {
+      hasRecommended: true,
+      total,
+      completed,
+      anyCompleted,
+      allCompleted,
+      noneCompleted
+    },
+    'Recommended tasks evaluated successfully'
+  );
+});
+
 module.exports = {
-  getChatbotContext
+  getChatbotContext,
+  saveRecommendedTasks,
+  evaluateRecommendedTasks
 };
 
 

@@ -34,7 +34,7 @@ def predict():
     context = get_user_context(token)
 
     # Lấy câu trả lời từ model và apply context
-    response_text = get_response(text, context=context)
+    response_text = get_response(text, context=context, token=token)
 
     message = {
         "answer": response_text,

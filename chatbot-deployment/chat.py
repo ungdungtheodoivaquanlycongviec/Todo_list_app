@@ -5,7 +5,12 @@ import torch
 
 from model import NeuralNet
 from nltk_utils import bag_of_words, tokenize
-from utils import replace_placeholders, has_special_day_today
+from utils import (
+    replace_placeholders,
+    has_special_day_today,
+    save_recommended_tasks,
+    evaluate_recommended_tasks,
+)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -44,7 +49,7 @@ def _build_response_for_tag(tag: str, context=None) -> str:
     return replace_placeholders(template, context)
 
 
-def get_response(msg, context=None):
+def get_response(msg, context=None, token=None):
     """
     Lấy câu trả lời từ mô hình và apply context (thay placeholders nếu có),
     đồng thời áp dụng các rule đặc biệt theo yêu cầu.
@@ -101,6 +106,8 @@ def get_response(msg, context=None):
 
         # Nếu đã hoàn thành task hôm nay nhưng vẫn còn task khác -> gợi ý thêm
         if today_tasks_count == 0 and active_tasks_count > 0:
+            # Lưu danh sách task hiện tại là "task được đề xuất"
+            save_recommended_tasks(token, context)
             extra = _build_response_for_tag("recommentedTasks", context)
             if extra:
                 return (resp or "") + "\n\n" + extra
@@ -113,24 +120,37 @@ def get_response(msg, context=None):
     if tag == "todayTask":
         resp = _build_response_for_tag("todayTask", context)
         if today_tasks_count == 0 and active_tasks_count > 0:
+            # Lưu danh sách task hiện tại là "task được đề xuất"
+            save_recommended_tasks(token, context)
             extra = _build_response_for_tag("recommentedTasks", context)
             if extra:
                 return (resp or "") + "\n\n" + extra
         if resp:
             return resp
 
-    # 4. Kiểm tra trạng thái hoàn thành các task được đề xuất
-    #    Ưu tiên:
-    #    - Nếu model nhận diện là finishPartOfRecommentedTask -> dùng intent tương ứng
-    #    - Nếu không, nhưng là finishAllRecommentedTask -> dùng intent tương ứng
-    #    - Ngược lại -> dùng intent Warning
+    # 4. Kiểm tra trạng thái hoàn thành các task được đề xuất dựa trên database
+    #    Ưu tiên (theo dữ liệu thật):
+    #    - Nếu tất cả task được đề xuất đã completed     -> intent finishAllRecommentedTask
+    #    - Nếu một phần task được đề xuất đã completed   -> intent finishPartOfRecommentedTask
+    #    - Nếu chưa task nào được đề xuất completed      -> intent Warning
     if tag in ("finishPartOfRecommentedTask", "finishAllRecommentedTask", "Warning"):
-        if tag == "finishPartOfRecommentedTask":
-            resp = _build_response_for_tag("finishPartOfRecommentedTask", context)
-        elif tag == "finishAllRecommentedTask":
-            resp = _build_response_for_tag("finishAllRecommentedTask", context)
+        eval_result = evaluate_recommended_tasks(token)
+
+        if eval_result and eval_result.get("hasRecommended"):
+            if eval_result.get("allCompleted"):
+                resp = _build_response_for_tag("finishAllRecommentedTask", context)
+            elif eval_result.get("anyCompleted"):
+                resp = _build_response_for_tag("finishPartOfRecommentedTask", context)
+            else:
+                resp = _build_response_for_tag("Warning", context)
         else:
-            resp = _build_response_for_tag("Warning", context)
+            # Fallback: nếu không có dữ liệu DB, dùng intent theo tag như cũ
+            if tag == "finishPartOfRecommentedTask":
+                resp = _build_response_for_tag("finishPartOfRecommentedTask", context)
+            elif tag == "finishAllRecommentedTask":
+                resp = _build_response_for_tag("finishAllRecommentedTask", context)
+            else:
+                resp = _build_response_for_tag("Warning", context)
 
         if resp:
             return resp
