@@ -4,6 +4,7 @@
 
 const mongoose = require('mongoose');
 const env = require('./environment');
+const { initSuperAdmin } = require('../utils/initSuperAdmin');
 
 // MongoDB connection options
 const options = {
@@ -22,6 +23,9 @@ const connectDB = async () => {
     
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
     console.log(`📊 Database: ${conn.connection.name}`);
+    
+    // Initialize super admin
+    await initSuperAdmin();
     
     // Handle connection events
     mongoose.connection.on('error', (err) => {

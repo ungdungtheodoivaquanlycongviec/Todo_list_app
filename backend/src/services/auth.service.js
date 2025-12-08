@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User.model');
 const Group = require('../models/Group.model');
+const LoginHistory = require('../models/LoginHistory.model');
 const { GROUP_ROLE_KEYS } = require('../config/constants');
 const { JWT_SECRET, JWT_REFRESH_SECRET } = require('../config/environment');
 const admin = require('../config/firebaseAdmin');
@@ -66,25 +67,65 @@ class AuthService {
    * Login user
    * @param {String} email
    * @param {String} password
+   * @param {Object} req - Express request object (for IP and user agent)
    * @returns {Object} - { user, accessToken, refreshToken }
    */
-  async login(email, password) {
+  async login(email, password, req = null) {
+    const getClientInfo = (req) => {
+      if (!req) return { ipAddress: null, userAgent: null };
+      return {
+        ipAddress: req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress,
+        userAgent: req.headers['user-agent'] || null
+      };
+    };
+
+    const clientInfo = getClientInfo(req);
+    
     // 1. Find user by email (include password field)
     const user = await User.findOne({ email }).select('+password +refreshToken');
     
     // 2. Check if user exists
     if (!user) {
+      // Log failed login attempt
+      await LoginHistory.create({
+        email,
+        status: 'failed',
+        failureReason: 'User not found',
+        ipAddress: clientInfo.ipAddress,
+        userAgent: clientInfo.userAgent,
+        loginAt: new Date()
+      }).catch(err => console.error('Error logging failed login:', err));
       throw new Error('Invalid credentials');
     }
     
     // 3. Check if user is active
     if (!user.isActive) {
+      // Log blocked login attempt
+      await LoginHistory.create({
+        user: user._id,
+        email: user.email,
+        status: 'blocked',
+        failureReason: 'Account deactivated',
+        ipAddress: clientInfo.ipAddress,
+        userAgent: clientInfo.userAgent,
+        loginAt: new Date()
+      }).catch(err => console.error('Error logging blocked login:', err));
       throw new Error('Account has been deactivated');
     }
     
     // 4. Compare password
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
+      // Log failed login attempt
+      await LoginHistory.create({
+        user: user._id,
+        email: user.email,
+        status: 'failed',
+        failureReason: 'Invalid password',
+        ipAddress: clientInfo.ipAddress,
+        userAgent: clientInfo.userAgent,
+        loginAt: new Date()
+      }).catch(err => console.error('Error logging failed login:', err));
       throw new Error('Invalid credentials');
     }
     
@@ -99,7 +140,17 @@ class AuthService {
     user.refreshToken = refreshToken;
     await user.save();
     
-    // 8. Return user + tokens
+    // 8. Log successful login
+    await LoginHistory.create({
+      user: user._id,
+      email: user.email,
+      status: 'success',
+      ipAddress: clientInfo.ipAddress,
+      userAgent: clientInfo.userAgent,
+      loginAt: new Date()
+    }).catch(err => console.error('Error logging successful login:', err));
+    
+    // 9. Return user + tokens
     return {
       user: user.toSafeObject(),
       accessToken,
@@ -122,9 +173,19 @@ class AuthService {
   /**
    * Login or register via Google ID token
    * @param {String} idToken - Google ID token from client
+   * @param {Object} req - Express request object (for IP and user agent)
    * @returns {Object} - { user, accessToken, refreshToken }
    */
-  async loginWithGoogle(idToken) {
+  async loginWithGoogle(idToken, req = null) {
+    const getClientInfo = (req) => {
+      if (!req) return { ipAddress: null, userAgent: null };
+      return {
+        ipAddress: req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress,
+        userAgent: req.headers['user-agent'] || null
+      };
+    };
+
+    const clientInfo = getClientInfo(req);
     if (!idToken) {
       throw new Error('Google ID token is required');
     }
@@ -172,6 +233,16 @@ class AuthService {
     }
 
     if (!user.isActive) {
+      // Log blocked login attempt
+      await LoginHistory.create({
+        user: user._id,
+        email: user.email,
+        status: 'blocked',
+        failureReason: 'Account deactivated',
+        ipAddress: clientInfo.ipAddress,
+        userAgent: clientInfo.userAgent,
+        loginAt: new Date()
+      }).catch(err => console.error('Error logging blocked login:', err));
       throw new Error('Account has been deactivated');
     }
 
@@ -186,6 +257,16 @@ class AuthService {
     user.refreshToken = refreshToken;
     user.lastLogin = new Date();
     await user.save();
+
+    // Log successful login
+    await LoginHistory.create({
+      user: user._id,
+      email: user.email,
+      status: 'success',
+      ipAddress: clientInfo.ipAddress,
+      userAgent: clientInfo.userAgent,
+      loginAt: new Date()
+    }).catch(err => console.error('Error logging successful login:', err));
 
     return {
       user: user.toSafeObject(),

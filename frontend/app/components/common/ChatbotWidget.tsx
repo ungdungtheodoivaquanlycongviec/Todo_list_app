@@ -93,15 +93,28 @@ export default function ChatbotWidget() {
   const toggleChat = () => {
     setIsOpen(!isOpen);
     if (!isOpen && messages.length === 0) {
+      // Check if user is admin or super_admin
+      const isAdmin = user && (user.role === 'admin' || user.role === 'super_admin');
+      
       // Add welcome message when opening for the first time
+      let welcomeText = `Xin chào ${user?.name || 'bạn'}! Tôi là trợ lý ảo của bạn.`;
+      
+      if (isAdmin) {
+        welcomeText += ` Tôi có thể giúp bạn với các câu hỏi về quản trị hệ thống, quản lý người dùng, và nhiều điều khác. Bạn cần giúp gì không?`;
+      } else {
+        welcomeText += ` Tôi có thể giúp bạn kiểm tra tasks, hỏi về lịch làm việc và nhiều điều khác. Bạn cần giúp gì không?`;
+      }
+      
       const welcomeMessage: Message = {
         name: 'Bot',
-        message: `Xin chào ${user?.name || 'bạn'}! Tôi là trợ lý ảo của bạn. Tôi có thể giúp bạn kiểm tra tasks, hỏi về lịch làm việc và nhiều điều khác. Bạn cần giúp gì không?`
+        message: welcomeText
       };
       setMessages([welcomeMessage]);
     }
   };
 
+  // Show chatbot for all authenticated users (including admin and super_admin)
+  // Admin and super_admin can use chatbot
   if (!user) {
     return null; // Don't show chatbot if user is not authenticated
   }
@@ -204,6 +217,7 @@ export default function ChatbotWidget() {
     </div>
   );
 }
+
 
 
 

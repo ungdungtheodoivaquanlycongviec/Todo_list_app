@@ -39,7 +39,7 @@ const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
   
   try {
-    const result = await authService.login(email, password);
+    const result = await authService.login(email, password, req);
     
     sendSuccess(res, result, 'Đăng nhập thành công');
   } catch (error) {
@@ -112,7 +112,7 @@ const loginWithGoogle = asyncHandler(async (req, res) => {
   }
 
   try {
-    const result = await authService.loginWithGoogle(idToken);
+    const result = await authService.loginWithGoogle(idToken, req);
     sendSuccess(res, result, 'Đăng nhập Google thành công');
   } catch (error) {
     return sendError(res, error.message || 'Xác thực Google thất bại', 401);

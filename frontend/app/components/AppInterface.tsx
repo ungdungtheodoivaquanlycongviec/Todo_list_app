@@ -12,10 +12,12 @@ import ChatbotWidget from './common/ChatbotWidget';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function AppInterface() {
-  const [activeView, setActiveView] = useState('tasks');
+  const { user } = useAuth();
+  const isAdmin = user && (user.role === 'admin' || user.role === 'super_admin');
+  const [activeView, setActiveView] = useState(isAdmin ? 'chat' : 'tasks');
   const [isClient, setIsClient] = useState(false);
   const router = useRouter();
-  const { user, logout, loading: authLoading, updateUserTheme } = useAuth();
+  const { logout, loading: authLoading, updateUserTheme } = useAuth();
 
   // Fix hydration
   useEffect(() => {
@@ -55,8 +57,13 @@ export default function AppInterface() {
       console.error('Failed to update theme:', error);
     }
   };
-
+  
   const renderActiveView = () => {
+    // Admin chỉ dùng chat
+    if (isAdmin) {
+      return <ChatView />;
+    }
+    // User thông thường xem tất cả views
     switch (activeView) {
       case 'tasks':
         return <TasksView />;

@@ -46,7 +46,27 @@ function LoginForm({ onSwitchToSignup }: { onSwitchToSignup: () => void }) {
   const { login, loginWithGoogle } = useAuth();
 
   const handleGoogleLogin = async () => {
-    await loginWithGoogle();
+    try {
+      setIsLoading(true);
+      setErrors({});
+      await loginWithGoogle();
+    } catch (error: any) {
+      console.error('Google login error:', error);
+      const errorMessage = error?.message || 'Google login failed. Please try again.';
+      
+      // Check if it's a network error
+      if (errorMessage.includes('Cannot connect to server') || errorMessage.includes('Failed to fetch')) {
+        setErrors({ 
+          submit: 'Cannot connect to server. Please check if the backend server is running.' 
+        });
+      } else {
+        setErrors({ 
+          submit: errorMessage 
+        });
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -85,10 +105,18 @@ function LoginForm({ onSwitchToSignup }: { onSwitchToSignup: () => void }) {
     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
       <h1 className="text-2xl font-bold text-center mb-6">Log In</h1>
 
+      {/* Error message */}
+      {errors.submit && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+          {errors.submit}
+        </div>
+      )}
+
       {/* Google Login Button */}
       <button
         onClick={handleGoogleLogin}
-        className="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-300 hover:border-gray-400 rounded-lg py-3 px-4 mb-6 transition-colors"
+        disabled={isLoading}
+        className="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-300 hover:border-gray-400 rounded-lg py-3 px-4 mb-6 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <svg className="w-5 h-5" viewBox="0 0 24 24">
           <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>

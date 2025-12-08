@@ -22,24 +22,91 @@ class ApiClient {
     try {
       console.log('Making API request to:', url, 'with config:', config);
       
-      const response = await fetch(url, config);
-      const data = await response.json();
+      let response: Response;
+      try {
+        response = await fetch(url, config);
+      } catch (fetchError) {
+        // Handle network errors (Failed to fetch)
+        const errorMessage = fetchError instanceof Error 
+          ? fetchError.message 
+          : 'Network error occurred';
+        
+        console.error('Network error:', {
+          url,
+          error: errorMessage,
+          message: 'Cannot connect to server. Please check if the backend server is running.'
+        });
+        
+        // Provide more helpful error message
+        if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+          throw new Error('Cannot connect to server. Please check if the backend server is running and the API URL is correct.');
+        }
+        throw fetchError;
+      }
 
-      console.log('API response received:', { url, status: response.status, data });
-
+      // Check if response is ok before parsing JSON
       if (!response.ok) {
-        const errorMessage = data.message || `HTTP error! status: ${response.status}`;
+        // Try to parse error message from response
+        let errorMessage = `HTTP error! status: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+        } catch (parseError) {
+          // If response is not JSON, use status text
+          errorMessage = response.statusText || errorMessage;
+        }
+        
         console.error('API request failed:', { url, status: response.status, message: errorMessage });
+        
+        // Handle 401 Unauthorized - clear tokens and redirect to login
+        if (response.status === 401) {
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            localStorage.removeItem('user');
+            // Don't redirect here, let the component handle it
+          }
+        }
+        
         throw new Error(errorMessage);
       }
 
+      // Parse JSON only if response is ok
+      let data;
+      try {
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          data = await response.json();
+        } else {
+          // If response is not JSON, return empty object or handle accordingly
+          const text = await response.text();
+          console.warn('Response is not JSON:', { url, contentType, text });
+          data = text ? JSON.parse(text) : {};
+        }
+      } catch (parseError) {
+        console.error('Failed to parse JSON response:', parseError);
+        throw new Error('Invalid response format from server');
+      }
+
+      console.log('API response received:', { url, status: response.status, data });
+
       return data;
     } catch (error) {
-      console.error('API request failed completely:', {
+      // Improve error logging
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorDetails = {
         url,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
-      throw error;
+        error: errorMessage,
+        ...(error instanceof Error && error.stack ? { stack: error.stack } : {})
+      };
+      
+      console.error('API request failed completely:', errorDetails);
+      
+      // Re-throw with improved error message
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error(errorMessage);
     }
   }
 

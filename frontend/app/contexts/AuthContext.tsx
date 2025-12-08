@@ -41,47 +41,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { accessToken } = authService.getStoredTokens();
       
       if (accessToken && authService.isAuthenticated()) {
-        const userData = await authService.getCurrentUser();
-        setUser(userData);
-        
-        // Apply user's theme preference
-        if (userData.theme) {
-          applyTheme(userData.theme);
-        }
-        
-        // Load current group if user has one
-        if (userData.currentGroupId) {
-          try {
-            const { groupService } = await import('../services/group.service');
-            const group = await groupService.getGroupById(userData.currentGroupId);
-            setCurrentGroup(group);
-          } catch (error) {
-            console.error('Failed to load current group:', error);
-            // Don't fail auth if group loading fails
+        try {
+          const userData = await authService.getCurrentUser();
+          setUser(userData);
+          
+          // Apply user's theme preference
+          if (userData.theme) {
+            applyTheme(userData.theme);
           }
-        } else {
-          // If no current group, try to load the first available group
-          try {
-            const { groupService } = await import('../services/group.service');
-            const response = await groupService.getAllGroups();
-            if (response.myGroups.length > 0) {
-              setCurrentGroup(response.myGroups[0]);
-            } else if (response.sharedGroups.length > 0) {
-              setCurrentGroup(response.sharedGroups[0]);
+          
+          // Load current group if user has one
+          if (userData.currentGroupId) {
+            try {
+              const { groupService } = await import('../services/group.service');
+              const group = await groupService.getGroupById(userData.currentGroupId);
+              setCurrentGroup(group);
+            } catch (error) {
+              console.error('Failed to load current group:', error);
+              // Don't fail auth if group loading fails
             }
-          } catch (error) {
-            console.error('Failed to load groups:', error);
+          } else {
+            // If no current group, try to load the first available group
+            try {
+              const { groupService } = await import('../services/group.service');
+              const response = await groupService.getAllGroups();
+              if (response.myGroups.length > 0) {
+                setCurrentGroup(response.myGroups[0]);
+              } else if (response.sharedGroups.length > 0) {
+                setCurrentGroup(response.sharedGroups[0]);
+              }
+            } catch (error) {
+              console.error('Failed to load groups:', error);
+              // Don't fail auth if group loading fails
+            }
           }
-        }
-        
-        // Save user to localStorage for persistence
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('user', JSON.stringify(userData));
+          
+          // Save user to localStorage for persistence
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('user', JSON.stringify(userData));
+          }
+        } catch (authError: any) {
+          // If getCurrentUser fails (e.g., token expired, user locked, etc.)
+          console.error('Failed to get current user:', authError);
+          
+          // Clear tokens if authentication fails
+          authService.removeTokens();
+          setUser(null);
+          setCurrentGroup(null);
+          
+          // Don't throw - just set user to null and let the app handle it
         }
       }
     } catch (error) {
       console.error('Auth check failed:', error);
+      // Clear tokens on any error
       authService.removeTokens();
+      setUser(null);
+      setCurrentGroup(null);
     } finally {
       setLoading(false);
     }
@@ -162,7 +178,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setUser(authData.user);
       applyTheme(authData.user.theme);
-      router.push('/dashboard');
+      // Redirect admin to admin panel, others to dashboard
+      if (authData.user.role === 'admin' || authData.user.role === 'super_admin') {
+        router.push('/admin');
+      } else {
+        router.push('/dashboard');
+      }
     } catch (error) {
       console.error('Google login failed:', error);
       throw error;
@@ -224,8 +245,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       console.log('Login successful, token saved:', authData.accessToken);
       
-      // Redirect to dashboard
-      router.push('/dashboard');
+      // Redirect admin to admin panel, others to dashboard
+      if (authData.user.role === 'admin' || authData.user.role === 'super_admin') {
+        router.push('/admin');
+      } else {
+        router.push('/dashboard');
+      }
     } catch (error) {
       console.error('Login failed:', error);
       throw error;
@@ -253,8 +278,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('user', JSON.stringify(authData.user));
       }
       
-      // Redirect to dashboard
-      router.push('/dashboard');
+      // Redirect admin to admin panel, others to dashboard
+      if (authData.user.role === 'admin' || authData.user.role === 'super_admin') {
+        router.push('/admin');
+      } else {
+        router.push('/dashboard');
+      }
     } catch (error) {
       console.error('Registration failed:', error);
       throw error;

@@ -10,6 +10,7 @@ const groupRoutes = require('./group.routes');
 const notificationRoutes = require('./notification.routes');
 const chatRoutes = require('./chat.routes');
 const chatbotRoutes = require('./chatbot.routes');
+const adminRoutes = require('./admin.routes');
 
 // Mount routes
 router.use('/auth', authRoutes);
@@ -20,5 +21,6 @@ router.use('/groups', groupRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/chat', chatRoutes);
 router.use('/chatbot', chatbotRoutes);
+router.use('/admin', adminRoutes);
 
 module.exports = router;

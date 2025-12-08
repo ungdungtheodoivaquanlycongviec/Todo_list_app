@@ -12,7 +12,7 @@ export interface User {
   email: string;
   name: string;
   avatar: string | null;
-  role: 'user' | 'admin';
+  role: 'user' | 'admin' | 'super_admin';
   theme: 'light' | 'dark' | 'auto';
   language: Language;
   regionalPreferences: RegionalPreferences;
