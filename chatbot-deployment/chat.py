@@ -10,6 +10,8 @@ from utils import (
     has_special_day_today,
     save_recommended_tasks,
     evaluate_recommended_tasks,
+    evaluate_task_completion_status,
+    evaluate_future_tasks_status,
 )
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -49,6 +51,58 @@ def _build_response_for_tag(tag: str, context=None) -> str:
     return replace_placeholders(template, context)
 
 
+def _create_today_only_context(context):
+    """
+    Tạo context mới chỉ chứa task hôm nay để dùng cho intent todayTask.
+    """
+    if not context:
+        return context
+    
+    tasks_info = context.get("tasks") or {}
+    today_tasks = tasks_info.get("todayTasks") or []
+    today_task_details = tasks_info.get("todayTaskDetails") or []
+    
+    new_context = context.copy()
+    new_context["tasks"] = {
+        "activeTasks": today_tasks,
+        "activeTasksCount": len(today_tasks),
+        "todayTasks": today_tasks,
+        "todayTasksCount": len(today_tasks),
+        "futureTasks": [],
+        "futureTasksCount": 0,
+        "activeTaskDetails": today_task_details,
+        "todayTaskDetails": today_task_details,
+        "futureTaskDetails": []
+    }
+    return new_context
+
+
+def _create_future_only_context(context):
+    """
+    Tạo context mới chỉ chứa task tương lai để dùng cho intent recommentedTasks.
+    """
+    if not context:
+        return context
+    
+    tasks_info = context.get("tasks") or {}
+    future_tasks = tasks_info.get("futureTasks") or []
+    future_task_details = tasks_info.get("futureTaskDetails") or []
+    
+    new_context = context.copy()
+    new_context["tasks"] = {
+        "activeTasks": future_tasks,
+        "activeTasksCount": len(future_tasks),
+        "todayTasks": [],
+        "todayTasksCount": 0,
+        "futureTasks": future_tasks,
+        "futureTasksCount": len(future_tasks),
+        "activeTaskDetails": future_task_details,
+        "todayTaskDetails": [],
+        "futureTaskDetails": future_task_details
+    }
+    return new_context
+
+
 def get_response(msg, context=None, token=None):
     """
     Lấy câu trả lời từ mô hình và apply context (thay placeholders nếu có),
@@ -71,11 +125,6 @@ def get_response(msg, context=None, token=None):
     if prob.item() <= 0.75:
         return "I do not understand..."
 
-    # Lấy thông tin tasks từ context (nếu có)
-    tasks_info = (context or {}).get("tasks") or {}
-    active_tasks_count = tasks_info.get("activeTasksCount") or 0
-    today_tasks_count = tasks_info.get("todayTasksCount") or 0
-
     # 1. Sau câu chào user, kiểm tra ngày đặc biệt; nếu đúng, trả response từ intent specialDay.
     if tag == "greeting":
         if has_special_day_today():
@@ -88,69 +137,123 @@ def get_response(msg, context=None, token=None):
             return resp
 
     # 2. Logic khi user nói đã hoàn thành tất cả task (finishAllTask)
-    #    - Nếu thực sự không còn task đang active -> finishAllRecommentedTask
-    #    - Nếu vẫn còn nhưng không còn task hôm nay -> finishTodayTask
-    #    - Ngược lại -> todayTask
+    #    Kiểm tra trạng thái thực tế từ database:
+    #    - Nếu đúng (không còn task active) -> finishAllRecommentedTask
+    #    - Nếu sai, kiểm tra finishTodayTask (không còn task hôm nay) -> finishTodayTask
+    #    - Nếu không -> todayTask
     #    Đồng thời, nếu đã hoàn thành task hôm nay nhưng vẫn còn task khác -> thêm recommentedTasks.
     if tag == "finishAllTask":
-        if active_tasks_count == 0:
-            # Hoàn thành hết mọi task đang active
+        # Đánh giá trạng thái task từ database
+        task_status = evaluate_task_completion_status(context)
+        
+        if task_status["all_tasks_completed"]:
+            # Đúng: không còn task active nào -> trả finishAllRecommentedTask
             resp = _build_response_for_tag("finishAllRecommentedTask", context)
         else:
-            if today_tasks_count == 0:
-                # Không còn task hôm nay, nhưng vẫn còn task khác
+            # Sai: vẫn còn task, kiểm tra finishTodayTask
+            if task_status["today_tasks_completed"]:
+                # Đúng: không còn task hôm nay -> trả finishTodayTask
                 resp = _build_response_for_tag("finishTodayTask", context)
             else:
-                # Vẫn còn task hôm nay
+                # Không: vẫn còn task hôm nay -> trả todayTask
                 resp = _build_response_for_tag("todayTask", context)
 
-        # Nếu đã hoàn thành task hôm nay nhưng vẫn còn task khác -> gợi ý thêm
-        if today_tasks_count == 0 and active_tasks_count > 0:
-            # Lưu danh sách task hiện tại là "task được đề xuất"
-            save_recommended_tasks(token, context)
-            extra = _build_response_for_tag("recommentedTasks", context)
-            if extra:
-                return (resp or "") + "\n\n" + extra
+        # Nếu đã hoàn thành task hôm nay và có task tương lai -> gợi ý thêm (chỉ task tương lai)
+        if task_status["today_tasks_completed"]:
+            tasks_info = (context or {}).get("tasks") or {}
+            future_tasks_count = tasks_info.get("futureTasksCount") or 0
+            if future_tasks_count > 0:
+                # Lưu danh sách task tương lai là "task được đề xuất"
+                save_recommended_tasks(token, context)
+                # Tạo context riêng cho recommentedTasks chỉ chứa task tương lai
+                future_context = _create_future_only_context(context)
+                extra = _build_response_for_tag("recommentedTasks", future_context)
+                if extra:
+                    return (resp or "") + "\n\n" + extra
 
         if resp:
             return resp
 
     # 3. Khi user hỏi về task hôm nay (todayTask)
-    #    - Nếu không còn task hôm nay nhưng vẫn có task khác -> trả todayTask + thêm recommentedTasks.
+    #    - Chỉ trả lời các task có due date là hôm nay
+    #    - Nếu đã hoàn thành task hôm nay và có task tương lai -> thêm recommentedTasks (chỉ task tương lai)
     if tag == "todayTask":
-        resp = _build_response_for_tag("todayTask", context)
-        if today_tasks_count == 0 and active_tasks_count > 0:
-            # Lưu danh sách task hiện tại là "task được đề xuất"
-            save_recommended_tasks(token, context)
-            extra = _build_response_for_tag("recommentedTasks", context)
-            if extra:
-                return (resp or "") + "\n\n" + extra
+        task_status = evaluate_task_completion_status(context)
+        # Tạo context riêng cho todayTask chỉ chứa task hôm nay
+        today_context = _create_today_only_context(context)
+        resp = _build_response_for_tag("todayTask", today_context)
+        
+        # Nếu đã hoàn thành task hôm nay và có task tương lai -> gửi thêm recommentedTasks
+        if task_status["today_tasks_completed"]:
+            tasks_info = (context or {}).get("tasks") or {}
+            future_tasks_count = tasks_info.get("futureTasksCount") or 0
+            if future_tasks_count > 0:
+                # Lưu danh sách task tương lai là "task được đề xuất"
+                save_recommended_tasks(token, context)
+                # Tạo context riêng cho recommentedTasks chỉ chứa task tương lai
+                future_context = _create_future_only_context(context)
+                extra = _build_response_for_tag("recommentedTasks", future_context)
+                if extra:
+                    return (resp or "") + "\n\n" + extra
+        
         if resp:
             return resp
 
     # 4. Kiểm tra trạng thái hoàn thành các task được đề xuất dựa trên database
-    #    Ưu tiên (theo dữ liệu thật):
-    #    - Nếu tất cả task được đề xuất đã completed     -> intent finishAllRecommentedTask
-    #    - Nếu một phần task được đề xuất đã completed   -> intent finishPartOfRecommentedTask
-    #    - Nếu chưa task nào được đề xuất completed      -> intent Warning
+    #    Logic:
+    #    1. Nếu finishAllRecommentedTask yes → trả response của intent finishAllRecommentedTask
+    #    2. Nếu không → kiểm tra finishPartOfRecommentedTask:
+    #       - Nếu user báo đã làm recommented task → kiểm tra trạng thái các task ở tương lai
+    #       - Nếu đúng (có một phần completed) → trả response của intent finishPartOfRecommentedTask
+    #       - Nếu không đúng (chưa có task nào completed) → trả Warning
     if tag in ("finishPartOfRecommentedTask", "finishAllRecommentedTask", "Warning"):
+        # Bước 1: Kiểm tra finishAllRecommentedTask trước
         eval_result = evaluate_recommended_tasks(token)
-
+        
         if eval_result and eval_result.get("hasRecommended"):
+            # Nếu tất cả task được đề xuất đã completed → trả finishAllRecommentedTask
             if eval_result.get("allCompleted"):
                 resp = _build_response_for_tag("finishAllRecommentedTask", context)
-            elif eval_result.get("anyCompleted"):
-                resp = _build_response_for_tag("finishPartOfRecommentedTask", context)
-            else:
-                resp = _build_response_for_tag("Warning", context)
-        else:
-            # Fallback: nếu không có dữ liệu DB, dùng intent theo tag như cũ
+                if resp:
+                    return resp
+            
+            # Bước 2: Nếu không phải finishAllRecommentedTask, kiểm tra finishPartOfRecommentedTask
+            # Chỉ xử lý khi tag là finishPartOfRecommentedTask (user báo đã làm recommented task)
             if tag == "finishPartOfRecommentedTask":
-                resp = _build_response_for_tag("finishPartOfRecommentedTask", context)
-            elif tag == "finishAllRecommentedTask":
-                resp = _build_response_for_tag("finishAllRecommentedTask", context)
+                # Ưu tiên: Kiểm tra từ recommended tasks (đã lưu trong DB, là các task tương lai)
+                if eval_result.get("anyCompleted"):
+                    # Đúng: có một phần task được đề xuất đã completed → trả finishPartOfRecommentedTask
+                    resp = _build_response_for_tag("finishPartOfRecommentedTask", context)
+                else:
+                    # Không đúng: chưa có task nào completed → trả Warning
+                    resp = _build_response_for_tag("Warning", context)
+                
+                if resp:
+                    return resp
+        
+        # Fallback: nếu không có dữ liệu DB hoặc tag không phải finishPartOfRecommentedTask
+        if tag == "finishAllRecommentedTask":
+            resp = _build_response_for_tag("finishAllRecommentedTask", context)
+        elif tag == "finishPartOfRecommentedTask":
+            # Nếu không có dữ liệu DB, kiểm tra trạng thái task tương lai từ context
+            future_status = evaluate_future_tasks_status(context)
+            if future_status["has_future_tasks"]:
+                future_details = future_status["future_task_details"]
+                completed_future_tasks = [
+                    task for task in future_details 
+                    if task.get("status") == "completed"
+                ]
+                if len(completed_future_tasks) > 0:
+                    # Đúng: có một phần task tương lai đã completed → trả finishPartOfRecommentedTask
+                    resp = _build_response_for_tag("finishPartOfRecommentedTask", context)
+                else:
+                    # Không đúng: chưa có task tương lai nào completed → trả Warning
+                    resp = _build_response_for_tag("Warning", context)
             else:
-                resp = _build_response_for_tag("Warning", context)
+                # Không có task tương lai, dùng intent mặc định
+                resp = _build_response_for_tag("finishPartOfRecommentedTask", context)
+        else:
+            resp = _build_response_for_tag("Warning", context)
 
         if resp:
             return resp

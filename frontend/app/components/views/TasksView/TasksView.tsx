@@ -1117,7 +1117,7 @@ export default function TasksView() {
                   <div className="text-center py-8 text-gray-400 text-sm">
                     <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
                       {column.key === "incomplete" ? (
-                        <AlertTriangle className="w-6 h-6" />
+                        <div className="w-3 h-3 bg-red-500 rounded-full" />
                       ) : column.key === "completed" ? (
                         <div className="w-6 h-6 bg-green-200 rounded-full flex items-center justify-center">
                           <div className="w-3 h-3 bg-green-500 rounded-full" />
@@ -1926,7 +1926,6 @@ export default function TasksView() {
                   )}
                   <div className="flex items-center gap-2">
                     <h2 className="font-semibold text-red-700">{t('tasks.incomplete') || 'Incomplete'}</h2>
-                    <AlertTriangle className="w-4 h-4 text-red-500" />
                   </div>
                   <span className="bg-red-100 text-red-800 text-sm px-2 py-1 rounded-full">
                     {hasActiveFilters ? `${filterTasks(incompleteTasks).length}/${incompleteTasks.length}` : incompleteTasks.length}

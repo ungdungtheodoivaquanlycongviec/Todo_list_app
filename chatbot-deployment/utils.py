@@ -59,18 +59,31 @@ def get_user_context(token: Optional[str]) -> Optional[Dict[str, Any]]:
         return None
 
 
-def format_task_list(context: Optional[Dict[str, Any]]) -> str:
+def format_task_list(context: Optional[Dict[str, Any]], task_type: str = "all") -> str:
     """
-    Format danh sách task từ context.tasks.activeTasks thành 1 chuỗi đẹp.
+    Format danh sách task từ context thành 1 chuỗi đẹp.
+    
+    Args:
+        context: Context từ backend
+        task_type: "all" (tất cả), "today" (chỉ hôm nay), "future" (chỉ tương lai)
     """
     if not context:
         return ""
 
     tasks_info = context.get("tasks") or {}
-    active_tasks = tasks_info.get("activeTasks") or []
-
-    if not active_tasks:
-        return "Hiện tại bạn không có task nào đang hoạt động."
+    
+    if task_type == "today":
+        active_tasks = tasks_info.get("todayTasks") or []
+        if not active_tasks:
+            return "Hôm nay bạn không có task nào cần hoàn thành."
+    elif task_type == "future":
+        active_tasks = tasks_info.get("futureTasks") or []
+        if not active_tasks:
+            return "Hiện tại bạn không có task nào trong tương lai."
+    else:
+        active_tasks = tasks_info.get("activeTasks") or []
+        if not active_tasks:
+            return "Hiện tại bạn không có task nào đang hoạt động."
 
     # Dạng bullet list
     lines = [f"- {title}" for title in active_tasks]
@@ -112,13 +125,14 @@ def has_special_day_today() -> bool:
 def save_recommended_tasks(token: Optional[str], context: Optional[Dict[str, Any]]) -> None:
     """
     Gửi danh sách task được đề xuất gần nhất lên backend để lưu lại cho user hiện tại.
-    Dựa trên context.tasks.activeTaskDetails.
+    Chỉ lấy task có dueDate ở tương lai (futureTaskDetails).
     """
     if not token or not context:
         return
 
     tasks_info = context.get("tasks") or {}
-    details = tasks_info.get("activeTaskDetails") or []
+    # Chỉ lấy task tương lai cho recommended tasks
+    details = tasks_info.get("futureTaskDetails") or []
     task_ids = [item.get("id") for item in details if item.get("id")]
 
     if not task_ids:
@@ -132,7 +146,7 @@ def save_recommended_tasks(token: Optional[str], context: Optional[Dict[str, Any
     }
 
     try:
-        _debug_log("Saving recommended tasks", count=len(task_ids))
+        _debug_log("Saving recommended tasks (future only)", count=len(task_ids))
         resp = requests.post(url, headers=headers, json={"taskIds": task_ids}, timeout=5)
         _debug_log("Save recommended tasks response", status=resp.status_code)
     except Exception as exc:  # pylint: disable=broad-except
@@ -174,6 +188,69 @@ def evaluate_recommended_tasks(token: Optional[str]) -> Optional[Dict[str, Any]]
         return None
 
 
+def evaluate_future_tasks_status(context: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Đánh giá trạng thái các task tương lai (future tasks) từ context.
+    
+    Trả về dict với:
+    - has_future_tasks: True nếu có task tương lai
+    - future_tasks_count: Số lượng task tương lai
+    - future_task_details: Danh sách chi tiết task tương lai
+    """
+    if not context:
+        return {
+            "has_future_tasks": False,
+            "future_tasks_count": 0,
+            "future_task_details": []
+        }
+    
+    tasks_info = context.get("tasks") or {}
+    future_tasks_count = tasks_info.get("futureTasksCount") or 0
+    future_task_details = tasks_info.get("futureTaskDetails") or []
+    
+    return {
+        "has_future_tasks": future_tasks_count > 0,
+        "future_tasks_count": future_tasks_count,
+        "future_task_details": future_task_details
+    }
+
+
+def evaluate_task_completion_status(context: Optional[Dict[str, Any]]) -> Dict[str, bool]:
+    """
+    Đánh giá trạng thái hoàn thành task dựa trên context từ database.
+    
+    Trả về dict với các flag:
+    - all_tasks_completed: True nếu không còn task active nào
+    - today_tasks_completed: True nếu không còn task hôm nay nào
+    - has_active_tasks: True nếu vẫn còn task active
+    - has_today_tasks: True nếu vẫn còn task hôm nay
+    
+    Logic:
+    - all_tasks_completed = (activeTasksCount == 0)
+    - today_tasks_completed = (todayTasksCount == 0)
+    - has_active_tasks = (activeTasksCount > 0)
+    - has_today_tasks = (todayTasksCount > 0)
+    """
+    if not context:
+        return {
+            "all_tasks_completed": False,
+            "today_tasks_completed": False,
+            "has_active_tasks": True,
+            "has_today_tasks": True,
+        }
+    
+    tasks_info = context.get("tasks") or {}
+    active_tasks_count = tasks_info.get("activeTasksCount") or 0
+    today_tasks_count = tasks_info.get("todayTasksCount") or 0
+    
+    return {
+        "all_tasks_completed": active_tasks_count == 0,
+        "today_tasks_completed": today_tasks_count == 0,
+        "has_active_tasks": active_tasks_count > 0,
+        "has_today_tasks": today_tasks_count > 0,
+    }
+
+
 def replace_placeholders(template: str, context: Optional[Dict[str, Any]]) -> str:
     """
     Thay thế các placeholders trong câu trả lời bằng dữ liệu thật từ context.
@@ -199,9 +276,13 @@ def replace_placeholders(template: str, context: Optional[Dict[str, Any]]) -> st
     gender = user.get("gender") or "bạn"
 
     active_tasks_count = tasks.get("activeTasksCount") or 0
+    today_tasks_count = tasks.get("todayTasksCount") or 0
+    future_tasks_count = tasks.get("futureTasksCount") or 0
 
     # Chuỗi mô tả danh sách task
-    active_tasks_str = format_task_list(context)
+    active_tasks_str = format_task_list(context, "all")
+    today_tasks_str = format_task_list(context, "today")
+    future_tasks_str = format_task_list(context, "future")
 
     mapping = {
         "user_name": full_name,
@@ -210,6 +291,10 @@ def replace_placeholders(template: str, context: Optional[Dict[str, Any]]) -> st
         "Gender": _capitalize_first(gender),
         "activeTasks": active_tasks_str,
         "activeTasksCount": str(active_tasks_count),
+        "todayTasks": today_tasks_str,
+        "todayTasksCount": str(today_tasks_count),
+        "futureTasks": future_tasks_str,
+        "futureTasksCount": str(future_tasks_count),
         "current_date": date_info.get("current_date") or "",
         "current_date_vn": date_info.get("current_date_vn") or "",
         # Các placeholder mở rộng

@@ -41,24 +41,23 @@ const getChatbotContext = asyncHandler(async (req, res) => {
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
-  const todayTasks = await Task.find({
+  // Lấy tất cả task active (chưa completed) được assign cho user hoặc không có dueDate
+  const allActiveTasks = await Task.find({
     groupId: currentGroupId,
     status: { $in: ['todo', 'in_progress', 'incomplete'] },
     $or: [
-      { dueDate: { $gte: today, $lt: tomorrow } },
-      { dueDate: null },
-      { assignedTo: { $elemMatch: { userId: userId } } }
+      { assignedTo: { $elemMatch: { userId: userId } } },
+      { dueDate: { $exists: true } }
     ]
   })
     .populate('assignedTo.userId', 'name email')
     .select('title status priority dueDate')
-    .limit(20)
+    .limit(50)
     .lean();
 
-  // Danh sách task đang active cho user (chi tiết)
-  const activeTaskDetails = todayTasks
+  // Phân loại task: hôm nay vs tương lai
+  const todayTaskDetails = allActiveTasks
     .filter(task => {
-      // Lọc tasks được assign cho user hoặc không có dueDate hoặc dueDate hôm nay
       const isAssignedToUser = task.assignedTo?.some(
         assignee => assignee.userId?._id?.toString() === userId.toString()
       );
@@ -66,7 +65,8 @@ const getChatbotContext = asyncHandler(async (req, res) => {
         new Date(task.dueDate) >= today && 
         new Date(task.dueDate) < tomorrow;
       
-      return isAssignedToUser || !task.dueDate || isDueToday;
+      // Chỉ lấy task có dueDate = hôm nay hoặc được assign cho user và có dueDate = hôm nay
+      return isDueToday && (isAssignedToUser || !task.dueDate);
     })
     .map(task => ({
       id: task._id.toString(),
@@ -75,9 +75,33 @@ const getChatbotContext = asyncHandler(async (req, res) => {
       priority: task.priority,
       dueDate: task.dueDate
     }))
-    .slice(0, 10); // Giới hạn 10 tasks
+    .slice(0, 10);
 
-  // Danh sách title để dùng cho placeholders cũ
+  const futureTaskDetails = allActiveTasks
+    .filter(task => {
+      const isAssignedToUser = task.assignedTo?.some(
+        assignee => assignee.userId?._id?.toString() === userId.toString()
+      );
+      const isDueFuture = task.dueDate && new Date(task.dueDate) >= tomorrow;
+      
+      // Chỉ lấy task có dueDate > hôm nay
+      return isDueFuture && isAssignedToUser;
+    })
+    .map(task => ({
+      id: task._id.toString(),
+      title: task.title,
+      status: task.status,
+      priority: task.priority,
+      dueDate: task.dueDate
+    }))
+    .slice(0, 10);
+
+  // Danh sách title để dùng cho placeholders
+  const todayTasks = todayTaskDetails.map(task => task.title);
+  const futureTasks = futureTaskDetails.map(task => task.title);
+  
+  // Tổng hợp tất cả task active (để tương thích với code cũ)
+  const activeTaskDetails = [...todayTaskDetails, ...futureTaskDetails].slice(0, 10);
   const activeTasks = activeTaskDetails.map(task => task.title);
 
   // Lấy ngày hiện tại
@@ -96,8 +120,13 @@ const getChatbotContext = asyncHandler(async (req, res) => {
     tasks: {
       activeTasks: activeTasks,
       activeTasksCount: activeTasks.length,
+      todayTasks: todayTasks,
       todayTasksCount: todayTasks.length,
-      activeTaskDetails
+      futureTasks: futureTasks,
+      futureTasksCount: futureTasks.length,
+      activeTaskDetails,
+      todayTaskDetails,
+      futureTaskDetails
     },
     date: {
       current_date: currentDate,
