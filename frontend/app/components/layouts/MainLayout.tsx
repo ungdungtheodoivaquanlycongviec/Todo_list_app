@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import Sidebar from './Sidebar';
 import ToolsSidebar from './ToolsSidebar';
 import TopBar from './TopBar';
@@ -8,7 +8,7 @@ import ProfileSettings from '../ProfileSettings';
 import { User } from '../../services/types/auth.types';
 import { useFolder } from '../../contexts/FolderContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { Menu, PanelsTopLeft, X } from 'lucide-react';
+import { Menu, PanelsTopLeft, X, GripVertical } from 'lucide-react';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -32,10 +32,47 @@ export default function MainLayout({
   const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isToolsSidebarOpen, setIsToolsSidebarOpen] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(260);
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeRef = useRef<HTMLDivElement>(null);
   const { currentFolder } = useFolder();
   const { t } = useLanguage();
   const isAdmin = user && (user.role === 'admin' || user.role === 'super_admin');
   const hasFolder = !!currentFolder && !isAdmin; // Admin không dùng folder sidebar
+
+  const MIN_SIDEBAR_WIDTH = 200;
+  const MAX_SIDEBAR_WIDTH = 400;
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      const newWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, e.clientX));
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing]);
 
   const handleViewChange = (view: string) => {
     if (view === 'profile') {
@@ -99,27 +136,41 @@ export default function MainLayout({
 
       <div className={`flex-1 min-h-0 w-full overflow-hidden ${showProfileSettings
         ? ''
-        : `lg:grid ${!isAdmin && hasFolder
-          ? 'lg:grid-cols-[240px_72px_minmax(0,1fr)] xl:grid-cols-[260px_100px_minmax(0,1fr)]'
-          : 'lg:grid-cols-[72px_minmax(0,1fr)] xl:grid-cols-[100px_minmax(0,1fr)]'
-        }`
+        : `lg:flex`
         }`}>
         {/* Sidebar - desktop - Ẩn nếu là admin hoặc đang ở profile settings */}
         {!isAdmin && hasFolder && !showProfileSettings && (
-          <div className="hidden lg:block border-r border-gray-200 dark:border-gray-800 overflow-hidden">
+          <div 
+            className="hidden lg:block border-r border-gray-200 dark:border-gray-800 overflow-hidden flex-shrink-0 relative"
+            style={{ width: sidebarWidth }}
+          >
             {sidebarPanel}
+            {/* Resize Handle */}
+            <div
+              ref={resizeRef}
+              onMouseDown={handleMouseDown}
+              className={`absolute top-0 right-0 w-1 h-full cursor-col-resize group hover:bg-blue-500 transition-colors z-10 ${
+                isResizing ? 'bg-blue-500' : 'bg-transparent hover:bg-blue-400'
+              }`}
+            >
+              <div className={`absolute top-1/2 -translate-y-1/2 -right-1 w-3 h-8 flex items-center justify-center rounded bg-gray-200 dark:bg-gray-700 opacity-0 group-hover:opacity-100 transition-opacity ${
+                isResizing ? 'opacity-100 bg-blue-500' : ''
+              }`}>
+                <GripVertical className="w-3 h-3 text-gray-500 dark:text-gray-400" />
+              </div>
+            </div>
           </div>
         )}
 
         {/* Tools sidebar - desktop - Luôn hiển thị (admin chỉ có chat) */}
         {!showProfileSettings && (
-          <div className="hidden lg:block border-r border-gray-200 dark:border-gray-800">
+          <div className="hidden lg:block border-r border-gray-200 dark:border-gray-800 flex-shrink-0 w-[72px] xl:w-[100px]">
             {toolsPanel}
           </div>
         )}
 
         {/* Main content */}
-        <div className="flex flex-col min-w-0 h-full overflow-hidden bg-gray-50 dark:bg-gray-900">
+        <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-gray-50 dark:bg-gray-900">
           <TopBar
             user={user}
             onLogout={onLogout}
