@@ -35,7 +35,7 @@ export default function MainLayout({
   const { currentFolder } = useFolder();
   const { t } = useLanguage();
   const isAdmin = user && (user.role === 'admin' || user.role === 'super_admin');
-  const hasFolder = !!currentFolder && !isAdmin; // Admin không dùng folder sidebar
+  const hasFolder = !!currentFolder && !isAdmin;
 
   const handleViewChange = (view: string) => {
     if (view === 'profile') {
@@ -64,52 +64,56 @@ export default function MainLayout({
   );
 
   return (
-    <div className="h-screen bg-gray-100 dark:bg-gray-900 flex flex-col">
-      {/* Mobile header */}
-      <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex items-center gap-3 min-w-0">
-          {hasFolder && (
+    <div className="h-screen bg-gray-100 dark:bg-gray-900 flex flex-col overflow-hidden">
+      {/* Mobile header - Ẩn khi showProfileSettings */}
+      {!showProfileSettings && (
+        <div className="lg:hidden flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+            {hasFolder && (
+              <button
+                aria-label="Open navigation"
+                className="p-1.5 sm:p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 flex-shrink-0"
+                onClick={() => setIsSidebarOpen(true)}
+              >
+                <Menu className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate">
+                {isAdmin ? 'Admin Panel' : 'Workspace'}
+              </p>
+              <p className="text-sm sm:text-base font-semibold text-gray-900 dark:text-white truncate">
+                {isAdmin ? 'Admin Dashboard' : (currentFolder?.name || 'My dashboard')}
+              </p>
+            </div>
+          </div>
+          {(isAdmin || hasFolder) && (
             <button
-              aria-label="Open navigation"
-              className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200"
-              onClick={() => setIsSidebarOpen(true)}
+              aria-label="Open tools"
+              className="p-1.5 sm:p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 flex-shrink-0 ml-2"
+              onClick={() => setIsToolsSidebarOpen(true)}
             >
-              <Menu className="w-5 h-5" />
+              <PanelsTopLeft className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
           )}
-          <div className="min-w-0">
-            <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
-              {isAdmin ? 'Admin Panel' : 'Workspace'}
-            </p>
-            <p className="font-semibold text-gray-900 dark:text-white truncate">
-              {isAdmin ? 'Admin Dashboard' : (currentFolder?.name || 'My dashboard')}
-            </p>
-          </div>
         </div>
-        {(isAdmin || hasFolder) && (
-          <button
-            aria-label="Open tools"
-            className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200"
-            onClick={() => setIsToolsSidebarOpen(true)}
-          >
-            <PanelsTopLeft className="w-5 h-5" />
-          </button>
-        )}
-      </div>
+      )}
 
       <div className={`flex-1 min-h-0 w-full lg:grid ${
-        !isAdmin && hasFolder && !showProfileSettings
-          ? 'lg:grid-cols-[240px_72px_minmax(0,1fr)] xl:grid-cols-[260px_100px_minmax(0,1fr)]'
-          : 'lg:grid-cols-[72px_minmax(0,1fr)] xl:grid-cols-[100px_minmax(0,1fr)]'
+        showProfileSettings
+          ? 'lg:grid-cols-1'  // Chỉ có main content khi mở Profile Settings
+          : !isAdmin && hasFolder
+            ? 'lg:grid-cols-[240px_72px_minmax(0,1fr)] xl:grid-cols-[260px_100px_minmax(0,1fr)]'
+            : 'lg:grid-cols-[72px_minmax(0,1fr)] xl:grid-cols-[100px_minmax(0,1fr)]'
       }`}>
-        {/* Sidebar - desktop - Ẩn nếu là admin */}
-        {!isAdmin && hasFolder && (
+        {/* Sidebar - desktop - Ẩn khi Profile Settings mở */}
+        {!showProfileSettings && !isAdmin && hasFolder && (
           <div className="hidden lg:block border-r border-gray-200 dark:border-gray-800">
             {sidebarPanel}
           </div>
         )}
 
-        {/* Tools sidebar - desktop - Luôn hiển thị (admin chỉ có chat) */}
+        {/* Tools sidebar - desktop - Ẩn khi Profile Settings mở */}
         {!showProfileSettings && (
           <div className="hidden lg:block border-r border-gray-200 dark:border-gray-800">
             {toolsPanel}
@@ -117,7 +121,7 @@ export default function MainLayout({
         )}
 
         {/* Main content */}
-        <div className="flex flex-col min-w-0 bg-gray-50 dark:bg-gray-900">
+        <div className="flex flex-col min-w-0 min-h-0 bg-gray-50 dark:bg-gray-900">
           <TopBar 
             user={user} 
             onLogout={onLogout}
@@ -125,13 +129,13 @@ export default function MainLayout({
             onThemeChange={onThemeChange}
             onProfileClick={() => setShowProfileSettings(true)}
           />
-          <div className="flex-1 min-h-0 overflow-hidden">
+          <div className="flex-1 min-h-0">
             {showProfileSettings ? (
               <div className="h-full overflow-y-auto bg-white dark:bg-gray-900">
                 <ProfileSettings onClose={() => setShowProfileSettings(false)} />
               </div>
             ) : (
-              <div className="h-full min-h-0 overflow-hidden">
+              <div className="h-full">
                 {children}
               </div>
             )}
@@ -139,8 +143,8 @@ export default function MainLayout({
         </div>
       </div>
 
-      {/* Mobile Sidebar Drawer - ẩn với admin */}
-      {!isAdmin && hasFolder && isSidebarOpen && (
+      {/* Mobile Sidebar Drawer - Ẩn khi Profile Settings mở */}
+      {!showProfileSettings && !isAdmin && hasFolder && isSidebarOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={closeAllPanels} />
           <div className="relative h-full w-4/5 max-w-sm bg-white dark:bg-[#1F1F1F] shadow-2xl">
@@ -161,8 +165,8 @@ export default function MainLayout({
         </div>
       )}
 
-      {/* Mobile Tools Drawer */}
-      {(isAdmin || hasFolder) && isToolsSidebarOpen && !showProfileSettings && (
+      {/* Mobile Tools Drawer - Ẩn khi Profile Settings mở */}
+      {!showProfileSettings && (isAdmin || hasFolder) && isToolsSidebarOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={closeAllPanels} />
           <div className="absolute right-0 top-0 h-full w-4/5 max-w-sm bg-white dark:bg-[#1F1F1F] shadow-2xl">
