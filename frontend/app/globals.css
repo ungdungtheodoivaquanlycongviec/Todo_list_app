@@ -19,6 +19,273 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  color-scheme: light only;
+}
+
+/* Explicit light mode - ensures app theme is independent of system theme */
+.light {
+  --background: #ffffff;
+  --foreground: #171717;
+  color-scheme: light only;
+}
+
+/* Force light mode to override any system dark preferences */
+html.light,
+html.light body {
+  color-scheme: light only;
+  background-color: #ffffff;
+  color: #171717;
+}
+
+/* Light mode explicit overrides - ensure elements stay light when system is dark */
+.light .bg-white {
+  background-color: #ffffff !important;
+}
+
+.light .bg-gray-50 {
+  background-color: #f9fafb !important;
+}
+
+.light .bg-gray-100 {
+  background-color: #f3f4f6 !important;
+}
+
+.light .bg-gray-200 {
+  background-color: #e5e7eb !important;
+}
+
+.light .text-gray-900 {
+  color: #111827 !important;
+}
+
+.light .text-gray-800 {
+  color: #1f2937 !important;
+}
+
+.light .text-gray-700 {
+  color: #374151 !important;
+}
+
+.light .text-gray-600 {
+  color: #4b5563 !important;
+}
+
+.light .text-gray-500 {
+  color: #6b7280 !important;
+}
+
+.light .border-gray-200 {
+  border-color: #e5e7eb !important;
+}
+
+.light .border-gray-300 {
+  border-color: #d1d5db !important;
+}
+
+/* Light mode input fields */
+.light input,
+.light select,
+.light textarea {
+  background-color: #ffffff !important;
+  color: #111827 !important;
+  border-color: #d1d5db !important;
+}
+
+.light input::placeholder {
+  color: #9ca3af !important;
+}
+
+/* Light mode sidebar gradient */
+.light .from-gray-50 {
+  --tw-gradient-from: #f9fafb !important;
+}
+
+.light .to-gray-100 {
+  --tw-gradient-to: #f3f4f6 !important;
+}
+
+/* Light mode gray backgrounds (used in dropdowns, menus) */
+.light .bg-gray-300 {
+  background-color: #d1d5db !important;
+}
+
+.light .bg-gray-600 {
+  background-color: #4b5563 !important;
+}
+
+.light .bg-gray-700 {
+  background-color: #374151 !important;
+}
+
+.light .bg-gray-800 {
+  background-color: #1f2937 !important;
+}
+
+/* Light mode hover states - CRITICAL for fixing hover going dark */
+.light .hover\:bg-gray-50:hover {
+  background-color: #f9fafb !important;
+}
+
+.light .hover\:bg-gray-100:hover {
+  background-color: #f3f4f6 !important;
+}
+
+.light .hover\:bg-gray-200:hover {
+  background-color: #e5e7eb !important;
+}
+
+.light .hover\:bg-gray-700:hover {
+  background-color: #374151 !important;
+}
+
+/* Light mode blue selection states */
+.light .bg-blue-50 {
+  background-color: #eff6ff !important;
+}
+
+.light .bg-blue-100 {
+  background-color: #dbeafe !important;
+}
+
+.light .border-blue-200 {
+  border-color: #bfdbfe !important;
+}
+
+.light .text-blue-700 {
+  color: #1d4ed8 !important;
+}
+
+/* Light mode for elements in menus/dropdowns that use dark: prefix */
+.light .dark\:bg-gray-800 {
+  background-color: #ffffff !important;
+}
+
+.light .dark\:bg-gray-700 {
+  background-color: #ffffff !important;
+}
+
+.light .dark\:bg-gray-600 {
+  background-color: #f9fafb !important;
+}
+
+.light .dark\:hover\:bg-gray-700:hover {
+  background-color: #f3f4f6 !important;
+}
+
+.light .dark\:hover\:bg-gray-600:hover {
+  background-color: #f3f4f6 !important;
+}
+
+.light .dark\:text-gray-100 {
+  color: #111827 !important;
+}
+
+.light .dark\:text-gray-200 {
+  color: #1f2937 !important;
+}
+
+.light .dark\:text-gray-300 {
+  color: #374151 !important;
+}
+
+.light .dark\:text-gray-400 {
+  color: #6b7280 !important;
+}
+
+.light .dark\:border-gray-700 {
+  border-color: #e5e7eb !important;
+}
+
+.light .dark\:border-gray-600 {
+  border-color: #d1d5db !important;
+}
+
+/* Light mode for hex color classes used in dark mode */
+.light .dark\:bg-\[\#1F1F1F\] {
+  background-color: #ffffff !important;
+}
+
+.light .dark\:bg-\[\#2E2E2E\] {
+  background-color: #f9fafb !important;
+}
+
+.light .dark\:bg-\[\#3E3E3E\] {
+  background-color: #f3f4f6 !important;
+}
+
+.light .dark\:hover\:bg-\[\#2E2E2E\]:hover {
+  background-color: #f3f4f6 !important;
+}
+
+.light .dark\:hover\:bg-\[\#3E3E3E\]:hover {
+  background-color: #e5e7eb !important;
+}
+
+/* Light mode blue selection in theme options */
+.light .dark\:bg-blue-900 {
+  background-color: #dbeafe !important;
+}
+
+.light .dark\:text-blue-300 {
+  color: #1d4ed8 !important;
+}
+
+/* Light mode overrides for dark:bg-gray-900 used in chat and other views */
+.light .dark\:bg-gray-900 {
+  background-color: #ffffff !important;
+}
+
+.light .dark\:bg-gray-900\/40 {
+  background-color: rgba(249, 250, 251, 0.6) !important;
+}
+
+.light .dark\:bg-gray-900\/30 {
+  background-color: rgba(249, 250, 251, 0.5) !important;
+}
+
+/* Light mode overrides for dark:bg-blue-900/* used in selected states */
+.light .dark\:bg-blue-900\/30 {
+  background-color: rgba(219, 234, 254, 0.5) !important;
+}
+
+.light .dark\:bg-blue-900\/20 {
+  background-color: rgba(219, 234, 254, 0.4) !important;
+}
+
+/* Light mode hover states for dark:hover:bg-gray-800 */
+.light .dark\:hover\:bg-gray-800:hover {
+  background-color: #f3f4f6 !important;
+}
+
+.light .dark\:hover\:bg-gray-800\/60:hover {
+  background-color: rgba(243, 244, 246, 0.8) !important;
+}
+
+/* Light mode for text colors in chat and other views */
+.light .dark\:text-blue-200 {
+  color: #1e40af !important;
+}
+
+.light .dark\:text-gray-100 {
+  color: #111827 !important;
+}
+
+.light .dark\:text-gray-200 {
+  color: #1f2937 !important;
+}
+
+/* Light mode for divide colors */
+.light .dark\:divide-gray-800 > * + * {
+  border-color: #f3f4f6 !important;
+}
+
+/* Light mode for border colors in chat */
+.light .dark\:border-gray-800 {
+  border-color: #e5e7eb !important;
+}
+
+.light .dark\:border-gray-900 {
+  border-color: #f9fafb !important;
 }
 
 @theme inline {
@@ -28,10 +295,10 @@
   --font-mono: var(--font-geist-mono);
 }
 
-/* Dark mode styles */
+/* Dark mode styles - MÀU MỚI THEO YÊU CẦU */
 .dark {
-  --background: #1A1A1A;
-  --foreground: #f1f5f9;
+  --background: #1A1A1A;     /* Main layout màu #1A1A1A */
+  --foreground: #f1f5f9;     /* Chữ sáng dễ đọc */
 }
 
 /* Sidebar và Tools - MÀU #1F1F1F */
@@ -401,260 +668,4 @@ body {
 .dark body {
   background-color: #1A1A1A !important;
   color: #FFFFFF !important;
-}
-
-/* Responsive utilities */
-@layer utilities {
-  /* Hide scrollbar but keep functionality */
-  .scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-  .scrollbar-hide::-webkit-scrollbar {
-    display: none;
-  }
-
-  /* Custom scrollbar for mobile */
-  .scrollbar-thin {
-    scrollbar-width: thin;
-  }
-  .scrollbar-thin::-webkit-scrollbar {
-    width: 4px;
-    height: 4px;
-  }
-  .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: rgba(156, 163, 175, 0.5);
-    border-radius: 2px;
-  }
-
-  /* Safe area padding for mobile */
-  .safe-bottom {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-  .safe-top {
-    padding-top: env(safe-area-inset-top);
-  }
-}
-
-/* Mobile-first responsive fixes */
-@media (max-width: 640px) {
-  /* Smaller text on mobile */
-  .text-responsive {
-    font-size: 0.875rem;
-  }
-
-  /* Reduce padding on mobile */
-  .p-responsive {
-    padding: 0.75rem;
-  }
-
-  /* Full width buttons on mobile */
-  .btn-responsive {
-    width: 100%;
-  }
-
-  /* Stack flex items on mobile */
-  .flex-responsive {
-    flex-direction: column;
-  }
-}
-
-/* Tablet adjustments */
-@media (min-width: 641px) and (max-width: 1024px) {
-  .text-responsive {
-    font-size: 0.9375rem;
-  }
-}
-
-/* Prevent horizontal scroll on body - ONLY hide horizontal scroll */
-html {
-  overflow-x: hidden;
-  overflow-y: visible;
-}
-
-body {
-  overflow-x: hidden;
-  overflow-y: visible;
-  max-width: 100vw;
-  height: 100%;
-}
-
-/* Fix for iOS rubber-banding */
-@supports (-webkit-touch-callout: none) {
-  .h-screen {
-    height: -webkit-fill-available;
-  }
-}
-
-/* Ensure scroll works properly in flex containers */
-.min-h-0 {
-  min-height: 0 !important;
-}
-
-.h-full {
-  height: 100% !important;
-}
-
-/* Global scrollbar styling */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #d1d5db transparent;
-}
-
-*::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-*::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-*::-webkit-scrollbar-thumb {
-  background-color: #d1d5db;
-  border-radius: 9999px;
-}
-
-*::-webkit-scrollbar-thumb:hover {
-  background-color: #9ca3af;
-}
-
-/* Dark mode scrollbar */
-.dark * {
-  scrollbar-color: #4b5563 transparent;
-}
-
-.dark *::-webkit-scrollbar-thumb {
-  background-color: #4b5563;
-}
-
-.dark *::-webkit-scrollbar-thumb:hover {
-  background-color: #6b7280;
-}
-
-/* Force overflow-y-auto to show scrollbar */
-.overflow-y-auto {
-  overflow-y: auto !important;
-}
-
-/* Chat scroll specific styling */
-.chat-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: #9ca3af transparent;
-  overflow-y: auto !important;
-}
-
-.chat-scroll::-webkit-scrollbar {
-  width: 8px;
-}
-
-.chat-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.chat-scroll::-webkit-scrollbar-thumb {
-  background-color: #9ca3af;
-  border-radius: 9999px;
-}
-
-.dark .chat-scroll {
-  scrollbar-color: #4b5563 transparent;
-}
-
-.dark .chat-scroll::-webkit-scrollbar-thumb {
-  background-color: #4b5563;
-}
-
-/* ========== SCROLL FIX FOR ALL VIEWS ========== */
-
-/* Reset scroll behavior */
-html, body {
-  overflow-x: hidden;
-  height: 100%;
-}
-
-body {
-  overflow-y: auto;
-}
-
-/* Main content container scroll */
-.h-full {
-  height: 100%;
-}
-
-.min-h-0 {
-  min-height: 0;
-}
-
-/* View containers - ensure they can scroll */
-.view-scroll-container {
-  height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-/* Force overflow-y-auto elements to scroll properly */
-[class*="overflow-y-auto"],
-[class*="overflow-auto"] {
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch;
-}
-
-/* Global scrollbar styling - visible by default */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #a1a1a1;
-}
-
-/* Dark mode scrollbar */
-.dark ::-webkit-scrollbar-track {
-  background: #2d2d2d;
-}
-
-.dark ::-webkit-scrollbar-thumb {
-  background: #555;
-}
-
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: #666;
-}
-
-/* Chat scroll */
-.chat-scroll {
-  overflow-y: auto !important;
-  scrollbar-width: thin;
-}
-
-.chat-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-
-.chat-scroll::-webkit-scrollbar-thumb {
-  background: #9ca3af;
-  border-radius: 9999px;
-}
-
-.dark .chat-scroll::-webkit-scrollbar-thumb {
-  background: #4b5563;
-}
-
-/* Fix for iOS rubber-banding */
-@supports (-webkit-touch-callout: none) {
-  .h-screen {
-    height: -webkit-fill-available;
-  }
 }
