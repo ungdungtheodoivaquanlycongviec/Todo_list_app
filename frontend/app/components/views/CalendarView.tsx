@@ -447,7 +447,7 @@ export default function CalendarView() {
 
   if (loading) {
     return (
-      <div className="p-6 flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="p-6 flex items-center justify-center h-full bg-gray-50">
         <div className="text-center">
           <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-600">Loading calendar...</p>
@@ -457,7 +457,7 @@ export default function CalendarView() {
   }
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
+    <div className="p-6 bg-gray-50 h-full overflow-y-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
