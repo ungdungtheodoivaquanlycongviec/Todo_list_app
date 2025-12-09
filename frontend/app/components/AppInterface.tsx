@@ -29,7 +29,7 @@ export default function AppInterface() {
     if (!isClient || !user || user.theme !== 'auto') return;
 
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    
+
     const handleChange = (e: MediaQueryListEvent) => {
       const root = document.documentElement;
       if (e.matches) {
@@ -57,7 +57,7 @@ export default function AppInterface() {
       console.error('Failed to update theme:', error);
     }
   };
-  
+
   const renderActiveView = () => {
     // Admin chỉ dùng chat
     if (isAdmin) {
@@ -98,8 +98,8 @@ export default function AppInterface() {
 
   return (
     <>
-      <MainLayout 
-        activeView={activeView} 
+      <MainLayout
+        activeView={activeView}
         onViewChange={setActiveView}
         user={user}
         onLogout={logout}
@@ -108,7 +108,7 @@ export default function AppInterface() {
       >
         {renderActiveView()}
       </MainLayout>
-      <ChatbotWidget />
+      <ChatbotWidget hidden={activeView === 'chat'} />
     </>
   );
 }

@@ -5,6 +5,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { FolderProvider } from './contexts/FolderContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { RegionalProvider } from './contexts/RegionalContext';
+import { UIStateProvider } from './contexts/UIStateContext';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -19,13 +20,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="light">
+    <html lang="en" className="light" suppressHydrationWarning>
       <body className={inter.className}>
         <AuthProvider>
           <LanguageProvider>
             <RegionalProvider>
               <FolderProvider>
-                {children}
+                <UIStateProvider>
+                  {children}
+                </UIStateProvider>
               </FolderProvider>
             </RegionalProvider>
           </LanguageProvider>

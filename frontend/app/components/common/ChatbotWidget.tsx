@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useUIState } from '../../contexts/UIStateContext';
 import { MessageSquare, Send, X, Loader2 } from 'lucide-react';
 
 interface Message {
@@ -11,8 +12,13 @@ interface Message {
 
 const CHATBOT_API_URL = process.env.NEXT_PUBLIC_CHATBOT_API_URL || 'http://localhost:5000';
 
-export default function ChatbotWidget() {
+interface ChatbotWidgetProps {
+  hidden?: boolean;
+}
+
+export default function ChatbotWidget({ hidden = false }: ChatbotWidgetProps) {
   const { user } = useAuth();
+  const { isTaskDetailOpen } = useUIState();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
@@ -73,9 +79,9 @@ export default function ChatbotWidget() {
       setMessages(prev => [...prev, botMessage]);
     } catch (error) {
       console.error('Error sending message:', error);
-      const errorMessage: Message = { 
-        name: 'Bot', 
-        message: 'Xin lỗi, đã có lỗi xảy ra. Vui lòng thử lại sau.' 
+      const errorMessage: Message = {
+        name: 'Bot',
+        message: 'Xin lỗi, đã có lỗi xảy ra. Vui lòng thử lại sau.'
       };
       setMessages(prev => [...prev, errorMessage]);
     } finally {
@@ -95,16 +101,16 @@ export default function ChatbotWidget() {
     if (!isOpen && messages.length === 0) {
       // Check if user is admin or super_admin
       const isAdmin = user && (user.role === 'admin' || user.role === 'super_admin');
-      
+
       // Add welcome message when opening for the first time
       let welcomeText = `Xin chào ${user?.name || 'bạn'}! Tôi là trợ lý ảo của bạn.`;
-      
+
       if (isAdmin) {
         welcomeText += ` Tôi có thể giúp bạn với các câu hỏi về quản trị hệ thống, quản lý người dùng, và nhiều điều khác. Bạn cần giúp gì không?`;
       } else {
         welcomeText += ` Tôi có thể giúp bạn kiểm tra tasks, hỏi về lịch làm việc và nhiều điều khác. Bạn cần giúp gì không?`;
       }
-      
+
       const welcomeMessage: Message = {
         name: 'Bot',
         message: welcomeText
@@ -115,19 +121,19 @@ export default function ChatbotWidget() {
 
   // Show chatbot for all authenticated users (including admin and super_admin)
   // Admin and super_admin can use chatbot
-  if (!user) {
-    return null; // Don't show chatbot if user is not authenticated
+  // Hide when: not authenticated, explicitly hidden (chat view), or task detail is open
+  if (!user || hidden || isTaskDetailOpen) {
+    return null;
   }
 
   return (
     <div className="fixed bottom-6 right-6 z-50">
       {/* Chatbox */}
       <div
-        className={`absolute bottom-20 right-0 w-96 h-[500px] bg-white dark:bg-gray-800 rounded-lg shadow-2xl flex flex-col transition-all duration-300 ease-in-out ${
-          isOpen
-            ? 'opacity-100 translate-y-0 pointer-events-auto'
-            : 'opacity-0 translate-y-4 pointer-events-none'
-        }`}
+        className={`absolute bottom-20 right-0 w-96 h-[500px] bg-white dark:bg-gray-800 rounded-lg shadow-2xl flex flex-col transition-all duration-300 ease-in-out ${isOpen
+          ? 'opacity-100 translate-y-0 pointer-events-auto'
+          : 'opacity-0 translate-y-4 pointer-events-none'
+          }`}
       >
         {/* Header */}
         <div className="bg-gradient-to-r from-purple-600 to-purple-700 text-white p-4 rounded-t-lg flex items-center justify-between">
@@ -156,11 +162,10 @@ export default function ChatbotWidget() {
               className={`flex ${msg.name === 'User' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-[80%] rounded-lg px-4 py-2 ${
-                  msg.name === 'User'
-                    ? 'bg-purple-600 text-white rounded-tr-none'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-tl-none'
-                }`}
+                className={`max-w-[80%] rounded-lg px-4 py-2 ${msg.name === 'User'
+                  ? 'bg-purple-600 text-white rounded-tr-none'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-tl-none'
+                  }`}
               >
                 <p className="text-sm whitespace-pre-wrap break-words">{msg.message}</p>
               </div>
@@ -203,9 +208,8 @@ export default function ChatbotWidget() {
       {/* Toggle Button */}
       <button
         onClick={toggleChat}
-        className={`w-14 h-14 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center ${
-          isOpen ? 'rotate-45' : ''
-        }`}
+        className={`w-14 h-14 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center ${isOpen ? 'rotate-45' : ''
+          }`}
         aria-label="Toggle chatbot"
       >
         {isOpen ? (
