@@ -20,9 +20,9 @@ interface MainLayoutProps {
   onThemeChange: (theme: string) => void;
 }
 
-export default function MainLayout({ 
-  children, 
-  activeView, 
+export default function MainLayout({
+  children,
+  activeView,
   onViewChange,
   user,
   onLogout,
@@ -97,13 +97,15 @@ export default function MainLayout({
         )}
       </div>
 
-      <div className={`flex-1 min-h-0 w-full lg:grid ${
-        !isAdmin && hasFolder && !showProfileSettings
-          ? 'lg:grid-cols-[240px_72px_minmax(0,1fr)] xl:grid-cols-[260px_100px_minmax(0,1fr)]'
-          : 'lg:grid-cols-[72px_minmax(0,1fr)] xl:grid-cols-[100px_minmax(0,1fr)]'
-      }`}>
-        {/* Sidebar - desktop - Ẩn nếu là admin */}
-        {!isAdmin && hasFolder && (
+      <div className={`flex-1 min-h-0 w-full ${showProfileSettings
+          ? ''
+          : `lg:grid ${!isAdmin && hasFolder
+            ? 'lg:grid-cols-[240px_72px_minmax(0,1fr)] xl:grid-cols-[260px_100px_minmax(0,1fr)]'
+            : 'lg:grid-cols-[72px_minmax(0,1fr)] xl:grid-cols-[100px_minmax(0,1fr)]'
+          }`
+        }`}>
+        {/* Sidebar - desktop - Ẩn nếu là admin hoặc đang ở profile settings */}
+        {!isAdmin && hasFolder && !showProfileSettings && (
           <div className="hidden lg:block border-r border-gray-200 dark:border-gray-800">
             {sidebarPanel}
           </div>
@@ -118,8 +120,8 @@ export default function MainLayout({
 
         {/* Main content */}
         <div className="flex flex-col min-w-0 bg-gray-50 dark:bg-gray-900">
-          <TopBar 
-            user={user} 
+          <TopBar
+            user={user}
             onLogout={onLogout}
             theme={theme}
             onThemeChange={onThemeChange}

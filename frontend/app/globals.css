@@ -19,6 +19,273 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  color-scheme: light only;
+}
+
+/* Explicit light mode - ensures app theme is independent of system theme */
+.light {
+  --background: #ffffff;
+  --foreground: #171717;
+  color-scheme: light only;
+}
+
+/* Force light mode to override any system dark preferences */
+html.light,
+html.light body {
+  color-scheme: light only;
+  background-color: #ffffff;
+  color: #171717;
+}
+
+/* Light mode explicit overrides - ensure elements stay light when system is dark */
+.light .bg-white {
+  background-color: #ffffff !important;
+}
+
+.light .bg-gray-50 {
+  background-color: #f9fafb !important;
+}
+
+.light .bg-gray-100 {
+  background-color: #f3f4f6 !important;
+}
+
+.light .bg-gray-200 {
+  background-color: #e5e7eb !important;
+}
+
+.light .text-gray-900 {
+  color: #111827 !important;
+}
+
+.light .text-gray-800 {
+  color: #1f2937 !important;
+}
+
+.light .text-gray-700 {
+  color: #374151 !important;
+}
+
+.light .text-gray-600 {
+  color: #4b5563 !important;
+}
+
+.light .text-gray-500 {
+  color: #6b7280 !important;
+}
+
+.light .border-gray-200 {
+  border-color: #e5e7eb !important;
+}
+
+.light .border-gray-300 {
+  border-color: #d1d5db !important;
+}
+
+/* Light mode input fields */
+.light input,
+.light select,
+.light textarea {
+  background-color: #ffffff !important;
+  color: #111827 !important;
+  border-color: #d1d5db !important;
+}
+
+.light input::placeholder {
+  color: #9ca3af !important;
+}
+
+/* Light mode sidebar gradient */
+.light .from-gray-50 {
+  --tw-gradient-from: #f9fafb !important;
+}
+
+.light .to-gray-100 {
+  --tw-gradient-to: #f3f4f6 !important;
+}
+
+/* Light mode gray backgrounds (used in dropdowns, menus) */
+.light .bg-gray-300 {
+  background-color: #d1d5db !important;
+}
+
+.light .bg-gray-600 {
+  background-color: #4b5563 !important;
+}
+
+.light .bg-gray-700 {
+  background-color: #374151 !important;
+}
+
+.light .bg-gray-800 {
+  background-color: #1f2937 !important;
+}
+
+/* Light mode hover states - CRITICAL for fixing hover going dark */
+.light .hover\:bg-gray-50:hover {
+  background-color: #f9fafb !important;
+}
+
+.light .hover\:bg-gray-100:hover {
+  background-color: #f3f4f6 !important;
+}
+
+.light .hover\:bg-gray-200:hover {
+  background-color: #e5e7eb !important;
+}
+
+.light .hover\:bg-gray-700:hover {
+  background-color: #374151 !important;
+}
+
+/* Light mode blue selection states */
+.light .bg-blue-50 {
+  background-color: #eff6ff !important;
+}
+
+.light .bg-blue-100 {
+  background-color: #dbeafe !important;
+}
+
+.light .border-blue-200 {
+  border-color: #bfdbfe !important;
+}
+
+.light .text-blue-700 {
+  color: #1d4ed8 !important;
+}
+
+/* Light mode for elements in menus/dropdowns that use dark: prefix */
+.light .dark\:bg-gray-800 {
+  background-color: #ffffff !important;
+}
+
+.light .dark\:bg-gray-700 {
+  background-color: #ffffff !important;
+}
+
+.light .dark\:bg-gray-600 {
+  background-color: #f9fafb !important;
+}
+
+.light .dark\:hover\:bg-gray-700:hover {
+  background-color: #f3f4f6 !important;
+}
+
+.light .dark\:hover\:bg-gray-600:hover {
+  background-color: #f3f4f6 !important;
+}
+
+.light .dark\:text-gray-100 {
+  color: #111827 !important;
+}
+
+.light .dark\:text-gray-200 {
+  color: #1f2937 !important;
+}
+
+.light .dark\:text-gray-300 {
+  color: #374151 !important;
+}
+
+.light .dark\:text-gray-400 {
+  color: #6b7280 !important;
+}
+
+.light .dark\:border-gray-700 {
+  border-color: #e5e7eb !important;
+}
+
+.light .dark\:border-gray-600 {
+  border-color: #d1d5db !important;
+}
+
+/* Light mode for hex color classes used in dark mode */
+.light .dark\:bg-\[\#1F1F1F\] {
+  background-color: #ffffff !important;
+}
+
+.light .dark\:bg-\[\#2E2E2E\] {
+  background-color: #f9fafb !important;
+}
+
+.light .dark\:bg-\[\#3E3E3E\] {
+  background-color: #f3f4f6 !important;
+}
+
+.light .dark\:hover\:bg-\[\#2E2E2E\]:hover {
+  background-color: #f3f4f6 !important;
+}
+
+.light .dark\:hover\:bg-\[\#3E3E3E\]:hover {
+  background-color: #e5e7eb !important;
+}
+
+/* Light mode blue selection in theme options */
+.light .dark\:bg-blue-900 {
+  background-color: #dbeafe !important;
+}
+
+.light .dark\:text-blue-300 {
+  color: #1d4ed8 !important;
+}
+
+/* Light mode overrides for dark:bg-gray-900 used in chat and other views */
+.light .dark\:bg-gray-900 {
+  background-color: #ffffff !important;
+}
+
+.light .dark\:bg-gray-900\/40 {
+  background-color: rgba(249, 250, 251, 0.6) !important;
+}
+
+.light .dark\:bg-gray-900\/30 {
+  background-color: rgba(249, 250, 251, 0.5) !important;
+}
+
+/* Light mode overrides for dark:bg-blue-900/* used in selected states */
+.light .dark\:bg-blue-900\/30 {
+  background-color: rgba(219, 234, 254, 0.5) !important;
+}
+
+.light .dark\:bg-blue-900\/20 {
+  background-color: rgba(219, 234, 254, 0.4) !important;
+}
+
+/* Light mode hover states for dark:hover:bg-gray-800 */
+.light .dark\:hover\:bg-gray-800:hover {
+  background-color: #f3f4f6 !important;
+}
+
+.light .dark\:hover\:bg-gray-800\/60:hover {
+  background-color: rgba(243, 244, 246, 0.8) !important;
+}
+
+/* Light mode for text colors in chat and other views */
+.light .dark\:text-blue-200 {
+  color: #1e40af !important;
+}
+
+.light .dark\:text-gray-100 {
+  color: #111827 !important;
+}
+
+.light .dark\:text-gray-200 {
+  color: #1f2937 !important;
+}
+
+/* Light mode for divide colors */
+.light .dark\:divide-gray-800 > * + * {
+  border-color: #f3f4f6 !important;
+}
+
+/* Light mode for border colors in chat */
+.light .dark\:border-gray-800 {
+  border-color: #e5e7eb !important;
+}
+
+.light .dark\:border-gray-900 {
+  border-color: #f9fafb !important;
 }
 
 @theme inline {
@@ -32,6 +299,7 @@
 .dark {
   --background: #1A1A1A;     /* Main layout màu #1A1A1A */
   --foreground: #f1f5f9;     /* Chữ sáng dễ đọc */
+  color-scheme: dark;
 }
 
 /* Sidebar và Tools - MÀU #1F1F1F */
