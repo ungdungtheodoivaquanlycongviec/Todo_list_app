@@ -3,16 +3,16 @@ const Group = require('../models/Group.model');
 const Folder = require('../models/Folder.model');
 const User = require('../models/User.model');
 const { ERROR_MESSAGES, TASK_STATUS, LIMITS, SUCCESS_MESSAGES, HTTP_STATUS, PRIORITY_LEVELS } = require('../config/constants');
-const { 
-  isValidObjectId, 
+const {
+  isValidObjectId,
   validateTaskDates,
   validatePagination,
-  validateSort 
+  validateSort
 } = require('../utils/validationHelper');
-const { 
-  addHours, 
-  getFirstDayOfMonth, 
-  getLastDayOfMonth 
+const {
+  addHours,
+  getFirstDayOfMonth,
+  getLastDayOfMonth
 } = require('../utils/dateHelper');
 const fileService = require('./file.service');
 const notificationService = require('./notification.service');
@@ -134,8 +134,8 @@ const emitTaskRealtime = async ({
     (eventKey === TASK_EVENTS.created
       ? 'create'
       : eventKey === TASK_EVENTS.deleted
-      ? 'delete'
-      : 'update');
+        ? 'delete'
+        : 'update');
 
   emitTaskEvent(eventKey, {
     task: plainTask,
@@ -358,7 +358,7 @@ class TaskService {
 
     // Check if user can assign to others (only PM and Product Owner)
     const canAssignToOthers = targetGroup ? canAssignFolderMembers(requesterRole) : false;
-    
+
     // If user cannot assign to others, they can only assign to themselves
     if (!canAssignToOthers && assignedIds.length > 0) {
       // Filter to only allow self-assignment
@@ -390,7 +390,7 @@ class TaskService {
         const folderMemberAccess = new Set(
           (folder.memberAccess || []).map(access => normalizeId(access.userId)).filter(Boolean)
         );
-        
+
         // Admins (PM/Product Owner) can assign to anyone in group, but regular users must have folder access
         const invalidAssignees = assignedIds.filter(id => {
           if (canAssignToOthers) {
@@ -400,7 +400,7 @@ class TaskService {
           // Regular users: assignees must have folder access
           return !folderMemberAccess.has(id);
         });
-        
+
         if (invalidAssignees.length > 0) {
           raiseError('Không thể gán task cho người không có quyền truy cập vào folder này.', HTTP_STATUS.FORBIDDEN);
         }
@@ -482,7 +482,7 @@ class TaskService {
     const now = new Date();
     // Set to start of today for comparison (end of previous day)
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
+
     const query = {
       dueDate: { $lt: todayStart },
       status: { $in: ['todo', 'in_progress'] }
@@ -526,11 +526,11 @@ class TaskService {
     // Validate và sanitize sort
     const allowedSortFields = ['createdAt', 'updatedAt', 'dueDate', 'priority', 'title', 'status'];
     const sortValidation = validateSort(sortBy, order, allowedSortFields);
-    
+
     if (!sortValidation.isValid) {
       throw new Error(sortValidation.error);
     }
-    
+
     const sanitizedSortBy = sortValidation.sanitizedSortBy;
     const sanitizedOrder = sortValidation.sanitizedOrder;
 
@@ -542,7 +542,7 @@ class TaskService {
       }
       queryFilters.push({ status });
     }
-    
+
     if (priority) {
       const validPriorities = ['low', 'medium', 'high', 'urgent'];
       if (!validPriorities.includes(priority)) {
@@ -728,7 +728,7 @@ class TaskService {
     if (groupMemberIds) {
       // REMOVED: No longer require creator to be in group members
       // Users can assign tasks to anyone in the group
-      
+
       const outsideGroup = finalAssignedIds.filter(id => !groupMemberIds.has(id));
       if (outsideGroup.length > 0) {
         raiseError(ERROR_MESSAGES.USER_NOT_IN_GROUP);
@@ -916,7 +916,7 @@ class TaskService {
 
     // Group by date
     const tasksByDate = {};
-    
+
     tasks.forEach(task => {
       if (task.dueDate) {
         const dateKey = task.dueDate.toISOString().split('T')[0]; // YYYY-MM-DD
@@ -951,7 +951,7 @@ class TaskService {
     }
 
     const queryFilters = [];
-    
+
     if (priority) {
       const validPriorities = ['low', 'medium', 'high', 'urgent'];
       if (!validPriorities.includes(priority)) {
@@ -959,7 +959,7 @@ class TaskService {
       }
       queryFilters.push({ priority });
     }
-    
+
     if (groupId) {
       if (!isValidObjectId(groupId)) {
         raiseError('Invalid groupId format');
@@ -1085,7 +1085,7 @@ class TaskService {
 
     let groupMemberIds = null;
     let group = null;
-    
+
     if (task.groupId) {
       group = await Group.findById(task.groupId);
       if (!group) {
@@ -1102,7 +1102,7 @@ class TaskService {
     // Check permissions: only PM and Product Owner can assign tasks to others
     const assignerRole = group ? group.getMemberRole(normalizedAssignerId) : null;
     const canAssignToOthers = canAssignFolderMembers(assignerRole);
-    
+
     if (!normalizedAssignerId) {
       return {
         success: false,
@@ -1198,7 +1198,7 @@ class TaskService {
         const folderMemberAccess = new Set(
           (folder.memberAccess || []).map(access => normalizeId(access.userId)).filter(Boolean)
         );
-        
+
         // Admins can assign to anyone in group, but regular users must have folder access
         const invalidAssignees = filteredIds.filter(id => {
           if (canAssignToOthers) {
@@ -1211,7 +1211,7 @@ class TaskService {
           }
           return !folderMemberAccess.has(id);
         });
-        
+
         if (invalidAssignees.length > 0) {
           return {
             success: false,
@@ -1309,10 +1309,10 @@ class TaskService {
       try {
         const User = require('../models/User.model');
         const assigner = await User.findById(normalizedAssignerId).select('name');
-        const groupName = (populatedTask.groupId && typeof populatedTask.groupId === 'object' && populatedTask.groupId.name) 
-          ? populatedTask.groupId.name 
+        const groupName = (populatedTask.groupId && typeof populatedTask.groupId === 'object' && populatedTask.groupId.name)
+          ? populatedTask.groupId.name
           : null;
-        
+
         await notificationService.createTaskAssignedNotification({
           taskId: populatedTask._id,
           senderId: normalizedAssignerId,
@@ -1382,7 +1382,7 @@ class TaskService {
     }
 
     const requesterIdStr = requesterId?.toString();
-    
+
     // Get group info to check admin permissions
     let group = null;
     if (task.groupId) {
@@ -1429,10 +1429,10 @@ class TaskService {
       try {
         const User = require('../models/User.model');
         const unassigner = await User.findById(requesterIdStr).select('name');
-        const groupName = (populatedTask.groupId && typeof populatedTask.groupId === 'object' && populatedTask.groupId.name) 
-          ? populatedTask.groupId.name 
+        const groupName = (populatedTask.groupId && typeof populatedTask.groupId === 'object' && populatedTask.groupId.name)
+          ? populatedTask.groupId.name
           : null;
-        
+
         await notificationService.createTaskUnassignmentNotification({
           taskId: populatedTask._id,
           taskTitle: populatedTask.title,
@@ -1639,11 +1639,11 @@ class TaskService {
       assignedAt: assignee.assignedAt,
       user: assignee.userId
         ? {
-            _id: assignee.userId._id,
-            name: assignee.userId.name,
-            email: assignee.userId.email,
-            avatar: assignee.userId.avatar
-          }
+          _id: assignee.userId._id,
+          name: assignee.userId.name,
+          email: assignee.userId.email,
+          avatar: assignee.userId.avatar
+        }
         : null
     }));
 
@@ -1688,7 +1688,7 @@ class TaskService {
    */
   async getTaskCountByStatus(userId = null) {
     const match = userId ? { createdBy: userId } : {};
-    
+
     const result = await Task.aggregate([
       { $match: match },
       {
@@ -1890,7 +1890,7 @@ class TaskService {
         const groupIdStr = normalizeId(task.groupId);
         const User = require('../models/User.model');
         const commenter = await User.findById(commenterIdStr).select('name');
-        
+
         // Get all assignees and creator (excluding commenter)
         const recipientIds = [
           ...task.assignedTo.map(a => normalizeId(a.userId)),
@@ -1898,10 +1898,10 @@ class TaskService {
         ].filter(id => id && id !== commenterIdStr);
 
         const latestComment = task.comments[task.comments.length - 1];
-        const groupName = (task.groupId && typeof task.groupId === 'object' && task.groupId.name) 
-          ? task.groupId.name 
+        const groupName = (task.groupId && typeof task.groupId === 'object' && task.groupId.name)
+          ? task.groupId.name
           : null;
-        
+
         await notificationService.createCommentAddedNotification({
           taskId: task._id,
           commenterId: commenterIdStr,
@@ -2060,6 +2060,19 @@ class TaskService {
       };
     }
 
+    // Delete attachment from Cloudinary if exists
+    if (comment.attachment && comment.attachment.publicId) {
+      try {
+        await fileService.deleteFile(
+          comment.attachment.publicId,
+          comment.attachment.resourceType || 'raw'
+        );
+      } catch (error) {
+        console.error('Error deleting comment attachment from Cloudinary:', error);
+        // Continue with comment deletion even if Cloudinary deletion fails
+      }
+    }
+
     // Xóa comment
     task.comments.pull(commentId);
     await task.save();
@@ -2205,7 +2218,7 @@ class TaskService {
       await task.populate('assignedTo.userId', 'name email avatar');
       await task.populate('createdBy', 'name email avatar');
       await task.populate('comments.user', 'name email avatar');
-    await task.populate('groupId', 'name description');
+      await task.populate('groupId', 'name description');
 
       const addedAttachments = newAttachments.length > 0
         ? task.attachments.slice(-newAttachments.length)
@@ -2274,8 +2287,8 @@ class TaskService {
     }
 
     // Check ownership (only uploader or task creator can delete)
-    if (attachment.uploadedBy.toString() !== userId.toString() && 
-        task.createdBy.toString() !== userId.toString()) {
+    if (attachment.uploadedBy.toString() !== userId.toString() &&
+      task.createdBy.toString() !== userId.toString()) {
       return {
         success: false,
         message: 'Bạn không có quyền xóa attachment này',
@@ -2296,18 +2309,18 @@ class TaskService {
       await task.populate('assignedTo.userId', 'name email avatar');
       await task.populate('createdBy', 'name email avatar');
       await task.populate('comments.user', 'name email avatar');
-    await task.populate('groupId', 'name description');
+      await task.populate('groupId', 'name description');
 
-    await emitTaskRealtime({
-      taskDoc: task,
-      eventKey: TASK_EVENTS.updated,
-      meta: {
-        mutationType: 'update',
-        changeType: 'attachment:remove',
-        attachmentId: normalizeId(attachmentId),
-        source: 'task:attachment:delete'
-      }
-    });
+      await emitTaskRealtime({
+        taskDoc: task,
+        eventKey: TASK_EVENTS.updated,
+        meta: {
+          mutationType: 'update',
+          changeType: 'attachment:remove',
+          attachmentId: normalizeId(attachmentId),
+          source: 'task:attachment:delete'
+        }
+      });
 
       return {
         success: true,

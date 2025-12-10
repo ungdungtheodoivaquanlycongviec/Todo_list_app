@@ -46,6 +46,15 @@ const attachmentSchema = new mongoose.Schema(
     thumbnailUrl: {
       type: String,
       default: null
+    },
+    publicId: {
+      type: String,
+      default: null
+    },
+    resourceType: {
+      type: String,
+      enum: ['image', 'raw'],
+      default: 'raw'
     }
   },
   { _id: false }
@@ -105,7 +114,7 @@ groupMessageSchema.index({ 'reactions.userId': 1 });
 groupMessageSchema.index({ replyTo: 1 });
 
 // Virtual for reaction counts grouped by emoji
-groupMessageSchema.virtual('reactionCounts').get(function() {
+groupMessageSchema.virtual('reactionCounts').get(function () {
   const counts = {};
   // Ensure reactions is an array before iterating
   if (!this.reactions || !Array.isArray(this.reactions)) {
@@ -126,29 +135,29 @@ groupMessageSchema.virtual('reactionCounts').get(function() {
 });
 
 // Methods
-groupMessageSchema.methods.addReaction = function(emoji, userId) {
+groupMessageSchema.methods.addReaction = function (emoji, userId) {
   // Remove existing reaction from this user for this emoji
   this.reactions = this.reactions.filter(
     r => !(r.emoji === emoji && r.userId.toString() === userId.toString())
   );
-  
+
   // Add new reaction
   this.reactions.push({ emoji, userId, createdAt: new Date() });
   return this.save();
 };
 
-groupMessageSchema.methods.removeReaction = function(emoji, userId) {
+groupMessageSchema.methods.removeReaction = function (emoji, userId) {
   this.reactions = this.reactions.filter(
     r => !(r.emoji === emoji && r.userId.toString() === userId.toString())
   );
   return this.save();
 };
 
-groupMessageSchema.methods.toggleReaction = function(emoji, userId) {
+groupMessageSchema.methods.toggleReaction = function (emoji, userId) {
   const existingIndex = this.reactions.findIndex(
     r => r.emoji === emoji && r.userId.toString() === userId.toString()
   );
-  
+
   if (existingIndex >= 0) {
     this.reactions.splice(existingIndex, 1);
     return this.save().then(() => ({ added: false, reaction: null }));
@@ -159,7 +168,7 @@ groupMessageSchema.methods.toggleReaction = function(emoji, userId) {
   }
 };
 
-groupMessageSchema.methods.softDelete = function() {
+groupMessageSchema.methods.softDelete = function () {
   this.deletedAt = new Date();
   this.content = '[Message deleted]';
   this.attachments = [];
