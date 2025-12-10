@@ -1,0 +1,28 @@
+buildscript {
+    ext {
+        buildToolsVersion = "35.0.0"
+        minSdkVersion = 24
+        compileSdkVersion = 35
+        targetSdkVersion = 34
+
+        // ✅ NDK 26.1 = tương thích React Native 0.76.x (fix Hashable & C++20 errors)
+        ndkVersion = "26.1.10909125"
+
+        // ✅ Kotlin 1.9.24 = ổn định với AGP 8.6.0
+        kotlinVersion = "1.9.24"
+    }
+
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        // ✅ Dùng version range để tương thích build-tools mới
+        classpath("com.android.tools.build:gradle:8.6.0")
+        classpath("com.facebook.react:react-native-gradle-plugin")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.24")
+    }
+}
+
+apply plugin: "com.facebook.react.rootproject"
