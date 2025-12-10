@@ -3,6 +3,7 @@
 import React from 'react';
 import { CheckSquare, Calendar, FileText, Users, Layout, Target, BarChart3, MessageSquare } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface ToolsSidebarProps {
   activeView: string;
@@ -11,14 +12,20 @@ interface ToolsSidebarProps {
 
 export default function ToolsSidebar({ activeView, onViewChange }: ToolsSidebarProps) {
   const { t } = useLanguage();
+  const { user } = useAuth();
+
+  const isAdmin = user && (user.role === 'admin' || user.role === 'super_admin');
   
-  const tools = [
+  // Admin chỉ thấy Chat; user thấy tất cả
+  const allTools = [
     { id: 'tasks', icon: CheckSquare, label: t('nav.tasks') },
     { id: 'calendar', icon: Calendar, label: t('nav.calendar') },
     { id: 'notes', icon: FileText, label: t('nav.notes') },
     { id: 'chat', icon: MessageSquare, label: t('nav.chat') },
     { id: 'members', icon: Users, label: t('nav.members') },
   ];
+
+  const tools = isAdmin ? allTools.filter(tool => tool.id === 'chat') : allTools;
 
   return (
     <div className="w-full max-w-[72px] xl:max-w-[100px] h-full bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">

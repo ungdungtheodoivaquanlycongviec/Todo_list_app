@@ -1536,9 +1536,9 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
         onClick={onClose}
       />
 
-      {/* Modal */}
+      {/* Modal - Responsive: full width on mobile, 2/3 on tablet, 1/2 on desktop */}
       <div
-        className={`fixed right-0 top-0 h-full w-1/2 bg-white dark:bg-gray-800 shadow-2xl z-50 transition-transform duration-300 ${
+        className={`fixed right-0 top-0 h-full w-full sm:w-[85%] md:w-[75%] lg:w-[60%] xl:w-1/2 bg-white dark:bg-gray-800 shadow-2xl z-50 transition-transform duration-300 ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
@@ -1593,10 +1593,10 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
             </button>
           </div>
 
-          {/* Main Content */}
-          <div className="flex-1 overflow-hidden flex">
-            {/* Task Details - 2/3 width */}
-            <div className="w-2/3 border-r border-gray-200 dark:border-gray-700 overflow-auto scrollbar-minimal">
+          {/* Main Content - Responsive: stack on mobile, side-by-side on larger screens */}
+          <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
+            {/* Task Details - Full width on mobile, 60% on larger screens */}
+            <div className="flex-1 md:w-3/5 md:flex-none border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-700 overflow-auto scrollbar-minimal">
               <div className="p-6 space-y-6">
                 {/* Task Properties - Interactive */}
                 <div className="space-y-3">
@@ -2037,8 +2037,8 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
               </div>
             </div>
 
-            {/* Comments - 1/3 width - FIXED: Always show comment form for all task statuses regardless of due date */}
-            <div className="w-1/3 flex flex-col h-full overflow-hidden">
+            {/* Comments - Full width on mobile, 40% on larger screens - FIXED: Always show comment form for all task statuses regardless of due date */}
+            <div className="flex-1 md:w-2/5 md:flex-none flex flex-col h-full min-h-[300px] md:min-h-0 overflow-hidden">
               <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 scrollbar-minimal">
                 <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
                   <MessageSquare className="w-4 h-4" />

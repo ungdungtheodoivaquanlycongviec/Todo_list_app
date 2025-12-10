@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import Sidebar from './Sidebar';
 import ToolsSidebar from './ToolsSidebar';
 import TopBar from './TopBar';
@@ -8,7 +8,7 @@ import ProfileSettings from '../ProfileSettings';
 import { User } from '../../services/types/auth.types';
 import { useFolder } from '../../contexts/FolderContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { Menu, PanelsTopLeft, X } from 'lucide-react';
+import { Menu, PanelsTopLeft, X, GripVertical } from 'lucide-react';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -20,9 +20,9 @@ interface MainLayoutProps {
   onThemeChange: (theme: string) => void;
 }
 
-export default function MainLayout({ 
-  children, 
-  activeView, 
+export default function MainLayout({
+  children,
+  activeView,
   onViewChange,
   user,
   onLogout,
@@ -32,9 +32,47 @@ export default function MainLayout({
   const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isToolsSidebarOpen, setIsToolsSidebarOpen] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(260);
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeRef = useRef<HTMLDivElement>(null);
   const { currentFolder } = useFolder();
   const { t } = useLanguage();
-  const hasFolder = !!currentFolder;
+  const isAdmin = user && (user.role === 'admin' || user.role === 'super_admin');
+  const hasFolder = !!currentFolder && !isAdmin; // Admin không dùng folder sidebar
+
+  const MIN_SIDEBAR_WIDTH = 200;
+  const MAX_SIDEBAR_WIDTH = 400;
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      const newWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, e.clientX));
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing]);
 
   const handleViewChange = (view: string) => {
     if (view === 'profile') {
@@ -67,21 +105,25 @@ export default function MainLayout({
       {/* Mobile header */}
       <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center gap-3 min-w-0">
-          <button
-            aria-label="Open navigation"
-            className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200"
-            onClick={() => setIsSidebarOpen(true)}
-          >
-            <Menu className="w-5 h-5" />
-          </button>
+          {hasFolder && (
+            <button
+              aria-label="Open navigation"
+              className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200"
+              onClick={() => setIsSidebarOpen(true)}
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+          )}
           <div className="min-w-0">
-            <p className="text-sm text-gray-500 dark:text-gray-400 truncate">Workspace</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+              {isAdmin ? 'Admin Panel' : 'Workspace'}
+            </p>
             <p className="font-semibold text-gray-900 dark:text-white truncate">
-              {currentFolder?.name || 'My dashboard'}
+              {isAdmin ? 'Admin Dashboard' : (currentFolder?.name || 'My dashboard')}
             </p>
           </div>
         </div>
-        {hasFolder && (
+        {(isAdmin || hasFolder) && (
           <button
             aria-label="Open tools"
             className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200"
@@ -92,27 +134,45 @@ export default function MainLayout({
         )}
       </div>
 
-      <div className={`flex-1 min-h-0 w-full lg:grid ${
-        hasFolder && !showProfileSettings
-          ? 'lg:grid-cols-[240px_72px_minmax(0,1fr)] xl:grid-cols-[260px_100px_minmax(0,1fr)]'
-          : 'lg:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)]'
-      }`}>
-        {/* Sidebar - desktop */}
-        <div className="hidden lg:block border-r border-gray-200 dark:border-gray-800">
-          {sidebarPanel}
-        </div>
+      <div className={`flex-1 min-h-0 w-full overflow-hidden ${showProfileSettings
+        ? ''
+        : `lg:flex`
+        }`}>
+        {/* Sidebar - desktop - Ẩn nếu là admin hoặc đang ở profile settings */}
+        {!isAdmin && hasFolder && !showProfileSettings && (
+          <div 
+            className="hidden lg:block border-r border-gray-200 dark:border-gray-800 overflow-hidden flex-shrink-0 relative"
+            style={{ width: sidebarWidth }}
+          >
+            {sidebarPanel}
+            {/* Resize Handle */}
+            <div
+              ref={resizeRef}
+              onMouseDown={handleMouseDown}
+              className={`absolute top-0 right-0 w-1 h-full cursor-col-resize group hover:bg-blue-500 transition-colors z-10 ${
+                isResizing ? 'bg-blue-500' : 'bg-transparent hover:bg-blue-400'
+              }`}
+            >
+              <div className={`absolute top-1/2 -translate-y-1/2 -right-1 w-3 h-8 flex items-center justify-center rounded bg-gray-200 dark:bg-gray-700 opacity-0 group-hover:opacity-100 transition-opacity ${
+                isResizing ? 'opacity-100 bg-blue-500' : ''
+              }`}>
+                <GripVertical className="w-3 h-3 text-gray-500 dark:text-gray-400" />
+              </div>
+            </div>
+          </div>
+        )}
 
-        {/* Tools sidebar - desktop */}
-        {!showProfileSettings && hasFolder && (
-          <div className="hidden lg:block border-r border-gray-200 dark:border-gray-800">
+        {/* Tools sidebar - desktop - Luôn hiển thị (admin chỉ có chat) */}
+        {!showProfileSettings && (
+          <div className="hidden lg:block border-r border-gray-200 dark:border-gray-800 flex-shrink-0 w-[72px] xl:w-[100px]">
             {toolsPanel}
           </div>
         )}
 
         {/* Main content */}
-        <div className="flex flex-col min-w-0 bg-gray-50 dark:bg-gray-900">
-          <TopBar 
-            user={user} 
+        <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-gray-50 dark:bg-gray-900">
+          <TopBar
+            user={user}
             onLogout={onLogout}
             theme={theme}
             onThemeChange={onThemeChange}
@@ -132,8 +192,8 @@ export default function MainLayout({
         </div>
       </div>
 
-      {/* Mobile Sidebar Drawer */}
-      {isSidebarOpen && (
+      {/* Mobile Sidebar Drawer - ẩn với admin */}
+      {!isAdmin && hasFolder && isSidebarOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={closeAllPanels} />
           <div className="relative h-full w-4/5 max-w-sm bg-white dark:bg-[#1F1F1F] shadow-2xl">
@@ -155,7 +215,7 @@ export default function MainLayout({
       )}
 
       {/* Mobile Tools Drawer */}
-      {isToolsSidebarOpen && hasFolder && !showProfileSettings && (
+      {(isAdmin || hasFolder) && isToolsSidebarOpen && !showProfileSettings && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={closeAllPanels} />
           <div className="absolute right-0 top-0 h-full w-4/5 max-w-sm bg-white dark:bg-[#1F1F1F] shadow-2xl">

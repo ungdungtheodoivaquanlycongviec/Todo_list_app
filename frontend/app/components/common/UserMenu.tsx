@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Settings, LogOut, Sun, Moon, Monitor, ChevronDown } from 'lucide-react';
+import { Settings, LogOut, Sun, Moon, Monitor, ChevronDown, Shield } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { User } from '../../services/types/auth.types';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -134,6 +134,23 @@ export default function UserMenu({
               <Settings className="w-4 h-4 flex-shrink-0" />
               <span className="text-sm flex-1">{t('userMenu.profileSettings')}</span>
             </button>
+
+            {/* Admin Panel Link - Only for admin/super_admin */}
+            {(currentUser.role === 'admin' || currentUser.role === 'super_admin') && (
+              <>
+                <div className="border-t border-gray-200 dark:border-gray-700 my-1"></div>
+                <button
+                  onClick={() => {
+                    setShowUserMenu(false);
+                    router.push('/admin');
+                  }}
+                  className="w-full px-4 py-2 flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-left"
+                >
+                  <Shield className="w-4 h-4 flex-shrink-0" />
+                  <span className="text-sm flex-1">Admin Panel</span>
+                </button>
+              </>
+            )}
 
             {/* Divider */}
             <div className="border-t border-gray-200 dark:border-gray-700 my-1"></div>

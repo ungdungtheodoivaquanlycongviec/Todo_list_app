@@ -6,6 +6,9 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useRegional } from '../../contexts/RegionalContext';
 import { chatService, ChatMessage, DirectConversationSummary } from '../../services/chat.service';
 import { useSocket } from '../../hooks/useSocket';
+import { MeetingConfig } from '../../services/meeting.service';
+import MeetingView from './MeetingView';
+import IncomingCallNotification from './IncomingCallNotification';
 import {
   Send,
   Paperclip,
@@ -23,7 +26,9 @@ import {
   ExternalLink,
   Plus,
   Copy,
-  Check
+  Check,
+  Video,
+  Phone
 } from 'lucide-react';
 
 export default function ChatView() {
@@ -49,7 +54,17 @@ export default function ChatView() {
   const [hasDirectUnread, setHasDirectUnread] = useState<Set<string>>(new Set());
   const [pendingAttachment, setPendingAttachment] = useState<File | null>(null);
   const [pendingAttachmentPreview, setPendingAttachmentPreview] = useState<string | null>(null);
-  
+  const [activeMeeting, setActiveMeeting] = useState<MeetingConfig | null>(null);
+  const [incomingCall, setIncomingCall] = useState<{
+    meetingId: string;
+    type: 'group' | 'direct';
+    callerId: string;
+    callerName: string;
+    groupName?: string;
+    groupId?: string;
+    conversationId?: string;
+  } | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -166,15 +181,28 @@ export default function ChatView() {
   const handleDirectConversationEvent = useCallback(
     (data: { conversationId: string; conversation?: DirectConversationSummary | null }) => {
       if (data.conversation) {
-        upsertDirectConversation({
+        const updatedConversation = {
           ...data.conversation,
           _id: data.conversation._id || data.conversationId
-        });
+        };
+        upsertDirectConversation(updatedConversation);
+
+        // Nếu conversation có unread count > 0 và không đang xem, hiển thị green dot
+        if (updatedConversation.unreadCount > 0) {
+          const isActiveConversation =
+            activeContext === 'direct' &&
+            activeDirectConversation?._id === updatedConversation._id;
+
+          if (!isActiveConversation) {
+            setPendingDirectIndicators(prev => ({ ...prev, [updatedConversation._id]: true }));
+            setHasDirectUnread(prev => new Set(prev).add(updatedConversation._id));
+          }
+        }
       } else {
         loadDirectConversations();
       }
     },
-    [upsertDirectConversation, loadDirectConversations]
+    [upsertDirectConversation, loadDirectConversations, activeContext, activeDirectConversation?._id]
   );
 
   useEffect(() => {
@@ -414,26 +442,80 @@ export default function ChatView() {
       conversationId: string;
       message: ChatMessage;
     }) => {
-      if (activeContext !== 'direct') {
-        return;
-      }
-      if (!activeDirectConversation?._id || data.conversationId !== activeDirectConversation._id) {
-        return;
-      }
+      console.log('[ChatView] handleDirectMessage called:', {
+        conversationId: data.conversationId,
+        activeContext,
+        activeDirectConversationId: activeDirectConversation?._id,
+        messageId: data.message._id,
+        senderId: data.message.senderId?._id,
+        userId: user?._id
+      });
 
-      if (data.type === 'new') {
-        setMessages(prev => {
-          const exists = prev.some(msg => msg._id === data.message._id);
-          if (exists) {
-            return prev;
-          }
-          return [...prev, data.message];
-        });
-        scrollToBottom();
+      const isActiveConversation =
+        activeContext === 'direct' &&
+        activeDirectConversation?._id === data.conversationId;
+
+      // Nếu đang xem conversation này, cập nhật messages
+      if (isActiveConversation) {
+        console.log('[ChatView] Message for active conversation, updating messages');
+        if (data.type === 'new') {
+          setMessages(prev => {
+            const exists = prev.some(msg => msg._id === data.message._id);
+            if (exists) {
+              return prev;
+            }
+            return [...prev, data.message];
+          });
+          scrollToBottom();
+        } else {
+          setMessages(prev =>
+            prev.map(msg => (msg._id === data.message._id ? data.message : msg))
+          );
+        }
       } else {
-        setMessages(prev =>
-          prev.map(msg => (msg._id === data.message._id ? data.message : msg))
-        );
+        // Nếu không đang xem conversation này, cập nhật unread indicators và conversation list
+        if (data.type === 'new') {
+          const isFromOtherUser = data.message.senderId?._id && data.message.senderId._id !== user?._id;
+          console.log('[ChatView] Message for inactive conversation, isFromOtherUser:', isFromOtherUser);
+
+          if (isFromOtherUser) {
+            console.log('[ChatView] Updating unread indicators for conversation:', data.conversationId);
+            // Cập nhật unread indicators
+            setPendingDirectIndicators(prev => {
+              const next = { ...prev, [data.conversationId]: true };
+              console.log('[ChatView] Updated pendingDirectIndicators:', next);
+              return next;
+            });
+            setHasDirectUnread(prev => {
+              const next = new Set(prev).add(data.conversationId);
+              console.log('[ChatView] Updated hasDirectUnread:', Array.from(next));
+              return next;
+            });
+
+            // Cập nhật conversation trong list với unread count và last message
+            setDirectConversations(prev => {
+              const index = prev.findIndex(conv => conv._id === data.conversationId);
+              if (index >= 0) {
+                const updated = [...prev];
+                const conversation = updated[index];
+                updated[index] = {
+                  ...conversation,
+                  unreadCount: (conversation.unreadCount || 0) + 1,
+                  lastMessagePreview: data.message.content?.slice(0, 140) || conversation.lastMessagePreview || 'New message',
+                  lastMessageAt: data.message.createdAt || conversation.lastMessageAt || new Date().toISOString()
+                };
+                // Di chuyển conversation lên đầu danh sách
+                const [moved] = updated.splice(index, 1);
+                console.log('[ChatView] Moved conversation to top:', moved._id);
+                return [moved, ...updated];
+              }
+              // Nếu không tìm thấy, reload danh sách
+              console.log('[ChatView] Conversation not found in list, reloading...');
+              loadDirectConversations();
+              return prev;
+            });
+          }
+        }
       }
     };
 
@@ -517,15 +599,17 @@ export default function ChatView() {
 
   useEffect(() => {
     if (!socket) return;
-  
+
     const handleNotification = (payload: any) => {
       const notification = payload?.notification || payload;
       const eventKey = notification?.eventKey || payload?.eventKey;
+      console.log('[ChatView] Received notification:', eventKey, notification);
       if (eventKey !== 'CHAT_MESSAGE_OFFLINE') {
         return;
       }
       const data = notification?.data || {};
-      
+      console.log('[ChatView] Processing notification data:', data);
+
       if (data.contextType === 'group') {
         if (currentGroup?._id && data.groupId === currentGroup._id && activeContext === 'group') {
           return;
@@ -534,29 +618,43 @@ export default function ChatView() {
           setHasGroupUnread(true);
         }
       } else if (data.contextType === 'direct') {
-        if (!data.conversationId) return;
-        
+        if (!data.conversationId) {
+          console.log('[ChatView] No conversationId in notification data');
+          return;
+        }
+
+        console.log('[ChatView] Processing direct chat notification for conversation:', data.conversationId);
+
         // THÊM LOGIC MỚI: Hiển thị chấm xanh cho direct chat
         if (
           activeContext === 'direct' &&
           activeDirectConversation?._id === data.conversationId
         ) {
+          console.log('[ChatView] User is viewing this conversation, skipping notification');
           return;
         }
-        
+
         // Cập nhật cả pending indicators và direct unread
-        setPendingDirectIndicators(prev => ({ ...prev, [data.conversationId]: true }));
-        setHasDirectUnread(prev => new Set(prev).add(data.conversationId));
+        setPendingDirectIndicators(prev => {
+          const next = { ...prev, [data.conversationId]: true };
+          console.log('[ChatView] Updated pendingDirectIndicators from notification:', next);
+          return next;
+        });
+        setHasDirectUnread(prev => {
+          const next = new Set(prev).add(data.conversationId);
+          console.log('[ChatView] Updated hasDirectUnread from notification:', Array.from(next));
+          return next;
+        });
       }
     };
-  
+
     socket.on('notifications:new', handleNotification);
-  
+
     return () => {
       socket.off('notifications:new', handleNotification);
     };
   }, [socket, activeContext, activeDirectConversation?._id, currentGroup?._id]);
-  
+
   // Thêm hàm reset trạng thái đã đọc cho direct chat
   const resetDirectUnread = useCallback((conversationId: string) => {
     setHasDirectUnread(prev => {
@@ -565,7 +663,7 @@ export default function ChatView() {
       return newSet;
     });
   }, []);
-  
+
   // Cập nhật khi chuyển tab hoặc chọn conversation
   useEffect(() => {
     if (activeContext === 'group') {
@@ -590,7 +688,7 @@ export default function ChatView() {
   // Handle attachment selection (preview before sending)
   const handleAttachmentSelect = (file: File) => {
     setPendingAttachment(file);
-    
+
     // Create preview for images
     if (file.type.startsWith('image/')) {
       const reader = new FileReader();
@@ -862,13 +960,12 @@ export default function ChatView() {
 
   const typingLabel =
     typingUsers.size > 0
-      ? `${Array.from(typingUsers).length} ${
-          Array.from(typingUsers).length === 1 ? t('chat.personTyping') : t('chat.peopleTyping')
-        }`
+      ? `${Array.from(typingUsers).length} ${Array.from(typingUsers).length === 1 ? t('chat.personTyping') : t('chat.peopleTyping')
+      }`
       : '';
 
   return (
-    <div className="flex h-full min-h-0 bg-white dark:bg-gray-900">
+    <div className="flex h-full min-h-0 overflow-hidden bg-white dark:bg-gray-900">
       <aside className="w-80 border-r border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/40 flex flex-col">
         <div className="p-4 border-b border-gray-200 dark:border-gray-800">
           <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">
@@ -879,11 +976,10 @@ export default function ChatView() {
               setActiveContext('group');
               setHasGroupUnread(false);
             }}
-            className={`w-full flex items-center gap-3 rounded-xl border p-3 transition ${
-              activeContext === 'group'
+            className={`w-full flex items-center gap-3 rounded-xl border p-3 transition ${activeContext === 'group'
                 ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-200'
                 : 'border-transparent bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-800 dark:text-gray-200'
-            }`}
+              }`}
           >
             <div className="relative">
               <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-300">
@@ -953,52 +1049,51 @@ export default function ChatView() {
           ) : (
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
               {directConversations.map(conversation => {
-  const isActive =
-    activeContext === 'direct' &&
-    activeDirectConversation?._id === conversation._id;
-  const hasUnread =
-    (conversation.unreadCount || 0) > 0 ||
-    Boolean(pendingDirectIndicators[conversation._id]) ||
-    hasDirectUnread.has(conversation._id); // THÊM ĐIỀU KIỆN NÀY
-  
-  return (
-    <button
-      key={conversation._id}
-      onClick={() => {
-        setActiveContext('direct');
-        setActiveDirectConversation(conversation);
-        // RESET KHI CLICK
-        resetDirectUnread(conversation._id);
-        setPendingDirectIndicators(prev => {
-          if (!prev[conversation._id]) return prev;
-          const next = { ...prev };
-          delete next[conversation._id];
-          return next;
-        });
-      }}
-      className={`w-full flex items-start gap-3 px-4 py-3 text-left transition ${
-        isActive
-          ? 'bg-blue-50 dark:bg-blue-900/20'
-          : 'hover:bg-gray-100 dark:hover:bg-gray-800/60'
-      }`}
-    >
-      <div className="relative w-10 h-10">
-        <div className="w-10 h-10 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-300 flex items-center justify-center font-semibold">
-          {conversation.targetUser?.avatar ? (
-            <img
-              src={conversation.targetUser.avatar}
-              alt={conversation.targetUser.name}
-              className="w-full h-full rounded-full object-cover"
-            />
-          ) : (
-            (conversation.targetUser?.name || '?').charAt(0).toUpperCase()
-          )}
-        </div>
-        {/* HIỂN THỊ CHẤM XANH KHI CÓ TIN NHẮN MỚI */}
-        {hasUnread && (
-          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white dark:border-gray-900" />
-        )}
-      </div>
+                const isActive =
+                  activeContext === 'direct' &&
+                  activeDirectConversation?._id === conversation._id;
+                const hasUnread =
+                  (conversation.unreadCount || 0) > 0 ||
+                  Boolean(pendingDirectIndicators[conversation._id]) ||
+                  hasDirectUnread.has(conversation._id); // THÊM ĐIỀU KIỆN NÀY
+
+                return (
+                  <button
+                    key={conversation._id}
+                    onClick={() => {
+                      setActiveContext('direct');
+                      setActiveDirectConversation(conversation);
+                      // RESET KHI CLICK
+                      resetDirectUnread(conversation._id);
+                      setPendingDirectIndicators(prev => {
+                        if (!prev[conversation._id]) return prev;
+                        const next = { ...prev };
+                        delete next[conversation._id];
+                        return next;
+                      });
+                    }}
+                    className={`w-full flex items-start gap-3 px-4 py-3 text-left transition ${isActive
+                        ? 'bg-blue-50 dark:bg-blue-900/20'
+                        : 'hover:bg-gray-100 dark:hover:bg-gray-800/60'
+                      }`}
+                  >
+                    <div className="relative w-10 h-10">
+                      <div className="w-10 h-10 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-300 flex items-center justify-center font-semibold">
+                        {conversation.targetUser?.avatar ? (
+                          <img
+                            src={conversation.targetUser.avatar}
+                            alt={conversation.targetUser.name}
+                            className="w-full h-full rounded-full object-cover"
+                          />
+                        ) : (
+                          (conversation.targetUser?.name || '?').charAt(0).toUpperCase()
+                        )}
+                      </div>
+                      {/* HIỂN THỊ CHẤM XANH KHI CÓ TIN NHẮN MỚI */}
+                      {hasUnread && (
+                        <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white dark:border-gray-900" />
+                      )}
+                    </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
@@ -1025,10 +1120,10 @@ export default function ChatView() {
         </div>
       </aside>
 
-      <section className="flex-1 flex flex-col min-h-0">
+      <section className="flex-1 flex flex-col min-h-0 h-full overflow-hidden">
         <div className="border-b border-gray-200 dark:border-gray-700 p-4">
           <div className="flex items-center justify-between">
-            <div>
+            <div className="flex-1">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                 {conversationTitle}
               </h2>
@@ -1036,9 +1131,57 @@ export default function ChatView() {
                 <p className="text-sm text-gray-500 dark:text-gray-400">{conversationSubtitle}</p>
               )}
             </div>
-            {typingLabel && (
-              <p className="text-sm text-gray-500 dark:text-gray-400">{typingLabel}</p>
-            )}
+            <div className="flex items-center gap-2">
+              {typingLabel && (
+                <p className="text-sm text-gray-500 dark:text-gray-400">{typingLabel}</p>
+              )}
+              {conversationReady && (
+                <>
+                  <button
+                    onClick={() => {
+                      if (activeContext === 'group' && currentGroup?._id) {
+                        setActiveMeeting({
+                          meetingId: `group-${currentGroup._id}-${Date.now()}`,
+                          type: 'group',
+                          groupId: currentGroup._id
+                        });
+                      } else if (activeContext === 'direct' && activeDirectConversation?._id) {
+                        setActiveMeeting({
+                          meetingId: `direct-${activeDirectConversation._id}-${Date.now()}`,
+                          type: 'direct',
+                          conversationId: activeDirectConversation._id
+                        });
+                      }
+                    }}
+                    className="p-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                    title="Start video call"
+                  >
+                    <Video className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (activeContext === 'group' && currentGroup?._id) {
+                        setActiveMeeting({
+                          meetingId: `group-${currentGroup._id}-${Date.now()}`,
+                          type: 'group',
+                          groupId: currentGroup._id
+                        });
+                      } else if (activeContext === 'direct' && activeDirectConversation?._id) {
+                        setActiveMeeting({
+                          meetingId: `direct-${activeDirectConversation._id}-${Date.now()}`,
+                          type: 'direct',
+                          conversationId: activeDirectConversation._id
+                        });
+                      }
+                    }}
+                    className="p-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                    title="Start audio call"
+                  >
+                    <Phone className="w-5 h-5" />
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1232,6 +1375,46 @@ export default function ChatView() {
           </div>
         )}
       </section>
+
+      {/* Meeting View */}
+      {activeMeeting && (
+        <MeetingView
+          config={activeMeeting}
+          onClose={() => setActiveMeeting(null)}
+          title={
+            activeMeeting.type === 'group'
+              ? currentGroup?.name || 'Group Meeting'
+              : activeDirectConversation?.targetUser?.name || 'Direct Meeting'
+          }
+        />
+      )}
+
+      {/* Incoming Call Notification */}
+      {incomingCall && (
+        <IncomingCallNotification
+          meetingId={incomingCall.meetingId}
+          type={incomingCall.type}
+          callerName={incomingCall.callerName}
+          groupName={incomingCall.groupName}
+          onAccept={() => {
+            const config: MeetingConfig = {
+              meetingId: incomingCall.meetingId,
+              type: incomingCall.type,
+              ...(incomingCall.type === 'group' && incomingCall.groupId
+                ? { groupId: incomingCall.groupId }
+                : {}),
+              ...(incomingCall.type === 'direct' && incomingCall.conversationId
+                ? { conversationId: incomingCall.conversationId }
+                : {})
+            };
+            setIncomingCall(null);
+            setActiveMeeting(config);
+          }}
+          onDecline={() => {
+            setIncomingCall(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1330,112 +1513,108 @@ function MessageItem({
           <div className={`flex items-center gap-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
             {/* Message bubble */}
             <div
-              className={`relative rounded-2xl px-4 py-2 ${
-                isOwn
+              className={`relative rounded-2xl px-4 py-2 ${isOwn
                   ? 'bg-blue-500 text-white'
                   : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
-              }`}
+                }`}
             >
-            {message.deletedAt ? (
-              <p className="text-sm italic opacity-70">Message deleted</p>
-            ) : (
-              <>
-                {/* Attachments */}
-                {message.attachments && message.attachments.length > 0 && (
-                  <div className="space-y-2 mb-2">
-                    {message.attachments.map((attachment, idx) => (
-                      <div key={idx}>
-                        {attachment.type === 'image' ? (
-                          <button
-                            onClick={() => setLightboxImage(attachment.url)}
-                            className="block cursor-pointer"
-                          >
-                            <img
-                              src={attachment.url}
-                              alt={attachment.filename}
-                              className="max-w-full rounded-lg max-h-64 object-cover hover:opacity-90 transition-opacity"
-                            />
-                          </button>
-                        ) : (
-                          <a
-                            href={attachment.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
-                              isOwn 
-                                ? 'bg-blue-400/30 border-blue-300/30 hover:bg-blue-400/40' 
-                                : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
-                            }`}
-                          >
-                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                              isOwn ? 'bg-blue-300/30' : 'bg-gray-100 dark:bg-gray-600'
-                            }`}>
-                              <FileText className="w-5 h-5" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate">{attachment.filename}</p>
-                              <p className={`text-xs ${isOwn ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'}`}>
-                                {t('chat.clickToView')}
-                              </p>
-                            </div>
-                            <ExternalLink className="w-4 h-4 flex-shrink-0" />
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Content */}
-                {isEditing ? (
-                  <div className="space-y-2">
-                    <textarea
-                      value={editContent}
-                      onChange={(e) => setEditContent(e.target.value)}
-                      rows={3}
-                      className={`w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${
-                        isOwn 
-                          ? 'bg-blue-400 border-blue-300 text-white placeholder-blue-200'
-                          : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100'
-                      }`}
-                      autoFocus
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          onEditMessage(message._id, editContent);
-                          setIsEditing(false);
-                        }}
-                        disabled={!editContent.trim()}
-                        className="flex items-center gap-1 px-3 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600 disabled:opacity-50"
-                      >
-                        <Check className="w-3 h-3" />
-                        {t('common.save')}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setEditContent(message.content || "");
-                          setIsEditing(false);
-                        }}
-                        className="flex items-center gap-1 px-3 py-1 bg-gray-500 text-white rounded text-xs hover:bg-gray-600"
-                      >
-                        <X className="w-3 h-3" />
-                        {t('common.cancel')}
-                      </button>
+              {message.deletedAt ? (
+                <p className="text-sm italic opacity-70">Message deleted</p>
+              ) : (
+                <>
+                  {/* Attachments */}
+                  {message.attachments && message.attachments.length > 0 && (
+                    <div className="space-y-2 mb-2">
+                      {message.attachments.map((attachment, idx) => (
+                        <div key={idx}>
+                          {attachment.type === 'image' ? (
+                            <button
+                              onClick={() => setLightboxImage(attachment.url)}
+                              className="block cursor-pointer"
+                            >
+                              <img
+                                src={attachment.url}
+                                alt={attachment.filename}
+                                className="max-w-full rounded-lg max-h-64 object-cover hover:opacity-90 transition-opacity"
+                              />
+                            </button>
+                          ) : (
+                            <a
+                              href={attachment.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${isOwn
+                                  ? 'bg-blue-400/30 border-blue-300/30 hover:bg-blue-400/40'
+                                  : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+                                }`}
+                            >
+                              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isOwn ? 'bg-blue-300/30' : 'bg-gray-100 dark:bg-gray-600'
+                                }`}>
+                                <FileText className="w-5 h-5" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate">{attachment.filename}</p>
+                                <p className={`text-xs ${isOwn ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'}`}>
+                                  {t('chat.clickToView')}
+                                </p>
+                              </div>
+                              <ExternalLink className="w-4 h-4 flex-shrink-0" />
+                            </a>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                ) : (
-                  message.content && (
-                    <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
-                  )
-                )}
+                  )}
 
-                {/* Edited indicator */}
-                {message.editedAt && (
-                  <p className="text-xs opacity-70 mt-1">(edited)</p>
-                )}
-              </>
-            )}
+                  {/* Content */}
+                  {isEditing ? (
+                    <div className="space-y-2">
+                      <textarea
+                        value={editContent}
+                        onChange={(e) => setEditContent(e.target.value)}
+                        rows={3}
+                        className={`w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${isOwn
+                            ? 'bg-blue-400 border-blue-300 text-white placeholder-blue-200'
+                            : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100'
+                          }`}
+                        autoFocus
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            onEditMessage(message._id, editContent);
+                            setIsEditing(false);
+                          }}
+                          disabled={!editContent.trim()}
+                          className="flex items-center gap-1 px-3 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600 disabled:opacity-50"
+                        >
+                          <Check className="w-3 h-3" />
+                          {t('common.save')}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditContent(message.content || "");
+                            setIsEditing(false);
+                          }}
+                          className="flex items-center gap-1 px-3 py-1 bg-gray-500 text-white rounded text-xs hover:bg-gray-600"
+                        >
+                          <X className="w-3 h-3" />
+                          {t('common.cancel')}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    message.content && (
+                      <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                    )
+                  )}
+
+                  {/* Edited indicator */}
+                  {message.editedAt && (
+                    <p className="text-xs opacity-70 mt-1">(edited)</p>
+                  )}
+                </>
+              )}
             </div>
 
             {/* Quick actions - appears on hover */}
@@ -1450,7 +1629,7 @@ function MessageItem({
                   >
                     <Smile className="w-4 h-4" />
                   </button>
-                  
+
                   {/* Reaction picker popup */}
                   {showReactions && (
                     <div className={`absolute ${isOwn ? 'right-0' : 'left-0'} bottom-full mb-2 z-20`}>
@@ -1582,11 +1761,10 @@ function MessageItem({
                   <button
                     key={emoji}
                     onClick={() => onReaction(message._id, emoji)}
-                    className={`inline-flex items-center gap-1 text-sm px-2 py-0.5 rounded-full border transition-colors ${
-                      hasReacted
+                    className={`inline-flex items-center gap-1 text-sm px-2 py-0.5 rounded-full border transition-colors ${hasReacted
                         ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
                         : 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                    }`}
+                      }`}
                     title={reactions.map((r: any) => r.userId).join(', ')}
                   >
                     <span>{emoji}</span>
@@ -1594,7 +1772,7 @@ function MessageItem({
                   </button>
                 );
               })}
-              
+
               {/* Add more reactions button */}
               <button
                 onClick={() => setShowReactions(!showReactions)}
@@ -1615,7 +1793,7 @@ function MessageItem({
 
       {/* Image Lightbox Modal */}
       {lightboxImage && (
-        <div 
+        <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
           onClick={() => setLightboxImage(null)}
         >

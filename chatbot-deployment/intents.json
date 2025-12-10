@@ -1,0 +1,375 @@
+{
+  "intents": [
+    {
+      "tag": "greeting",
+      "patterns": [
+        "Hi",
+        "Hey",
+        "How are you",
+        "Is anyone there?",
+        "Hello",
+        "Good day",
+        "Morning",
+        "Chào",
+        "Ê",
+        "Này"
+      ],
+      "responses": [
+        "Xin chào {user_name}, chúc {gender} có một ngày làm việc hiệu quả và tràn đầy năng lượng nhé",
+        "Chào {user_name}, chúc {gender} một ngày làm việc thật năng suất và nhiều niềm vui!",
+        "Hi {user_name}, mong rằng hôm nay {gender} sẽ có một ngày đầy năng lượng và hiệu quả!",
+        "Xin gửi lời chào đến {user_name}, chúc {gender} làm việc hăng say và đạt được nhiều thành công hôm nay!"
+      ]
+    },
+    {
+      "tag": "todayTask",
+      "patterns": [
+        "Hôm nay có những task gì?",
+        "Hôm nay mình cần làm những việc gì?",
+        "Hôm nay có gì phải xử lý không?",
+        "Danh sách nhiệm vụ hôm nay gồm những gì?",
+        "Hôm nay còn task nào chờ mình không?",
+        "Hôm nay lịch làm việc có gì?",
+        "Hôm nay có việc gì quan trọng không?",
+        "Hôm nay cần hoàn thành những mục nào?",
+        "Hôm nay mình phải tập trung vào việc gì?",
+        "Hôm nay còn việc gì tồn đọng không?",
+        "Hôm nay mục tiêu công việc là gì?"
+      ],
+      "responses": [
+        "Đây là danh sách {gender}{user_firstname} cần hoàn thiện trong hôm nay nhé: {activeTasks}",
+        "Đây là các nhiệm vụ {gender}{user_firstname} cần hoàn thành hôm nay nhé: {activeTasks}",
+        "Danh sách công việc hôm nay của {gender}{user_firstname} đây nè: {activeTasks}",
+        "Hôm nay {gender}{user_firstname} có những việc cần làm sau đây nhé: {activeTasks}"
+      ]
+    },
+    {
+      "tag": "finishAllTask",
+      "patterns": [
+        "Tôi đã làm hết task rồi",
+        "Em đã xử lý xong toàn bộ công việc rồi",
+        "Tôi đã hoàn thành hết tất cả nhiệm vụ",
+        "Mọi task tôi làm xong hết rồi",
+        "Tôi đã giải quyết toàn bộ việc cần làm",
+        "Toàn bộ công việc tôi đã làm xong",
+        "Tôi đã hoàn tất mọi nhiệm vụ được giao",
+        "Các task hôm nay tôi xử lý hết rồi",
+        "Tôi đã xong toàn bộ phần việc của mình",
+        "Mọi nhiệm vụ tôi đều hoàn thành rồi",
+        "Tôi đã làm xong tất cả task trong danh sách"
+      ],
+      "responses": [
+        "Tuyệt vời {gender}{user_firstname}! {gender} đã hoàn thành tất cả nhiệm vụ rồi!",
+        "Giỏi quá {gender}{user_firstname}! Mọi công việc hôm nay đều đã được hoàn tất!",
+        "Hoàn hảo luôn {gender}{user_firstname}! Không còn nhiệm vụ nào đang chờ nữa!",
+        "Chúc mừng {gender}{user_firstname}! {gender} đã xử lý xong toàn bộ task hôm nay rồi đó!"
+      ]
+    },
+    {
+      "tag": "noFinishAllTask",
+      "patterns": [
+        "Em vẫn còn vài task chưa làm xong",
+        "Tôi vẫn còn nhiệm vụ đang dở",
+        "Một số công việc tôi chưa hoàn tất",
+        "Hôm nay tôi vẫn còn task tồn đọng",
+        "Tôi chưa xử lý xong hết các nhiệm vụ",
+        "Các task của tôi vẫn còn dang dở",
+        "Tôi vẫn đang làm tiếp, chưa xong hết",
+        "Một vài việc tôi vẫn chưa hoàn thành",
+        "Tôi chưa hoàn thiện toàn bộ công việc",
+        "Tôi còn một số task cần làm tiếp"
+      ],
+      "responses": [
+        "Hiện tại {Gender} vần còn các tasks cần phải hoàn thiện",
+        "Hiện tại {gender} vẫn còn một số nhiệm vụ cần hoàn thành nhé.",
+        "{gender} vẫn còn vài tasks chưa xong, cùng tiếp tục nào!",
+        "Có vẻ {gender} vẫn còn công việc dang dở, cố lên nhé!"
+      ]
+    },
+    {
+      "tag": "finishTodayTask",
+      "patterns": [
+        "tôi đã hoàn thiện hết các task hôm nay rồi",
+        "Dnày tôi đã làm xong toàn bộ task hôm nay.",
+        "Hôm nay tôi hoàn thành hết mọi nhiệm vụ rồi.",
+        "Tất cả task trong ngày tôi đã xử lý xong.",
+        "Tôi đã hoàn tất mọi công việc hôm nay.",
+        "Toàn bộ việc hôm nay tôi đã giải quyết xong.",
+        "Tôi đã hoàn thành toàn bộ công việc được giao hôm nay.",
+        "Nhiệm vụ trong ngày tôi đã làm hết rồi.",
+        "Tôi đã hoàn thành xong các đầu việc hôm nay.",
+        "Các task hôm nay tôi đã hoàn thiện đầy đủ.",
+        "Mọi việc hôm nay tôi đã làm xong hết rồi."
+      ],
+      "responses": [
+        "{gender}{user_firstname} tuyệt vời! {gender} đã hoàn thành tất cả các task của ngày hôm nay!",
+        "{gender}{user_firstname} tuyệt vời! {gender} đã hoàn thành hết các task hôm nay rồi!",
+        "Xuất sắc lắm {gender}{user_firstname}! Toàn bộ công việc hôm nay đã được hoàn tất!",
+        "Hoàn hảo luôn {gender}{user_firstname}! {gender} đã xử lý xong mọi việc hôm nay rồi!"
+      ]
+    },
+    {
+      "tag": "unfinishTodayTask",
+      "patterns": [
+        "tôi chưa hoàn thiện task của ngày hôm nay",
+        "Tôi vẫn chưa làm xong task hôm nay.",
+        "Tôi chưa hoàn thành hết công việc của ngày hôm nay.",
+        "Task hôm nay tôi vẫn còn dang dở.",
+        "Tôi chưa xử lý xong các nhiệm vụ hôm nay.",
+        "Công việc hôm nay tôi vẫn chưa hoàn tất.",
+        "Tôi vẫn còn vài đầu việc hôm nay chưa làm xong.",
+        "Tôi chưa hoàn thiện toàn bộ task trong ngày.",
+        "Nhiệm vụ hôm nay tôi vẫn chưa giải quyết hết.",
+        "Các task trong ngày tôi vẫn chưa hoàn thành.",
+        "Tôi vẫn còn việc của hôm nay chưa hoàn tất."
+      ],
+      "responses": [
+        "{gender}{user_firstname} chưa hoàn thiện các task cần làm của ngày hôm nay: {activeTasks}",
+        "{gender}{user_firstname} ơi, hôm nay vẫn còn vài task chưa hoàn thiện nhé: {activeTasks}",
+        "Có vẻ {gender}{user_firstname} vẫn còn một số công việc cần làm hôm nay: {activeTasks}",
+        "{gender}{user_firstname}, các task dưới đây vẫn đang chờ {gender} hoàn thành trong hôm nay đấy: {activeTasks}"
+      ]
+    },
+    {
+      "tag": "swear",
+      "patterns": [
+        "dái",
+        "cặc",
+        "lồn",
+        "ngu",
+        "địt mẹ mày",
+        "cọn mẹ chết",
+        "mẹ m béo",
+        "cha mày",
+        "lợn nhựa"
+      ],
+      "responses": [
+        "súc vật làm việc đi",
+        "chó ngu làm việc của mày đi",
+        "cả nhà mày chết đói",
+        "con chó ngu",
+        "nigga",
+        "chó nô lệ làm việc đi"
+      ]
+    },
+    {
+      "tag": "recommentedTasks",
+      "patterns": [
+        "Bạn có thể đề xuất cho tôi vài việc nên làm tiếp theo",
+        "Cho tôi vài gợi ý về những việc tôi có thể thực hiện",
+        "Hãy chỉ cho tôi những việc tôi có thể làm bây giờ",
+        "Bạn hãy gợi ý cho tôi các hoạt động phù hợp",
+        "Hãy nói cho tôi biết tôi nên làm gì tiếp theo",
+        "Cho tôi danh sách những việc tôi có thể bắt đầu làm",
+        "Hãy đề xuất cho tôi một số lựa chọn hành động",
+        "Bạn có thể đưa ra vài ý tưởng về việc tôi nên làm không",
+        "Hãy gợi ý cho tôi một vài hướng để hành động",
+        "Cho tôi vài gợi ý về những bước tiếp theo tôi có thể làm"
+      ],
+      "responses": [
+        "Đây là một vài task bạn có thể cân nhắc hoàn thiện {activeTasks}",
+        "Dưới đây là vài task {gender} có thể cân nhắc thêm: {activeTasks}",
+        "Đây là một vài task khác {gender} có thể thực hiện: {activeTasks}",
+        "Hãy xem qua vài task gợi ý dưới đây nhé: {activeTasks}"
+      ]
+    },
+    {
+      "tag": "finishAllRecommentedTask",
+      "patterns": [
+        "Tôi đã hoàn thành hết các task được đề xuất rồi",
+        "Tất cả những việc được gợi ý tôi đều làm xong rồi",
+        "Các nhiệm vụ được đưa ra tôi đã xử lý hết rồi",
+        "Mọi task bạn đề xuất tôi đã làm đầy đủ rồi",
+        "Tôi đã làm xong toàn bộ công việc được gợi ý",
+        "Tôi đã hoàn tất tất cả những gì được đề nghị",
+        "Tôi đã giải quyết xong mọi nhiệm vụ bạn gợi ý",
+        "Tất cả các task được nêu ra tôi đã hoàn thiện rồi",
+        "Mọi việc bạn đề xuất tôi đều hoàn thành rồi",
+        "Tôi đã hoàn thành trọn vẹn mọi task được gợi ý"
+      ],
+      "responses": [
+        "{user_firstname}, bạn đang làm rất tốt, cứ tiếp tục tiến về phía trước nhé!",
+        "Hãy giữ vững năng lượng tích cực nhé {user_firstname}, thành công đang đợi bạn phía trước!",
+        "Cố lên {user_firstname}! Mỗi bước nhỏ hôm nay đều đưa bạn gần hơn đến mục tiêu lớn!",
+        "Tuyệt vời lắm {user_firstname}! Hãy giữ vững tinh thần này!"
+      ]
+    },
+    {
+      "tag": "finishPartOfRecommentedTask",
+      "patterns": [
+        "Tôi đã hoàn thành một phần các task được đề xuất rồi",
+        "Tôi mới làm xong một số nhiệm vụ được gợi ý",
+        "Một vài việc được đề xuất tôi đã hoàn tất rồi",
+        "Tôi đã xử lý xong một phần các task được đưa ra",
+        "Tôi mới thực hiện được một phần các nhiệm vụ gợi ý",
+        "Một phần công việc được đề xuất tôi đã làm xong",
+        "Tôi đã hoàn thiện một số task bạn gợi ý",
+        "Tôi chỉ mới hoàn thành một phần các việc được đề xuất",
+        "Một số nhiệm vụ được nêu ra tôi đã làm xong",
+        "Tôi đã thực hiện được một phần các task được đề nghị"
+      ],
+      "responses": [
+        "{user_firstname}, bạn đang làm rất tốt, cứ tiếp tục tiến về phía trước nhé!",
+        "Hãy giữ vững năng lượng tích cực nhé {user_firstname}, thành công đang đợi bạn phía trước!",
+        "Cố lên {user_firstname}! Mỗi bước nhỏ hôm nay đều đưa bạn gần hơn đến mục tiêu lớn!",
+        "Tuyệt vời lắm {user_firstname}! Hãy giữ vững tinh thần này!"
+      ]
+    },
+    {
+      "tag": "Warning",
+      "patterns": [
+        "Tôi chưa hoàn thành các task được giao",
+        "Tôi vẫn chưa làm xong các nhiệm vụ được đề xuất",
+        "Các task được gợi ý tôi vẫn chưa hoàn thiện",
+        "Tôi chưa thực hiện xong các việc được nêu ra",
+        "Tôi vẫn còn task chưa hoàn tất",
+        "Tôi chưa xử lý xong các nhiệm vụ được đưa ra",
+        "Tôi chưa làm xong bất kỳ task nào",
+        "Các công việc được đề xuất tôi vẫn chưa hoàn thành",
+        "Tôi còn nhiều task chưa thực hiện xong",
+        "Tôi chưa hoàn tất các nhiệm vụ được gợi ý"
+      ],
+      "responses": [
+        "Đừng quên nhé! {activeTasks} vẫn đang nằm trong danh sách chờ của bạn!",
+        "Cẩn thận nhé! Bạn vẫn còn {activeTasks} đang chờ được hoàn thiện đó!",
+        "Nhắc nhẹ nè, {activeTasks} vẫn chưa xong đâu, mau hoàn thiện thôi!",
+        "Nhanh tay nào! {activeTasks} vẫn chưa được xử lý xong đâu!"
+      ]
+    },
+    {
+      "tag": "specialDay",
+      "patterns": [
+        "Ngày Tết Nguyên Đán là dịp mọi người sum họp và chúc Tết nhau",
+        "Ngày Quốc tế Phụ nữ 8/3 tôn vinh những người phụ nữ",
+        "Ngày Giáng Sinh 25/12 là lễ hội trao quà và trang trí cây thông",
+        "Ngày Quốc khánh 2/9 kỷ niệm ngày Việt Nam độc lập",
+        "Ngày Valentine 14/2 dành cho các cặp đôi thể hiện tình yêu",
+        "Ngày Halloween 31/10 mọi người hóa trang và đi chơi ma",
+        "Ngày Nhà giáo Việt Nam 20/11 để tôn vinh thầy cô",
+        "Ngày Quốc tế Thiếu nhi 1/6 là dịp dành cho trẻ em",
+        "Ngày Giỗ Tổ Hùng Vương 10/3 Âm lịch tưởng nhớ các vua Hùng",
+        "Ngày Lễ Tình nhân Đen 14/4 là ngày dành cho những người còn độc thân"
+      ],
+      "responses": [
+        "Chúc {user_firstname} có một {special_day} thật vui vẻ và tràn đầy hạnh phúc!",
+        "{special_day} đến rồi! Chúc {gender} {user_firstname} đón ngày này với thật nhiều niềm vui và ý nghĩa!",
+        "Gửi lời chúc tốt đẹp nhất đến {user_firstname} nhân dịp {special_day} — chúc bạn luôn rạng rỡ và may mắn!",
+        "Nhân dịp {special_day}, chúc {user_firstname} có một ngày ngập tràn yêu thương và tiếng cười!"
+      ]
+    },
+    {
+      "tag": "askAboutDate",
+      "patterns": [
+        "Hôm nay là ngày mấy?",
+        "Hôm nay là thứ mấy?",
+        "Hôm nay là tháng mấy?",
+        "Năm nay là năm bao nhiêu?",
+        "Ngày mai là ngày mấy?",
+        "Hôm qua là ngày mấy?"
+      ],
+      "responses": [
+        "Hôm nay là {current_date}",
+        "{user_firstname} ơi, hôm nay là {current_date} đó",
+        "Ngày {current_date}",
+        "Lịch hôm nay báo là {current_date}"
+      ]
+    },
+    {
+      "tag": "weather",
+      "patterns": [
+        "Hôm nay trời có nắng không?",
+        "Thời tiết hôm nay như thế nào?",
+        "Ngày mai trời có mưa không?",
+        "Nhiệt độ hôm nay là bao nhiêu độ?",
+        "Trời có gió mạnh không?",
+        "Thời tiết tuần này có thay đổi không?",
+        "Trời lạnh hay nóng hôm nay?",
+        "Có cần mang ô khi ra ngoài không?",
+        "Hôm nay trời có mây không?",
+        "Dự báo thời tiết ngày mai ra sao?"
+      ],
+      "responses": [
+        "Hôm nay ở {location} trời {weather_condition}, nhiệt độ khoảng {temperature}",
+        "Có vẻ thời tiết {gender} {weather_condition} ở {location} hôm nay đấy, {user_firstname} nhớ chuẩn bị trang phục phù hợp nha",
+        "Trời {weather_condition} và nhiệt độ {temperature}",
+        "{user_firstname} ơi, ở {location} hôm nay {weather_condition} lắm, đừng quên giữ sức khỏe nhé!"
+      ]
+    },
+    {
+      "tag": "goodbye",
+      "patterns": [
+        "Bye",
+        "See you later",
+        "Goodbye"
+      ],
+      "responses": [
+        "See you later, thanks for visiting",
+        "Have a nice day",
+        "Bye! Come back again soon."
+      ]
+    },
+    {
+      "tag": "thanks",
+      "patterns": [
+        "Thanks",
+        "Thank you",
+        "That's helpful",
+        "Thank's a lot!"
+      ],
+      "responses": [
+        "Happy to help!",
+        "Any time!",
+        "My pleasure"
+      ]
+    },
+    {
+      "tag": "items",
+      "patterns": [
+        "Which items do you have?",
+        "What kinds of items are there?",
+        "What do you sell?"
+      ],
+      "responses": [
+        "We sell coffee and tea",
+        "We have coffee and tea"
+      ]
+    },
+    {
+      "tag": "payments",
+      "patterns": [
+        "Do you take credit cards?",
+        "Do you accept Mastercard?",
+        "Can I pay with Paypal?",
+        "Are you cash only?"
+      ],
+      "responses": [
+        "We accept VISA, Mastercard and Paypal",
+        "We accept most major credit cards, and Paypal"
+      ]
+    },
+    {
+      "tag": "delivery",
+      "patterns": [
+        "How long does delivery take?",
+        "How long does shipping take?",
+        "When do I get my delivery?"
+      ],
+      "responses": [
+        "Delivery takes 2-4 days",
+        "Shipping takes 2-4 days"
+      ]
+    },
+    {
+      "tag": "funny",
+      "patterns": [
+        "Tell me a joke!",
+        "Tell me something funny!",
+        "Do you know a joke?"
+      ],
+      "responses": [
+        "Why did the hipster burn his mouth? He drank the coffee before it was cool.",
+        "What did the buffalo say when his son left for college? Bison."
+      ]
+    }
+  ]
+}

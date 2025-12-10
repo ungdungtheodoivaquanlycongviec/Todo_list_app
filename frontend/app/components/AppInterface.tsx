@@ -8,13 +8,16 @@ import TimelineView from './views/TimelineView';
 import NotesView from './views/NotesView';
 import ChatView from './views/ChatView';
 import GroupMembersView from './views/GroupMembersView';
+import ChatbotWidget from './common/ChatbotWidget';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function AppInterface() {
-  const [activeView, setActiveView] = useState('tasks');
+  const { user } = useAuth();
+  const isAdmin = user && (user.role === 'admin' || user.role === 'super_admin');
+  const [activeView, setActiveView] = useState(isAdmin ? 'chat' : 'tasks');
   const [isClient, setIsClient] = useState(false);
   const router = useRouter();
-  const { user, logout, loading: authLoading, updateUserTheme } = useAuth();
+  const { logout, loading: authLoading, updateUserTheme } = useAuth();
 
   // Fix hydration
   useEffect(() => {
@@ -26,7 +29,7 @@ export default function AppInterface() {
     if (!isClient || !user || user.theme !== 'auto') return;
 
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    
+
     const handleChange = (e: MediaQueryListEvent) => {
       const root = document.documentElement;
       if (e.matches) {
@@ -56,6 +59,11 @@ export default function AppInterface() {
   };
 
   const renderActiveView = () => {
+    // Admin chỉ dùng chat
+    if (isAdmin) {
+      return <ChatView />;
+    }
+    // User thông thường xem tất cả views
     switch (activeView) {
       case 'tasks':
         return <TasksView />;
@@ -89,15 +97,18 @@ export default function AppInterface() {
   }
 
   return (
-    <MainLayout 
-      activeView={activeView} 
-      onViewChange={setActiveView}
-      user={user}
-      onLogout={logout}
-      theme={user.theme} // Sử dụng theme từ user
-      onThemeChange={handleThemeChange} // Sử dụng hàm mới
-    >
-      {renderActiveView()}
-    </MainLayout>
+    <>
+      <MainLayout
+        activeView={activeView}
+        onViewChange={setActiveView}
+        user={user}
+        onLogout={logout}
+        theme={user.theme} // Sử dụng theme từ user
+        onThemeChange={handleThemeChange} // Sử dụng hàm mới
+      >
+        {renderActiveView()}
+      </MainLayout>
+      <ChatbotWidget hidden={activeView === 'chat'} />
+    </>
   );
 }

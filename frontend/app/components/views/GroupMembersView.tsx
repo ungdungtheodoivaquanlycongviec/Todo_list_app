@@ -504,7 +504,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   }
 
   return (
-    <div className="h-full bg-gray-50 dark:bg-[#1A1A1A] relative">
+    <div className="h-full overflow-y-auto bg-gray-50 dark:bg-[#1A1A1A] relative">
       {/* Update Notification */}
       {showUpdateNotification && (
         <div className="fixed top-4 right-4 z-50 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg flex items-center space-x-2 animate-slide-in">

@@ -33,12 +33,14 @@ import { useTaskRealtime } from "../../../hooks/useTaskRealtime";
 import NoGroupState from "../../common/NoGroupState";
 import NoFolderState from "../../common/NoFolderState";
 import { useFolder } from "../../../contexts/FolderContext";
+import { useUIState } from "../../../contexts/UIStateContext";
 
 export default function TasksView() {
   const { user: currentUser, currentGroup } = useAuth();
   const { currentFolder } = useFolder();
   const { t } = useLanguage();
   const { formatDate, convertFromUserTimezone, convertToUserTimezone } = useRegional();
+  const { setIsTaskDetailOpen } = useUIState();
   const [todoTasksExpanded, setTodoTasksExpanded] = useState(true);
   const [inProgressTasksExpanded, setInProgressTasksExpanded] = useState(true);
   const [incompleteTasksExpanded, setIncompleteTasksExpanded] = useState(true);
@@ -165,72 +167,72 @@ export default function TasksView() {
   // NEW: Helper để lấy danh sách assignees chi tiết
   // Type-safe helper to get detailed assignees
   const getDetailedAssignees = (task: Task) => {
-  if (!task.assignedTo || task.assignedTo.length === 0) {
-    return {
-      hasAssignees: false,
-      assignees: [],
-      currentUserIsAssigned: false,
-      totalCount: 0
-    };
-  }
-
-  const assignees = (task.assignedTo as any[])
-    .filter(assignment => assignment && assignment.userId)
-    .map(assignment => {
-      // Xử lý cả trường hợp userId là string hoặc object
-      let userData;
-      
-      if (typeof assignment.userId === 'string') {
-        // Nếu userId là string ID, tạo minimal user object
-        userData = {
-          _id: assignment.userId,
-          name: 'Loading...', // Tạm thời
-          email: '',
-          avatar: undefined
-        };
-        
-        // Nếu là currentUser, sử dụng thông tin currentUser
-        if (currentUser && assignment.userId === currentUser._id) {
-          userData = {
-            _id: currentUser._id,
-            name: currentUser.name || t('tasks.you'),
-            email: currentUser.email,
-            avatar: currentUser.avatar
-          };
-        }
-      } else if (assignment.userId && typeof assignment.userId === 'object') {
-        // Nếu userId là object (đã populated)
-        const user = assignment.userId as { _id: string; name?: string; email?: string; avatar?: string };
-        userData = {
-          _id: user._id,
-          name: user.name || 'Unknown User',
-          email: user.email || '',
-          avatar: user.avatar
-        };
-      } else {
-        // Fallback nếu userId không hợp lệ
-        return null;
-      }
-
-      if (!userData) return null;
-
+    if (!task.assignedTo || task.assignedTo.length === 0) {
       return {
-        ...userData,
-        initial: (userData.name?.charAt(0) || 'U').toUpperCase()
+        hasAssignees: false,
+        assignees: [],
+        currentUserIsAssigned: false,
+        totalCount: 0
       };
-    })
-    .filter((assignee): assignee is NonNullable<typeof assignee> => assignee !== null);
+    }
 
-  const currentUserIsAssigned = currentUser && 
-    assignees.some(assignee => assignee._id === currentUser._id);
+    const assignees = (task.assignedTo as any[])
+      .filter(assignment => assignment && assignment.userId)
+      .map(assignment => {
+        // Xử lý cả trường hợp userId là string hoặc object
+        let userData;
 
-  return {
-    hasAssignees: assignees.length > 0,
-    assignees,
-    currentUserIsAssigned,
-    totalCount: assignees.length
+        if (typeof assignment.userId === 'string') {
+          // Nếu userId là string ID, tạo minimal user object
+          userData = {
+            _id: assignment.userId,
+            name: 'Loading...', // Tạm thời
+            email: '',
+            avatar: undefined
+          };
+
+          // Nếu là currentUser, sử dụng thông tin currentUser
+          if (currentUser && assignment.userId === currentUser._id) {
+            userData = {
+              _id: currentUser._id,
+              name: currentUser.name || t('tasks.you'),
+              email: currentUser.email,
+              avatar: currentUser.avatar
+            };
+          }
+        } else if (assignment.userId && typeof assignment.userId === 'object') {
+          // Nếu userId là object (đã populated)
+          const user = assignment.userId as { _id: string; name?: string; email?: string; avatar?: string };
+          userData = {
+            _id: user._id,
+            name: user.name || 'Unknown User',
+            email: user.email || '',
+            avatar: user.avatar
+          };
+        } else {
+          // Fallback nếu userId không hợp lệ
+          return null;
+        }
+
+        if (!userData) return null;
+
+        return {
+          ...userData,
+          initial: (userData.name?.charAt(0) || 'U').toUpperCase()
+        };
+      })
+      .filter((assignee): assignee is NonNullable<typeof assignee> => assignee !== null);
+
+    const currentUserIsAssigned = currentUser &&
+      assignees.some(assignee => assignee._id === currentUser._id);
+
+    return {
+      hasAssignees: assignees.length > 0,
+      assignees,
+      currentUserIsAssigned,
+      totalCount: assignees.length
+    };
   };
-};
 
   // Type-safe helper to get assignee summary
   const getAssigneeSummary = (task: Task) => {
@@ -256,7 +258,7 @@ export default function TasksView() {
       const othersCount = totalCount - 1;
       return {
         displayText: t('tasks.youPlus', { count: othersCount }),
-        tooltip: othersCount > 1 
+        tooltip: othersCount > 1
           ? t('tasks.assignedToYouAndPlural', { count: othersCount })
           : t('tasks.assignedToYouAnd', { count: othersCount }),
         isCurrentUser: true
@@ -433,6 +435,12 @@ export default function TasksView() {
     }
   }, [viewMode, currentFolder?._id]);
 
+  // Sync task detail open state with global UI context (for hiding chatbot)
+  useEffect(() => {
+    setIsTaskDetailOpen(showTaskDetail);
+    return () => setIsTaskDetailOpen(false); // Clean up on unmount
+  }, [showTaskDetail, setIsTaskDetailOpen]);
+
   // Listen for global group change events
   useGroupChange(() => {
     console.log('Group change detected, reloading TasksView');
@@ -450,7 +458,7 @@ export default function TasksView() {
 
     const getSortValue = (task: Task, key: string): any => {
       const value = task[key as keyof Task];
-      
+
       switch (key) {
         case "title":
           return (value || "").toString().toLowerCase();
@@ -524,7 +532,7 @@ export default function TasksView() {
     setSortConfigs(prev => {
       const sectionConfigs = prev[section];
       const existingIndex = sectionConfigs.findIndex(c => c.key === key);
-      
+
       let newSectionConfigs;
       if (existingIndex >= 0) {
         // If same key and direction, remove it
@@ -538,7 +546,7 @@ export default function TasksView() {
         // Add new sort config
         newSectionConfigs = [...sectionConfigs, { key, direction }];
       }
-      
+
       return { ...prev, [section]: newSectionConfigs };
     });
   };
@@ -569,13 +577,13 @@ export default function TasksView() {
   const getSortIndicator = () => {
     const sectionConfigs = sortConfigs.todo;
     if (sectionConfigs.length === 0) return null;
-    
+
     const labels = sectionConfigs.map(config => {
       const option = sortOptions.find((opt) => opt.key === config.key);
       if (!option) return "";
       return `${option.label} ${config.direction === "asc" ? "↑" : "↓"}`;
     }).filter(Boolean).join(", ");
-    
+
     return (
       <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full border border-blue-200">
         Sorted by {labels}
@@ -590,9 +598,9 @@ export default function TasksView() {
   const handleCreateTask = async (taskData: any) => {
     try {
       // Mặc định gán người tạo là assignee
-      const assignedTo = taskData.assignedTo && taskData.assignedTo.length > 0 
-      ? taskData.assignedTo 
-      : (currentUser ? [{ userId: currentUser._id }] : []);
+      const assignedTo = taskData.assignedTo && taskData.assignedTo.length > 0
+        ? taskData.assignedTo
+        : (currentUser ? [{ userId: currentUser._id }] : []);
 
       const backendTaskData = {
         title: taskData.title || "Untitled Task",
@@ -826,7 +834,7 @@ export default function TasksView() {
           const userDate = new Date(tempValue + 'T23:59:59'); // Set to end of day
           updateValue = convertFromUserTimezone(userDate).toISOString();
         }
-        
+
         const updatedTask = await taskService.updateTask(task._id, {
           [field]: updateValue,
         });
@@ -851,7 +859,7 @@ export default function TasksView() {
           const userDate = new Date(value + 'T23:59:59'); // Set to end of day
           updateValue = convertFromUserTimezone(userDate).toISOString();
         }
-        
+
         const updatedTask = await taskService.updateTask(task._id, {
           [field]: updateValue,
         });
@@ -904,33 +912,33 @@ export default function TasksView() {
     }
 
     const statusColumns = [
-      { 
-        key: "todo", 
-        title: t('kanban.todo'), 
+      {
+        key: "todo",
+        title: t('kanban.todo'),
         icon: <div className="w-2 h-2 bg-gray-400 rounded-full" />,
         count: kanbanData.kanbanBoard.todo?.count || 0,
         color: "bg-gray-50 border-gray-200",
         textColor: "text-gray-700"
       },
-      { 
-        key: "in_progress", 
-        title: t('kanban.inProgress'), 
+      {
+        key: "in_progress",
+        title: t('kanban.inProgress'),
         icon: <div className="w-2 h-2 bg-blue-500 rounded-full" />,
         count: kanbanData.kanbanBoard.in_progress?.count || 0,
         color: "bg-blue-50 border-blue-200",
         textColor: "text-blue-700"
       },
-      { 
-        key: "completed", 
-        title: t('kanban.completed'), 
+      {
+        key: "completed",
+        title: t('kanban.completed'),
         icon: <div className="w-2 h-2 bg-green-500 rounded-full" />,
         count: kanbanData.kanbanBoard.completed?.count || 0,
         color: "bg-green-50 border-green-200",
         textColor: "text-green-700"
       },
-      { 
-        key: "incomplete", 
-        title: t('kanban.incomplete') || 'Incomplete', 
+      {
+        key: "incomplete",
+        title: t('kanban.incomplete') || 'Incomplete',
         icon: <div className="w-2 h-2 bg-red-500 rounded-full" />,
         count: kanbanData.kanbanBoard.incomplete?.count || 0,
         color: "bg-red-50 border-red-200",
@@ -940,7 +948,7 @@ export default function TasksView() {
 
     const getTasksForColumn = (columnKey: string) => {
       const tasks = kanbanData.kanbanBoard[columnKey]?.tasks || [];
-      
+
       // Apply filtering and sorting to Kanban tasks (use 'todo' section for Kanban)
       return sortTasks(filterTasks(tasks), 'todo');
     };
@@ -1117,7 +1125,7 @@ export default function TasksView() {
                   <div className="text-center py-8 text-gray-400 text-sm">
                     <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
                       {column.key === "incomplete" ? (
-                        <AlertTriangle className="w-6 h-6" />
+                        <div className="w-3 h-3 bg-red-500 rounded-full" />
                       ) : column.key === "completed" ? (
                         <div className="w-6 h-6 bg-green-200 rounded-full flex items-center justify-center">
                           <div className="w-3 h-3 bg-green-500 rounded-full" />
@@ -1162,10 +1170,10 @@ export default function TasksView() {
     return (
       <div
         className={`grid grid-cols-12 gap-4 p-4 border-b hover:bg-gray-50 transition-colors ${isCompleted
-            ? "bg-gray-50 border-gray-100"
-            : isOverdue
-              ? "bg-red-50 border-red-100"
-              : "bg-white border-gray-100"
+          ? "bg-gray-50 border-gray-100"
+          : isOverdue
+            ? "bg-red-50 border-red-100"
+            : "bg-white border-gray-100"
           }`}
         onContextMenu={(e) => handleContextMenu(e, task)}
       >
@@ -1177,20 +1185,20 @@ export default function TasksView() {
           <div className="flex items-center gap-3">
             <div
               className={`w-2 h-2 rounded-full ${task.priority === "urgent" || task.priority === "critical"
-                  ? "bg-red-500"
-                  : task.priority === "high"
-                    ? "bg-orange-500"
-                    : task.priority === "medium"
-                      ? "bg-yellow-500"
-                      : "bg-gray-400"
+                ? "bg-red-500"
+                : task.priority === "high"
+                  ? "bg-orange-500"
+                  : task.priority === "medium"
+                    ? "bg-yellow-500"
+                    : "bg-gray-400"
                 }`}
             />
             <span
               className={`text-sm font-medium ${isCompleted
-                  ? "text-gray-500 line-through"
-                  : isOverdue
-                    ? "text-red-700"
-                    : "text-gray-900"
+                ? "text-gray-500 line-through"
+                : isOverdue
+                  ? "text-red-700"
+                  : "text-gray-900"
                 } hover:text-blue-600 transition-colors`}
             >
               {task.title || "Untitled Task"}
@@ -1341,8 +1349,8 @@ export default function TasksView() {
                 <div
                   key={assignee._id}
                   className={`w-6 h-6 rounded-full flex items-center justify-center text-xs border-2 border-white ${assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id
-                      ? "bg-green-100 text-green-800 border-green-200"
-                      : "bg-blue-100 text-blue-800 border-blue-200"
+                    ? "bg-green-100 text-green-800 border-green-200"
+                    : "bg-blue-100 text-blue-800 border-blue-200"
                     }`}
                   title={`${assignee.name}${assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id ? ` (${t('tasks.you')})` : ''}`}
                 >
@@ -1367,8 +1375,8 @@ export default function TasksView() {
             {/* Assignee text */}
             <div className="flex flex-col min-w-0">
               <span className={`text-xs font-medium truncate ${assigneeSummary.isCurrentUser
-                  ? "text-green-700"
-                  : "text-gray-700"
+                ? "text-green-700"
+                : "text-gray-700"
                 }`}>
                 {assigneeSummary.displayText}
               </span>
@@ -1416,25 +1424,25 @@ export default function TasksView() {
   // Filter tasks by search query, status, and category
   const filterTasks = (tasks: Task[]) => {
     let filtered = tasks;
-    
+
     // Apply search filter
     if (activeSearchQuery.trim()) {
       const query = activeSearchQuery.toLowerCase();
-      filtered = filtered.filter(task => 
+      filtered = filtered.filter(task =>
         task.title?.toLowerCase().includes(query)
       );
     }
-    
+
     // Apply status filter
     if (statusFilter) {
       filtered = filtered.filter(task => task.status === statusFilter);
     }
-    
+
     // Apply category filter
     if (categoryFilter) {
       filtered = filtered.filter(task => task.category === categoryFilter);
     }
-    
+
     return filtered;
   };
 
@@ -1460,7 +1468,7 @@ export default function TasksView() {
     setSortConfigs(prev => {
       const sectionConfigs = prev[section];
       const existingIndex = sectionConfigs.findIndex(c => c.key === key);
-      
+
       let newSectionConfigs;
       if (existingIndex >= 0) {
         const currentDirection = sectionConfigs[existingIndex].direction;
@@ -1476,7 +1484,7 @@ export default function TasksView() {
         // Add new sort config as PRIMARY (at beginning) with asc direction
         newSectionConfigs = [{ key, direction: "asc" as const }, ...sectionConfigs];
       }
-      
+
       return { ...prev, [section]: newSectionConfigs };
     });
   };
@@ -1486,9 +1494,9 @@ export default function TasksView() {
     const sectionConfigs = sortConfigs[section];
     const config = sectionConfigs.find(c => c.key === key);
     const index = sectionConfigs.findIndex(c => c.key === key);
-    
+
     if (!config) return null;
-    
+
     return (
       <span className="inline-flex items-center gap-1 ml-1">
         <span className={`text-blue-600 ${config.direction === "asc" ? "" : "rotate-180 inline-block"}`}>
@@ -1542,11 +1550,10 @@ export default function TasksView() {
   const renderSortDropdown = () => (
     <div className="relative" ref={sortDropdownRef}>
       <button
-        className={`flex items-center gap-2 px-3 py-2 border rounded-lg hover:bg-gray-50 transition-colors text-sm min-w-[100px] justify-between ${
-          hasActiveFilters 
-            ? "bg-blue-50 border-blue-300 text-blue-700" 
-            : "bg-white border-gray-300 text-gray-700"
-        }`}
+        className={`flex items-center gap-2 px-3 py-2 border rounded-lg hover:bg-gray-50 transition-colors text-sm min-w-[100px] justify-between ${hasActiveFilters
+          ? "bg-blue-50 border-blue-300 text-blue-700"
+          : "bg-white border-gray-300 text-gray-700"
+          }`}
         onClick={(e) => {
           e.stopPropagation();
           setShowSortDropdown(!showSortDropdown);
@@ -1684,7 +1691,7 @@ export default function TasksView() {
   // Check if user has a current group
   if (!currentGroup) {
     return (
-      <NoGroupState 
+      <NoGroupState
         title="Join or Create a Group to Manage Tasks"
         description="You need to join or create a group to manage tasks and collaborate with your team."
       />
@@ -1697,7 +1704,7 @@ export default function TasksView() {
   }
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
+    <div className="p-6 bg-gray-50 h-full overflow-y-auto">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{t('tasks.title')}</h1>
@@ -1926,7 +1933,6 @@ export default function TasksView() {
                   )}
                   <div className="flex items-center gap-2">
                     <h2 className="font-semibold text-red-700">{t('tasks.incomplete') || 'Incomplete'}</h2>
-                    <AlertTriangle className="w-4 h-4 text-red-500" />
                   </div>
                   <span className="bg-red-100 text-red-800 text-sm px-2 py-1 rounded-full">
                     {hasActiveFilters ? `${filterTasks(incompleteTasks).length}/${incompleteTasks.length}` : incompleteTasks.length}

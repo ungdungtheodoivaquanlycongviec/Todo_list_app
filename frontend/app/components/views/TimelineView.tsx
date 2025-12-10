@@ -822,7 +822,7 @@ const getTaskColor = useCallback((taskId: string) => {
 
   if (loading) {
     return (
-      <div className="p-6 flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="p-6 flex items-center justify-center h-full bg-gray-50">
         <div className="text-center">
           <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-600">{t('timeline.loading')}</p>
@@ -832,7 +832,7 @@ const getTaskColor = useCallback((taskId: string) => {
   }
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
+    <div className="p-6 bg-gray-50 h-full overflow-y-auto">
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
         <div className="flex-1 min-w-0">

@@ -342,17 +342,7 @@ class ChatService {
     }
   }
 
-   /**
- * Đánh dấu conversation đã đọc
- */
-async markAsRead(conversationId: string): Promise<void> {
-  try {
-    await apiClient.put(`/chat/direct/conversations/${conversationId}/read`, {});
-  } catch (error) {
-    console.error('Error marking conversation as read:', error);
-    throw error;
-  }
-}
+  
 
   /**
    * Upload file chat riêng
