@@ -31,6 +31,7 @@ import { useFolder } from "../../../contexts/FolderContext"
 import { getMemberRole, canAssignFolderMembers } from "../../../utils/groupRoleUtils"
 import { useLanguage } from "../../../contexts/LanguageContext"
 import { useRegional } from "../../../contexts/RegionalContext"
+import { useTimer, useTimerElapsed } from "../../../contexts/TimerContext"
 import EstimatedTimePicker from "./EstimatedTimePicker"
 
 interface MinimalUser {
@@ -137,10 +138,10 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const [customStatusName, setCustomStatusName] = useState("")
   const [customStatusColor, setCustomStatusColor] = useState("#3B82F6")
 
-  // NEW: State for timer functionality
-  const [isTimerRunning, setIsTimerRunning] = useState(false)
-  const [timerStartTime, setTimerStartTime] = useState<Date | null>(null)
-  const [elapsedTime, setElapsedTime] = useState(0)
+  // Use global timer context for persistent timer state
+  const { startTimer: contextStartTimer, stopTimer: contextStopTimer, isTimerRunning: checkTimerRunning } = useTimer()
+  const isTimerRunning = checkTimerRunning(taskId)
+  const elapsedTime = useTimerElapsed(taskId)
 
   // NEW: State for repeat task functionality
   const [showRepeatModal, setShowRepeatModal] = useState(false)
@@ -395,7 +396,12 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
     } else {
       setComments([])
     }
-  }, [convertToUserTimezone])
+
+    // Restore timer from task.startTime if it exists (timer was running)
+    if (taskData.startTime && !checkTimerRunning(taskData._id)) {
+      contextStartTimer(taskData._id, new Date(taskData.startTime), taskData.title || 'Task')
+    }
+  }, [convertToUserTimezone, contextStartTimer, checkTimerRunning])
 
   const fetchTaskDetails = useCallback(async () => {
     if (!isOpen || !taskId) return
@@ -457,24 +463,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
     }
   }, [showCommentMenu])
 
-  // NEW: Timer functionality
-  useEffect(() => {
-    let interval: NodeJS.Timeout | null = null
-
-    if (isTimerRunning && timerStartTime) {
-      interval = setInterval(() => {
-        const now = new Date()
-        const elapsed = Math.floor((now.getTime() - timerStartTime.getTime()) / 1000)
-        setElapsedTime(elapsed)
-      }, 1000)
-    }
-
-    return () => {
-      if (interval) {
-        clearInterval(interval)
-      }
-    }
-  }, [isTimerRunning, timerStartTime])
+  // Timer is now managed by TimerContext - no local interval needed
 
   // Save individual field to database
   const saveFieldToDatabase = async (field: string, value: any) => {
@@ -615,9 +604,9 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
         setTask(updatedTask)
         onTaskUpdate(updatedTask)
 
-        const now = new Date()
-        setTimerStartTime(now)
-        setIsTimerRunning(true)
+        // Add timer to global context
+        const startTime = updatedTask.startTime ? new Date(updatedTask.startTime) : new Date()
+        contextStartTimer(taskId, startTime, updatedTask.title || 'Task')
       } catch (error) {
         console.error("Error starting timer:", error)
         alert("Failed to start timer: " + (error as Error).message)
@@ -628,7 +617,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const handleStopTimer = async () => {
     if (isTimerRunning) {
       try {
-        const updatedTask = await taskService.stopTimer(taskId)
+        const updatedTask = await contextStopTimer(taskId)
         setTask(updatedTask)
         onTaskUpdate(updatedTask)
 
@@ -636,11 +625,6 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
         if ((updatedTask as any).timeEntries) {
           setTimeEntries((updatedTask as any).timeEntries)
         }
-
-        // Reset timer
-        setIsTimerRunning(false)
-        setTimerStartTime(null)
-        setElapsedTime(0)
       } catch (error) {
         console.error("Error stopping timer:", error)
         alert("Failed to stop timer: " + (error as Error).message)

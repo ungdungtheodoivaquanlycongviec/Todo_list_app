@@ -34,6 +34,7 @@ import NoGroupState from "../../common/NoGroupState";
 import NoFolderState from "../../common/NoFolderState";
 import { useFolder } from "../../../contexts/FolderContext";
 import { useUIState } from "../../../contexts/UIStateContext";
+import { useTimer } from "../../../contexts/TimerContext";
 
 export default function TasksView() {
   const { user: currentUser, currentGroup } = useAuth();
@@ -41,6 +42,7 @@ export default function TasksView() {
   const { t } = useLanguage();
   const { formatDate, convertFromUserTimezone, convertToUserTimezone } = useRegional();
   const { setIsTaskDetailOpen } = useUIState();
+  const timerContext = useTimer();
   const [todoTasksExpanded, setTodoTasksExpanded] = useState(true);
   const [inProgressTasksExpanded, setInProgressTasksExpanded] = useState(true);
   const [incompleteTasksExpanded, setIncompleteTasksExpanded] = useState(true);
@@ -735,6 +737,20 @@ export default function TasksView() {
           handleTaskUpdate(completedTask);
           break;
 
+        case "start_timer":
+          const startedTask = await taskService.startTimer(task._id);
+          handleTaskUpdate(startedTask);
+          // Add to timer context
+          if (startedTask.startTime) {
+            timerContext.startTimer(task._id, new Date(startedTask.startTime), startedTask.title || 'Task');
+          }
+          break;
+
+        case "stop_timer":
+          const stoppedTask = await timerContext.stopTimer(task._id);
+          handleTaskUpdate(stoppedTask);
+          break;
+
         case "delete":
           if (confirm("Are you sure you want to delete this task?")) {
             await taskService.deleteTask(task._id);
@@ -961,11 +977,11 @@ export default function TasksView() {
             {getSortIndicator()}
           </div>
         )}
-        
+
         <div className="flex gap-6 overflow-x-auto pb-6 px-1">
           {statusColumns.map((column) => {
             const columnTasks = getTasksForColumn(column.key);
-            
+
             return (
               <div
                 key={column.key}
@@ -985,169 +1001,169 @@ export default function TasksView() {
                   {/* Removed the add task button from column header */}
                 </div>
 
-              {/* Task List */}
-              <div className="space-y-3 min-h-[200px]">
-                {columnTasks.map((task: Task) => {
-                  const assigneeInfo = getDetailedAssignees(task);
-                  const assigneeSummary = getAssigneeSummary(task);
-                  const isOverdue = isTaskOverdue(task);
+                {/* Task List */}
+                <div className="space-y-3 min-h-[200px]">
+                  {columnTasks.map((task: Task) => {
+                    const assigneeInfo = getDetailedAssignees(task);
+                    const assigneeSummary = getAssigneeSummary(task);
+                    const isOverdue = isTaskOverdue(task);
 
-                  return (
-                    <div
-                      key={task._id}
-                      className={`bg-white rounded-xl border-2 transition-all duration-200 hover:shadow-md hover:border-gray-300 cursor-pointer group
+                    return (
+                      <div
+                        key={task._id}
+                        className={`bg-white rounded-xl border-2 transition-all duration-200 hover:shadow-md hover:border-gray-300 cursor-pointer group
                         ${isOverdue ? "border-red-200 bg-red-50/50" : "border-gray-100"}
                         ${column.key === "completed" ? "opacity-80" : ""}
                       `}
-                      onClick={() => handleTaskClick(task._id)}
-                      onContextMenu={(e) => handleContextMenu(e, task)}
-                    >
-                      <div className="p-4">
-                        {/* Task Header */}
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex items-start gap-2 flex-1 min-w-0">
-                            <h4 className="font-medium text-sm text-gray-900 leading-tight line-clamp-2 group-hover:text-blue-600 transition-colors">
-                              {task.title || "Untitled Task"}
-                            </h4>
-                          </div>
-                          
-                          {/* Priority Badge */}
-                          {task.priority && task.priority !== "medium" && (
-                            <span
-                              className={`text-xs px-2 py-1 rounded-full border flex-shrink-0 ml-2 ${getPriorityColor(
-                                task.priority
-                              )}`}
-                            >
-                              {task.priority}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Description */}
-                        {task.description && (
-                          <p className="text-xs text-gray-600 mb-3 line-clamp-2 leading-relaxed">
-                            {task.description}
-                          </p>
-                        )}
-
-                        {/* Tags and Category */}
-                        <div className="flex flex-wrap gap-1 mb-3">
-                          {task.category && task.category !== "Other" && (
-                            <span
-                              className={`text-xs px-2 py-1 rounded-full border ${getTypeColor(
-                                task.category
-                              )}`}
-                            >
-                              {task.category}
-                            </span>
-                          )}
-                          {task.tags?.slice(0, 2).map((tag, index) => (
-                            <span
-                              key={index}
-                              className="text-xs px-2 py-1 rounded-full border bg-gray-100 text-gray-700 border-gray-200"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                          {task.tags && task.tags.length > 2 && (
-                            <span className="text-xs px-2 py-1 rounded-full border bg-gray-100 text-gray-700 border-gray-200">
-                              +{task.tags.length - 2}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Task Footer */}
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            {/* Assignee Avatars */}
-                            <div className="flex -space-x-1">
-                              {assigneeInfo.assignees.slice(0, 2).map((assignee) => (
-                                <div
-                                  key={assignee._id}
-                                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs border-2 border-white shadow-sm
-                                    ${assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id
-                                      ? "bg-gradient-to-br from-green-100 to-green-200 text-green-800"
-                                      : "bg-gradient-to-br from-blue-100 to-blue-200 text-blue-800"
-                                    }`}
-                                  title={assignee.name}
-                                >
-                                  {assignee.avatar ? (
-                                    <img
-                                      src={assignee.avatar}
-                                      alt=""
-                                      className="w-full h-full rounded-full object-cover"
-                                    />
-                                  ) : (
-                                    assignee.initial
-                                  )}
-                                </div>
-                              ))}
-                              {assigneeInfo.totalCount > 2 && (
-                                <div className="w-6 h-6 bg-gradient-to-br from-gray-100 to-gray-200 text-gray-600 rounded-full flex items-center justify-center text-xs border-2 border-white shadow-sm text-[10px] font-medium">
-                                  +{assigneeInfo.totalCount - 2}
-                                </div>
-                              )}
+                        onClick={() => handleTaskClick(task._id)}
+                        onContextMenu={(e) => handleContextMenu(e, task)}
+                      >
+                        <div className="p-4">
+                          {/* Task Header */}
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-start gap-2 flex-1 min-w-0">
+                              <h4 className="font-medium text-sm text-gray-900 leading-tight line-clamp-2 group-hover:text-blue-600 transition-colors">
+                                {task.title || "Untitled Task"}
+                              </h4>
                             </div>
 
-                            {/* Time Estimate */}
-                            {task.estimatedTime && (
-                              <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                                <Clock className="w-3 h-3" />
-                                {task.estimatedTime}
+                            {/* Priority Badge */}
+                            {task.priority && task.priority !== "medium" && (
+                              <span
+                                className={`text-xs px-2 py-1 rounded-full border flex-shrink-0 ml-2 ${getPriorityColor(
+                                  task.priority
+                                )}`}
+                              >
+                                {task.priority}
                               </span>
                             )}
                           </div>
 
-                          {/* Due Date */}
-                          {task.dueDate && (
-                            <span
-                              className={`text-xs px-2 py-1 rounded-full border font-medium
-                                ${isOverdue 
-                                  ? "bg-red-100 text-red-700 border-red-200" 
-                                  : "bg-gray-100 text-gray-700 border-gray-200"
-                                }`}
-                            >
-                              <Calendar className="w-3 h-3 inline mr-1" />
-                              {formatDate(task.dueDate)}
-                            </span>
+                          {/* Description */}
+                          {task.description && (
+                            <p className="text-xs text-gray-600 mb-3 line-clamp-2 leading-relaxed">
+                              {task.description}
+                            </p>
                           )}
+
+                          {/* Tags and Category */}
+                          <div className="flex flex-wrap gap-1 mb-3">
+                            {task.category && task.category !== "Other" && (
+                              <span
+                                className={`text-xs px-2 py-1 rounded-full border ${getTypeColor(
+                                  task.category
+                                )}`}
+                              >
+                                {task.category}
+                              </span>
+                            )}
+                            {task.tags?.slice(0, 2).map((tag, index) => (
+                              <span
+                                key={index}
+                                className="text-xs px-2 py-1 rounded-full border bg-gray-100 text-gray-700 border-gray-200"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                            {task.tags && task.tags.length > 2 && (
+                              <span className="text-xs px-2 py-1 rounded-full border bg-gray-100 text-gray-700 border-gray-200">
+                                +{task.tags.length - 2}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Task Footer */}
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              {/* Assignee Avatars */}
+                              <div className="flex -space-x-1">
+                                {assigneeInfo.assignees.slice(0, 2).map((assignee) => (
+                                  <div
+                                    key={assignee._id}
+                                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs border-2 border-white shadow-sm
+                                    ${assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id
+                                        ? "bg-gradient-to-br from-green-100 to-green-200 text-green-800"
+                                        : "bg-gradient-to-br from-blue-100 to-blue-200 text-blue-800"
+                                      }`}
+                                    title={assignee.name}
+                                  >
+                                    {assignee.avatar ? (
+                                      <img
+                                        src={assignee.avatar}
+                                        alt=""
+                                        className="w-full h-full rounded-full object-cover"
+                                      />
+                                    ) : (
+                                      assignee.initial
+                                    )}
+                                  </div>
+                                ))}
+                                {assigneeInfo.totalCount > 2 && (
+                                  <div className="w-6 h-6 bg-gradient-to-br from-gray-100 to-gray-200 text-gray-600 rounded-full flex items-center justify-center text-xs border-2 border-white shadow-sm text-[10px] font-medium">
+                                    +{assigneeInfo.totalCount - 2}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Time Estimate */}
+                              {task.estimatedTime && (
+                                <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                                  <Clock className="w-3 h-3" />
+                                  {task.estimatedTime}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Due Date */}
+                            {task.dueDate && (
+                              <span
+                                className={`text-xs px-2 py-1 rounded-full border font-medium
+                                ${isOverdue
+                                    ? "bg-red-100 text-red-700 border-red-200"
+                                    : "bg-gray-100 text-gray-700 border-gray-200"
+                                  }`}
+                              >
+                                <Calendar className="w-3 h-3 inline mr-1" />
+                                {formatDate(task.dueDate)}
+                              </span>
+                            )}
+                          </div>
                         </div>
+
+                        {/* Subtle hover effect */}
+                        <div className="h-1 bg-gradient-to-r from-transparent via-gray-100 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-b-xl" />
                       </div>
+                    );
+                  })}
 
-                      {/* Subtle hover effect */}
-                      <div className="h-1 bg-gradient-to-r from-transparent via-gray-100 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-b-xl" />
+                  {/* Empty State */}
+                  {columnTasks.length === 0 && (
+                    <div className="text-center py-8 text-gray-400 text-sm">
+                      <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                        {column.key === "incomplete" ? (
+                          <div className="w-3 h-3 bg-red-500 rounded-full" />
+                        ) : column.key === "completed" ? (
+                          <div className="w-6 h-6 bg-green-200 rounded-full flex items-center justify-center">
+                            <div className="w-3 h-3 bg-green-500 rounded-full" />
+                          </div>
+                        ) : (
+                          <Plus className="w-6 h-6" />
+                        )}
+                      </div>
+                      <p className="text-gray-500">
+                        {column.key === "incomplete"
+                          ? t('kanban.noIncomplete') || 'No incomplete tasks'
+                          : column.key === "completed"
+                            ? t('kanban.noCompleted')
+                            : t('kanban.noTasks')
+                        }
+                      </p>
                     </div>
-                  );
-                })}
-
-                {/* Empty State */}
-                {columnTasks.length === 0 && (
-                  <div className="text-center py-8 text-gray-400 text-sm">
-                    <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                      {column.key === "incomplete" ? (
-                        <div className="w-3 h-3 bg-red-500 rounded-full" />
-                      ) : column.key === "completed" ? (
-                        <div className="w-6 h-6 bg-green-200 rounded-full flex items-center justify-center">
-                          <div className="w-3 h-3 bg-green-500 rounded-full" />
-                        </div>
-                      ) : (
-                        <Plus className="w-6 h-6" />
-                      )}
-                    </div>
-                    <p className="text-gray-500">
-                      {column.key === "incomplete" 
-                        ? t('kanban.noIncomplete') || 'No incomplete tasks'
-                        : column.key === "completed"
-                        ? t('kanban.noCompleted')
-                        : t('kanban.noTasks')
-                      }
-                    </p>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
         </div>
       </div>
     );
@@ -1727,8 +1743,8 @@ export default function TasksView() {
           <div className="flex bg-white border border-gray-300 rounded-lg overflow-hidden shadow-sm">
             <button
               className={`px-4 py-2 text-sm flex items-center gap-2 transition-colors ${viewMode === "list"
-                  ? "bg-blue-500 text-white"
-                  : "bg-white text-gray-700 hover:bg-gray-50"
+                ? "bg-blue-500 text-white"
+                : "bg-white text-gray-700 hover:bg-gray-50"
                 }`}
               onClick={() => setViewMode("list")}
             >
@@ -1737,8 +1753,8 @@ export default function TasksView() {
             </button>
             <button
               className={`px-4 py-2 text-sm flex items-center gap-2 transition-colors ${viewMode === "kanban"
-                  ? "bg-blue-500 text-white"
-                  : "bg-white text-gray-700 hover:bg-gray-50"
+                ? "bg-blue-500 text-white"
+                : "bg-white text-gray-700 hover:bg-gray-50"
                 }`}
               onClick={() => setViewMode("kanban")}
             >
