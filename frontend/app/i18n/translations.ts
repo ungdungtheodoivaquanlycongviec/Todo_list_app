@@ -557,6 +557,10 @@ export const translations = {
     'tasks.assignedTo': 'Assigned to {{name}} ({{email}})',
     'tasks.youWillBeAssigned': 'You will be assigned as the task creator',
     'tasks.canChangeAssigneesLater': 'You can add or change assignees later in the task details',
+    'tasks.elapsedTime': 'Elapsed Time',
+    'tasks.timeTaken': 'Time Taken',
+    'tasks.cannotChangeToTodo': 'Cannot change status to "To Do" because this task has logged time entries. Delete all time entries first to change status.',
+    'tasks.overEstimate': 'Elapsed time exceeds estimate!',
 
     // Sidebar Folder Stats
     'sidebar.tasksCount': '{{count}} tasks',
@@ -1193,6 +1197,10 @@ export const translations = {
     'tasks.assignedTo': 'Được giao cho {{name}} ({{email}})',
     'tasks.youWillBeAssigned': 'Bạn sẽ được giao là người tạo công việc',
     'tasks.canChangeAssigneesLater': 'Bạn có thể thêm hoặc thay đổi người được giao sau trong chi tiết công việc',
+    'tasks.elapsedTime': 'Thời gian đã trôi qua',
+    'tasks.timeTaken': 'Thời gian hoàn thành',
+    'tasks.cannotChangeToTodo': 'Không thể đổi trạng thái về "Cần làm" vì công việc này đã có thời gian ghi nhận. Xóa tất cả mục thời gian trước để đổi trạng thái.',
+    'tasks.overEstimate': 'Thời gian đã vượt quá ước tính!',
 
     // Sidebar Folder Stats
     'sidebar.tasksCount': '{{count}} công việc',

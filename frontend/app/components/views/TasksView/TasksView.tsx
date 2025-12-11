@@ -443,6 +443,21 @@ export default function TasksView() {
     return () => setIsTaskDetailOpen(false); // Clean up on unmount
   }, [showTaskDetail, setIsTaskDetailOpen]);
 
+  // Sync timers from tasks that have an active startTime (for page reload persistence)
+  useEffect(() => {
+    const allTasks = [...todoTasks, ...inProgressTasks, ...incompleteTasks, ...completedTasks];
+    allTasks.forEach((task: Task) => {
+      // Check if task has an active timer (startTime set but not stopped)
+      if (task.startTime && !timerContext.isTimerRunning(task._id)) {
+        const startTimeDate = new Date(task.startTime);
+        // Only start if startTime is valid (not in the future and reasonable)
+        if (startTimeDate <= new Date()) {
+          timerContext.startTimer(task._id, startTimeDate, task.title || "Untitled Task");
+        }
+      }
+    });
+  }, [todoTasks, inProgressTasks, incompleteTasks, completedTasks, timerContext]);
+
   // Listen for global group change events
   useGroupChange(() => {
     console.log('Group change detected, reloading TasksView');
@@ -527,6 +542,259 @@ export default function TasksView() {
     const minutes = minutesMatch ? parseInt(minutesMatch[1]) : 0;
 
     return hours * 60 + minutes;
+  };
+
+  // Helper to get total logged time from task timeEntries (in minutes)
+  const getTotalLoggedTimeForTask = (task: Task): number => {
+    const timeEntries = (task as any).timeEntries || [];
+    return timeEntries.reduce((total: number, entry: any) => {
+      return total + ((entry.hours || 0) * 60) + (entry.minutes || 0);
+    }, 0);
+  };
+
+  // Helper to format minutes to readable time string
+  const formatTimeFromMinutes = (totalMinutes: number): string => {
+    if (totalMinutes === 0) return "—";
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+    if (hours > 0) return `${hours}h`;
+    return `${minutes}m`;
+  };
+
+  // Check if task has logged time entries
+  const hasLoggedTimeEntries = (task: Task): boolean => {
+    const timeEntries = (task as any).timeEntries || [];
+    return timeEntries.length > 0;
+  };
+
+  // ElapsedTimeCell component for In Progress tasks - shows elapsed time + estimated time with warning
+  const ElapsedTimeCell = ({ task }: { task: Task }) => {
+    const { isTimerRunning, getElapsedTime, subscribeToTimerUpdates } = timerContext;
+    const [elapsedSeconds, setElapsedSeconds] = useState(0);
+    const running = isTimerRunning(task._id);
+    const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+    useEffect(() => {
+      // Clear any existing interval
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+
+      if (!running) {
+        setElapsedSeconds(0);
+        return;
+      }
+
+      // Set initial value
+      setElapsedSeconds(getElapsedTime(task._id));
+
+      // Update every second when timer is running
+      intervalRef.current = setInterval(() => {
+        setElapsedSeconds(getElapsedTime(task._id));
+      }, 1000);
+
+      return () => {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+      };
+    }, [running, task._id, getElapsedTime]);
+
+    // Subscribe to timer updates
+    useEffect(() => {
+      const unsubscribe = subscribeToTimerUpdates(() => {
+        if (isTimerRunning(task._id)) {
+          setElapsedSeconds(getElapsedTime(task._id));
+        } else {
+          setElapsedSeconds(0);
+        }
+      });
+      return unsubscribe;
+    }, [task._id, subscribeToTimerUpdates, isTimerRunning, getElapsedTime]);
+
+    const loggedMinutes = getTotalLoggedTimeForTask(task);
+    const currentTimerMinutes = Math.floor(elapsedSeconds / 60);
+    const totalElapsedMinutes = loggedMinutes + currentTimerMinutes;
+    const estimatedMinutes = convertTimeToMinutes(task.estimatedTime || "");
+
+    // Check if elapsed time exceeds estimated time
+    const isOverEstimate = estimatedMinutes > 0 && totalElapsedMinutes > estimatedMinutes;
+    const overByMinutes = totalElapsedMinutes - estimatedMinutes;
+
+    // Show timer if running
+    if (running) {
+      const timerHrs = Math.floor(elapsedSeconds / 3600);
+      const timerMins = Math.floor((elapsedSeconds % 3600) / 60);
+      const timerSecs = elapsedSeconds % 60;
+      const timerDisplay = timerHrs > 0
+        ? `${timerHrs}:${timerMins.toString().padStart(2, '0')}:${timerSecs.toString().padStart(2, '0')}`
+        : `${timerMins}:${timerSecs.toString().padStart(2, '0')}`;
+
+      return (
+        <div className="text-xs flex flex-col gap-0.5">
+          <div className="flex items-center gap-1">
+            <span className="text-green-600 font-medium flex items-center gap-1">
+              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+              {timerDisplay}
+            </span>
+            {loggedMinutes > 0 && (
+              <span className="text-gray-500 text-[10px]">+ {formatTimeFromMinutes(loggedMinutes)}</span>
+            )}
+            {isOverEstimate && (
+              <div className="relative group">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 cursor-help" />
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs bg-gray-800 text-white rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
+                  {t('tasks.overEstimate') || `Over by ${formatTimeFromMinutes(overByMinutes)}`}
+                </div>
+              </div>
+            )}
+          </div>
+          {task.estimatedTime && (
+            <span className={`text-[10px] ${isOverEstimate ? 'text-amber-600' : 'text-gray-400'}`}>
+              Est: {task.estimatedTime}
+            </span>
+          )}
+        </div>
+      );
+    }
+
+    // Show logged time + estimated time
+    return (
+      <div className="text-xs flex flex-col gap-0.5">
+        <div className="flex items-center gap-1">
+          <Clock className="w-3 h-3 text-gray-400" />
+          <span className="text-gray-600">{formatTimeFromMinutes(loggedMinutes)}</span>
+          {isOverEstimate && (
+            <div className="relative group">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 cursor-help" />
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs bg-gray-800 text-white rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
+                {t('tasks.overEstimate') || `Over by ${formatTimeFromMinutes(overByMinutes)}`}
+              </div>
+            </div>
+          )}
+        </div>
+        {task.estimatedTime && (
+          <span className={`text-[10px] ${isOverEstimate ? 'text-amber-600' : 'text-gray-400'}`}>
+            Est: {task.estimatedTime}
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  // TimeTakenCell component for Completed tasks - shows total logged time
+  const TimeTakenCell = ({ task }: { task: Task }) => {
+    const loggedMinutes = getTotalLoggedTimeForTask(task);
+
+    return (
+      <div className="text-xs text-gray-600 flex items-center gap-1">
+        <Clock className="w-3 h-3" />
+        {formatTimeFromMinutes(loggedMinutes)}
+      </div>
+    );
+  };
+
+  // KanbanTimeCell - Compact time display for Kanban cards
+  const KanbanTimeCell = ({ task, status }: { task: Task; status: string }) => {
+    const { isTimerRunning, getElapsedTime, subscribeToTimerUpdates } = timerContext;
+    const [elapsedSeconds, setElapsedSeconds] = useState(0);
+    const running = isTimerRunning(task._id);
+    const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+    useEffect(() => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+
+      if (!running) {
+        setElapsedSeconds(0);
+        return;
+      }
+
+      setElapsedSeconds(getElapsedTime(task._id));
+      intervalRef.current = setInterval(() => {
+        setElapsedSeconds(getElapsedTime(task._id));
+      }, 1000);
+
+      return () => {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+      };
+    }, [running, task._id, getElapsedTime]);
+
+    useEffect(() => {
+      const unsubscribe = subscribeToTimerUpdates(() => {
+        if (isTimerRunning(task._id)) {
+          setElapsedSeconds(getElapsedTime(task._id));
+        } else {
+          setElapsedSeconds(0);
+        }
+      });
+      return unsubscribe;
+    }, [task._id, subscribeToTimerUpdates, isTimerRunning, getElapsedTime]);
+
+    const loggedMinutes = getTotalLoggedTimeForTask(task);
+    const currentTimerMinutes = Math.floor(elapsedSeconds / 60);
+    const totalElapsedMinutes = loggedMinutes + currentTimerMinutes;
+    const estimatedMinutes = convertTimeToMinutes(task.estimatedTime || "");
+    const isOverEstimate = estimatedMinutes > 0 && totalElapsedMinutes > estimatedMinutes;
+
+    // For completed tasks - show time taken
+    if (status === "completed") {
+      if (loggedMinutes === 0 && !task.estimatedTime) return null;
+      return (
+        <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+          <Clock className="w-3 h-3" />
+          {loggedMinutes > 0 ? formatTimeFromMinutes(loggedMinutes) : task.estimatedTime}
+        </span>
+      );
+    }
+
+    // For in_progress tasks - show elapsed time with timer
+    if (status === "in_progress") {
+      if (running) {
+        const timerMins = Math.floor(elapsedSeconds / 60);
+        const timerSecs = elapsedSeconds % 60;
+        const timerDisplay = `${timerMins}:${timerSecs.toString().padStart(2, '0')}`;
+
+        return (
+          <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full font-medium">
+            <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+            {timerDisplay}
+            {isOverEstimate && <AlertTriangle className="w-3 h-3 text-amber-500" />}
+          </span>
+        );
+      }
+
+      // Show logged time if any, else show estimated time
+      if (loggedMinutes > 0) {
+        return (
+          <span className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full ${isOverEstimate ? 'text-amber-600 bg-amber-50' : 'text-gray-500 bg-gray-100'}`}>
+            <Clock className="w-3 h-3" />
+            {formatTimeFromMinutes(loggedMinutes)}
+            {isOverEstimate && <AlertTriangle className="w-3 h-3 text-amber-500" />}
+          </span>
+        );
+      }
+    }
+
+    // Default: show estimated time if available
+    if (task.estimatedTime) {
+      return (
+        <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+          <Clock className="w-3 h-3" />
+          {task.estimatedTime}
+        </span>
+      );
+    }
+
+    return null;
   };
 
   // Handle sort selection - toggle sort config (add/remove/update) for a specific section
@@ -842,6 +1110,21 @@ export default function TasksView() {
   };
 
   const saveField = async (task: Task, field: string) => {
+    // Check for status change restriction: cannot change to "todo" if task has logged time
+    if (field === "status" && tempValue === "todo") {
+      const currentStatus = task.status;
+      const hasLoggedTime = hasLoggedTimeEntries(task);
+
+      if ((currentStatus === "in_progress" || currentStatus === "completed") && hasLoggedTime) {
+        alert(t('tasks.cannotChangeToTodo') ||
+          "Cannot change status to 'To Do' because this task has logged time entries. Delete all time entries first to change status.");
+        setEditingTaskId(null);
+        setEditingField(null);
+        setTempValue("");
+        return;
+      }
+    }
+
     if (tempValue !== (task as any)[field]) {
       try {
         // Convert date fields from user timezone to UTC for backend storage
@@ -1027,8 +1310,8 @@ export default function TasksView() {
                               </h4>
                             </div>
 
-                            {/* Priority Badge */}
-                            {task.priority && task.priority !== "medium" && (
+                            {/* Priority Badge - Always show */}
+                            {task.priority && (
                               <span
                                 className={`text-xs px-2 py-1 rounded-full border flex-shrink-0 ml-2 ${getPriorityColor(
                                   task.priority
@@ -1105,13 +1388,8 @@ export default function TasksView() {
                                 )}
                               </div>
 
-                              {/* Time Estimate */}
-                              {task.estimatedTime && (
-                                <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                                  <Clock className="w-3 h-3" />
-                                  {task.estimatedTime}
-                                </span>
-                              )}
+                              {/* Time Display - KanbanTimeCell */}
+                              <KanbanTimeCell task={task} status={column.key === "in_progress" ? "in_progress" : column.key} />
                             </div>
 
                             {/* Due Date */}
@@ -1165,7 +1443,7 @@ export default function TasksView() {
             );
           })}
         </div>
-      </div>
+      </div >
     );
   };
 
@@ -1174,10 +1452,12 @@ export default function TasksView() {
     task,
     isOverdue = false,
     isCompleted = false,
+    section = "todo",
   }: {
     task: Task;
     isOverdue?: boolean;
     isCompleted?: boolean;
+    section?: "todo" | "inProgress" | "completed" | "incomplete";
   }) => {
     const assigneeInfo = getDetailedAssignees(task);
     const assigneeSummary = getAssigneeSummary(task);
@@ -1405,32 +1685,43 @@ export default function TasksView() {
           </div>
         </div>
 
-        {/* Estimated Time - Inline editable with scroll picker */}
+        {/* Time Column - Changes based on section */}
         <div className="col-span-2 relative">
-          {isEditing && editingField === "estimatedTime" ? (
-            <EstimatedTimePicker
-              value={task.estimatedTime || ""}
-              onSave={(value) => {
-                setTempValue(value);
-                saveFieldDirect(task, "estimatedTime", value);
-              }}
-              onClose={() => setEditingTaskId(null)}
-            />
+          {section === "inProgress" ? (
+            // In Progress: Show elapsed time (timer + logged time)
+            <ElapsedTimeCell task={task} />
+          ) : section === "completed" ? (
+            // Completed: Show total time taken (logged time only)
+            <TimeTakenCell task={task} />
           ) : (
-            <div
-              className="text-xs text-gray-600 cursor-pointer hover:bg-gray-100 px-2 py-1 rounded transition-colors flex items-center gap-1"
-              onClick={(e) => {
-                e.stopPropagation();
-                startEditing(
-                  task._id,
-                  "estimatedTime",
-                  task.estimatedTime || ""
-                );
-              }}
-            >
-              <Clock className="w-3 h-3" />
-              {task.estimatedTime || "—"}
-            </div>
+            // Todo/Incomplete: Show editable estimated time
+            <>
+              {isEditing && editingField === "estimatedTime" ? (
+                <EstimatedTimePicker
+                  value={task.estimatedTime || ""}
+                  onSave={(value) => {
+                    setTempValue(value);
+                    saveFieldDirect(task, "estimatedTime", value);
+                  }}
+                  onClose={() => setEditingTaskId(null)}
+                />
+              ) : (
+                <div
+                  className="text-xs text-gray-600 cursor-pointer hover:bg-gray-100 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startEditing(
+                      task._id,
+                      "estimatedTime",
+                      task.estimatedTime || ""
+                    );
+                  }}
+                >
+                  <Clock className="w-3 h-3" />
+                  {task.estimatedTime || "—"}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -1864,13 +2155,13 @@ export default function TasksView() {
                     <SortableColumnHeader sortKey="dueDate" section="inProgress" className="col-span-1">{t('tasks.dueDate')}</SortableColumnHeader>
                     <SortableColumnHeader sortKey="priority" section="inProgress" className="col-span-1">{t('tasks.priority')}</SortableColumnHeader>
                     <div className="col-span-2">{t('tasks.assignee')}</div>
-                    <SortableColumnHeader sortKey="estimatedTime" section="inProgress" className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</SortableColumnHeader>
+                    <div className="col-span-2">{t('tasks.elapsedTime') || 'Elapsed Time'}</div>
                   </div>
 
                   {/* Task Rows */}
                   {filterTasks(inProgressTasks).length > 0 ? (
                     sortTasks(filterTasks(inProgressTasks), 'inProgress').map((task) => (
-                      <TaskRow key={task._id} task={task} />
+                      <TaskRow key={task._id} task={task} section="inProgress" />
                     ))
                   ) : (
                     <div className="p-8 text-center text-gray-500">
@@ -1915,12 +2206,12 @@ export default function TasksView() {
                     <SortableColumnHeader sortKey="dueDate" section="completed" className="col-span-1">{t('tasks.dueDate')}</SortableColumnHeader>
                     <SortableColumnHeader sortKey="priority" section="completed" className="col-span-1">{t('tasks.priority')}</SortableColumnHeader>
                     <div className="col-span-2">{t('tasks.assignee')}</div>
-                    <SortableColumnHeader sortKey="estimatedTime" section="completed" className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</SortableColumnHeader>
+                    <div className="col-span-2">{t('tasks.timeTaken') || 'Time Taken'}</div>
                   </div>
 
                   {filterTasks(completedTasks).length > 0 ? (
                     sortTasks(filterTasks(completedTasks), 'completed').map((task) => (
-                      <TaskRow key={task._id} task={task} isCompleted={true} />
+                      <TaskRow key={task._id} task={task} isCompleted={true} section="completed" />
                     ))
                   ) : (
                     <div className="p-8 text-center text-gray-500">
@@ -1972,7 +2263,7 @@ export default function TasksView() {
                   {/* Always show content, even if empty */}
                   {filterTasks(incompleteTasks).length > 0 ? (
                     sortTasks(filterTasks(incompleteTasks), 'incomplete').map((task) => (
-                      <TaskRow key={task._id} task={task} isOverdue={true} />
+                      <TaskRow key={task._id} task={task} isOverdue={true} section="incomplete" />
                     ))
                   ) : (
                     <div className="p-8 text-center text-gray-500">
