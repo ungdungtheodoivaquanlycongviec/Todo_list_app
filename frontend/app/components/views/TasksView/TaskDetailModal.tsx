@@ -708,11 +708,25 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
         date: new Date(newTimeEntry.date).toISOString()
       }
 
-      const updatedTask = await taskService.updateTask(taskId, {
+      // Build update object - include status change if currently todo
+      const updateData: any = {
         timeEntries: [...timeEntries, timeEntryToAdd]
-      })
+      }
+
+      // Auto-change status from todo to in_progress when logging time
+      if (taskProperties.status === 'todo') {
+        updateData.status = 'in_progress'
+      }
+
+      const updatedTask = await taskService.updateTask(taskId, updateData)
 
       setTimeEntries((updatedTask as any).timeEntries || [])
+
+      // Update local task properties status if changed
+      if (updatedTask.status !== taskProperties.status) {
+        setTaskProperties(prev => ({ ...prev, status: updatedTask.status }))
+      }
+
       setNewTimeEntry({
         date: new Date().toISOString().split('T')[0],
         hours: 0,
@@ -726,7 +740,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       console.error("Error adding time entry:", error)
       alert("Failed to add time entry: " + (error as Error).message)
     }
-  }, [task, newTimeEntry, timeEntries, currentUser, taskId, onTaskUpdate])
+  }, [task, newTimeEntry, timeEntries, currentUser, taskId, onTaskUpdate, taskProperties.status])
 
   // Handler for adding scheduled work
   const handleAddScheduledWork = useCallback(async () => {
@@ -1777,25 +1791,30 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
                     {t('taskDetail.addStatus')}
                   </button>
 
-                  {/* Timer Button */}
-                  <button
-                    onClick={isTimerRunning ? handleStopTimer : handleStartTimer}
-                    className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm transition-colors shadow-sm ${isTimerRunning
-                      ? 'bg-red-50 border-red-300 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300'
-                      : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                      }`}
-                  >
-                    <PlayCircle className="w-4 h-4" />
-                    {isTimerRunning ? `${t('taskDetail.stopTimer')} (${formatElapsedTime(elapsedTime)})` : t('taskDetail.startTime')}
-                  </button>
+                  {/* Timer Button - Hidden for completed/incomplete tasks */}
+                  {taskProperties.status !== 'completed' && taskProperties.status !== 'incomplete' && (
+                    <button
+                      onClick={isTimerRunning ? handleStopTimer : handleStartTimer}
+                      className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm transition-colors shadow-sm ${isTimerRunning
+                        ? 'bg-red-50 border-red-300 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300'
+                        : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        }`}
+                    >
+                      <PlayCircle className="w-4 h-4" />
+                      {isTimerRunning ? `${t('taskDetail.stopTimer')} (${formatElapsedTime(elapsedTime)})` : t('taskDetail.startTime')}
+                    </button>
+                  )}
 
-                  <button
-                    onClick={() => setShowTimeEntryForm(!showTimeEntryForm)}
-                    className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors shadow-sm"
-                  >
-                    <Timer className="w-4 h-4" />
-                    {t('taskDetail.logTime')}
-                  </button>
+                  {/* Log Time Button - Hidden for completed/incomplete tasks */}
+                  {taskProperties.status !== 'completed' && taskProperties.status !== 'incomplete' && (
+                    <button
+                      onClick={() => setShowTimeEntryForm(!showTimeEntryForm)}
+                      className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors shadow-sm"
+                    >
+                      <Timer className="w-4 h-4" />
+                      {t('taskDetail.logTime')}
+                    </button>
+                  )}
 
                   <button
                     onClick={() => setShowRepeatModal(true)}

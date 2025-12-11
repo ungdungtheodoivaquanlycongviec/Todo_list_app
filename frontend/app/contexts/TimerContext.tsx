@@ -109,49 +109,62 @@ export function useTimer() {
 // Hook for components that need real-time elapsed time updates
 export function useTimerElapsed(taskId: string): number {
     const { getActiveTimer, getElapsedTime, subscribeToTimerUpdates } = useTimer()
-    const [elapsed, setElapsed] = useState(() => getElapsedTime(taskId))
+    const [elapsed, setElapsed] = useState(0)
     const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
-    // Start/stop interval based on whether timer is active
-    React.useEffect(() => {
-        const timer = getActiveTimer(taskId)
-
-        if (timer) {
-            // Update immediately
-            setElapsed(getElapsedTime(taskId))
-
-            // Then update every second
-            intervalRef.current = setInterval(() => {
-                setElapsed(getElapsedTime(taskId))
-            }, 1000)
-        } else {
-            setElapsed(0)
+    // Function to start the interval
+    const startInterval = useCallback(() => {
+        // Clear any existing interval first
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current)
         }
 
+        // Set initial elapsed time
+        setElapsed(getElapsedTime(taskId))
+
+        // Start updating every second
+        intervalRef.current = setInterval(() => {
+            setElapsed(getElapsedTime(taskId))
+        }, 1000)
+    }, [taskId, getElapsedTime])
+
+    // Function to stop the interval
+    const stopInterval = useCallback(() => {
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current)
+            intervalRef.current = null
+        }
+        setElapsed(0)
+    }, [])
+
+    // Check initial state and subscribe to updates
+    React.useEffect(() => {
+        // Check if timer is already running on mount
+        const timer = getActiveTimer(taskId)
+        if (timer) {
+            startInterval()
+        }
+
+        // Subscribe to timer changes
+        const unsubscribe = subscribeToTimerUpdates(() => {
+            const timer = getActiveTimer(taskId)
+            if (timer) {
+                startInterval()
+            } else {
+                stopInterval()
+            }
+        })
+
+        // Cleanup on unmount
         return () => {
+            unsubscribe()
             if (intervalRef.current) {
                 clearInterval(intervalRef.current)
                 intervalRef.current = null
             }
         }
-    }, [taskId, getActiveTimer, getElapsedTime])
-
-    // Subscribe to timer changes (start/stop)
-    React.useEffect(() => {
-        const unsubscribe = subscribeToTimerUpdates(() => {
-            const timer = getActiveTimer(taskId)
-            if (timer) {
-                setElapsed(getElapsedTime(taskId))
-            } else {
-                setElapsed(0)
-                if (intervalRef.current) {
-                    clearInterval(intervalRef.current)
-                    intervalRef.current = null
-                }
-            }
-        })
-        return unsubscribe
-    }, [taskId, subscribeToTimerUpdates, getActiveTimer, getElapsedTime])
+    }, [taskId, getActiveTimer, subscribeToTimerUpdates, startInterval, stopInterval])
 
     return elapsed
 }
+

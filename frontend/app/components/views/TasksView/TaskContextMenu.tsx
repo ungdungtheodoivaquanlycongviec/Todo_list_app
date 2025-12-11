@@ -21,12 +21,16 @@ export default function TaskContextMenu({ x, y, task, onAction, onClose }: TaskC
   // Check if this task has a running timer
   const taskHasRunningTimer = isTimerRunning(task._id);
 
+  // Check if task is in a status that allows timer
+  const canUseTimer = task.status !== 'completed' && task.status !== 'incomplete';
+
   const menuItems = [
     { label: t('taskContextMenu.complete'), action: 'complete' },
-    {
+    // Only show timer option for non-completed/non-incomplete tasks
+    ...(canUseTimer ? [{
       label: taskHasRunningTimer ? t('taskContextMenu.stopTimer') : t('taskContextMenu.startTimer'),
       action: taskHasRunningTimer ? 'stop_timer' : 'start_timer'
-    },
+    }] : []),
     { label: t('taskContextMenu.changeType'), action: 'change_type' },
     { label: t('taskContextMenu.repeat'), action: 'repeat' },
     { label: t('taskContextMenu.moveTo'), action: 'move_to' },
