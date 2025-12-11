@@ -9,7 +9,7 @@ export const translations = {
     'nav.notes': 'Notes',
     'nav.chat': 'Chat',
     'nav.members': 'Members',
-    
+
     // Common
     'common.save': 'Save',
     'common.cancel': 'Cancel',
@@ -30,7 +30,7 @@ export const translations = {
     'common.no': 'No',
     'common.clear': 'Clear',
     'common.done': 'Done',
-    
+
     // Tasks
     'tasks.title': 'Tasks',
     'tasks.createTask': 'Create Task',
@@ -69,14 +69,14 @@ export const translations = {
     'tasks.descriptionPlaceholder': 'Describe the task in detail...',
     'tasks.tagsPlaceholder': 'urgent, important, project-x',
     'tasks.tagsHelper': 'Separate tags with commas',
-    
+
     // Priority levels
     'priority.none': 'None',
     'priority.low': 'Low',
     'priority.medium': 'Medium',
     'priority.high': 'High',
     'priority.urgent': 'Urgent',
-    
+
     // Status
     'status.todo': 'To Do',
     'status.inProgress': 'In Progress',
@@ -84,14 +84,14 @@ export const translations = {
     'status.incomplete': 'Incomplete',
     'status.pending': 'Pending',
     'status.cancelled': 'Cancelled',
-    
+
     // Custom Status Modal
     'customStatus.title': 'Add Custom Status',
     'customStatus.name': 'Status Name',
     'customStatus.namePlaceholder': 'e.g., In Review, Blocked, On Hold',
     'customStatus.color': 'Color',
     'customStatus.addStatus': 'Add Status',
-    
+
     // Repeat Task Modal
     'repeatTask.title': 'Repeat Task',
     'repeatTask.enableRepetition': 'Enable task repetition',
@@ -101,7 +101,7 @@ export const translations = {
     'repeatTask.weekly': 'Week(s)',
     'repeatTask.monthly': 'Month(s)',
     'repeatTask.yearly': 'Year(s)',
-    
+
     // Timeline
     'timeline.title': 'Timeline',
     'timeline.zoomIn': 'Zoom In',
@@ -138,7 +138,7 @@ export const translations = {
     'timeline.assigned': 'Assigned',
     'timeline.unassigned': 'Unassigned',
     'timeline.untitledTask': 'Untitled Task',
-    
+
     // Calendar
     'calendar.title': 'Calendar',
     'calendar.description': 'Manage your schedule and deadlines',
@@ -152,7 +152,7 @@ export const translations = {
     'calendar.nextMonth': 'Next month',
     'calendar.tasksFor': 'Tasks for',
     'calendar.noTasksAssigned': 'No tasks assigned to you',
-    
+
     // Settings
     'settings.title': 'Account Settings',
     'settings.profile': 'My Profile',
@@ -163,13 +163,13 @@ export const translations = {
     'settings.language': 'Language',
     'settings.notifications': 'Notifications',
     'settings.saved': 'Settings saved',
-    
+
     // Language
     'language.english': 'English',
     'language.vietnamese': 'Vietnamese',
     'language.description': 'Choose your preferred language',
     'language.updated': 'Language updated successfully',
-    
+
     // Regional
     'regional.timezone': 'Time Zone',
     'regional.timezoneDesc': 'Set your local time zone',
@@ -184,14 +184,14 @@ export const translations = {
     'regional.monday': 'Monday',
     'regional.sunday': 'Sunday',
     'regional.updated': 'Regional preferences updated',
-    
+
     // Theme
     'theme.light': 'Light',
     'theme.dark': 'Dark',
     'theme.auto': 'Auto (System)',
     'theme.description': 'Choose how the app looks',
     'theme.updated': 'Theme updated successfully',
-    
+
     // Profile
     'profile.personalInfo': 'Personal Information',
     'profile.personalInfoDesc': 'Update your personal details and profile picture',
@@ -204,7 +204,7 @@ export const translations = {
     'profile.uploadPhoto': 'Upload new photo',
     'profile.photoRequirements': 'JPG, PNG or GIF. Max 5MB.',
     'profile.updated': 'Profile updated successfully',
-    
+
     // Security
     'security.changePassword': 'Change Password',
     'security.currentPassword': 'Current Password',
@@ -214,7 +214,7 @@ export const translations = {
     'security.deleteWarning': 'This action cannot be undone',
     'security.passwordMismatch': 'Passwords do not match',
     'security.passwordChanged': 'Password changed successfully',
-    
+
     // Groups
     'groups.title': 'Groups',
     'groups.myGroups': 'My Groups',
@@ -242,7 +242,7 @@ export const translations = {
     'groups.shareFilesBenefit': 'Share notes and files',
     'groups.currentGroup': 'Current Group',
     'groups.loadingGroups': 'Loading groups...',
-    
+
     // Folders
     'folders.title': 'Folders',
     'folders.createFolder': 'Create Folder',
@@ -251,7 +251,7 @@ export const translations = {
     'folders.createFirstFolderNoGroup': 'Create a folder to start organizing your tasks and notes.',
     'folders.enterFolderName': 'Enter folder name',
     'folders.creating': 'Creating...',
-    
+
     // Notifications
     'notifications.title': 'Notifications',
     'notifications.email': 'Email Notifications',
@@ -272,7 +272,7 @@ export const translations = {
     'notifications.timeAgo.hoursAgo': '{{count}}h ago',
     'notifications.timeAgo.daysAgo': '{{count}}d ago',
     'notifications.updated': 'Notification preference updated successfully',
-    
+
     // Notes
     'notes.title': 'Notes',
     'notes.createNote': 'Create Note',
@@ -305,7 +305,7 @@ export const translations = {
     'notes.createNewNote': 'Create New Note',
     'notes.folder': 'Folder',
     'notes.noContentPreview': 'No content yet. Switch to edit mode to start writing.',
-    
+
     // Chat
     'chat.title': 'Chat',
     'chat.sendMessage': 'Send message',
@@ -338,15 +338,16 @@ export const translations = {
     'chat.copy': 'Copy',
     'chat.copied': 'Copied!',
     'chat.openInNewTab': 'Open in new tab',
-    
+
     // Task Context Menu
     'taskContextMenu.complete': 'Complete task',
     'taskContextMenu.startTimer': 'Start timer',
+    'taskContextMenu.stopTimer': 'Stop timer',
     'taskContextMenu.changeType': 'Change type',
     'taskContextMenu.repeat': 'Repeat task',
     'taskContextMenu.moveTo': 'Move to',
     'taskContextMenu.delete': 'Delete task',
-    
+
     // Time
     'time.today': 'Today',
     'time.yesterday': 'Yesterday',
@@ -356,7 +357,7 @@ export const translations = {
     'time.hoursAgo': '{{count}} hours ago',
     'time.minutesAgo': '{{count}} minutes ago',
     'time.justNow': 'Just now',
-    
+
     // Auth
     'auth.login': 'Log In',
     'auth.logout': 'Log Out',
@@ -369,7 +370,7 @@ export const translations = {
     'auth.noAccount': "Don't have an account?",
     'auth.hasAccount': 'Already have an account?',
     'auth.loginWithGoogle': 'Continue with Google',
-    
+
     // Errors
     'error.generic': 'An error occurred',
     'error.tryAgain': 'Please try again',
@@ -379,14 +380,14 @@ export const translations = {
     'error.serverError': 'Server error. Please try again later',
     'error.validation': 'Please check your input',
     'error.required': 'This field is required',
-    
+
     // Success
     'success.saved': 'Changes saved successfully',
     'success.deleted': 'Deleted successfully',
     'success.created': 'Created successfully',
     'success.updated': 'Updated successfully',
     'success.copied': 'Copied to clipboard',
-    
+
     // Sidebar - Create Project Modal
     'sidebar.createProject': 'Create New Project',
     'sidebar.createProjectDesc': 'Add a new project to your workspace',
@@ -396,7 +397,7 @@ export const translations = {
     'sidebar.projectDescPlaceholder': 'Enter project description',
     'sidebar.creating': 'Creating...',
     'sidebar.createProjectBtn': 'Create Project',
-    
+
     // Sidebar - Invite Modal
     'sidebar.inviteTeamMember': 'Invite Team Member',
     'sidebar.inviteDesc': 'Add someone to your project',
@@ -406,7 +407,7 @@ export const translations = {
     'sidebar.assignRole': 'Assign Role',
     'sidebar.sending': 'Sending...',
     'sidebar.sendInvitation': 'Send Invitation',
-    
+
     // Sort options
     'sort.taskName': 'Task name',
     'sort.status': 'Status',
@@ -423,14 +424,14 @@ export const translations = {
     'sort.highToLow': 'High to low',
     'sort.shortestFirst': 'Shortest first',
     'sort.longestFirst': 'Longest first',
-    
+
     // Categories
     'category.operational': 'Operational',
     'category.strategic': 'Strategic',
     'category.financial': 'Financial',
     'category.technical': 'Technical',
     'category.other': 'Other',
-    
+
     // Kanban columns
     'kanban.todo': 'To Do',
     'kanban.inProgress': 'In Progress',
@@ -440,7 +441,7 @@ export const translations = {
     'kanban.noTodo': 'No to do tasks',
     'kanban.noInProgress': 'No in progress tasks',
     'kanban.noIncomplete': 'No incomplete tasks',
-    
+
     // Assignee
     'assignee.addAssignee': '+ Add assignee',
     'assignee.addAssignees': 'Add Assignees',
@@ -448,7 +449,7 @@ export const translations = {
     'assignee.assignSomeone': 'Assign someone',
     'assignee.assignedTo': 'Assigned to',
     'assignee.autoAssign': 'Task will be automatically assigned to you',
-    
+
     // Time options
     'time.15minutes': '15 minutes',
     'time.30minutes': '30 minutes',
@@ -458,12 +459,12 @@ export const translations = {
     'time.1day': '1 day',
     'time.2days': '2 days',
     'time.1week': '1 week',
-    
+
     // Misc
     'misc.untitledTask': 'Untitled Task',
     'misc.saveSettings': 'Save Settings',
     'misc.confirmDeleteFolder': 'Are you sure you want to delete this folder? This will also delete all tasks and notes in this folder.',
-    
+
     // Sidebar
     'sidebar.myProjects': 'My Projects',
     'sidebar.sharedWithMe': 'Shared with me',
@@ -476,7 +477,7 @@ export const translations = {
     'sidebar.creatingFolder': 'Creating...',
     'sidebar.loadingFolders': 'Loading folders...',
     'sidebar.noFoldersYet': 'No folders yet. Create one to start organizing.',
-    
+
     // Task Detail
     'taskDetail.addStatus': 'Add status',
     'taskDetail.startTime': 'Start time',
@@ -522,12 +523,12 @@ export const translations = {
     'taskDetail.dueDateLabel': 'Due date',
     'taskDetail.estimatedTimeLabel': 'Estimated time',
     'taskDetail.typeLabel': 'Type',
-    
+
     // Task Types
     'type.operational': 'Operational',
     'type.strategic': 'Strategic',
     'type.tactical': 'Tactical',
-    
+
     // Group Members
     'groupMembers.addTeamMember': 'Add Team Member',
     'groupMembers.inviteDescription': 'Invite someone to join your group and collaborate together',
@@ -539,10 +540,10 @@ export const translations = {
     'groupMembers.inviteHint': 'The user will receive an email invitation to join your group',
     'groupMembers.addPeople': '+ Add people',
     'groupMembers.addPeopleButton': 'Add people',
-    
+
     // Tools Sidebar
     'tools.title': 'Tools',
-    
+
     // Task Assignee
     'tasks.includesYou': 'Includes you',
     'tasks.assigned': '{{count}} assigned',
@@ -556,12 +557,16 @@ export const translations = {
     'tasks.assignedTo': 'Assigned to {{name}} ({{email}})',
     'tasks.youWillBeAssigned': 'You will be assigned as the task creator',
     'tasks.canChangeAssigneesLater': 'You can add or change assignees later in the task details',
-    
+    'tasks.elapsedTime': 'Elapsed Time',
+    'tasks.timeTaken': 'Time Taken',
+    'tasks.cannotChangeToTodo': 'Cannot change status to "To Do" because this task has logged time entries. Delete all time entries first to change status.',
+    'tasks.overEstimate': 'Elapsed time exceeds estimate!',
+
     // Sidebar Folder Stats
     'sidebar.tasksCount': '{{count}} tasks',
     'sidebar.notesCount': '{{count}} notes',
     'sidebar.membersCount': '{{count}} members',
-    
+
     // View Mode
     'viewMode.list': 'List',
     'viewMode.kanban': 'Kanban',
@@ -579,13 +584,13 @@ export const translations = {
     'sort.nearest': 'Nearest',
     'sort.furthest': 'Furthest',
     'sort.clearAll': 'Clear All Filters',
-    
+
     // Kanban
     'kanban.noTasks': 'No tasks',
     'kanban.noCompleted': 'No completed tasks',
     'kanban.noOverdue': 'No overdue tasks',
     'kanban.noCompletedYet': 'No completed tasks yet',
-    
+
     // User Menu
     'userMenu.profileSettings': 'Profile settings',
     'userMenu.theme': 'Theme',
@@ -593,20 +598,20 @@ export const translations = {
     'userMenu.dark': 'Dark',
     'userMenu.auto': 'Auto',
     'userMenu.logout': 'Log out',
-    
+
     // Account Settings
     'accountSettings.title': 'Account Settings',
     'accountSettings.description': 'Manage your profile, preferences, and security settings',
     'accountSettings.saving': 'Saving...',
     'accountSettings.deleting': 'Deleting...',
-    
+
     // Profile Tab Extended
     'profile.deleteAccount': 'Delete Account',
     'profile.deleteConfirmTitle': 'Delete Account',
     'profile.deleteConfirmMessage': 'Are you sure you want to delete your account? This action cannot be undone and all your data will be permanently lost.',
     'profile.deleteConfirmButton': 'Yes, delete my account',
     'profile.enterFullName': 'Enter your full name',
-    
+
     // Security Tab Extended
     'security.title': 'Security Settings',
     'security.description': 'Manage your password and account security',
@@ -623,11 +628,11 @@ export const translations = {
     'security.tipReuse': "Don't reuse passwords",
     'security.lastChanged': 'Last Changed',
     'security.lastChangedInfo': 'Your password was last changed {{time}} ago',
-    
+
     // Preferences Tab Extended
     'preferences.title': 'Preferences',
     'preferences.description': 'Customize your application experience',
-    
+
     // Time Picker
     'timePicker.minute': 'm',
     'timePicker.hour': 'h',
@@ -635,7 +640,7 @@ export const translations = {
     'timePicker.month': 'mo',
     'timePicker.dragToChange': 'Drag or click to change',
   },
-  
+
   vi: {
     // Navigation
     'nav.tasks': 'Công việc',
@@ -644,7 +649,7 @@ export const translations = {
     'nav.notes': 'Ghi chú',
     'nav.chat': 'Trò chuyện',
     'nav.members': 'Thành viên',
-    
+
     // Common
     'common.save': 'Lưu',
     'common.cancel': 'Hủy',
@@ -665,7 +670,7 @@ export const translations = {
     'common.no': 'Không',
     'common.clear': 'Xóa',
     'common.done': 'Xong',
-    
+
     // Tasks
     'tasks.title': 'Công việc',
     'tasks.createTask': 'Tạo công việc',
@@ -704,14 +709,14 @@ export const translations = {
     'tasks.descriptionPlaceholder': 'Mô tả chi tiết công việc...',
     'tasks.tagsPlaceholder': 'khẩn cấp, quan trọng, dự án-x',
     'tasks.tagsHelper': 'Phân cách các nhãn bằng dấu phẩy',
-    
+
     // Priority levels
     'priority.none': 'Không có',
     'priority.low': 'Thấp',
     'priority.medium': 'Trung bình',
     'priority.high': 'Cao',
     'priority.urgent': 'Khẩn cấp',
-    
+
     // Status
     'status.todo': 'Cần làm',
     'status.inProgress': 'Đang thực hiện',
@@ -719,14 +724,14 @@ export const translations = {
     'status.incomplete': 'Chưa hoàn thành',
     'status.pending': 'Đang chờ',
     'status.cancelled': 'Đã hủy',
-    
+
     // Custom Status Modal
     'customStatus.title': 'Thêm Trạng Thái Tùy Chỉnh',
     'customStatus.name': 'Tên Trạng Thái',
     'customStatus.namePlaceholder': 'Ví dụ: Đang Xem Xét, Bị Chặn, Tạm Dừng',
     'customStatus.color': 'Màu sắc',
     'customStatus.addStatus': 'Thêm Trạng Thái',
-    
+
     // Repeat Task Modal
     'repeatTask.title': 'Lặp Lại Công Việc',
     'repeatTask.enableRepetition': 'Bật lặp lại công việc',
@@ -736,7 +741,7 @@ export const translations = {
     'repeatTask.weekly': 'Tuần',
     'repeatTask.monthly': 'Tháng',
     'repeatTask.yearly': 'Năm',
-    
+
     // Timeline
     'timeline.title': 'Dòng thời gian',
     'timeline.zoomIn': 'Phóng to',
@@ -773,7 +778,7 @@ export const translations = {
     'timeline.assigned': 'Đã giao',
     'timeline.unassigned': 'Chưa giao',
     'timeline.untitledTask': 'Công việc chưa đặt tên',
-    
+
     // Calendar
     'calendar.title': 'Lịch',
     'calendar.month': 'Tháng',
@@ -787,7 +792,7 @@ export const translations = {
     'calendar.description': 'Quản lý lịch trình và thời hạn của bạn',
     'calendar.tasksFor': 'Công việc cho',
     'calendar.noTasksAssigned': 'Không có công việc nào được giao cho bạn',
-    
+
     // Settings
     'settings.title': 'Cài đặt tài khoản',
     'settings.profile': 'Hồ sơ',
@@ -798,13 +803,13 @@ export const translations = {
     'settings.language': 'Ngôn ngữ',
     'settings.notifications': 'Thông báo',
     'settings.saved': 'Đã lưu cài đặt',
-    
+
     // Language
     'language.english': 'Tiếng Anh',
     'language.vietnamese': 'Tiếng Việt',
     'language.description': 'Chọn ngôn ngữ ưa thích của bạn',
     'language.updated': 'Đã cập nhật ngôn ngữ thành công',
-    
+
     // Regional
     'regional.timezone': 'Múi giờ',
     'regional.timezoneDesc': 'Đặt múi giờ địa phương của bạn',
@@ -819,14 +824,14 @@ export const translations = {
     'regional.monday': 'Thứ Hai',
     'regional.sunday': 'Chủ Nhật',
     'regional.updated': 'Đã cập nhật tùy chọn khu vực',
-    
+
     // Theme
     'theme.light': 'Sáng',
     'theme.dark': 'Tối',
     'theme.auto': 'Tự động (Hệ thống)',
     'theme.description': 'Chọn giao diện ứng dụng',
     'theme.updated': 'Đã cập nhật giao diện',
-    
+
     // Profile
     'profile.personalInfo': 'Thông tin cá nhân',
     'profile.personalInfoDesc': 'Cập nhật thông tin cá nhân và ảnh đại diện',
@@ -839,7 +844,7 @@ export const translations = {
     'profile.uploadPhoto': 'Tải ảnh mới lên',
     'profile.photoRequirements': 'JPG, PNG hoặc GIF. Tối đa 5MB.',
     'profile.updated': 'Đã cập nhật hồ sơ thành công',
-    
+
     // Security
     'security.changePassword': 'Đổi mật khẩu',
     'security.currentPassword': 'Mật khẩu hiện tại',
@@ -849,7 +854,7 @@ export const translations = {
     'security.deleteWarning': 'Hành động này không thể hoàn tác',
     'security.passwordMismatch': 'Mật khẩu không khớp',
     'security.passwordChanged': 'Đã đổi mật khẩu thành công',
-    
+
     // Groups
     'groups.title': 'Nhóm',
     'groups.myGroups': 'Nhóm của tôi',
@@ -877,7 +882,7 @@ export const translations = {
     'groups.shareFilesBenefit': 'Chia sẻ ghi chú và tệp',
     'groups.currentGroup': 'Nhóm hiện tại',
     'groups.loadingGroups': 'Đang tải nhóm...',
-    
+
     // Folders
     'folders.title': 'Thư mục',
     'folders.createFolder': 'Tạo thư mục',
@@ -886,7 +891,7 @@ export const translations = {
     'folders.createFirstFolderNoGroup': 'Tạo thư mục để bắt đầu sắp xếp công việc và ghi chú.',
     'folders.enterFolderName': 'Nhập tên thư mục',
     'folders.creating': 'Đang tạo...',
-    
+
     // Notifications
     'notifications.title': 'Thông báo',
     'notifications.email': 'Thông báo qua email',
@@ -907,7 +912,7 @@ export const translations = {
     'notifications.timeAgo.hoursAgo': '{{count}} giờ trước',
     'notifications.timeAgo.daysAgo': '{{count}} ngày trước',
     'notifications.updated': 'Đã cập nhật tùy chọn thông báo',
-    
+
     // Notes
     'notes.title': 'Ghi chú',
     'notes.createNote': 'Tạo ghi chú',
@@ -940,7 +945,7 @@ export const translations = {
     'notes.createNewNote': 'Tạo ghi chú mới',
     'notes.folder': 'Thư mục',
     'notes.noContentPreview': 'Chưa có nội dung. Chuyển sang chế độ chỉnh sửa để bắt đầu viết.',
-    
+
     // Chat
     'chat.title': 'Trò chuyện',
     'chat.sendMessage': 'Gửi tin nhắn',
@@ -973,15 +978,16 @@ export const translations = {
     'chat.copy': 'Sao chép',
     'chat.copied': 'Đã sao chép!',
     'chat.openInNewTab': 'Mở trong tab mới',
-    
+
     // Task Context Menu
     'taskContextMenu.complete': 'Hoàn thành',
     'taskContextMenu.startTimer': 'Bắt đầu hẹn giờ',
+    'taskContextMenu.stopTimer': 'Dừng hẹn giờ',
     'taskContextMenu.changeType': 'Đổi loại',
     'taskContextMenu.repeat': 'Lặp lại',
     'taskContextMenu.moveTo': 'Di chuyển đến',
     'taskContextMenu.delete': 'Xóa nhiệm vụ',
-    
+
     // Time
     'time.today': 'Hôm nay',
     'time.yesterday': 'Hôm qua',
@@ -991,7 +997,7 @@ export const translations = {
     'time.hoursAgo': '{{count}} giờ trước',
     'time.minutesAgo': '{{count}} phút trước',
     'time.justNow': 'Vừa xong',
-    
+
     // Auth
     'auth.login': 'Đăng nhập',
     'auth.logout': 'Đăng xuất',
@@ -1004,7 +1010,7 @@ export const translations = {
     'auth.noAccount': 'Chưa có tài khoản?',
     'auth.hasAccount': 'Đã có tài khoản?',
     'auth.loginWithGoogle': 'Tiếp tục với Google',
-    
+
     // Errors
     'error.generic': 'Đã xảy ra lỗi',
     'error.tryAgain': 'Vui lòng thử lại',
@@ -1014,14 +1020,14 @@ export const translations = {
     'error.serverError': 'Lỗi máy chủ. Vui lòng thử lại sau',
     'error.validation': 'Vui lòng kiểm tra thông tin nhập',
     'error.required': 'Trường này là bắt buộc',
-    
+
     // Success
     'success.saved': 'Đã lưu thay đổi thành công',
     'success.deleted': 'Đã xóa thành công',
     'success.created': 'Đã tạo thành công',
     'success.updated': 'Đã cập nhật thành công',
     'success.copied': 'Đã sao chép vào clipboard',
-    
+
     // Sidebar - Create Project Modal
     'sidebar.createProject': 'Tạo dự án mới',
     'sidebar.createProjectDesc': 'Thêm dự án mới vào không gian làm việc của bạn',
@@ -1031,7 +1037,7 @@ export const translations = {
     'sidebar.projectDescPlaceholder': 'Nhập mô tả dự án',
     'sidebar.creating': 'Đang tạo...',
     'sidebar.createProjectBtn': 'Tạo dự án',
-    
+
     // Sidebar - Invite Modal
     'sidebar.inviteTeamMember': 'Mời thành viên',
     'sidebar.inviteDesc': 'Thêm người vào dự án của bạn',
@@ -1041,7 +1047,7 @@ export const translations = {
     'sidebar.assignRole': 'Gán vai trò',
     'sidebar.sending': 'Đang gửi...',
     'sidebar.sendInvitation': 'Gửi lời mời',
-    
+
     // Sort options
     'sort.taskName': 'Tên công việc',
     'sort.status': 'Trạng thái',
@@ -1058,14 +1064,14 @@ export const translations = {
     'sort.highToLow': 'Cao đến thấp',
     'sort.shortestFirst': 'Ngắn nhất trước',
     'sort.longestFirst': 'Dài nhất trước',
-    
+
     // Categories
     'category.operational': 'Vận hành',
     'category.strategic': 'Chiến lược',
     'category.financial': 'Tài chính',
     'category.technical': 'Kỹ thuật',
     'category.other': 'Khác',
-    
+
     // Kanban columns
     'kanban.todo': 'Cần làm',
     'kanban.inProgress': 'Đang thực hiện',
@@ -1075,7 +1081,7 @@ export const translations = {
     'kanban.noTodo': 'Không có công việc cần làm',
     'kanban.noInProgress': 'Không có công việc đang thực hiện',
     'kanban.noIncomplete': 'Không có công việc chưa hoàn thành',
-    
+
     // Assignee
     'assignee.addAssignee': '+ Thêm người thực hiện',
     'assignee.addAssignees': 'Thêm người thực hiện',
@@ -1083,7 +1089,7 @@ export const translations = {
     'assignee.assignSomeone': 'Gán cho ai đó',
     'assignee.assignedTo': 'Được giao cho',
     'assignee.autoAssign': 'Công việc sẽ được tự động gán cho bạn',
-    
+
     // Time options
     'time.15minutes': '15 phút',
     'time.30minutes': '30 phút',
@@ -1093,12 +1099,12 @@ export const translations = {
     'time.1day': '1 ngày',
     'time.2days': '2 ngày',
     'time.1week': '1 tuần',
-    
+
     // Misc
     'misc.untitledTask': 'Công việc chưa đặt tên',
     'misc.saveSettings': 'Lưu cài đặt',
     'misc.confirmDeleteFolder': 'Bạn có chắc chắn muốn xóa thư mục này? Điều này cũng sẽ xóa tất cả công việc và ghi chú trong thư mục.',
-    
+
     // Sidebar
     'sidebar.myProjects': 'Dự án của tôi',
     'sidebar.sharedWithMe': 'Được chia sẻ với tôi',
@@ -1111,7 +1117,7 @@ export const translations = {
     'sidebar.creatingFolder': 'Đang tạo...',
     'sidebar.loadingFolders': 'Đang tải thư mục...',
     'sidebar.noFoldersYet': 'Chưa có thư mục nào. Tạo một thư mục để bắt đầu sắp xếp.',
-    
+
     // Task Detail
     'taskDetail.addStatus': 'Thêm trạng thái',
     'taskDetail.startTime': 'Bắt đầu',
@@ -1157,12 +1163,12 @@ export const translations = {
     'taskDetail.dueDateLabel': 'Ngày hết hạn',
     'taskDetail.estimatedTimeLabel': 'Thời gian ước tính',
     'taskDetail.typeLabel': 'Loại',
-    
+
     // Task Types
     'type.operational': 'Vận hành',
     'type.strategic': 'Chiến lược',
     'type.tactical': 'Chiến thuật',
-    
+
     // Group Members
     'groupMembers.addTeamMember': 'Thêm thành viên',
     'groupMembers.inviteDescription': 'Mời ai đó tham gia nhóm của bạn và cùng nhau hợp tác',
@@ -1174,10 +1180,10 @@ export const translations = {
     'groupMembers.inviteHint': 'Người dùng sẽ nhận được email mời tham gia nhóm của bạn',
     'groupMembers.addPeople': '+ Thêm người',
     'groupMembers.addPeopleButton': 'Thêm người',
-    
+
     // Tools Sidebar
     'tools.title': 'Công cụ',
-    
+
     // Task Assignee
     'tasks.includesYou': 'Bao gồm bạn',
     'tasks.assigned': '{{count}} được giao',
@@ -1191,12 +1197,16 @@ export const translations = {
     'tasks.assignedTo': 'Được giao cho {{name}} ({{email}})',
     'tasks.youWillBeAssigned': 'Bạn sẽ được giao là người tạo công việc',
     'tasks.canChangeAssigneesLater': 'Bạn có thể thêm hoặc thay đổi người được giao sau trong chi tiết công việc',
-    
+    'tasks.elapsedTime': 'Thời gian đã trôi qua',
+    'tasks.timeTaken': 'Thời gian hoàn thành',
+    'tasks.cannotChangeToTodo': 'Không thể đổi trạng thái về "Cần làm" vì công việc này đã có thời gian ghi nhận. Xóa tất cả mục thời gian trước để đổi trạng thái.',
+    'tasks.overEstimate': 'Thời gian đã vượt quá ước tính!',
+
     // Sidebar Folder Stats
     'sidebar.tasksCount': '{{count}} công việc',
     'sidebar.notesCount': '{{count}} ghi chú',
     'sidebar.membersCount': '{{count}} thành viên',
-    
+
     // View Mode
     'viewMode.list': 'Danh sách',
     'viewMode.kanban': 'Bảng Kanban',
@@ -1214,13 +1224,13 @@ export const translations = {
     'sort.nearest': 'Gần nhất',
     'sort.furthest': 'Xa nhất',
     'sort.clearAll': 'Xóa tất cả bộ lọc',
-    
+
     // Kanban
     'kanban.noTasks': 'Không có công việc',
     'kanban.noCompleted': 'Không có công việc hoàn thành',
     'kanban.noOverdue': 'Không có công việc quá hạn',
     'kanban.noCompletedYet': 'Chưa có công việc hoàn thành',
-    
+
     // User Menu
     'userMenu.profileSettings': 'Cài đặt hồ sơ',
     'userMenu.theme': 'Giao diện',
@@ -1228,20 +1238,20 @@ export const translations = {
     'userMenu.dark': 'Tối',
     'userMenu.auto': 'Tự động',
     'userMenu.logout': 'Đăng xuất',
-    
+
     // Account Settings
     'accountSettings.title': 'Cài đặt tài khoản',
     'accountSettings.description': 'Quản lý hồ sơ, tùy chọn và cài đặt bảo mật của bạn',
     'accountSettings.saving': 'Đang lưu...',
     'accountSettings.deleting': 'Đang xóa...',
-    
+
     // Profile Tab Extended
     'profile.deleteAccount': 'Xóa tài khoản',
     'profile.deleteConfirmTitle': 'Xóa tài khoản',
     'profile.deleteConfirmMessage': 'Bạn có chắc chắn muốn xóa tài khoản? Hành động này không thể hoàn tác và tất cả dữ liệu của bạn sẽ bị mất vĩnh viễn.',
     'profile.deleteConfirmButton': 'Có, xóa tài khoản của tôi',
     'profile.enterFullName': 'Nhập họ tên đầy đủ',
-    
+
     // Security Tab Extended
     'security.title': 'Cài đặt bảo mật',
     'security.description': 'Quản lý mật khẩu và bảo mật tài khoản của bạn',
@@ -1258,11 +1268,11 @@ export const translations = {
     'security.tipReuse': 'Không sử dụng lại mật khẩu',
     'security.lastChanged': 'Thay đổi lần cuối',
     'security.lastChangedInfo': 'Mật khẩu của bạn được thay đổi {{time}} trước',
-    
+
     // Preferences Tab Extended
     'preferences.title': 'Tùy chọn',
     'preferences.description': 'Tùy chỉnh trải nghiệm ứng dụng của bạn',
-    
+
     // Time Picker
     'timePicker.minute': 'phút',
     'timePicker.hour': 'giờ',

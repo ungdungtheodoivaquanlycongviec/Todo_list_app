@@ -6,6 +6,7 @@ import { FolderProvider } from './contexts/FolderContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { RegionalProvider } from './contexts/RegionalContext';
 import { UIStateProvider } from './contexts/UIStateContext';
+import { TimerProvider } from './contexts/TimerContext';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -26,9 +27,11 @@ export default function RootLayout({
           <LanguageProvider>
             <RegionalProvider>
               <FolderProvider>
-                <UIStateProvider>
-                  {children}
-                </UIStateProvider>
+                <TimerProvider>
+                  <UIStateProvider>
+                    {children}
+                  </UIStateProvider>
+                </TimerProvider>
               </FolderProvider>
             </RegionalProvider>
           </LanguageProvider>

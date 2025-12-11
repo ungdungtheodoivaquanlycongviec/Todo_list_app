@@ -2439,6 +2439,16 @@ class TaskService {
       return null;
     }
 
+    // Cannot start timer for completed or incomplete tasks
+    if (task.status === 'completed' || task.status === 'incomplete') {
+      throw new Error('Cannot start timer for completed or incomplete tasks');
+    }
+
+    // Auto-change status from todo to in_progress when starting timer
+    if (task.status === 'todo') {
+      task.status = 'in_progress';
+    }
+
     // Set start time
     task.startTime = new Date();
     await task.save();
