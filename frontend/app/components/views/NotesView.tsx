@@ -223,7 +223,7 @@ export default function NotesView() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-full overflow-hidden bg-gray-50">
       {/* Sidebar */}
       <div className={`bg-white border-r border-gray-200 transition-all duration-700 ease-in-out ${sidebarCollapsed ? 'w-16' : 'w-80'} flex flex-col overflow-hidden`}>
         <div className="p-4 border-b border-gray-200">
