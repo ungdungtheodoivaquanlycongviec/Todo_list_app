@@ -64,9 +64,9 @@ export function FolderProvider({ children }: { children: React.ReactNode }) {
         const nextFolder =
           folderList.length > 0
             ? (folderList.find(folder => folder._id === storedFolderId) ||
-               folderList.find(folder => folder.isDefault) ||
-               folderList[0] ||
-               null)
+              folderList.find(folder => folder.isDefault) ||
+              folderList[0] ||
+              null)
             : null;
 
         setCurrentFolder(nextFolder);
@@ -85,6 +85,14 @@ export function FolderProvider({ children }: { children: React.ReactNode }) {
     },
     [currentGroup?._id, storageKey]
   );
+
+  // Clear current folder immediately when group changes to prevent stale folder references
+  useEffect(() => {
+    // Reset folder state when group changes
+    setCurrentFolder(null);
+    setFolders([]);
+    setError(null);
+  }, [currentGroup?._id]);
 
   useEffect(() => {
     refreshFolders();
@@ -120,7 +128,7 @@ export function FolderProvider({ children }: { children: React.ReactNode }) {
         if (!folder || !folder.memberAccess) {
           return;
         }
-        
+
         // Check if current user is assigned to this folder
         const isAssigned = folder.memberAccess.some(
           (access: { userId: string }) => access.userId === user?._id

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { groupService } from '../../services/group.service';
+import { userService } from '../../services/user.service';
 import { notificationService } from '../../services/notification.service';
 import { Group, GroupMember } from '../../services/types/group.types';
 import { useGroupChange } from '../../hooks/useGroupChange';
@@ -77,7 +78,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
     const assignmentMap = new Map<string, string[]>();
     const currentUserId = user?._id;
     const canAssignFolders = canAssignFolderMembers(currentUserRole);
-    
+
     folders.forEach(folder => {
       if (!folder.memberAccess) return;
       folder.memberAccess.forEach(access => {
@@ -170,19 +171,19 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
       setLoading(true);
       setError(null);
       const groupData = await groupService.getGroupById(targetGroupId);
-      
+
       // Check if there are changes
       const hasChanges = group && (
         group.name !== groupData.name ||
         group.members.length !== groupData.members.length ||
         JSON.stringify(group.members.map(m => m.userId)) !== JSON.stringify(groupData.members.map(m => m.userId))
       );
-      
+
       setGroup(groupData);
       setMembers(groupData.members || []);
       setLastUpdateTime(Date.now());
       setRoleUpdateError(null);
-      
+
       // Show notification if there are changes and not the initial load
       if (showNotification && hasChanges && group) {
         setShowUpdateNotification(true);
@@ -295,22 +296,22 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
     try {
       setIsUpdating(true);
       setError(null);
-      
+
       const updatedGroup = await groupService.updateGroup(targetGroupId, {
         name: newName
       });
-      
+
       setGroup(updatedGroup);
       setIsEditingName(false);
       setEditingName('');
-      
+
       // Send notification to all group members about name change
       try {
         await notificationService.createGroupNameChangeNotification(targetGroupId, oldName, newName);
       } catch (notifErr) {
         console.warn('Failed to send notification:', notifErr);
       }
-      
+
       // Update current group in context if this is the current group
       if (currentGroup?._id === targetGroupId) {
         // You might want to update the context here
@@ -337,7 +338,32 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
     setIsDeleting(true);
     setError(null);
     try {
+      // First, find a fallback group before deleting
+      const groupsResponse = await groupService.getAllGroups();
+      const allGroups = [...groupsResponse.myGroups, ...groupsResponse.sharedGroups];
+      const fallbackGroup = allGroups.find(g => g._id !== targetGroupId);
+
+      // Update user's currentGroupId on server to fallback group before deleting
+      if (fallbackGroup) {
+        try {
+          await userService.updateProfile({ currentGroupId: fallbackGroup._id });
+          console.log('Pre-set currentGroupId to fallback group:', fallbackGroup._id);
+        } catch (updateError) {
+          console.error('Failed to update currentGroupId before delete:', updateError);
+        }
+      } else {
+        // No other groups, clear the currentGroupId
+        try {
+          await userService.updateProfile({ currentGroupId: undefined });
+          console.log('Cleared currentGroupId - no fallback group available');
+        } catch (updateError) {
+          console.error('Failed to clear currentGroupId:', updateError);
+        }
+      }
+
+      // Now delete the group
       await groupService.deleteGroup(targetGroupId);
+
       // Reload the page or redirect after successful deletion
       window.location.href = '/dashboard';
     } catch (err) {
@@ -476,7 +502,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
         <p className="text-red-600">{error}</p>
-        <button 
+        <button
           onClick={() => loadGroupDetails()}
           className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
         >
@@ -488,7 +514,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
 
   if (!currentGroup) {
     return (
-      <NoGroupState 
+      <NoGroupState
         title="Join or Create a Group to View Members"
         description="You need to join or create a group to view and manage group members."
       />
@@ -559,12 +585,12 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
                   </div>
                 </div>
               ) : (
-                <div 
+                <div
                   className="flex items-center"
                   onMouseEnter={() => setShowEditButton(true)}
                   onMouseLeave={() => setShowEditButton(false)}
                 >
-                  <h1 
+                  <h1
                     className="text-2xl font-bold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                     onDoubleClick={canEditRoles ? handleStartEditName : undefined}
                     title={canEditRoles ? 'Double click to edit' : undefined}
@@ -585,7 +611,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
                 </div>
               )}
             </div>
-            
+
             <p className="text-gray-600 dark:text-gray-400 mt-2 text-lg">
               {group.description || t('groups.noDescription')}
             </p>
@@ -749,7 +775,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
               members.map((member) => {
                 const memberAvatar = getMemberAvatar(member);
                 const memberName = getMemberName(member);
-                
+
                 return (
                   <div key={typeof member.userId === 'string' ? member.userId : member.userId._id} className="px-6 py-5 hover:bg-gray-50 dark:hover:bg-[#2E2E2E] transition-colors">
                     <div className={`grid gap-6 items-center ${canEditRoles ? 'grid-cols-5' : 'grid-cols-4'}`}>
@@ -757,8 +783,8 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
                       <div className="flex items-center">
                         <div className="relative">
                           {memberAvatar ? (
-                            <img 
-                              src={memberAvatar} 
+                            <img
+                              src={memberAvatar}
                               alt={memberName || 'User avatar'}
                               className="w-10 h-10 rounded-full object-cover shadow-sm border border-gray-200 dark:border-gray-600"
                               onError={(e) => {
@@ -770,7 +796,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
                               }}
                             />
                           ) : null}
-                          <div 
+                          <div
                             className={`w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white text-sm font-semibold shadow-sm ${memberAvatar ? 'hidden' : 'flex'}`}
                           >
                             {memberName ? memberName.charAt(0).toUpperCase() : '?'}
@@ -931,7 +957,7 @@ function InviteUserModal({ onClose, onInvite, t }: InviteUserModalProps) {
             {t('groupMembers.inviteDescription')}
           </p>
         </div>
-        
+
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 text-center">
@@ -1058,7 +1084,7 @@ function DeleteGroupModal({ groupName, onClose, onConfirm, isDeleting }: DeleteG
             Are you sure you want to delete <strong>{groupName}</strong>? This action cannot be undone. All tasks in this group will be ungrouped.
           </p>
         </div>
-        
+
         <div className="flex space-x-4 pt-2">
           <button
             type="button"

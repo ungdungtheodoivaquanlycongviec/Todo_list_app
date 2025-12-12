@@ -72,7 +72,7 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSubmit }
             <X className="w-5 h-5" />
           </button>
         </div>
-        
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -304,11 +304,13 @@ export default function Sidebar() {
   const [folderFormState, setFolderFormState] = useState<{
     groupId: string | null;
     name: string;
+    description: string;
     loading: boolean;
     error: string | null;
   }>({
     groupId: null,
     name: '',
+    description: '',
     loading: false,
     error: null
   });
@@ -433,7 +435,7 @@ export default function Sidebar() {
       groupId: string;
     }) => {
       console.log('[Sidebar] Received folder update:', data.eventKey, 'for group:', data.groupId);
-      
+
       // Refresh folders for the affected group
       if (data.groupId === currentGroup?._id) {
         // If it's the current group, refreshFolders will be called by FolderContext
@@ -462,7 +464,7 @@ export default function Sidebar() {
       groupId: string;
     }) => {
       console.log('[Sidebar] Received group update:', data.eventKey, 'for group:', data.groupId);
-      
+
       // Reload groups list to reflect changes
       loadGroups();
     };
@@ -480,7 +482,7 @@ export default function Sidebar() {
       const response = await groupService.getAllGroups();
       setMyGroups(response.myGroups);
       setSharedGroups(response.sharedGroups);
-      
+
       // Cache members for all groups
       const membersMap: Record<string, Group['members']> = {};
       [...response.myGroups, ...response.sharedGroups].forEach(group => {
@@ -498,7 +500,7 @@ export default function Sidebar() {
 
   const handleWorkspaceChange = async (groupId: string) => {
     if (groupId === currentGroup?._id) return;
-    
+
     try {
       const result = await groupService.switchToGroup(groupId);
       setCurrentGroup(result.group);
@@ -538,7 +540,7 @@ export default function Sidebar() {
 
   const handleInviteSubmit = async (email: string, role: string) => {
     if (!selectedGroup) return;
-    
+
     try {
       await groupService.inviteUserToGroup(selectedGroup._id, email, role);
       setShowInviteModal(false);
@@ -582,6 +584,7 @@ export default function Sidebar() {
     setFolderFormState({
       groupId,
       name: '',
+      description: '',
       loading: false,
       error: null
     });
@@ -591,6 +594,7 @@ export default function Sidebar() {
     setFolderFormState({
       groupId: null,
       name: '',
+      description: '',
       loading: false,
       error: null
     });
@@ -608,10 +612,11 @@ export default function Sidebar() {
 
     try {
       if (currentGroup?._id === folderFormState.groupId) {
-        await createFolder(folderFormState.name.trim());
+        await createFolder(folderFormState.name.trim(), folderFormState.description.trim() || undefined);
       } else {
         await folderService.createFolder(folderFormState.groupId, {
-          name: folderFormState.name.trim()
+          name: folderFormState.name.trim(),
+          description: folderFormState.description.trim() || undefined
         });
         await loadGroupFolders(folderFormState.groupId);
       }
@@ -730,7 +735,7 @@ export default function Sidebar() {
   const handleFolderRightClick = (e: React.MouseEvent, folder: Folder, groupId: string) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (!canEditFolders && !canDeleteFolders && !canAssignFolders) {
       return;
     }
@@ -756,7 +761,7 @@ export default function Sidebar() {
 
   const handleContextMenuAssign = async () => {
     if (!contextMenu) return;
-    
+
     // Load members if not already loaded
     if (!groupMembersMap[contextMenu.groupId]) {
       try {
@@ -769,7 +774,7 @@ export default function Sidebar() {
         console.error('Failed to load group members:', error);
       }
     }
-    
+
     setSelectedFolderForAccess({
       folder: contextMenu.folder,
       groupId: contextMenu.groupId
@@ -827,6 +832,19 @@ export default function Sidebar() {
               className="w-full bg-white dark:bg-[#2E2E2E] text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
               disabled={folderFormState.loading}
             />
+            <textarea
+              placeholder={t('sidebar.folderDescriptionPlaceholder') || 'Description (optional)'}
+              value={folderFormState.description}
+              onChange={(e) =>
+                setFolderFormState(prev => ({
+                  ...prev,
+                  description: e.target.value
+                }))
+              }
+              className="w-full bg-white dark:bg-[#2E2E2E] text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 resize-none text-sm"
+              disabled={folderFormState.loading}
+              rows={2}
+            />
             {folderFormState.error && (
               <p className="text-xs text-red-500">{folderFormState.error}</p>
             )}
@@ -880,11 +898,10 @@ export default function Sidebar() {
               return (
                 <div
                   key={folder._id}
-                  className={`w-full rounded-lg border transition-all duration-200 ${
-                    isActiveFolder
+                  className={`w-full rounded-lg border transition-all duration-200 ${isActiveFolder
                       ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700'
                       : 'bg-white dark:bg-[#1F1F1F] border-gray-200 dark:border-gray-700'
-                  }`}
+                    }`}
                 >
                   {isEditing ? (
                     <form
@@ -899,9 +916,9 @@ export default function Sidebar() {
                             setRenamingState(prev =>
                               prev
                                 ? {
-                                    ...prev,
-                                    name: e.target.value
-                                  }
+                                  ...prev,
+                                  name: e.target.value
+                                }
                                 : prev
                             )
                           }
@@ -939,9 +956,8 @@ export default function Sidebar() {
                       >
                         <div className="flex items-center gap-3">
                           <div
-                            className={`w-2 h-2 rounded-full ${
-                              isActiveFolder ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'
-                            }`}
+                            className={`w-2 h-2 rounded-full ${isActiveFolder ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'
+                              }`}
                           />
                           <div>
                             <p className="text-sm font-medium truncate">
@@ -978,11 +994,10 @@ export default function Sidebar() {
     return (
       <div key={group._id} className="space-y-2">
         <div
-          className={`group rounded-xl border transition-all duration-200 ${
-            isActive
+          className={`group rounded-xl border transition-all duration-200 ${isActive
               ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
               : 'bg-white dark:bg-[#1F1F1F] border-transparent hover:bg-gray-50 dark:hover:bg-[#2E2E2E]'
-          }`}
+            }`}
         >
           <div className="flex items-center gap-3 p-3">
             <button
@@ -1002,15 +1017,13 @@ export default function Sidebar() {
               onClick={() => handleProjectClick(group)}
             >
               <div
-                className={`w-2 h-2 rounded-full ${
-                  isActive ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'
-                }`}
+                className={`w-2 h-2 rounded-full ${isActive ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'
+                  }`}
               />
               <div className="flex-1 min-w-0">
                 <p
-                  className={`text-sm font-medium truncate ${
-                    isActive ? 'text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-gray-300'
-                  }`}
+                  className={`text-sm font-medium truncate ${isActive ? 'text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-gray-300'
+                    }`}
                 >
                   {group.name}
                 </p>
@@ -1063,7 +1076,7 @@ export default function Sidebar() {
 
         {/* Workspace Selector */}
         <div className="relative">
-          <select 
+          <select
             className="w-full bg-white dark:bg-[#2E2E2E] text-gray-900 dark:text-white text-sm p-3 rounded-xl border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none cursor-pointer shadow-sm transition-all duration-200"
             value={currentGroup?._id || ''}
             onChange={(e) => handleWorkspaceChange(e.target.value)}
@@ -1122,7 +1135,7 @@ export default function Sidebar() {
               <Plus className="w-4 h-4" />
             </button>
           </div>
-          
+
           {projectsExpanded && (
             <div className="space-y-3">
               {loading ? (

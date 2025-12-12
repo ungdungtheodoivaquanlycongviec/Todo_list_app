@@ -316,10 +316,31 @@ export default function TasksView() {
 
   // Fetch tasks từ API (chế độ list)
   const fetchTasks = async () => {
+    // Skip fetching if no folder is selected (e.g., during group transition)
+    if (!currentFolder?._id) {
+      setTodoTasks([]);
+      setInProgressTasks([]);
+      setIncompleteTasks([]);
+      setCompletedTasks([]);
+      setLoading(false);
+      return;
+    }
+
+    // Skip fetching if folder doesn't belong to current group (race condition during group switch)
+    if (currentFolder.groupId && currentGroupId && currentFolder.groupId !== currentGroupId) {
+      console.log("Folder group mismatch - skipping fetch, waiting for folder refresh");
+      setTodoTasks([]);
+      setInProgressTasks([]);
+      setIncompleteTasks([]);
+      setCompletedTasks([]);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       const response = await taskService.getAllTasks(
-        { folderId: currentFolder?._id },
+        { folderId: currentFolder._id },
         undefined
       );
 
@@ -379,6 +400,16 @@ export default function TasksView() {
         return;
       }
 
+      if (errorMessage.includes("Folder not found") || errorMessage.includes("404") || errorMessage.includes("current group no longer exists")) {
+        // Don't show error alert for folder/group not found - this happens during group switching
+        console.log("Folder or group not found - likely switching groups");
+        setTodoTasks([]);
+        setInProgressTasks([]);
+        setIncompleteTasks([]);
+        setCompletedTasks([]);
+        return;
+      }
+
       // For other errors, show alert
       alert("Failed to fetch tasks: " + errorMessage);
 
@@ -393,10 +424,25 @@ export default function TasksView() {
 
   // Fetch kanban data từ API
   const fetchKanbanData = async () => {
+    // Skip fetching if no folder is selected (e.g., during group transition)
+    if (!currentFolder?._id) {
+      setKanbanData(null);
+      setLoading(false);
+      return;
+    }
+
+    // Skip fetching if folder doesn't belong to current group (race condition during group switch)
+    if (currentFolder.groupId && currentGroupId && currentFolder.groupId !== currentGroupId) {
+      console.log("Folder group mismatch - skipping kanban fetch, waiting for folder refresh");
+      setKanbanData(null);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       const response = await taskService.getKanbanView({
-        folderId: currentFolder?._id
+        folderId: currentFolder._id
       });
 
       console.log("=== FETCH KANBAN DEBUG ===");
@@ -419,6 +465,13 @@ export default function TasksView() {
         return;
       }
 
+      if (errorMessage.includes("Folder not found") || errorMessage.includes("404") || errorMessage.includes("current group no longer exists")) {
+        // Don't show error alert for folder/group not found - this happens during group switching
+        console.log("Folder or group not found - likely switching groups");
+        setKanbanData(null);
+        return;
+      }
+
       // For other errors, show alert
       alert("Failed to fetch kanban data: " + errorMessage);
 
@@ -428,14 +481,14 @@ export default function TasksView() {
     }
   };
 
-  // Gọi API tương ứng khi chuyển chế độ
+  // Gọi API tương ứng khi chuyển chế độ hoặc thay đổi folder/group
   useEffect(() => {
     if (viewMode === "list") {
       fetchTasks();
     } else {
       fetchKanbanData();
     }
-  }, [viewMode, currentFolder?._id]);
+  }, [viewMode, currentFolder?._id, currentGroupId]);
 
   // Sync task detail open state with global UI context (for hiding chatbot)
   useEffect(() => {
@@ -2015,11 +2068,13 @@ export default function TasksView() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{t('tasks.title')}</h1>
-          <p className="text-gray-600 mt-1">
-            {t('tasks.description') || 'Manage your team\'s tasks and projects'}
-          </p>
+          {currentFolder?.description && (
+            <p className="text-gray-600 mt-1">
+              Description: <span className="font-medium">{currentFolder.description}</span>
+            </p>
+          )}
           {currentFolder && (
-            <p className="text-sm text-gray-500 mt-2">
+            <p className="text-sm text-gray-500 mt-1">
               Folder: <span className="font-medium text-gray-800">{currentFolder.name}{currentFolder.isDefault ? ' (Default)' : ''}</span>
             </p>
           )}
