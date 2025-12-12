@@ -20,7 +20,7 @@ import { Group } from '../../services/types/group.types';
 import { useFolder } from '../../contexts/FolderContext';
 import { folderService } from '../../services/folder.service';
 import { Folder } from '../../services/types/folder.types';
-import { DEFAULT_INVITE_ROLE, ROLE_SECTIONS, GROUP_ROLE_KEYS } from '../../constants/groupRoles';
+import { DEFAULT_INVITE_ROLE, ROLE_SECTIONS, GROUP_ROLE_KEYS, getRoleSections } from '../../constants/groupRoles';
 import { getMemberRole, canManageFolders, canAssignFolderMembers, canAddMembers } from '../../utils/groupRoleUtils';
 import FolderContextMenu from '../folders/FolderContextMenu';
 import { FolderAccessModal } from '../folders/FolderAccessModal';
@@ -216,7 +216,7 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, o
                 className="w-full bg-white dark:bg-[#2E2E2E] text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 appearance-none"
                 disabled={loading}
               >
-                {ROLE_SECTIONS.map(section => (
+                {getRoleSections(t as any).map(section => (
                   <optgroup key={section.title} label={section.title}>
                     {section.roles.map(option => (
                       <option key={option.value} value={option.value}>
@@ -899,8 +899,8 @@ export default function Sidebar() {
                 <div
                   key={folder._id}
                   className={`w-full rounded-lg border transition-all duration-200 ${isActiveFolder
-                      ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700'
-                      : 'bg-white dark:bg-[#1F1F1F] border-gray-200 dark:border-gray-700'
+                    ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700'
+                    : 'bg-white dark:bg-[#1F1F1F] border-gray-200 dark:border-gray-700'
                     }`}
                 >
                   {isEditing ? (
@@ -995,8 +995,8 @@ export default function Sidebar() {
       <div key={group._id} className="space-y-2">
         <div
           className={`group rounded-xl border transition-all duration-200 ${isActive
-              ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
-              : 'bg-white dark:bg-[#1F1F1F] border-transparent hover:bg-gray-50 dark:hover:bg-[#2E2E2E]'
+            ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+            : 'bg-white dark:bg-[#1F1F1F] border-transparent hover:bg-gray-50 dark:hover:bg-[#2E2E2E]'
             }`}
         >
           <div className="flex items-center gap-3 p-3">
