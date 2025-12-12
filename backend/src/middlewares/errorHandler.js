@@ -66,6 +66,11 @@ const errorHandler = (err, req, res, next) => {
     response.errors = errors;
   }
 
+  // Include blocked users info for folder access errors
+  if (err.blockedUsers) {
+    response.blockedUsers = err.blockedUsers;
+  }
+
   // Include stack trace in development
   if (env.nodeEnv === 'development') {
     response.stack = err.stack;

@@ -586,6 +586,7 @@ export const translations = {
     'folderAccess.member': 'Member',
     'folderAccess.saving': 'Saving...',
     'folderAccess.savePermissions': 'Save permissions',
+    'folderAccess.cannotRemoveWithActiveTasks': 'Cannot remove folder access from users who have active tasks assigned in this folder. Please complete or reassign their tasks first.',
 
     // Role Labels
     'roles.productOwner': 'Product Owner',
@@ -1328,6 +1329,7 @@ export const translations = {
     'folderAccess.member': 'Thành viên',
     'folderAccess.saving': 'Đang lưu...',
     'folderAccess.savePermissions': 'Lưu phân quyền',
+    'folderAccess.cannotRemoveWithActiveTasks': 'Không thể xóa quyền truy cập folder của người dùng đang có công việc chưa hoàn thành. Vui lòng hoàn thành hoặc chuyển giao công việc trước.',
 
     // Role Labels
     'roles.productOwner': 'Product Owner',

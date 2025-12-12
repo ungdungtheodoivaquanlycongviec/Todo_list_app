@@ -25,6 +25,7 @@ import { getMemberRole, canManageFolders, canAssignFolderMembers, canAddMembers 
 import FolderContextMenu from '../folders/FolderContextMenu';
 import { FolderAccessModal } from '../folders/FolderAccessModal';
 import { useSocket } from '../../hooks/useSocket';
+import { useGroupChange } from '../../hooks/useGroupChange';
 
 // Create Group Modal Component
 interface CreateGroupModalProps {
@@ -340,6 +341,12 @@ export default function Sidebar() {
   } | null>(null);
   const [assigningMembers, setAssigningMembers] = useState(false);
   const [assignError, setAssignError] = useState<string | null>(null);
+  const [blockedUsers, setBlockedUsers] = useState<Array<{
+    userId: string;
+    userName: string;
+    userEmail: string;
+    tasks: Array<{ taskId: string; taskTitle: string; taskStatus: string }>;
+  }>>([]);
   const [groupMembersMap, setGroupMembersMap] = useState<Record<string, Group['members']>>({});
 
   const loadGroupFolders = useCallback(
@@ -382,6 +389,11 @@ export default function Sidebar() {
   useEffect(() => {
     loadGroups();
   }, []);
+
+  // Listen for group change events (e.g., after accepting an invitation)
+  useGroupChange(() => {
+    loadGroups();
+  });
 
   useEffect(() => {
     if (!currentGroup?._id) return;
@@ -790,6 +802,7 @@ export default function Sidebar() {
 
     setAssigningMembers(true);
     setAssignError(null);
+    setBlockedUsers([]);
 
     try {
       await folderService.setFolderMembers(
@@ -806,8 +819,17 @@ export default function Sidebar() {
 
       setShowFolderAccessModal(false);
       setSelectedFolderForAccess(null);
-    } catch (error) {
-      setAssignError(error instanceof Error ? error.message : 'Failed to assign folder members');
+    } catch (error: unknown) {
+      const err = error as Error & { blockedUsers?: Array<{
+        userId: string;
+        userName: string;
+        userEmail: string;
+        tasks: Array<{ taskId: string; taskTitle: string; taskStatus: string }>;
+      }> };
+      setAssignError(err.message || 'Failed to assign folder members');
+      if (err.blockedUsers && Array.isArray(err.blockedUsers)) {
+        setBlockedUsers(err.blockedUsers);
+      }
     } finally {
       setAssigningMembers(false);
     }
@@ -1241,10 +1263,12 @@ export default function Sidebar() {
             setShowFolderAccessModal(false);
             setSelectedFolderForAccess(null);
             setAssignError(null);
+            setBlockedUsers([]);
           }}
           onSave={handleAssignFolderMembers}
           saving={assigningMembers}
           error={assignError || undefined}
+          blockedUsers={blockedUsers}
         />
       )}
     </div>

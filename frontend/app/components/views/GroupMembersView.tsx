@@ -64,6 +64,12 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   const [activeFolderForAssignment, setActiveFolderForAssignment] = useState<Folder | null>(null);
   const [folderModalSaving, setFolderModalSaving] = useState(false);
   const [folderModalError, setFolderModalError] = useState<string | null>(null);
+  const [folderBlockedUsers, setFolderBlockedUsers] = useState<Array<{
+    userId: string;
+    userName: string;
+    userEmail: string;
+    tasks: Array<{ taskId: string; taskTitle: string; taskStatus: string }>;
+  }>>([]);
 
   const targetGroupId = groupId || currentGroup?._id;
   const currentUserRole = useMemo(
@@ -240,6 +246,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   const handleOpenFolderModal = (folder: Folder) => {
     if (!canAssignFolderMembers(currentUserRole)) return;
     setFolderModalError(null);
+    setFolderBlockedUsers([]);
     setActiveFolderForAssignment(folder);
     setFolderModalOpen(true);
   };
@@ -249,20 +256,31 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
     setFolderModalOpen(false);
     setActiveFolderForAssignment(null);
     setFolderModalError(null);
+    setFolderBlockedUsers([]);
   };
 
   const handleSaveFolderMembers = async (memberIds: string[]) => {
     if (!group?._id || !activeFolderForAssignment) return;
     setFolderModalSaving(true);
     setFolderModalError(null);
+    setFolderBlockedUsers([]);
     try {
       await folderService.setFolderMembers(group._id, activeFolderForAssignment._id, memberIds);
       await refreshFolders(activeFolderForAssignment._id);
       await loadGroupDetails(true);
       setFolderModalOpen(false);
       setActiveFolderForAssignment(null);
-    } catch (err) {
-      setFolderModalError(err instanceof Error ? err.message : 'Không thể cập nhật truy cập folder');
+    } catch (err: unknown) {
+      const error = err as Error & { blockedUsers?: Array<{
+        userId: string;
+        userName: string;
+        userEmail: string;
+        tasks: Array<{ taskId: string; taskTitle: string; taskStatus: string }>;
+      }> };
+      setFolderModalError(error.message || 'Không thể cập nhật truy cập folder');
+      if (error.blockedUsers && Array.isArray(error.blockedUsers)) {
+        setFolderBlockedUsers(error.blockedUsers);
+      }
     } finally {
       setFolderModalSaving(false);
     }
@@ -915,6 +933,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
           onSave={handleSaveFolderMembers}
           saving={folderModalSaving}
           error={folderModalError || undefined}
+          blockedUsers={folderBlockedUsers}
         />
       )}
     </div>

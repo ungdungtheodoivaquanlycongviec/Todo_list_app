@@ -21,13 +21,19 @@ const handleResponse = async (response: Response) => {
   if (!response.ok) {
     const errorText = await response.text();
     let errorMessage = `Request failed: ${response.status}`;
+    let blockedUsers = null;
     try {
       const data = JSON.parse(errorText);
       errorMessage = data.message || errorMessage;
+      blockedUsers = data.blockedUsers || null;
     } catch {
       errorMessage = errorText || errorMessage;
     }
-    throw new Error(errorMessage);
+    const error = new Error(errorMessage) as Error & { blockedUsers?: unknown };
+    if (blockedUsers) {
+      error.blockedUsers = blockedUsers;
+    }
+    throw error;
   }
   return response.json();
 };

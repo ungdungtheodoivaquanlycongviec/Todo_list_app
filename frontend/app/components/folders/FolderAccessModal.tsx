@@ -1,10 +1,21 @@
 import React, { useMemo, useState } from 'react';
-import { X, Users } from 'lucide-react';
+import { X, Users, AlertTriangle } from 'lucide-react';
 import { Folder } from '../../services/types/folder.types';
 import { GroupMember } from '../../services/types/group.types';
 import { getMemberId, requiresFolderAssignment } from '../../utils/groupRoleUtils';
 import { getRoleLabel } from '../../constants/groupRoles';
 import { useLanguage } from '../../contexts/LanguageContext';
+
+interface BlockedUser {
+  userId: string;
+  userName: string;
+  userEmail: string;
+  tasks: Array<{
+    taskId: string;
+    taskTitle: string;
+    taskStatus: string;
+  }>;
+}
 
 interface FolderAccessModalProps {
   folder: Folder;
@@ -13,9 +24,10 @@ interface FolderAccessModalProps {
   onSave: (memberIds: string[]) => Promise<void>;
   saving: boolean;
   error?: string;
+  blockedUsers?: BlockedUser[];
 }
 
-export function FolderAccessModal({ folder, members, onClose, onSave, saving, error }: FolderAccessModalProps) {
+export function FolderAccessModal({ folder, members, onClose, onSave, saving, error, blockedUsers }: FolderAccessModalProps) {
   const { t } = useLanguage();
 
   const eligibleMembers = useMemo(
@@ -133,9 +145,28 @@ export function FolderAccessModal({ folder, members, onClose, onSave, saving, er
               })
             )}
           </div>
-          {error && (
-            <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-2">
-              {error}
+          {(error || (blockedUsers && blockedUsers.length > 0)) && (
+            <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                <span>{error || t('folderAccess.cannotRemoveWithActiveTasks')}</span>
+              </div>
+              {blockedUsers && blockedUsers.length > 0 && (
+                <div className="mt-2 space-y-2">
+                  {blockedUsers.map(user => (
+                    <div key={user.userId} className="bg-red-100 dark:bg-red-900/30 rounded-lg p-2">
+                      <p className="font-medium">{user.userName} ({user.userEmail})</p>
+                      <ul className="ml-4 mt-1 list-disc text-xs">
+                        {user.tasks.map(task => (
+                          <li key={task.taskId}>
+                            {task.taskTitle} - <span className="capitalize">{task.taskStatus.replace('_', ' ')}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

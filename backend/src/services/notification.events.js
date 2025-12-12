@@ -351,14 +351,15 @@ const registerListener = (listener) => {
   return () => listeners.delete(listener);
 };
 
-const notifyGroupInvitation = ({ recipientId, senderId, groupId, groupName, inviterName, invitationId }) => {
+const notifyGroupInvitation = ({ recipientId, senderId, groupId, groupName, inviterName, invitationId, role }) => {
   return publishNotification(NOTIFICATION_EVENTS.GROUP_INVITATION_SENT, {
     recipientId,
     senderId,
     groupId,
     groupName,
     inviterName,
-    invitationId
+    invitationId,
+    role
   });
 };
 
