@@ -139,9 +139,10 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const [customStatusColor, setCustomStatusColor] = useState("#3B82F6")
 
   // Use global timer context for persistent timer state
-  const { startTimer: contextStartTimer, stopTimer: contextStopTimer, isTimerRunning: checkTimerRunning } = useTimer()
+  const { startTimer: contextStartTimer, stopTimer: contextStopTimer, isTimerRunning: checkTimerRunning, getAllActiveTimers, syncTimersFromTask } = useTimer()
   const isTimerRunning = checkTimerRunning(taskId)
   const elapsedTime = useTimerElapsed(taskId)
+  const [showActiveTimersPopup, setShowActiveTimersPopup] = useState(false)
 
   // NEW: State for repeat task functionality
   const [showRepeatModal, setShowRepeatModal] = useState(false)
@@ -397,11 +398,9 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       setComments([])
     }
 
-    // Restore timer from task.startTime if it exists (timer was running)
-    if (taskData.startTime && !checkTimerRunning(taskData._id)) {
-      contextStartTimer(taskData._id, new Date(taskData.startTime), taskData.title || 'Task')
-    }
-  }, [convertToUserTimezone, contextStartTimer, checkTimerRunning])
+    // Sync all active timers from task data
+    syncTimersFromTask(taskData)
+  }, [convertToUserTimezone, syncTimersFromTask])
 
   const fetchTaskDetails = useCallback(async () => {
     if (!isOpen || !taskId) return
@@ -598,15 +597,14 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
   // NEW: Timer handlers
   const handleStartTimer = async () => {
-    if (!isTimerRunning) {
+    if (!isTimerRunning && currentUser?._id) {
       try {
         const updatedTask = await taskService.startTimer(taskId)
         setTask(updatedTask)
         onTaskUpdate(updatedTask)
 
-        // Add timer to global context
-        const startTime = updatedTask.startTime ? new Date(updatedTask.startTime) : new Date()
-        contextStartTimer(taskId, startTime, updatedTask.title || 'Task')
+        // Sync timers from the updated task
+        syncTimersFromTask(updatedTask)
       } catch (error) {
         console.error("Error starting timer:", error)
         alert("Failed to start timer: " + (error as Error).message)
@@ -625,6 +623,9 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
         if ((updatedTask as any).timeEntries) {
           setTimeEntries((updatedTask as any).timeEntries)
         }
+
+        // Sync timers from the updated task
+        syncTimersFromTask(updatedTask)
       } catch (error) {
         console.error("Error stopping timer:", error)
         alert("Failed to stop timer: " + (error as Error).message)
@@ -1793,16 +1794,79 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
                   {/* Timer Button - Hidden for completed/incomplete tasks */}
                   {taskProperties.status !== 'completed' && taskProperties.status !== 'incomplete' && (
-                    <button
-                      onClick={isTimerRunning ? handleStopTimer : handleStartTimer}
-                      className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm transition-colors shadow-sm ${isTimerRunning
-                        ? 'bg-red-50 border-red-300 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300'
-                        : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                        }`}
-                    >
-                      <PlayCircle className="w-4 h-4" />
-                      {isTimerRunning ? `${t('taskDetail.stopTimer')} (${formatElapsedTime(elapsedTime)})` : t('taskDetail.startTime')}
-                    </button>
+                    <div className="relative flex items-center gap-1">
+                      <button
+                        onClick={isTimerRunning ? handleStopTimer : handleStartTimer}
+                        className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm transition-colors shadow-sm ${isTimerRunning
+                          ? 'bg-red-50 border-red-300 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300'
+                          : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                          }`}
+                      >
+                        <PlayCircle className="w-4 h-4" />
+                        {isTimerRunning ? `${t('taskDetail.stopTimer')} (${formatElapsedTime(elapsedTime)})` : t('taskDetail.startTime')}
+                      </button>
+
+                      {/* Active Timers Menu Button */}
+                      {getAllActiveTimers(taskId).length > 0 && (
+                        <button
+                          onClick={() => setShowActiveTimersPopup(!showActiveTimersPopup)}
+                          className="flex items-center justify-center px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 shadow-sm"
+                          title="View active timers"
+                        >
+                          <MoreVertical className="w-4 h-4" />
+                        </button>
+                      )}
+
+                      {/* Active Timers Popup */}
+                      {showActiveTimersPopup && (
+                        <div className="absolute top-full left-0 mt-2 w-72 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50">
+                          <div className="p-3 border-b border-gray-200 dark:border-gray-700">
+                            <h4 className="font-medium text-sm text-gray-900 dark:text-gray-100">Active Timers</h4>
+                          </div>
+                          <div className="max-h-60 overflow-y-auto">
+                            {getAllActiveTimers(taskId).map((timer) => {
+                              const timerElapsed = Math.floor((Date.now() - timer.startTime.getTime()) / 1000)
+                              const isCurrentUser = timer.userId === currentUser?._id
+
+                              return (
+                                <div key={timer.userId} className="flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 last:border-b-0">
+                                  <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center overflow-hidden">
+                                    {timer.userAvatar ? (
+                                      <img src={timer.userAvatar} alt={timer.userName || 'User'} className="w-full h-full object-cover" />
+                                    ) : (
+                                      <span className="text-xs font-medium text-blue-700 dark:text-blue-300">
+                                        {(timer.userName || 'U').charAt(0).toUpperCase()}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                                        {timer.userName || 'Unknown User'}
+                                      </span>
+                                      {isCurrentUser && (
+                                        <span className="text-xs bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 px-1.5 py-0.5 rounded">You</span>
+                                      )}
+                                    </div>
+                                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                                      {formatElapsedTime(timerElapsed)}
+                                    </span>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                          <div className="p-2 border-t border-gray-200 dark:border-gray-700">
+                            <button
+                              onClick={() => setShowActiveTimersPopup(false)}
+                              className="w-full text-center text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                            >
+                              Close
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   )}
 
                   {/* Log Time Button - Hidden for completed/incomplete tasks */}
@@ -1945,9 +2009,17 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
                               <span className="col-span-2 text-gray-900 dark:text-gray-100">
                                 {formatDate(entry.date)}
                               </span>
-                              <span className="text-gray-500">
-                                <User className="w-4 h-4 inline mr-1" />
-                                {entry.user?.name || "Me"}
+                              <span className="text-gray-500 flex items-center">
+                                {entry.user?.avatar ? (
+                                  <img
+                                    src={entry.user.avatar}
+                                    alt={entry.user.name || "User"}
+                                    className="w-5 h-5 rounded-full mr-1 object-cover"
+                                  />
+                                ) : (
+                                  <User className="w-4 h-4 mr-1" />
+                                )}
+                                {entry.user?.name || "Unknown"}
                               </span>
                               <span className="text-gray-500 truncate" title={entry.description}>
                                 {entry.description || "-"}

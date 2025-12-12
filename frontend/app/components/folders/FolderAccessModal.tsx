@@ -1,9 +1,21 @@
 import React, { useMemo, useState } from 'react';
-import { X, Users } from 'lucide-react';
+import { X, Users, AlertTriangle } from 'lucide-react';
 import { Folder } from '../../services/types/folder.types';
 import { GroupMember } from '../../services/types/group.types';
 import { getMemberId, requiresFolderAssignment } from '../../utils/groupRoleUtils';
 import { getRoleLabel } from '../../constants/groupRoles';
+import { useLanguage } from '../../contexts/LanguageContext';
+
+interface BlockedUser {
+  userId: string;
+  userName: string;
+  userEmail: string;
+  tasks: Array<{
+    taskId: string;
+    taskTitle: string;
+    taskStatus: string;
+  }>;
+}
 
 interface FolderAccessModalProps {
   folder: Folder;
@@ -12,9 +24,12 @@ interface FolderAccessModalProps {
   onSave: (memberIds: string[]) => Promise<void>;
   saving: boolean;
   error?: string;
+  blockedUsers?: BlockedUser[];
 }
 
-export function FolderAccessModal({ folder, members, onClose, onSave, saving, error }: FolderAccessModalProps) {
+export function FolderAccessModal({ folder, members, onClose, onSave, saving, error, blockedUsers }: FolderAccessModalProps) {
+  const { t } = useLanguage();
+
   const eligibleMembers = useMemo(
     () =>
       members.filter(member => {
@@ -59,10 +74,10 @@ export function FolderAccessModal({ folder, members, onClose, onSave, saving, er
           <div>
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
               <Users className="w-5 h-5 text-blue-500" />
-              Quản lý truy cập folder
+              {t('folderAccess.title')}
             </h3>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Folder: <span className="font-medium text-gray-900 dark:text-white">{folder.name}</span>
+              {t('folderAccess.folderLabel')}: <span className="font-medium text-gray-900 dark:text-white">{folder.name}</span>
             </p>
           </div>
           <button
@@ -77,12 +92,12 @@ export function FolderAccessModal({ folder, members, onClose, onSave, saving, er
 
         <div className="p-6 space-y-4">
           <p className="text-sm text-gray-600 dark:text-gray-300">
-              Chỉ những vai trò cần được gán folder (BA, Tech, Infra, Team sản phẩm...) mới xuất hiện trong danh sách này.
+            {t('folderAccess.description')}
           </p>
           <div className="relative">
             <input
               type="text"
-              placeholder="Tìm kiếm theo tên hoặc email"
+              placeholder={t('folderAccess.searchPlaceholder')}
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-2 text-sm bg-white dark:bg-[#2E2E2E] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -92,7 +107,7 @@ export function FolderAccessModal({ folder, members, onClose, onSave, saving, er
           <div className="max-h-64 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-xl divide-y divide-gray-100 dark:divide-gray-700">
             {filteredMembers.length === 0 ? (
               <div className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
-                Không có thành viên phù hợp
+                {t('folderAccess.noMatchingMembers')}
               </div>
             ) : (
               filteredMembers.map(member => {
@@ -102,7 +117,7 @@ export function FolderAccessModal({ folder, members, onClose, onSave, saving, er
                 const displayName =
                   member.name ||
                   (typeof member.userId === 'object' ? member.userId?.name : '') ||
-                  'Thành viên';
+                  t('folderAccess.member');
                 const email =
                   member.email || (typeof member.userId === 'object' ? member.userId?.email : '');
 
@@ -115,7 +130,7 @@ export function FolderAccessModal({ folder, members, onClose, onSave, saving, er
                       <p className="text-sm font-medium text-gray-900 dark:text-white">{displayName}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">{email}</p>
                       <p className="text-xs text-blue-600 dark:text-blue-300">
-                        {getRoleLabel(member.role)}
+                        {getRoleLabel(member.role, t as any)}
                       </p>
                     </div>
                     <input
@@ -130,9 +145,28 @@ export function FolderAccessModal({ folder, members, onClose, onSave, saving, er
               })
             )}
           </div>
-          {error && (
-            <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-2">
-              {error}
+          {(error || (blockedUsers && blockedUsers.length > 0)) && (
+            <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                <span>{error || t('folderAccess.cannotRemoveWithActiveTasks')}</span>
+              </div>
+              {blockedUsers && blockedUsers.length > 0 && (
+                <div className="mt-2 space-y-2">
+                  {blockedUsers.map(user => (
+                    <div key={user.userId} className="bg-red-100 dark:bg-red-900/30 rounded-lg p-2">
+                      <p className="font-medium">{user.userName} ({user.userEmail})</p>
+                      <ul className="ml-4 mt-1 list-disc text-xs">
+                        {user.tasks.map(task => (
+                          <li key={task.taskId}>
+                            {task.taskTitle} - <span className="capitalize">{task.taskStatus.replace('_', ' ')}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -143,14 +177,14 @@ export function FolderAccessModal({ folder, members, onClose, onSave, saving, er
             className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2E2E2E]"
             disabled={saving}
           >
-            Hủy
+            {t('common.cancel')}
           </button>
           <button
             onClick={handleSave}
             className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
             disabled={saving}
           >
-            {saving ? 'Đang lưu...' : 'Lưu phân quyền'}
+            {saving ? t('folderAccess.saving') : t('folderAccess.savePermissions')}
           </button>
         </div>
       </div>

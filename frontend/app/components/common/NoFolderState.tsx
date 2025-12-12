@@ -11,6 +11,7 @@ export default function NoFolderState() {
   const { currentGroup } = useAuth();
   const { t } = useLanguage();
   const [folderName, setFolderName] = useState('');
+  const [folderDescription, setFolderDescription] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,8 +23,9 @@ export default function NoFolderState() {
     setError(null);
 
     try {
-      await createFolder(folderName.trim());
+      await createFolder(folderName.trim(), folderDescription.trim() || undefined);
       setFolderName('');
+      setFolderDescription('');
     } catch (err) {
       setError(err instanceof Error ? err.message : t('error.generic'));
     } finally {
@@ -37,11 +39,11 @@ export default function NoFolderState() {
         <div className="w-20 h-20 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
           <FolderPlus className="w-10 h-10 text-blue-600 dark:text-blue-400" />
         </div>
-        
+
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
           {t('folders.noFolders')}
         </h2>
-        
+
         <p className="text-gray-600 dark:text-gray-400 mb-8">
           {currentGroup
             ? t('folders.createFirstFolder', { groupName: currentGroup.name })
@@ -58,6 +60,17 @@ export default function NoFolderState() {
               className="w-full bg-white dark:bg-[#2E2E2E] text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
               disabled={loading}
               autoFocus
+            />
+          </div>
+
+          <div>
+            <textarea
+              value={folderDescription}
+              onChange={(e) => setFolderDescription(e.target.value)}
+              placeholder={t('folders.enterFolderDescription') || 'Enter folder description (optional)'}
+              rows={3}
+              className="w-full bg-white dark:bg-[#2E2E2E] text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 resize-none"
+              disabled={loading}
             />
           </div>
 
@@ -89,4 +102,3 @@ export default function NoFolderState() {
     </div>
   );
 }
-

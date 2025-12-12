@@ -39,43 +39,102 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const checkAuth = async () => {
     try {
       const { accessToken } = authService.getStoredTokens();
-      
+
       if (accessToken && authService.isAuthenticated()) {
         try {
           const userData = await authService.getCurrentUser();
           setUser(userData);
-          
+
           // Apply user's theme preference
           if (userData.theme) {
             applyTheme(userData.theme);
           }
-          
+
           // Load current group if user has one
           if (userData.currentGroupId) {
-            try {
-              const { groupService } = await import('../services/group.service');
-              const group = await groupService.getGroupById(userData.currentGroupId);
+            const { groupService } = await import('../services/group.service');
+            const group = await groupService.getGroupById(userData.currentGroupId);
+
+            if (group) {
+              // Successfully loaded the group
               setCurrentGroup(group);
-            } catch (error) {
-              console.error('Failed to load current group:', error);
-              // Don't fail auth if group loading fails
+            } else {
+              // Group not accessible (user was removed or group deleted) - find fallback
+              console.log('Current group not accessible, finding fallback...');
+              try {
+                const response = await groupService.getAllGroups();
+                let fallbackGroup = null;
+                if (response.myGroups.length > 0) {
+                  fallbackGroup = response.myGroups[0];
+                } else if (response.sharedGroups.length > 0) {
+                  fallbackGroup = response.sharedGroups[0];
+                }
+
+                setCurrentGroup(fallbackGroup);
+
+                // Update user's currentGroupId on server and localStorage since original group is no longer accessible
+                if (typeof window !== 'undefined') {
+                  const newGroupId = fallbackGroup?._id || undefined;
+                  const updatedUserData = { ...userData, currentGroupId: newGroupId };
+
+                  // Update on server first to prevent future 403 errors on login
+                  try {
+                    const { userService } = await import('../services/user.service');
+                    await userService.updateProfile({ currentGroupId: newGroupId });
+                    console.log('Updated currentGroupId on server to:', newGroupId);
+                  } catch (serverError) {
+                    console.error('Failed to update currentGroupId on server:', serverError);
+                  }
+
+                  localStorage.setItem('user', JSON.stringify(updatedUserData));
+                  setUser(updatedUserData);
+                  // Trigger group change event so other components reload
+                  triggerGroupChange();
+                }
+              } catch (fallbackError) {
+                console.error('Failed to load fallback groups:', fallbackError);
+                setCurrentGroup(null);
+
+                // Clear the invalid currentGroupId on the server
+                try {
+                  const { userService } = await import('../services/user.service');
+                  await userService.updateProfile({ currentGroupId: undefined });
+                  const updatedUserData = { ...userData, currentGroupId: undefined };
+                  if (typeof window !== 'undefined') {
+                    localStorage.setItem('user', JSON.stringify(updatedUserData));
+                  }
+                  setUser(updatedUserData);
+                } catch (clearError) {
+                  console.error('Failed to clear currentGroupId:', clearError);
+                }
+              }
             }
           } else {
             // If no current group, try to load the first available group
             try {
               const { groupService } = await import('../services/group.service');
               const response = await groupService.getAllGroups();
+              let selectedGroup = null;
               if (response.myGroups.length > 0) {
-                setCurrentGroup(response.myGroups[0]);
+                selectedGroup = response.myGroups[0];
               } else if (response.sharedGroups.length > 0) {
-                setCurrentGroup(response.sharedGroups[0]);
+                selectedGroup = response.sharedGroups[0];
+              }
+
+              setCurrentGroup(selectedGroup);
+
+              // Update localStorage with the selected group
+              if (selectedGroup && typeof window !== 'undefined') {
+                const updatedUserData = { ...userData, currentGroupId: selectedGroup._id };
+                localStorage.setItem('user', JSON.stringify(updatedUserData));
+                setUser(updatedUserData);
               }
             } catch (error) {
               console.error('Failed to load groups:', error);
               // Don't fail auth if group loading fails
             }
           }
-          
+
           // Save user to localStorage for persistence
           if (typeof window !== 'undefined') {
             localStorage.setItem('user', JSON.stringify(userData));
@@ -83,12 +142,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch (authError: any) {
           // If getCurrentUser fails (e.g., token expired, user locked, etc.)
           console.error('Failed to get current user:', authError);
-          
+
           // Clear tokens if authentication fails
           authService.removeTokens();
           setUser(null);
           setCurrentGroup(null);
-          
+
           // Don't throw - just set user to null and let the app handle it
         }
       }
@@ -107,10 +166,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const applyTheme = (theme: string) => {
     console.log('Applying theme:', theme);
     const root = document.documentElement;
-    
+
     // Xóa cả class light và dark trước
     root.classList.remove('light', 'dark');
-    
+
     if (theme === 'auto') {
       const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       console.log('System prefers dark:', systemPrefersDark);
@@ -126,7 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('Setting light theme');
       root.classList.add('light');
     }
-    
+
     // Lưu vào localStorage
     localStorage.setItem('theme', theme);
     console.log('Theme saved to localStorage:', theme);
@@ -134,27 +193,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // THÊM FUNCTION UPDATE USER
-  const updateUser = async (userData: Partial<User>): Promise<void> => { 
-  if (!user) return;
-  
-  try {
-    // Update on server
-    const updatedUser = await userService.updateProfile(userData);
-    
-    // Update local state
-    setUser(updatedUser);
-    
-    // Update localStorage
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('user', JSON.stringify(updatedUser));
+  const updateUser = async (userData: Partial<User>): Promise<void> => {
+    if (!user) return;
+
+    try {
+      // Update on server
+      const updatedUser = await userService.updateProfile(userData);
+
+      // Update local state
+      setUser(updatedUser);
+
+      // Update localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+      }
+
+      // Không trả về gì cả (void)
+    } catch (error) {
+      console.error('Failed to update user:', error);
+      throw error;
     }
-    
-    // Không trả về gì cả (void)
-  } catch (error) {
-    console.error('Failed to update user:', error);
-    throw error;
-  }
-};
+  };
 
   // Google login
   const loginWithGoogle = async () => {
@@ -197,54 +256,81 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       const authData: AuthResponse = await authService.login(credentials);
-      
+
       // Save tokens
       authService.saveTokens(authData.accessToken, authData.refreshToken);
-      
+
       // THÊM: Lưu token vào localStorage để taskService có thể đọc
       if (typeof window !== 'undefined') {
         localStorage.setItem('token', authData.accessToken);
         localStorage.setItem('accessToken', authData.accessToken);
       }
-      
+
       // Set user state
       setUser(authData.user);
-      
+
       // Apply user's theme preference
       applyTheme(authData.user.theme);
-      
+
       // Load current group if user has one
+      let finalUser = authData.user;
       if (authData.user.currentGroupId) {
-        try {
-          const { groupService } = await import('../services/group.service');
-          const group = await groupService.getGroupById(authData.user.currentGroupId);
+        const { groupService } = await import('../services/group.service');
+        const group = await groupService.getGroupById(authData.user.currentGroupId);
+
+        if (group) {
           setCurrentGroup(group);
-        } catch (error) {
-          console.error('Failed to load current group:', error);
-          // Don't fail login if group loading fails
+        } else {
+          // Current group not accessible - try to load first available group
+          console.log('Current group not accessible during login, finding fallback...');
+          try {
+            const response = await groupService.getAllGroups();
+            let fallbackGroup = null;
+            if (response.myGroups.length > 0) {
+              fallbackGroup = response.myGroups[0];
+            } else if (response.sharedGroups.length > 0) {
+              fallbackGroup = response.sharedGroups[0];
+            }
+            setCurrentGroup(fallbackGroup);
+            if (fallbackGroup) {
+              finalUser = { ...authData.user, currentGroupId: fallbackGroup._id };
+              setUser(finalUser);
+            } else {
+              finalUser = { ...authData.user, currentGroupId: undefined };
+              setUser(finalUser);
+            }
+          } catch (fallbackError) {
+            console.error('Failed to load fallback groups:', fallbackError);
+          }
         }
       } else {
         // If no current group, try to load the first available group
         try {
           const { groupService } = await import('../services/group.service');
           const response = await groupService.getAllGroups();
+          let selectedGroup = null;
           if (response.myGroups.length > 0) {
-            setCurrentGroup(response.myGroups[0]);
+            selectedGroup = response.myGroups[0];
           } else if (response.sharedGroups.length > 0) {
-            setCurrentGroup(response.sharedGroups[0]);
+            selectedGroup = response.sharedGroups[0];
+          }
+          setCurrentGroup(selectedGroup);
+          if (selectedGroup) {
+            finalUser = { ...authData.user, currentGroupId: selectedGroup._id };
+            setUser(finalUser);
           }
         } catch (error) {
           console.error('Failed to load groups:', error);
         }
       }
-      
+
       // Save user to localStorage
       if (typeof window !== 'undefined') {
-        localStorage.setItem('user', JSON.stringify(authData.user));
+        localStorage.setItem('user', JSON.stringify(finalUser));
       }
-      
+
       console.log('Login successful, token saved:', authData.accessToken);
-      
+
       // Redirect admin to admin panel, others to dashboard
       if (authData.user.role === 'admin' || authData.user.role === 'super_admin') {
         router.push('/admin');
@@ -263,21 +349,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       const authData: AuthResponse = await authService.register(userData);
-      
+
       // Save tokens
       authService.saveTokens(authData.accessToken, authData.refreshToken);
-      
+
       // Set user state
       setUser(authData.user);
-      
+
       // Apply user's theme preference
       applyTheme(authData.user.theme);
-      
+
       // Save user to localStorage
       if (typeof window !== 'undefined') {
         localStorage.setItem('user', JSON.stringify(authData.user));
       }
-      
+
       // Redirect admin to admin panel, others to dashboard
       if (authData.user.role === 'admin' || authData.user.role === 'super_admin') {
         router.push('/admin');
@@ -295,17 +381,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Update theme function
   const updateUserTheme = async (theme: string) => {
     if (!user) return;
-    
+
     try {
       // Update on server
       const updatedUser = await userService.updateTheme(theme);
-      
+
       // Update local state
       setUser(updatedUser);
-      
+
       // Apply theme
       applyTheme(theme);
-      
+
       // Update localStorage
       if (typeof window !== 'undefined') {
         localStorage.setItem('user', JSON.stringify(updatedUser));
@@ -327,28 +413,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Clear everything regardless of API call success
       authService.removeTokens();
       setUser(null);
-      
+
       if (typeof window !== 'undefined') {
         localStorage.removeItem('user');
         // Giữ theme preference trong localStorage để dùng cho lần sau
       }
-      
+
       // Redirect to login page
       router.push('/');
       setLoading(false);
     }
   };
 
-  const handleSetCurrentGroup = (group: Group | null) => {
+  const handleSetCurrentGroup = async (group: Group | null) => {
     setCurrentGroup(group);
-    
+
     // Update user's currentGroupId in localStorage and state
     if (typeof window !== 'undefined' && user) {
       const updatedUser = { ...user, currentGroupId: group?._id ?? undefined };
       localStorage.setItem('user', JSON.stringify(updatedUser));
       setUser(updatedUser);
+
+      // Also update on server
+      try {
+        await userService.updateProfile({ currentGroupId: group?._id });
+        console.log('Updated currentGroupId on server to:', group?._id);
+      } catch (error) {
+        console.error('Failed to update currentGroupId on server:', error);
+      }
     }
-    
+
     // Trigger group change event to reload all views
     triggerGroupChange();
   };

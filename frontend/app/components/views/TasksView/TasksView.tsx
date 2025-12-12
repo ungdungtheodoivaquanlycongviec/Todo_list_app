@@ -16,12 +16,14 @@ import {
   Search,
   X,
   Filter,
+  MoreVertical,
 } from "lucide-react";
 import { taskService } from "../../../services/task.service";
 import { Task } from "../../../services/types/task.types";
 import CreateTaskModal from "./CreateTaskModal";
 import TaskContextMenu from "./TaskContextMenu";
 import TaskDetailModal from "./TaskDetailModal";
+import RepeatTaskModal, { RepeatSettings } from "./RepeatTaskModal";
 import EstimatedTimePicker from "./EstimatedTimePicker";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../contexts/AuthContext";
@@ -59,6 +61,8 @@ export default function TasksView() {
   } | null>(null);
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
   const [showTaskDetail, setShowTaskDetail] = useState(false);
+  const [showRepeatModal, setShowRepeatModal] = useState(false);
+  const [repeatModalTask, setRepeatModalTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"list" | "kanban">("list");
   const [kanbanData, setKanbanData] = useState<any>(null);
@@ -82,6 +86,7 @@ export default function TasksView() {
   const [activeSearchQuery, setActiveSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
   const router = useRouter();
 
   interface MinimalUser {
@@ -316,10 +321,31 @@ export default function TasksView() {
 
   // Fetch tasks từ API (chế độ list)
   const fetchTasks = async () => {
+    // Skip fetching if no folder is selected (e.g., during group transition)
+    if (!currentFolder?._id) {
+      setTodoTasks([]);
+      setInProgressTasks([]);
+      setIncompleteTasks([]);
+      setCompletedTasks([]);
+      setLoading(false);
+      return;
+    }
+
+    // Skip fetching if folder doesn't belong to current group (race condition during group switch)
+    if (currentFolder.groupId && currentGroupId && currentFolder.groupId !== currentGroupId) {
+      console.log("Folder group mismatch - skipping fetch, waiting for folder refresh");
+      setTodoTasks([]);
+      setInProgressTasks([]);
+      setIncompleteTasks([]);
+      setCompletedTasks([]);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       const response = await taskService.getAllTasks(
-        { folderId: currentFolder?._id },
+        { folderId: currentFolder._id },
         undefined
       );
 
@@ -379,6 +405,16 @@ export default function TasksView() {
         return;
       }
 
+      if (errorMessage.includes("Folder not found") || errorMessage.includes("404") || errorMessage.includes("current group no longer exists")) {
+        // Don't show error alert for folder/group not found - this happens during group switching
+        console.log("Folder or group not found - likely switching groups");
+        setTodoTasks([]);
+        setInProgressTasks([]);
+        setIncompleteTasks([]);
+        setCompletedTasks([]);
+        return;
+      }
+
       // For other errors, show alert
       alert("Failed to fetch tasks: " + errorMessage);
 
@@ -393,10 +429,25 @@ export default function TasksView() {
 
   // Fetch kanban data từ API
   const fetchKanbanData = async () => {
+    // Skip fetching if no folder is selected (e.g., during group transition)
+    if (!currentFolder?._id) {
+      setKanbanData(null);
+      setLoading(false);
+      return;
+    }
+
+    // Skip fetching if folder doesn't belong to current group (race condition during group switch)
+    if (currentFolder.groupId && currentGroupId && currentFolder.groupId !== currentGroupId) {
+      console.log("Folder group mismatch - skipping kanban fetch, waiting for folder refresh");
+      setKanbanData(null);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       const response = await taskService.getKanbanView({
-        folderId: currentFolder?._id
+        folderId: currentFolder._id
       });
 
       console.log("=== FETCH KANBAN DEBUG ===");
@@ -419,6 +470,13 @@ export default function TasksView() {
         return;
       }
 
+      if (errorMessage.includes("Folder not found") || errorMessage.includes("404") || errorMessage.includes("current group no longer exists")) {
+        // Don't show error alert for folder/group not found - this happens during group switching
+        console.log("Folder or group not found - likely switching groups");
+        setKanbanData(null);
+        return;
+      }
+
       // For other errors, show alert
       alert("Failed to fetch kanban data: " + errorMessage);
 
@@ -428,14 +486,14 @@ export default function TasksView() {
     }
   };
 
-  // Gọi API tương ứng khi chuyển chế độ
+  // Gọi API tương ứng khi chuyển chế độ hoặc thay đổi folder/group
   useEffect(() => {
     if (viewMode === "list") {
       fetchTasks();
     } else {
       fetchKanbanData();
     }
-  }, [viewMode, currentFolder?._id]);
+  }, [viewMode, currentFolder?._id, currentGroupId]);
 
   // Sync task detail open state with global UI context (for hiding chatbot)
   useEffect(() => {
@@ -443,20 +501,19 @@ export default function TasksView() {
     return () => setIsTaskDetailOpen(false); // Clean up on unmount
   }, [showTaskDetail, setIsTaskDetailOpen]);
 
-  // Sync timers from tasks that have an active startTime (for page reload persistence)
+  // Sync timers from tasks that have active timers (for page reload persistence)
+  // Note: timerContext.syncTimersFromTask is stable via useCallback, so we intentionally
+  // exclude timerContext from deps to prevent infinite loops
   useEffect(() => {
     const allTasks = [...todoTasks, ...inProgressTasks, ...incompleteTasks, ...completedTasks];
     allTasks.forEach((task: Task) => {
-      // Check if task has an active timer (startTime set but not stopped)
-      if (task.startTime && !timerContext.isTimerRunning(task._id)) {
-        const startTimeDate = new Date(task.startTime);
-        // Only start if startTime is valid (not in the future and reasonable)
-        if (startTimeDate <= new Date()) {
-          timerContext.startTimer(task._id, startTimeDate, task.title || "Untitled Task");
-        }
+      // Sync active timers from task data
+      if (task.activeTimers && task.activeTimers.length > 0) {
+        timerContext.syncTimersFromTask(task);
       }
     });
-  }, [todoTasks, inProgressTasks, incompleteTasks, completedTasks, timerContext]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todoTasks, inProgressTasks, incompleteTasks, completedTasks]);
 
   // Listen for global group change events
   useGroupChange(() => {
@@ -532,16 +589,26 @@ export default function TasksView() {
   };
 
   // Helper to convert time string to minutes
+  // Supports: Xm (minutes), Xh (hours), Xd (days = 8 working hours), Xmo (months = 160 working hours)
   const convertTimeToMinutes = (timeStr: string): number => {
     if (!timeStr) return 0;
 
-    const hoursMatch = timeStr.match(/(\d+)h/);
-    const minutesMatch = timeStr.match(/(\d+)m/);
+    // Try to match the pattern: number followed by unit (mo, m, h, d)
+    // Note: 'mo' must be checked before 'm' to avoid false matches
+    const monthsMatch = timeStr.match(/(\d+)\s*mo/i);
+    const daysMatch = timeStr.match(/(\d+)\s*d(?!o)/i); // 'd' but not 'do' (part of 'mo')
+    const hoursMatch = timeStr.match(/(\d+)\s*h/i);
+    const minutesMatch = timeStr.match(/(\d+)\s*m(?!o)/i); // 'm' but not 'mo'
 
+    // Working hours conventions:
+    // 1 day = 8 working hours = 480 minutes
+    // 1 month = 20 working days = 160 working hours = 9600 minutes
+    const months = monthsMatch ? parseInt(monthsMatch[1]) : 0;
+    const days = daysMatch ? parseInt(daysMatch[1]) : 0;
     const hours = hoursMatch ? parseInt(hoursMatch[1]) : 0;
     const minutes = minutesMatch ? parseInt(minutesMatch[1]) : 0;
 
-    return hours * 60 + minutes;
+    return (months * 9600) + (days * 480) + (hours * 60) + minutes;
   };
 
   // Helper to get total logged time from task timeEntries (in minutes)
@@ -570,10 +637,12 @@ export default function TasksView() {
 
   // ElapsedTimeCell component for In Progress tasks - shows elapsed time + estimated time with warning
   const ElapsedTimeCell = ({ task }: { task: Task }) => {
-    const { isTimerRunning, getElapsedTime, subscribeToTimerUpdates } = timerContext;
+    const { isTimerRunning, getElapsedTime, subscribeToTimerUpdates, getAllActiveTimers } = timerContext;
     const [elapsedSeconds, setElapsedSeconds] = useState(0);
+    const [showActiveTimersPopup, setShowActiveTimersPopup] = useState(false);
     const running = isTimerRunning(task._id);
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
+    const popupRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
       // Clear any existing interval
@@ -615,26 +684,44 @@ export default function TasksView() {
       return unsubscribe;
     }, [task._id, subscribeToTimerUpdates, isTimerRunning, getElapsedTime]);
 
+    // Close popup when clicking outside
+    useEffect(() => {
+      const handleClickOutside = (e: MouseEvent) => {
+        if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
+          setShowActiveTimersPopup(false);
+        }
+      };
+      if (showActiveTimersPopup) {
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+      }
+    }, [showActiveTimersPopup]);
+
     const loggedMinutes = getTotalLoggedTimeForTask(task);
     const currentTimerMinutes = Math.floor(elapsedSeconds / 60);
     const totalElapsedMinutes = loggedMinutes + currentTimerMinutes;
     const estimatedMinutes = convertTimeToMinutes(task.estimatedTime || "");
+    const activeTimers = getAllActiveTimers(task._id);
 
     // Check if elapsed time exceeds estimated time
     const isOverEstimate = estimatedMinutes > 0 && totalElapsedMinutes > estimatedMinutes;
     const overByMinutes = totalElapsedMinutes - estimatedMinutes;
 
+    const formatElapsedTime = (seconds: number) => {
+      const hrs = Math.floor(seconds / 3600);
+      const mins = Math.floor((seconds % 3600) / 60);
+      const secs = seconds % 60;
+      return hrs > 0
+        ? `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+        : `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
+
     // Show timer if running
     if (running) {
-      const timerHrs = Math.floor(elapsedSeconds / 3600);
-      const timerMins = Math.floor((elapsedSeconds % 3600) / 60);
-      const timerSecs = elapsedSeconds % 60;
-      const timerDisplay = timerHrs > 0
-        ? `${timerHrs}:${timerMins.toString().padStart(2, '0')}:${timerSecs.toString().padStart(2, '0')}`
-        : `${timerMins}:${timerSecs.toString().padStart(2, '0')}`;
+      const timerDisplay = formatElapsedTime(elapsedSeconds);
 
       return (
-        <div className="text-xs flex flex-col gap-0.5">
+        <div className="text-xs flex flex-col gap-0.5 relative">
           <div className="flex items-center gap-1">
             <span className="text-green-600 font-medium flex items-center gap-1">
               <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
@@ -651,19 +738,59 @@ export default function TasksView() {
                 </div>
               </div>
             )}
+            {/* Active Timers Button */}
+            {activeTimers.length > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowActiveTimersPopup(!showActiveTimersPopup); }}
+                className="w-5 h-5 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400 hover:text-gray-600"
+                title="View active timers"
+              >
+                <MoreVertical className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
           {task.estimatedTime && (
             <span className={`text-[10px] ${isOverEstimate ? 'text-amber-600' : 'text-gray-400'}`}>
               Est: {task.estimatedTime}
             </span>
           )}
+          {/* Active Timers Popup */}
+          {showActiveTimersPopup && (
+            <div ref={popupRef} className="absolute bottom-full right-0 mb-1 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-[100]" style={{ minWidth: '200px' }}>
+              <div className="p-2 border-b border-gray-200 dark:border-gray-700">
+                <span className="font-medium text-xs text-gray-900 dark:text-gray-100">Active Timers ({activeTimers.length})</span>
+              </div>
+              <div className="max-h-40 overflow-y-auto">
+                {activeTimers.map((timer) => {
+                  const timerElapsed = Math.floor((Date.now() - timer.startTime.getTime()) / 1000);
+                  const isCurrentUser = timer.userId === currentUser?._id;
+                  return (
+                    <div key={timer.userId} className="flex items-center gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-xs">
+                      <div className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center overflow-hidden flex-shrink-0">
+                        {timer.userAvatar ? (
+                          <img src={timer.userAvatar} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-[10px] font-medium text-blue-700 dark:text-blue-300">
+                            {(timer.userName || 'U').charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <span className="flex-1 truncate text-gray-700 dark:text-gray-300">{timer.userName || 'Unknown'}</span>
+                      {isCurrentUser && <span className="text-[10px] bg-green-100 text-green-700 px-1 rounded">You</span>}
+                      <span className="text-green-600 font-medium">{formatElapsedTime(timerElapsed)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       );
     }
 
-    // Show logged time + estimated time
+    // Show logged time + estimated time (no timer running)
     return (
-      <div className="text-xs flex flex-col gap-0.5">
+      <div className="text-xs flex flex-col gap-0.5 relative">
         <div className="flex items-center gap-1">
           <Clock className="w-3 h-3 text-gray-400" />
           <span className="text-gray-600">{formatTimeFromMinutes(loggedMinutes)}</span>
@@ -675,11 +802,51 @@ export default function TasksView() {
               </div>
             </div>
           )}
+          {/* Active Timers Button (for other users' timers when current user isn't running) */}
+          {activeTimers.length > 0 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowActiveTimersPopup(!showActiveTimersPopup); }}
+              className="w-5 h-5 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400 hover:text-gray-600"
+              title="View active timers"
+            >
+              <MoreVertical className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
         {task.estimatedTime && (
           <span className={`text-[10px] ${isOverEstimate ? 'text-amber-600' : 'text-gray-400'}`}>
             Est: {task.estimatedTime}
           </span>
+        )}
+        {/* Active Timers Popup */}
+        {showActiveTimersPopup && (
+          <div ref={popupRef} className="absolute bottom-full right-0 mb-1 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-[100]" style={{ minWidth: '200px' }}>
+            <div className="p-2 border-b border-gray-200 dark:border-gray-700">
+              <span className="font-medium text-xs text-gray-900 dark:text-gray-100">Active Timers ({activeTimers.length})</span>
+            </div>
+            <div className="max-h-40 overflow-y-auto">
+              {activeTimers.map((timer) => {
+                const timerElapsed = Math.floor((Date.now() - timer.startTime.getTime()) / 1000);
+                const isCurrentUser = timer.userId === currentUser?._id;
+                return (
+                  <div key={timer.userId} className="flex items-center gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-xs">
+                    <div className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center overflow-hidden flex-shrink-0">
+                      {timer.userAvatar ? (
+                        <img src={timer.userAvatar} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-[10px] font-medium text-blue-700 dark:text-blue-300">
+                          {(timer.userName || 'U').charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <span className="flex-1 truncate text-gray-700 dark:text-gray-300">{timer.userName || 'Unknown'}</span>
+                    {isCurrentUser && <span className="text-[10px] bg-green-100 text-green-700 px-1 rounded">You</span>}
+                    <span className="text-green-600 font-medium">{formatElapsedTime(timerElapsed)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         )}
       </div>
     );
@@ -993,7 +1160,7 @@ export default function TasksView() {
     setContextMenu({ x: event.clientX, y: event.clientY, task });
   };
 
-  const handleContextMenuAction = async (action: string, task: Task) => {
+  const handleContextMenuAction = async (action: string, task: Task, payload?: any) => {
     setContextMenu(null);
 
     try {
@@ -1008,15 +1175,86 @@ export default function TasksView() {
         case "start_timer":
           const startedTask = await taskService.startTimer(task._id);
           handleTaskUpdate(startedTask);
-          // Add to timer context
-          if (startedTask.startTime) {
-            timerContext.startTimer(task._id, new Date(startedTask.startTime), startedTask.title || 'Task');
-          }
+          // Sync timers from updated task
+          timerContext.syncTimersFromTask(startedTask);
           break;
 
         case "stop_timer":
           const stoppedTask = await timerContext.stopTimer(task._id);
           handleTaskUpdate(stoppedTask);
+          // Sync timers from updated task
+          timerContext.syncTimersFromTask(stoppedTask);
+          break;
+
+        case "change_category":
+          if (payload?.category) {
+            const updatedCategoryTask = await taskService.updateTask(task._id, {
+              category: payload.category,
+            });
+            handleTaskUpdate(updatedCategoryTask);
+          }
+          break;
+
+        case "set_repeat":
+          if (payload) {
+            const repeatTask = await taskService.setTaskRepetition(task._id, payload);
+            handleTaskUpdate(repeatTask);
+          }
+          break;
+
+        case "repeat_custom":
+          // Open custom repeat modal
+          setRepeatModalTask(task);
+          setShowRepeatModal(true);
+          break;
+
+        case "repeat_after_completion":
+          // Set repeat after completion
+          const repeatAfterTask = await taskService.setTaskRepetition(task._id, {
+            isRepeating: true,
+            frequency: 'daily',
+            interval: 1,
+          });
+          handleTaskUpdate(repeatAfterTask);
+          break;
+
+        case "duplicate":
+          // Create a duplicate task
+          const duplicateData = {
+            title: `${task.title} (Copy)`,
+            description: task.description,
+            status: 'todo' as const,
+            priority: task.priority,
+            category: task.category,
+            tags: task.tags,
+            estimatedTime: task.estimatedTime,
+            dueDate: task.dueDate,
+          };
+          const duplicatedTask = await taskService.createTask(duplicateData);
+          // Add the new task to todo list
+          setTodoTasks(prev => [duplicatedTask, ...prev]);
+          break;
+
+        case "move_to":
+          // Open task detail modal for move functionality
+          setSelectedTask(task._id);
+          setShowTaskDetail(true);
+          break;
+
+        case "edit_types":
+          // Could open a modal for editing types - for now show task detail
+          setSelectedTask(task._id);
+          setShowTaskDetail(true);
+          break;
+
+        case "remove_repeat":
+          // Remove repeat settings from the task
+          const noRepeatTask = await taskService.setTaskRepetition(task._id, {
+            isRepeating: false,
+            frequency: null,
+            interval: null,
+          });
+          handleTaskUpdate(noRepeatTask);
           break;
 
         case "delete":
@@ -1032,6 +1270,27 @@ export default function TasksView() {
     } catch (error) {
       console.error("Error in context menu action:", error);
       alert("Failed to perform action: " + getErrorMessage(error));
+    }
+  };
+
+  // Handle saving repeat settings from RepeatTaskModal
+  const handleRepeatSave = async (settings: RepeatSettings) => {
+    if (!repeatModalTask) return;
+
+    try {
+      const updatedTask = await taskService.setTaskRepetition(repeatModalTask._id, {
+        isRepeating: settings.isRepeating,
+        frequency: settings.frequency,
+        interval: settings.interval,
+        endDate: settings.endDate,
+        occurrences: settings.occurrences,
+      });
+      handleTaskUpdate(updatedTask);
+      setShowRepeatModal(false);
+      setRepeatModalTask(null);
+    } catch (error) {
+      console.error("Error saving repeat settings:", error);
+      alert("Failed to save repeat settings: " + getErrorMessage(error));
     }
   };
 
@@ -1750,6 +2009,11 @@ export default function TasksView() {
       filtered = filtered.filter(task => task.category === categoryFilter);
     }
 
+    // Apply tag filter
+    if (tagFilter) {
+      filtered = filtered.filter(task => task.tags?.includes(tagFilter));
+    }
+
     return filtered;
   };
 
@@ -1764,6 +2028,7 @@ export default function TasksView() {
     setActiveSearchQuery("");
     setStatusFilter(null);
     setCategoryFilter(null);
+    setTagFilter(null);
     setShowSortDropdown(false);
   };
 
@@ -1831,7 +2096,12 @@ export default function TasksView() {
   );
 
   // Check if any filter is active
-  const hasActiveFilters = activeSearchQuery || statusFilter || categoryFilter;
+  const hasActiveFilters = activeSearchQuery || statusFilter || categoryFilter || tagFilter;
+
+  // Collect all unique tags from all tasks in current folder
+  const allUniqueTags = Array.from(
+    new Set([...todoTasks, ...inProgressTasks, ...completedTasks, ...incompleteTasks].flatMap(task => task.tags || []))
+  ).sort();
 
   // Sort Dropdown ref for click outside detection
   const sortDropdownRef = useRef<HTMLDivElement>(null);
@@ -1969,6 +2239,25 @@ export default function TasksView() {
               </select>
             </div>
 
+            {/* Tag Filter */}
+            {allUniqueTags.length > 0 && (
+              <div>
+                <div className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">
+                  {t('sort.filterByTag') || 'Filter by Tag'}
+                </div>
+                <select
+                  value={tagFilter || ""}
+                  onChange={(e) => setTagFilter(e.target.value || null)}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                >
+                  <option value="">{t('sort.allTags') || 'All Tags'}</option>
+                  {allUniqueTags.map(tag => (
+                    <option key={tag} value={tag}>{tag}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {/* Clear All Button */}
             {hasActiveFilters && (
               <button
@@ -2015,11 +2304,13 @@ export default function TasksView() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{t('tasks.title')}</h1>
-          <p className="text-gray-600 mt-1">
-            {t('tasks.description') || 'Manage your team\'s tasks and projects'}
-          </p>
+          {currentFolder?.description && (
+            <p className="text-gray-600 mt-1">
+              Description: <span className="font-medium">{currentFolder.description}</span>
+            </p>
+          )}
           {currentFolder && (
-            <p className="text-sm text-gray-500 mt-2">
+            <p className="text-sm text-gray-500 mt-1">
               Folder: <span className="font-medium text-gray-800">{currentFolder.name}{currentFolder.isDefault ? ' (Default)' : ''}</span>
             </p>
           )}
@@ -2292,6 +2583,7 @@ export default function TasksView() {
           onClose={() => setShowCreateModal(false)}
           onCreateTask={handleCreateTask}
           currentUser={currentUser}
+          groupMembers={currentGroup?.members || []}
         />
       )}
 
@@ -2316,6 +2608,19 @@ export default function TasksView() {
           task={contextMenu.task}
           onAction={handleContextMenuAction}
           onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {/* Repeat Task Modal */}
+      {repeatModalTask && (
+        <RepeatTaskModal
+          task={repeatModalTask}
+          isOpen={showRepeatModal}
+          onClose={() => {
+            setShowRepeatModal(false);
+            setRepeatModalTask(null);
+          }}
+          onSave={handleRepeatSave}
         />
       )}
     </div>

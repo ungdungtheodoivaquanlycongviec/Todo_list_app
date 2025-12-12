@@ -559,6 +559,52 @@ class FolderService {
       folder.memberAccess = [];
     }
 
+    // Check for users being removed
+    const currentMemberIds = folder.memberAccess.map(access => normalizeId(access.userId));
+    const removedMemberIds = currentMemberIds.filter(id => !normalizedAssignments.includes(id));
+
+    // If there are users being removed, check for active tasks
+    if (removedMemberIds.length > 0) {
+      // Find active tasks in this folder assigned to users being removed
+      // Active tasks are those NOT in 'completed' or 'incomplete' status
+      const activeTasks = await Task.find({
+        folderId: folderId,
+        'assignedTo.userId': { $in: removedMemberIds.map(id => new mongoose.Types.ObjectId(id)) },
+        status: { $nin: ['completed', 'incomplete'] }
+      }).populate('assignedTo.userId', 'name email').lean();
+
+      if (activeTasks.length > 0) {
+        // Build a map of user -> their active tasks
+        const usersWithActiveTasks = new Map();
+        
+        for (const task of activeTasks) {
+          for (const assignee of task.assignedTo) {
+            const assigneeId = normalizeId(assignee.userId?._id || assignee.userId);
+            if (removedMemberIds.includes(assigneeId)) {
+              if (!usersWithActiveTasks.has(assigneeId)) {
+                usersWithActiveTasks.set(assigneeId, {
+                  userId: assigneeId,
+                  userName: assignee.userId?.name || 'Unknown',
+                  userEmail: assignee.userId?.email || '',
+                  tasks: []
+                });
+              }
+              usersWithActiveTasks.get(assigneeId).tasks.push({
+                taskId: task._id.toString(),
+                taskTitle: task.title,
+                taskStatus: task.status
+              });
+            }
+          }
+        }
+
+        const blockedUsers = Array.from(usersWithActiveTasks.values());
+        const error = buildError('Cannot remove folder access from users with active tasks', HTTP_STATUS.BAD_REQUEST);
+        error.blockedUsers = blockedUsers;
+        throw error;
+      }
+    }
+
     folder.memberAccess = normalizedAssignments.map(id => {
       const existing = folder.memberAccess.find(access => normalizeId(access.userId) === id);
       return existing
