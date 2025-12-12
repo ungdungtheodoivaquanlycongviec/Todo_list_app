@@ -2463,6 +2463,10 @@ class TaskService {
       throw new Error(ERROR_MESSAGES.INVALID_TASK_ID);
     }
 
+    if (!isValidObjectId(userId)) {
+      throw new Error(ERROR_MESSAGES.INVALID_ID);
+    }
+
     const task = await Task.findById(taskId);
     if (!task) {
       return null;
@@ -2473,19 +2477,37 @@ class TaskService {
       throw new Error('Cannot start timer for completed or incomplete tasks');
     }
 
+    // Initialize activeTimers array if not exists
+    if (!task.activeTimers) {
+      task.activeTimers = [];
+    }
+
+    // Check if user already has an active timer
+    const existingTimer = task.activeTimers.find(
+      t => t.userId && t.userId.toString() === userId.toString()
+    );
+    if (existingTimer) {
+      throw new Error('You already have an active timer on this task');
+    }
+
     // Auto-change status from todo to in_progress when starting timer
     if (task.status === 'todo') {
       task.status = 'in_progress';
     }
 
-    // Set start time
-    task.startTime = new Date();
+    // Add new timer for this user
+    task.activeTimers.push({
+      userId: userId,
+      startTime: new Date()
+    });
+
     await task.save();
 
     // POPULATE USER INFO SAU KHI SAVE
     await task.populate('createdBy', 'name email avatar');
     await task.populate('assignedTo.userId', 'name email avatar');
     await task.populate('comments.user', 'name email avatar');
+    await task.populate('activeTimers.userId', 'name email avatar');
     await task.populate('groupId', 'name description');
 
     await emitTaskRealtime({
@@ -2494,6 +2516,7 @@ class TaskService {
       meta: {
         mutationType: 'update',
         changeType: 'timer:start',
+        timerUserId: normalizeId(userId),
         source: 'task:timer:start'
       }
     });
@@ -2512,33 +2535,44 @@ class TaskService {
       throw new Error(ERROR_MESSAGES.INVALID_TASK_ID);
     }
 
+    if (!isValidObjectId(userId)) {
+      throw new Error(ERROR_MESSAGES.INVALID_ID);
+    }
+
     const task = await Task.findById(taskId);
     if (!task) {
       return null;
     }
 
-    // Calculate elapsed time and add to time entries
-    if (task.startTime) {
-      const now = new Date();
-      const elapsedMs = now.getTime() - task.startTime.getTime();
-      const hours = Math.floor(elapsedMs / (1000 * 60 * 60));
-      const minutes = Math.floor((elapsedMs % (1000 * 60 * 60)) / (1000 * 60));
+    // Find the user's active timer
+    const timerIndex = task.activeTimers?.findIndex(
+      t => t.userId && t.userId.toString() === userId.toString()
+    );
 
-      // Add time entry
-      task.timeEntries.push({
-        user: userId,
-        date: now,
-        hours,
-        minutes,
-        description: 'Timer session',
-        billable: true,
-        startTime: task.startTime,
-        endTime: now
-      });
-
-      // Clear start time
-      task.startTime = null;
+    if (timerIndex === -1 || timerIndex === undefined) {
+      throw new Error('You do not have an active timer on this task');
     }
+
+    const userTimer = task.activeTimers[timerIndex];
+    const now = new Date();
+    const elapsedMs = now.getTime() - userTimer.startTime.getTime();
+    const hours = Math.floor(elapsedMs / (1000 * 60 * 60));
+    const minutes = Math.floor((elapsedMs % (1000 * 60 * 60)) / (1000 * 60));
+
+    // Add time entry for the user who started the timer
+    task.timeEntries.push({
+      user: userId,
+      date: now,
+      hours,
+      minutes,
+      description: 'Timer session',
+      billable: true,
+      startTime: userTimer.startTime,
+      endTime: now
+    });
+
+    // Remove only this user's timer from active timers
+    task.activeTimers.splice(timerIndex, 1);
 
     await task.save();
 
@@ -2548,6 +2582,7 @@ class TaskService {
     await task.populate('comments.user', 'name email avatar');
     await task.populate('timeEntries.user', 'name email avatar');
     await task.populate('scheduledWork.user', 'name email avatar');
+    await task.populate('activeTimers.userId', 'name email avatar');
     await task.populate('groupId', 'name description');
 
     const latestEntry = task.timeEntries[task.timeEntries.length - 1];
@@ -2558,6 +2593,7 @@ class TaskService {
       meta: {
         mutationType: 'update',
         changeType: 'timer:stop',
+        timerUserId: normalizeId(userId),
         timeEntryId: normalizeId(latestEntry?._id),
         source: 'task:timer:stop'
       }

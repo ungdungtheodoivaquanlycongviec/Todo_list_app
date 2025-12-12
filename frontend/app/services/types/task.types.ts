@@ -49,6 +49,12 @@ export interface RepetitionSettings {
   occurrences?: number;
 }
 
+// NEW: Active timer for per-user timer tracking
+export interface ActiveTimer {
+  userId: string | MinimalUser;
+  startTime: string;
+}
+
 export interface Task {
   _id: string;
   title: string;
@@ -77,14 +83,14 @@ export interface Task {
     uploadedAt: string;
   }>;
   comments: CommentUser[];
-  
+
   // NEW FIELDS
   type?: string;
   timeEntries?: TimeEntry[];
   scheduledWork?: ScheduledWork[];
   repetition?: RepetitionSettings;
-  startTime?: string | null;
-  
+  activeTimers?: ActiveTimer[];  // Array of per-user timers (replaces startTime)
+
   createdAt: string;
   updatedAt: string;
 }
@@ -105,7 +111,6 @@ export interface CreateTaskData {
   timeEntries?: TimeEntry[];
   scheduledWork?: ScheduledWork[];
   repetition?: RepetitionSettings;
-  startTime?: string | null;
 }
 
 // For updating tasks
@@ -121,6 +126,5 @@ export interface UpdateTaskData {
   timeEntries?: TimeEntry[];
   scheduledWork?: ScheduledWork[];
   repetition?: RepetitionSettings;
-  startTime?: string | null;
   tags?: string[];
 }

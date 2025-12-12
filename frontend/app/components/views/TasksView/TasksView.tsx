@@ -496,20 +496,19 @@ export default function TasksView() {
     return () => setIsTaskDetailOpen(false); // Clean up on unmount
   }, [showTaskDetail, setIsTaskDetailOpen]);
 
-  // Sync timers from tasks that have an active startTime (for page reload persistence)
+  // Sync timers from tasks that have active timers (for page reload persistence)
+  // Note: timerContext.syncTimersFromTask is stable via useCallback, so we intentionally
+  // exclude timerContext from deps to prevent infinite loops
   useEffect(() => {
     const allTasks = [...todoTasks, ...inProgressTasks, ...incompleteTasks, ...completedTasks];
     allTasks.forEach((task: Task) => {
-      // Check if task has an active timer (startTime set but not stopped)
-      if (task.startTime && !timerContext.isTimerRunning(task._id)) {
-        const startTimeDate = new Date(task.startTime);
-        // Only start if startTime is valid (not in the future and reasonable)
-        if (startTimeDate <= new Date()) {
-          timerContext.startTimer(task._id, startTimeDate, task.title || "Untitled Task");
-        }
+      // Sync active timers from task data
+      if (task.activeTimers && task.activeTimers.length > 0) {
+        timerContext.syncTimersFromTask(task);
       }
     });
-  }, [todoTasks, inProgressTasks, incompleteTasks, completedTasks, timerContext]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todoTasks, inProgressTasks, incompleteTasks, completedTasks]);
 
   // Listen for global group change events
   useGroupChange(() => {
@@ -1071,15 +1070,15 @@ export default function TasksView() {
         case "start_timer":
           const startedTask = await taskService.startTimer(task._id);
           handleTaskUpdate(startedTask);
-          // Add to timer context
-          if (startedTask.startTime) {
-            timerContext.startTimer(task._id, new Date(startedTask.startTime), startedTask.title || 'Task');
-          }
+          // Sync timers from updated task
+          timerContext.syncTimersFromTask(startedTask);
           break;
 
         case "stop_timer":
           const stoppedTask = await timerContext.stopTimer(task._id);
           handleTaskUpdate(stoppedTask);
+          // Sync timers from updated task
+          timerContext.syncTimersFromTask(stoppedTask);
           break;
 
         case "delete":

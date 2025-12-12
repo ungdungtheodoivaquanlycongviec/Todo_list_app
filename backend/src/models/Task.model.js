@@ -48,7 +48,7 @@ const taskSchema = new mongoose.Schema(
     },
     assignedTo: [
       {
-        userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true},
+        userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
         assignedAt: { type: Date, default: Date.now }
       }
     ],
@@ -95,7 +95,7 @@ const taskSchema = new mongoose.Schema(
         }
       ],
       validate: {
-        validator: function(attachments) {
+        validator: function (attachments) {
           return attachments.length <= 20;
         },
         message: 'Số lượng attachments không được vượt quá 20'
@@ -141,11 +141,14 @@ const taskSchema = new mongoose.Schema(
       endDate: { type: Date }, // When to stop repeating
       occurrences: { type: Number } // Number of times to repeat
     },
-    // NEW: Start time for tasks
-    startTime: {
-      type: Date,
-      default: Date.now
-    },
+    // NEW: Active timers for multiple users (replaces single startTime)
+    // Note: Validation is handled in service layer to avoid issues with legacy empty arrays
+    activeTimers: [
+      {
+        userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        startTime: { type: Date, default: Date.now }
+      }
+    ],
     // NEW: Custom status support
     customStatus: {
       name: { type: String, trim: true },
@@ -154,13 +157,13 @@ const taskSchema = new mongoose.Schema(
     comments: {
       type: [
         {
-          user: { 
-            type: mongoose.Schema.Types.ObjectId, 
-            ref: 'User', 
-            required: [true, 'User comment là bắt buộc'] 
+          user: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+            required: [true, 'User comment là bắt buộc']
           },
-          content: { 
-            type: String, 
+          content: {
+            type: String,
             default: '',
             maxlength: [2000, 'Comment không được vượt quá 2000 ký tự'],
             trim: true
@@ -176,12 +179,12 @@ const taskSchema = new mongoose.Schema(
             },
             default: undefined
           },
-          createdAt: { 
-            type: Date, 
-            default: Date.now 
+          createdAt: {
+            type: Date,
+            default: Date.now
           },
-          updatedAt: { 
-            type: Date 
+          updatedAt: {
+            type: Date
           },
           isEdited: {
             type: Boolean,
@@ -190,7 +193,7 @@ const taskSchema = new mongoose.Schema(
         }
       ],
       validate: {
-        validator: function(comments) {
+        validator: function (comments) {
           return comments.length <= 200;
         },
         message: 'Số lượng comments không được vượt quá 200'
@@ -205,44 +208,44 @@ const taskSchema = new mongoose.Schema(
 );
 
 // Virtual for total logged time
-taskSchema.virtual('totalLoggedTime').get(function() {
+taskSchema.virtual('totalLoggedTime').get(function () {
   return this.timeEntries.reduce((total, entry) => {
     return total + (entry.hours || 0) + (entry.minutes || 0) / 60;
   }, 0);
 });
 
 // Validate số lượng tags (max 10)
-taskSchema.path('tags').validate(function(value) {
+taskSchema.path('tags').validate(function (value) {
   return value.length <= 10;
 }, 'Số lượng tags không được vượt quá 10');
 
 // Validate số lượng comments (max 200)
-taskSchema.path('comments').validate(function(value) {
+taskSchema.path('comments').validate(function (value) {
   return value.length <= 200;
 }, 'Số lượng comments không được vượt quá 200');
 
 // Validate số lượng attachments (max 20)
-taskSchema.path('attachments').validate(function(value) {
+taskSchema.path('attachments').validate(function (value) {
   return value.length <= 20;
 }, 'Số lượng file đính kèm không được vượt quá 20');
 
 // Validate số lượng assignedTo (max 50)
-taskSchema.path('assignedTo').validate(function(value) {
+taskSchema.path('assignedTo').validate(function (value) {
   return value.length <= 50;
 }, 'Số lượng người được gán không được vượt quá 50');
 
 // Validate số lượng timeEntries (max 1000)
-taskSchema.path('timeEntries').validate(function(value) {
+taskSchema.path('timeEntries').validate(function (value) {
   return value.length <= 1000;
 }, 'Số lượng time entries không được vượt quá 1000');
 
 // Validate số lượng scheduledWork (max 500)
-taskSchema.path('scheduledWork').validate(function(value) {
+taskSchema.path('scheduledWork').validate(function (value) {
   return value.length <= 500;
 }, 'Số lượng scheduled work không được vượt quá 500');
 
 // Middleware: Auto-set completedAt khi status = 'completed'
-taskSchema.pre('save', function(next) {
+taskSchema.pre('save', function (next) {
   if (this.isModified('status')) {
     if (this.status === 'completed' && !this.completedAt) {
       this.completedAt = new Date();
@@ -254,7 +257,7 @@ taskSchema.pre('save', function(next) {
 });
 
 // Method: Populate user info
-taskSchema.methods.populateUserInfo = function() {
+taskSchema.methods.populateUserInfo = function () {
   return this.populate([
     { path: 'createdBy', select: 'name email avatar' },
     { path: 'assignedTo.userId', select: 'name email avatar' },
@@ -262,16 +265,17 @@ taskSchema.methods.populateUserInfo = function() {
     { path: 'attachments.uploadedBy', select: 'name email avatar' },
     { path: 'timeEntries.user', select: 'name email avatar' },
     { path: 'scheduledWork.user', select: 'name email avatar' },
+    { path: 'activeTimers.userId', select: 'name email avatar' },
     { path: 'groupId', select: 'name description members metadata' }
   ]);
 };
 
 // Method: Format total logged time
-taskSchema.methods.getFormattedTotalTime = function() {
+taskSchema.methods.getFormattedTotalTime = function () {
   const totalHours = this.totalLoggedTime;
   const hours = Math.floor(totalHours);
   const minutes = Math.round((totalHours - hours) * 60);
-  
+
   if (hours === 0) {
     return `${minutes}m`;
   }
