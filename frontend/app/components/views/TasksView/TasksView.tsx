@@ -585,16 +585,26 @@ export default function TasksView() {
   };
 
   // Helper to convert time string to minutes
+  // Supports: Xm (minutes), Xh (hours), Xd (days = 8 working hours), Xmo (months = 160 working hours)
   const convertTimeToMinutes = (timeStr: string): number => {
     if (!timeStr) return 0;
 
-    const hoursMatch = timeStr.match(/(\d+)h/);
-    const minutesMatch = timeStr.match(/(\d+)m/);
+    // Try to match the pattern: number followed by unit (mo, m, h, d)
+    // Note: 'mo' must be checked before 'm' to avoid false matches
+    const monthsMatch = timeStr.match(/(\d+)\s*mo/i);
+    const daysMatch = timeStr.match(/(\d+)\s*d(?!o)/i); // 'd' but not 'do' (part of 'mo')
+    const hoursMatch = timeStr.match(/(\d+)\s*h/i);
+    const minutesMatch = timeStr.match(/(\d+)\s*m(?!o)/i); // 'm' but not 'mo'
 
+    // Working hours conventions:
+    // 1 day = 8 working hours = 480 minutes
+    // 1 month = 20 working days = 160 working hours = 9600 minutes
+    const months = monthsMatch ? parseInt(monthsMatch[1]) : 0;
+    const days = daysMatch ? parseInt(daysMatch[1]) : 0;
     const hours = hoursMatch ? parseInt(hoursMatch[1]) : 0;
     const minutes = minutesMatch ? parseInt(minutesMatch[1]) : 0;
 
-    return hours * 60 + minutes;
+    return (months * 9600) + (days * 480) + (hours * 60) + minutes;
   };
 
   // Helper to get total logged time from task timeEntries (in minutes)
