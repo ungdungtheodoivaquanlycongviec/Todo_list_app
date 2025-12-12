@@ -260,6 +260,8 @@ taskSchema.methods.populateUserInfo = function() {
     { path: 'assignedTo.userId', select: 'name email avatar' },
     { path: 'comments.user', select: 'name email avatar' },
     { path: 'attachments.uploadedBy', select: 'name email avatar' },
+    { path: 'timeEntries.user', select: 'name email avatar' },
+    { path: 'scheduledWork.user', select: 'name email avatar' },
     { path: 'groupId', select: 'name description members metadata' }
   ]);
 };

@@ -1945,9 +1945,17 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
                               <span className="col-span-2 text-gray-900 dark:text-gray-100">
                                 {formatDate(entry.date)}
                               </span>
-                              <span className="text-gray-500">
-                                <User className="w-4 h-4 inline mr-1" />
-                                {entry.user?.name || "Me"}
+                              <span className="text-gray-500 flex items-center">
+                                {entry.user?.avatar ? (
+                                  <img
+                                    src={entry.user.avatar}
+                                    alt={entry.user.name || "User"}
+                                    className="w-5 h-5 rounded-full mr-1 object-cover"
+                                  />
+                                ) : (
+                                  <User className="w-4 h-4 mr-1" />
+                                )}
+                                {entry.user?.name || "Unknown"}
                               </span>
                               <span className="text-gray-500 truncate" title={entry.description}>
                                 {entry.description || "-"}

@@ -481,6 +481,8 @@ class TaskService {
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
+      .populate('timeEntries.user', 'name email avatar')
+      .populate('scheduledWork.user', 'name email avatar')
       .populate('groupId', 'name description');
     return task;
   }
@@ -773,6 +775,8 @@ class TaskService {
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
+      .populate('timeEntries.user', 'name email avatar')
+      .populate('scheduledWork.user', 'name email avatar')
       .populate('groupId', 'name description');
 
     // Send notifications for changes
@@ -923,6 +927,8 @@ class TaskService {
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
+      .populate('timeEntries.user', 'name email avatar')
+      .populate('scheduledWork.user', 'name email avatar')
       .populate('groupId', 'name description')
       .sort({ dueDate: 1, priority: -1 })
       .lean();
@@ -1013,6 +1019,8 @@ class TaskService {
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
+      .populate('timeEntries.user', 'name email avatar')
+      .populate('scheduledWork.user', 'name email avatar')
       .populate('groupId', 'name description')
       .sort({ priority: -1, dueDate: 1, createdAt: -1 })
       .lean();
@@ -1315,6 +1323,8 @@ class TaskService {
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
+      .populate('timeEntries.user', 'name email avatar')
+      .populate('scheduledWork.user', 'name email avatar')
       .populate('groupId', 'name description');
 
     // Send notification for assigned users
@@ -1435,6 +1445,8 @@ class TaskService {
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
+      .populate('timeEntries.user', 'name email avatar')
+      .populate('scheduledWork.user', 'name email avatar')
       .populate('groupId', 'name description');
 
     // Send notification for unassigned user
@@ -1808,6 +1820,8 @@ class TaskService {
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
+      .populate('timeEntries.user', 'name email avatar')
+      .populate('scheduledWork.user', 'name email avatar')
       .populate('groupId', 'name description');
     return task;
   }
@@ -1826,6 +1840,8 @@ class TaskService {
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
+      .populate('timeEntries.user', 'name email avatar')
+      .populate('scheduledWork.user', 'name email avatar')
       .populate('groupId', 'name description');
     return task;
   }
@@ -2530,6 +2546,8 @@ class TaskService {
     await task.populate('createdBy', 'name email avatar');
     await task.populate('assignedTo.userId', 'name email avatar');
     await task.populate('comments.user', 'name email avatar');
+    await task.populate('timeEntries.user', 'name email avatar');
+    await task.populate('scheduledWork.user', 'name email avatar');
     await task.populate('groupId', 'name description');
 
     const latestEntry = task.timeEntries[task.timeEntries.length - 1];
