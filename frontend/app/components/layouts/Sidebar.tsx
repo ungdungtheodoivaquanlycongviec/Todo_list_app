@@ -766,10 +766,12 @@ export default function Sidebar() {
     if (!groupMembersMap[contextMenu.groupId]) {
       try {
         const group = await groupService.getGroupById(contextMenu.groupId);
-        setGroupMembersMap(prev => ({
-          ...prev,
-          [contextMenu.groupId]: group.members || []
-        }));
+        if (group) {
+          setGroupMembersMap(prev => ({
+            ...prev,
+            [contextMenu.groupId]: group.members || []
+          }));
+        }
       } catch (error) {
         console.error('Failed to load group members:', error);
       }

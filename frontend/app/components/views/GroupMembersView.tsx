@@ -175,6 +175,10 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
       setError(null);
       const groupData = await groupService.getGroupById(targetGroupId);
 
+      if (!groupData) {
+        throw new Error('Group not found or access denied');
+      }
+
       // Check if there are changes
       const hasChanges = group && (
         group.name !== groupData.name ||

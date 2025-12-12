@@ -2,6 +2,7 @@ const Task = require('../models/Task.model');
 const Group = require('../models/Group.model');
 const Folder = require('../models/Folder.model');
 const User = require('../models/User.model');
+const mongoose = require('mongoose');
 const { ERROR_MESSAGES, TASK_STATUS, LIMITS, SUCCESS_MESSAGES, HTTP_STATUS, PRIORITY_LEVELS } = require('../config/constants');
 const {
   isValidObjectId,
@@ -383,7 +384,7 @@ class TaskService {
       }
     }
 
-    // If task has a folder, verify all assignees have access to that folder
+    // If task has a folder, check and auto-grant folder access for assigned users
     if (taskData.folderId && targetGroup) {
       const folder = await Folder.findById(taskData.folderId);
       if (folder && !folder.isDefault) {
@@ -391,18 +392,30 @@ class TaskService {
           (folder.memberAccess || []).map(access => normalizeId(access.userId)).filter(Boolean)
         );
 
-        // Admins (PM/Product Owner) can assign to anyone in group, but regular users must have folder access
-        const invalidAssignees = assignedIds.filter(id => {
-          if (canAssignToOthers) {
-            // Admins can assign to anyone in group
-            return false;
-          }
-          // Regular users: assignees must have folder access
-          return !folderMemberAccess.has(id);
-        });
+        // Find assignees who don't have folder access
+        const assigneesWithoutAccess = assignedIds.filter(id => !folderMemberAccess.has(id));
 
-        if (invalidAssignees.length > 0) {
-          raiseError('Không thể gán task cho người không có quyền truy cập vào folder này.', HTTP_STATUS.FORBIDDEN);
+        if (assigneesWithoutAccess.length > 0) {
+          if (canAssignToOthers) {
+            // PM/Product Owner can auto-grant folder access to assigned users
+            console.log(`[TaskService] Auto-granting folder access to ${assigneesWithoutAccess.length} users`);
+
+            // Add these users to folder's memberAccess
+            const newMemberAccess = assigneesWithoutAccess.map(userId => ({
+              userId: new mongoose.Types.ObjectId(userId),
+              addedBy: new mongoose.Types.ObjectId(creatorId),
+              addedAt: new Date()
+            }));
+
+            folder.memberAccess = folder.memberAccess || [];
+            folder.memberAccess.push(...newMemberAccess);
+            await folder.save();
+
+            console.log(`[TaskService] Granted folder access to users: ${assigneesWithoutAccess.join(', ')}`);
+          } else {
+            // Regular users cannot assign to people without folder access
+            raiseError('Không thể gán task cho người không có quyền truy cập vào folder này.', HTTP_STATUS.FORBIDDEN);
+          }
         }
       }
     }

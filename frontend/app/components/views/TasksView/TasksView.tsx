@@ -2357,6 +2357,7 @@ export default function TasksView() {
           onClose={() => setShowCreateModal(false)}
           onCreateTask={handleCreateTask}
           currentUser={currentUser}
+          groupMembers={currentGroup?.members || []}
         />
       )}
 

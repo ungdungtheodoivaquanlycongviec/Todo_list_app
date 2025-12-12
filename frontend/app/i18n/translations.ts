@@ -69,6 +69,9 @@ export const translations = {
     'tasks.descriptionPlaceholder': 'Describe the task in detail...',
     'tasks.tagsPlaceholder': 'urgent, important, project-x',
     'tasks.tagsHelper': 'Separate tags with commas',
+    'tasks.assignTo': 'Assign To',
+    'tasks.selectAssignees': 'Click to select assignees...',
+    'tasks.assignToHelper': 'Select one or more team members to assign this task to.',
 
     // Priority levels
     'priority.none': 'None',
@@ -250,6 +253,7 @@ export const translations = {
     'folders.createFirstFolder': 'Create your first folder in "{{groupName}}" to start organizing your tasks and notes.',
     'folders.createFirstFolderNoGroup': 'Create a folder to start organizing your tasks and notes.',
     'folders.enterFolderName': 'Enter folder name',
+    'folders.enterFolderDescription': 'Enter folder description (optional)',
     'folders.creating': 'Creating...',
 
     // Notifications
@@ -807,6 +811,9 @@ export const translations = {
     'tasks.descriptionPlaceholder': 'Mô tả chi tiết công việc...',
     'tasks.tagsPlaceholder': 'khẩn cấp, quan trọng, dự án-x',
     'tasks.tagsHelper': 'Phân cách các nhãn bằng dấu phẩy',
+    'tasks.assignTo': 'Giao cho',
+    'tasks.selectAssignees': 'Nhấn để chọn người thực hiện...',
+    'tasks.assignToHelper': 'Chọn một hoặc nhiều thành viên để giao công việc này.',
 
     // Priority levels
     'priority.none': 'Không có',
@@ -988,6 +995,7 @@ export const translations = {
     'folders.createFirstFolder': 'Tạo thư mục đầu tiên trong "{{groupName}}" để bắt đầu sắp xếp công việc và ghi chú.',
     'folders.createFirstFolderNoGroup': 'Tạo thư mục để bắt đầu sắp xếp công việc và ghi chú.',
     'folders.enterFolderName': 'Nhập tên thư mục',
+    'folders.enterFolderDescription': 'Nhập mô tả thư mục (tùy chọn)',
     'folders.creating': 'Đang tạo...',
 
     // Notifications

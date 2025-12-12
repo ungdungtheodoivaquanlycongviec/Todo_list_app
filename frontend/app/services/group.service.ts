@@ -68,12 +68,12 @@ export const groupService = {
 
     const data = await response.json();
     const group = normalizeGroupResponse(data);
-    
+
     // Update user in localStorage if updatedUser is provided
     if (data.updatedUser && typeof window !== 'undefined') {
       localStorage.setItem('user', JSON.stringify(data.updatedUser));
     }
-    
+
     return group;
   },
 
@@ -154,7 +154,8 @@ export const groupService = {
   },
 
   // Lấy chi tiết group theo ID
-  getGroupById: async (id: string): Promise<Group> => {
+  // Returns null if group not found or user doesn't have access (403/404)
+  getGroupById: async (id: string): Promise<Group | null> => {
     const token = authService.getAuthToken();
     const headers: HeadersInit = {};
 
@@ -174,6 +175,13 @@ export const groupService = {
           sessionStorage.clear();
         }
         throw new Error('Authentication failed. Please login again.');
+      }
+
+      // For 403 (forbidden) or 404 (not found), return null instead of throwing
+      // This allows callers to handle gracefully when user was removed from group
+      if (response.status === 403 || response.status === 404) {
+        console.warn(`Group ${id} not accessible (${response.status}). User may have been removed.`);
+        return null;
       }
 
       const errorText = await response.text();
@@ -327,12 +335,12 @@ export const groupService = {
     }
 
     const data = await response.json();
-    
+
     // Update user in localStorage if updatedUser is provided
     if (data.data?.user && typeof window !== 'undefined') {
       localStorage.setItem('user', JSON.stringify(data.data.user));
     }
-    
+
     return data.data || data;
   },
 

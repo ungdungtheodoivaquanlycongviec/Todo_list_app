@@ -52,15 +52,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           // Load current group if user has one
           if (userData.currentGroupId) {
-            try {
-              const { groupService } = await import('../services/group.service');
-              const group = await groupService.getGroupById(userData.currentGroupId);
+            const { groupService } = await import('../services/group.service');
+            const group = await groupService.getGroupById(userData.currentGroupId);
+
+            if (group) {
+              // Successfully loaded the group
               setCurrentGroup(group);
-            } catch (error) {
-              console.error('Failed to load current group:', error);
-              // Current group may have been deleted - try to load first available group
+            } else {
+              // Group not accessible (user was removed or group deleted) - find fallback
+              console.log('Current group not accessible, finding fallback...');
               try {
-                const { groupService } = await import('../services/group.service');
                 const response = await groupService.getAllGroups();
                 let fallbackGroup = null;
                 if (response.myGroups.length > 0) {
@@ -71,15 +72,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                 setCurrentGroup(fallbackGroup);
 
-                // Update user's currentGroupId on server and localStorage since original group was deleted
-                if (fallbackGroup && typeof window !== 'undefined') {
-                  const updatedUserData = { ...userData, currentGroupId: fallbackGroup._id };
+                // Update user's currentGroupId on server and localStorage since original group is no longer accessible
+                if (typeof window !== 'undefined') {
+                  const newGroupId = fallbackGroup?._id || undefined;
+                  const updatedUserData = { ...userData, currentGroupId: newGroupId };
 
-                  // Update on server first
+                  // Update on server first to prevent future 403 errors on login
                   try {
                     const { userService } = await import('../services/user.service');
-                    await userService.updateProfile({ currentGroupId: fallbackGroup._id });
-                    console.log('Updated currentGroupId on server to:', fallbackGroup._id);
+                    await userService.updateProfile({ currentGroupId: newGroupId });
+                    console.log('Updated currentGroupId on server to:', newGroupId);
                   } catch (serverError) {
                     console.error('Failed to update currentGroupId on server:', serverError);
                   }
@@ -92,6 +94,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               } catch (fallbackError) {
                 console.error('Failed to load fallback groups:', fallbackError);
                 setCurrentGroup(null);
+
+                // Clear the invalid currentGroupId on the server
+                try {
+                  const { userService } = await import('../services/user.service');
+                  await userService.updateProfile({ currentGroupId: undefined });
+                  const updatedUserData = { ...userData, currentGroupId: undefined };
+                  if (typeof window !== 'undefined') {
+                    localStorage.setItem('user', JSON.stringify(updatedUserData));
+                  }
+                  setUser(updatedUserData);
+                } catch (clearError) {
+                  console.error('Failed to clear currentGroupId:', clearError);
+                }
               }
             }
           } else {
@@ -260,15 +275,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Load current group if user has one
       let finalUser = authData.user;
       if (authData.user.currentGroupId) {
-        try {
-          const { groupService } = await import('../services/group.service');
-          const group = await groupService.getGroupById(authData.user.currentGroupId);
+        const { groupService } = await import('../services/group.service');
+        const group = await groupService.getGroupById(authData.user.currentGroupId);
+
+        if (group) {
           setCurrentGroup(group);
-        } catch (error) {
-          console.error('Failed to load current group:', error);
-          // Current group may have been deleted - try to load first available group
+        } else {
+          // Current group not accessible - try to load first available group
+          console.log('Current group not accessible during login, finding fallback...');
           try {
-            const { groupService } = await import('../services/group.service');
             const response = await groupService.getAllGroups();
             let fallbackGroup = null;
             if (response.myGroups.length > 0) {
@@ -279,6 +294,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setCurrentGroup(fallbackGroup);
             if (fallbackGroup) {
               finalUser = { ...authData.user, currentGroupId: fallbackGroup._id };
+              setUser(finalUser);
+            } else {
+              finalUser = { ...authData.user, currentGroupId: undefined };
               setUser(finalUser);
             }
           } catch (fallbackError) {
