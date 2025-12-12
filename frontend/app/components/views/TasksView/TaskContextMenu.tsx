@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Task } from '../../../services/types/task.types';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useTimer } from '../../../contexts/TimerContext';
@@ -8,13 +8,13 @@ import {
   CheckCircle,
   PlayCircle,
   StopCircle,
-  Square,
   RefreshCw,
   FolderInput,
   Copy,
   Trash2,
   ChevronRight,
   Settings,
+  XCircle,
 } from 'lucide-react';
 
 interface TaskContextMenuProps {
@@ -45,10 +45,14 @@ const REPEAT_OPTIONS = [
   { key: 'monthly', label: 'Every month', frequency: 'monthly', interval: 1 },
   { key: 'yearly', label: 'Every year', frequency: 'yearly', interval: 1 },
   { key: 'custom', label: 'Customize repeat', isCustom: true },
+  { key: 'remove', label: 'Remove repeat', isRemove: true },
 ];
 
 export default function TaskContextMenu({ x, y, task, onAction, onClose }: TaskContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const changeTypeRef = useRef<HTMLDivElement>(null);
+  const repeatRef = useRef<HTMLDivElement>(null);
+  const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { t } = useLanguage();
   const { isTimerRunning } = useTimer();
   const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
@@ -58,6 +62,32 @@ export default function TaskContextMenu({ x, y, task, onAction, onClose }: TaskC
 
   // Check if task is in a status that allows timer
   const canUseTimer = task.status !== 'completed' && task.status !== 'incomplete';
+
+  // Handle submenu open/close with delay to prevent flicker when moving between menu and submenu
+  const handleSubmenuOpen = useCallback((submenu: string) => {
+    // Clear any pending close timeout
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+    setActiveSubmenu(submenu);
+  }, []);
+
+  const handleSubmenuClose = useCallback(() => {
+    // Add a small delay before closing to allow mouse to move to submenu
+    closeTimeoutRef.current = setTimeout(() => {
+      setActiveSubmenu(null);
+    }, 150);
+  }, []);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current) {
+        clearTimeout(closeTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -95,6 +125,8 @@ export default function TaskContextMenu({ x, y, task, onAction, onClose }: TaskC
   const handleRepeatChange = (option: typeof REPEAT_OPTIONS[0]) => {
     if (option.isCustom) {
       handleAction('repeat_custom');
+    } else if (option.isRemove) {
+      handleAction('remove_repeat');
     } else if (option.frequency) {
       handleAction('set_repeat', {
         isRepeating: true,
@@ -106,12 +138,33 @@ export default function TaskContextMenu({ x, y, task, onAction, onClose }: TaskC
     }
   };
 
+  // Calculate submenu position to prevent overflow
+  const getSubmenuStyle = (ref: React.RefObject<HTMLDivElement | null>, submenuHeight: number) => {
+    if (!ref.current) return { top: 0 };
+
+    const rect = ref.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.top;
+    const spaceAbove = rect.top;
+
+    // If submenu would overflow below and there's more space above, position from bottom
+    if (spaceBelow < submenuHeight && spaceAbove > spaceBelow) {
+      // Position from bottom - align bottom of submenu with bottom of trigger
+      return { bottom: 0, top: 'auto' };
+    }
+
+    return { top: 0 };
+  };
+
   // Calculate menu position to stay within viewport
   const menuStyle = {
     left: Math.min(x, window.innerWidth - 220),
     top: Math.min(y, window.innerHeight - 350),
     width: 200
   };
+
+  // Estimated heights for submenus
+  const categorySubmenuHeight = 320; // ~8 items * 40px
+  const repeatSubmenuHeight = 380; // ~9 items * 40px + remove option
 
   return (
     <div
@@ -146,9 +199,10 @@ export default function TaskContextMenu({ x, y, task, onAction, onClose }: TaskC
 
         {/* Change Type - with submenu */}
         <div
+          ref={changeTypeRef}
           className="relative"
-          onMouseEnter={() => setActiveSubmenu('change_type')}
-          onMouseLeave={() => setActiveSubmenu(null)}
+          onMouseEnter={() => handleSubmenuOpen('change_type')}
+          onMouseLeave={handleSubmenuClose}
         >
           <button
             className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -166,15 +220,20 @@ export default function TaskContextMenu({ x, y, task, onAction, onClose }: TaskC
           {/* Change Type Submenu */}
           {activeSubmenu === 'change_type' && (
             <div
-              className="absolute left-full top-0 ml-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50"
+              className="absolute left-full w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50"
+              style={getSubmenuStyle(changeTypeRef, categorySubmenuHeight)}
+              onMouseEnter={() => handleSubmenuOpen('change_type')}
+              onMouseLeave={handleSubmenuClose}
             >
+              {/* Invisible bridge to connect main menu to submenu */}
+              <div className="absolute -left-2 top-0 bottom-0 w-2" />
               <div className="py-1">
                 {CATEGORIES.map((category) => (
                   <button
                     key={category}
                     className={`w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 ${task.category === category
-                        ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
-                        : 'text-gray-700 dark:text-gray-300'
+                      ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
+                      : 'text-gray-700 dark:text-gray-300'
                       }`}
                     onClick={() => handleCategoryChange(category)}
                   >
@@ -200,9 +259,10 @@ export default function TaskContextMenu({ x, y, task, onAction, onClose }: TaskC
 
         {/* Repeat Task - with submenu */}
         <div
+          ref={repeatRef}
           className="relative"
-          onMouseEnter={() => setActiveSubmenu('repeat')}
-          onMouseLeave={() => setActiveSubmenu(null)}
+          onMouseEnter={() => handleSubmenuOpen('repeat')}
+          onMouseLeave={handleSubmenuClose}
         >
           <button
             className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -217,8 +277,13 @@ export default function TaskContextMenu({ x, y, task, onAction, onClose }: TaskC
           {/* Repeat Task Submenu */}
           {activeSubmenu === 'repeat' && (
             <div
-              className="absolute left-full top-0 ml-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50"
+              className="absolute left-full w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50"
+              style={getSubmenuStyle(repeatRef, repeatSubmenuHeight)}
+              onMouseEnter={() => handleSubmenuOpen('repeat')}
+              onMouseLeave={handleSubmenuClose}
             >
+              {/* Invisible bridge to connect main menu to submenu */}
+              <div className="absolute -left-2 top-0 bottom-0 w-2" />
               <div className="py-1">
                 {REPEAT_OPTIONS.map((option) => {
                   if (option.isDivider) {
@@ -229,14 +294,31 @@ export default function TaskContextMenu({ x, y, task, onAction, onClose }: TaskC
                     );
                   }
 
+                  // Only show Remove repeat if task has active repeat
+                  if (option.isRemove) {
+                    if (!task.repetition?.isRepeating) return null;
+                    return (
+                      <React.Fragment key={option.key}>
+                        <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
+                        <button
+                          className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                          onClick={() => handleRepeatChange(option)}
+                        >
+                          <XCircle className="w-4 h-4" />
+                          {option.label}
+                        </button>
+                      </React.Fragment>
+                    );
+                  }
+
                   const isActive = task.repetition?.isRepeating && task.repetition?.frequency === option.frequency;
 
                   return (
                     <button
                       key={option.key}
                       className={`w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 ${isActive
-                          ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
-                          : 'text-gray-700 dark:text-gray-300'
+                        ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
+                        : 'text-gray-700 dark:text-gray-300'
                         }`}
                       onClick={() => handleRepeatChange(option)}
                     >

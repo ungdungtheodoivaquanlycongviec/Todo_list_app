@@ -23,6 +23,7 @@ import { Task } from "../../../services/types/task.types";
 import CreateTaskModal from "./CreateTaskModal";
 import TaskContextMenu from "./TaskContextMenu";
 import TaskDetailModal from "./TaskDetailModal";
+import RepeatTaskModal, { RepeatSettings } from "./RepeatTaskModal";
 import EstimatedTimePicker from "./EstimatedTimePicker";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../contexts/AuthContext";
@@ -60,6 +61,8 @@ export default function TasksView() {
   } | null>(null);
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
   const [showTaskDetail, setShowTaskDetail] = useState(false);
+  const [showRepeatModal, setShowRepeatModal] = useState(false);
+  const [repeatModalTask, setRepeatModalTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"list" | "kanban">("list");
   const [kanbanData, setKanbanData] = useState<any>(null);
@@ -1200,9 +1203,9 @@ export default function TasksView() {
           break;
 
         case "repeat_custom":
-          // Open task detail modal to configure repeat settings
-          setSelectedTask(task._id);
-          setShowTaskDetail(true);
+          // Open custom repeat modal
+          setRepeatModalTask(task);
+          setShowRepeatModal(true);
           break;
 
         case "repeat_after_completion":
@@ -1244,6 +1247,16 @@ export default function TasksView() {
           setShowTaskDetail(true);
           break;
 
+        case "remove_repeat":
+          // Remove repeat settings from the task
+          const noRepeatTask = await taskService.setTaskRepetition(task._id, {
+            isRepeating: false,
+            frequency: null,
+            interval: null,
+          });
+          handleTaskUpdate(noRepeatTask);
+          break;
+
         case "delete":
           if (confirm("Are you sure you want to delete this task?")) {
             await taskService.deleteTask(task._id);
@@ -1257,6 +1270,27 @@ export default function TasksView() {
     } catch (error) {
       console.error("Error in context menu action:", error);
       alert("Failed to perform action: " + getErrorMessage(error));
+    }
+  };
+
+  // Handle saving repeat settings from RepeatTaskModal
+  const handleRepeatSave = async (settings: RepeatSettings) => {
+    if (!repeatModalTask) return;
+
+    try {
+      const updatedTask = await taskService.setTaskRepetition(repeatModalTask._id, {
+        isRepeating: settings.isRepeating,
+        frequency: settings.frequency,
+        interval: settings.interval,
+        endDate: settings.endDate,
+        occurrences: settings.occurrences,
+      });
+      handleTaskUpdate(updatedTask);
+      setShowRepeatModal(false);
+      setRepeatModalTask(null);
+    } catch (error) {
+      console.error("Error saving repeat settings:", error);
+      alert("Failed to save repeat settings: " + getErrorMessage(error));
     }
   };
 
@@ -2574,6 +2608,19 @@ export default function TasksView() {
           task={contextMenu.task}
           onAction={handleContextMenuAction}
           onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {/* Repeat Task Modal */}
+      {repeatModalTask && (
+        <RepeatTaskModal
+          task={repeatModalTask}
+          isOpen={showRepeatModal}
+          onClose={() => {
+            setShowRepeatModal(false);
+            setRepeatModalTask(null);
+          }}
+          onSave={handleRepeatSave}
         />
       )}
     </div>
