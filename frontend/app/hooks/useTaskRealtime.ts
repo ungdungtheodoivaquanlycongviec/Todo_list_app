@@ -46,19 +46,17 @@ const extractEvent = (
     typeof payload.taskId === 'string'
       ? payload.taskId
       : payload.taskId
-      ? payload.taskId.toString()
-      : coerceTaskId(task, null);
+        ? payload.taskId.toString()
+        : coerceTaskId(task, null);
 
   const groupId =
     typeof payload.groupId === 'string'
       ? payload.groupId
       : payload.groupId
-      ? payload.groupId.toString()
-      : task?.groupId && typeof task.groupId === 'object'
-      ? (task.groupId as any)._id?.toString?.() ?? task.groupId?.toString?.()
-      : typeof task?.groupId === 'string'
-      ? task.groupId
-      : null;
+        ? String(payload.groupId)
+        : task?.groupId
+          ? (typeof task.groupId === 'object' ? (task.groupId as any)?._id?.toString?.() : String(task.groupId))
+          : null;
 
   return {
     eventKey,

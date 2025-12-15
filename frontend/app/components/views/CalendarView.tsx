@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Plus, 
-  ChevronLeft, 
-  ChevronRight, 
-  Search, 
+import {
+  Plus,
+  ChevronLeft,
+  ChevronRight,
+  Search,
   Calendar as CalendarIcon,
   Clock,
   Filter,
@@ -27,6 +27,7 @@ import { useFolder } from '../../contexts/FolderContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useRegional } from '../../contexts/RegionalContext';
 import { monthNames, dayNames, dayNamesShort } from '../../i18n/dateLocales';
+import { useToast } from '../../contexts/ToastContext';
 
 interface CalendarEvent {
   id: string;
@@ -43,6 +44,7 @@ export default function CalendarView() {
   const { currentFolder } = useFolder();
   const { t, language } = useLanguage();
   const { formatDate, getWeekStartDay } = useRegional();
+  const toast = useToast();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [assignedTasksSearch, setAssignedTasksSearch] = useState('');
   const [calendarData, setCalendarData] = useState<any>(null);
@@ -79,21 +81,21 @@ export default function CalendarView() {
     try {
       setLoading(true);
       const response = await taskService.getCalendarView(year, month, currentFolder?._id);
-      
+
       console.log('=== FETCH CALENDAR DEBUG ===');
       console.log('Calendar response:', response);
-      
+
       setCalendarData(response);
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       console.error('Error fetching calendar data:', errorMessage);
-      
+
       if (errorMessage.includes("You must join or create a group")) {
         // Don't show error alert for group requirement - let the UI handle it
         console.log("User needs to join/create a group");
         return;
       }
-      
+
       setCalendarData(null);
     } finally {
       setLoading(false);
@@ -103,29 +105,29 @@ export default function CalendarView() {
   // Fetch assigned tasks
   const fetchAssignedTasks = async () => {
     if (!currentUser) return;
-  
+
     try {
       setAssignedTasksLoading(true);
       // Backend đã filter theo currentGroupId, chỉ cần filter theo assignedTo ở frontend
       const response = await taskService.getAllTasks({ folderId: currentFolder?._id });
-      
+
       const tasksAssignedToUser = response.tasks.filter((task: Task) =>
-        task.assignedTo.some((assignee: any) => 
+        task.assignedTo.some((assignee: any) =>
           assignee.userId?._id === currentUser._id || assignee.userId === currentUser._id
         )
       );
-      
+
       setAssignedTasks(tasksAssignedToUser);
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       console.error('Error fetching assigned tasks:', errorMessage);
-      
+
       if (errorMessage.includes("You must join or create a group")) {
         // Don't show error alert for group requirement - let the UI handle it
         console.log("User needs to join/create a group");
         return;
       }
-      
+
       setAssignedTasks([]);
     } finally {
       setAssignedTasksLoading(false);
@@ -186,17 +188,17 @@ export default function CalendarView() {
     const weekStartDay = getWeekStartDay();
     const startOfWeek = new Date(date);
     const day = startOfWeek.getDay();
-    const diff = weekStartDay === 1 
+    const diff = weekStartDay === 1
       ? startOfWeek.getDate() - day + (day === 0 ? -6 : 1) // Monday start
       : startOfWeek.getDate() - day; // Sunday start
     startOfWeek.setDate(diff);
-    
+
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 6);
-    
+
     const startMonth = language === 'vi' ? `Th${startOfWeek.getMonth() + 1}` : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][startOfWeek.getMonth()];
     const endMonth = language === 'vi' ? `Th${endOfWeek.getMonth() + 1}` : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][endOfWeek.getMonth()];
-    
+
     return `${startMonth} ${startOfWeek.getDate()} - ${endMonth} ${endOfWeek.getDate()}, ${endOfWeek.getFullYear()}`;
   };
 
@@ -205,18 +207,18 @@ export default function CalendarView() {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    
+
     const firstDayOfMonth = new Date(year, month, 1);
     const weekStartDay = getWeekStartDay();
     let startingDay = firstDayOfMonth.getDay();
-    
+
     // Adjust for week start preference
     if (weekStartDay === 1) {
       startingDay = startingDay === 0 ? 6 : startingDay - 1;
     }
-    
+
     const displayDays = [];
-    
+
     // Add empty cells for days before the first day of month
     for (let i = 0; i < startingDay; i++) {
       const prevMonthDate = new Date(year, month, -i);
@@ -228,7 +230,7 @@ export default function CalendarView() {
         isCurrentMonth: false
       });
     }
-    
+
     // Add current month days
     for (let i = 1; i <= daysInMonth; i++) {
       const date = new Date(year, month, i);
@@ -240,7 +242,7 @@ export default function CalendarView() {
         isCurrentMonth: true
       });
     }
-    
+
     return displayDays;
   };
 
@@ -253,7 +255,7 @@ export default function CalendarView() {
       ? startOfWeek.getDate() - day + (day === 0 ? -6 : 1) // Monday start
       : startOfWeek.getDate() - day; // Sunday start
     startOfWeek.setDate(diff);
-    
+
     const weekDays = [];
     for (let i = 0; i < 7; i++) {
       const date = new Date(startOfWeek);
@@ -278,59 +280,59 @@ export default function CalendarView() {
   // Helper để xác định trạng thái task
   const getTaskStatus = (task: Task) => {
     if (task.status === 'completed') return 'completed';
-    
+
     const today = new Date();
     const dueDate = task.dueDate ? new Date(task.dueDate) : null;
-    
+
     if (dueDate) {
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
-      
+
       if (dueDate < yesterday) {
         return 'overdue';
       } else if (dueDate.toDateString() === today.toDateString()) {
         return 'due-today';
       }
     }
-    
+
     return 'upcoming';
   };
 
   // Helper để lấy màu sắc cho priority
   const getPriorityColor = (priority: string) => {
-    switch(priority) {
-      case 'urgent': 
+    switch (priority) {
+      case 'urgent':
         return 'bg-red-500 border-red-500';
-      case 'high': 
+      case 'high':
         return 'bg-orange-500 border-orange-500';
-      case 'medium': 
+      case 'medium':
         return 'bg-yellow-500 border-yellow-500';
-      case 'low': 
+      case 'low':
         return 'bg-blue-500 border-blue-500';
-      default: 
+      default:
         return 'bg-gray-500 border-gray-500';
     }
   };
 
   // Helper để lấy màu nền cho priority
   const getPriorityBackgroundColor = (priority: string) => {
-    switch(priority) {
-      case 'urgent': 
+    switch (priority) {
+      case 'urgent':
         return 'bg-red-50 border-red-200';
-      case 'high': 
+      case 'high':
         return 'bg-orange-50 border-orange-200';
-      case 'medium': 
+      case 'medium':
         return 'bg-yellow-50 border-yellow-200';
-      case 'low': 
+      case 'low':
         return 'bg-blue-50 border-blue-200';
-      default: 
+      default:
         return 'bg-gray-50 border-gray-200';
     }
   };
 
   // Helper để lấy icon trạng thái
   const getStatusIcon = (status: string) => {
-    switch(status) {
+    switch (status) {
       case 'completed':
         return <CheckCircle2 className="w-3 h-3 text-green-500" />;
       case 'overdue':
@@ -376,7 +378,7 @@ export default function CalendarView() {
       await fetchAssignedTasks();
     } catch (error) {
       console.error("Error creating task:", error);
-      alert("Failed to create task: " + getErrorMessage(error));
+      toast.showError(getErrorMessage(error), "Lỗi tạo task");
     }
   };
 
@@ -399,10 +401,10 @@ export default function CalendarView() {
 
   const handleTaskUpdate = async (updatedTask: Task) => {
     // Update the task in assigned tasks list
-    setAssignedTasks(prev => 
+    setAssignedTasks(prev =>
       prev.map(task => task._id === updatedTask._id ? updatedTask : task)
     );
-    
+
     // Refresh calendar data
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth() + 1;
@@ -412,12 +414,12 @@ export default function CalendarView() {
   const handleTaskDelete = async (taskId: string) => {
     // Remove task from assigned tasks list
     setAssignedTasks(prev => prev.filter(task => task._id !== taskId));
-    
+
     // Refresh calendar data
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth() + 1;
     await fetchCalendarData(year, month);
-    
+
     // Close task detail modal
     setShowTaskDetail(false);
     setSelectedTaskId(null);
@@ -433,7 +435,7 @@ export default function CalendarView() {
   // Check if user has a current group
   if (!currentGroup) {
     return (
-      <NoGroupState 
+      <NoGroupState
         title="Join or Create a Group to View Calendar"
         description="You need to join or create a group to view your calendar and manage scheduled tasks."
       />
@@ -469,27 +471,25 @@ export default function CalendarView() {
             </p>
           )}
         </div>
-        
+
         <div className="flex items-center gap-3">
           {/* View Mode Toggle */}
           <div className="flex bg-white border border-gray-300 rounded-lg overflow-hidden shadow-sm">
             <button
-              className={`px-4 py-2 text-sm flex items-center gap-2 transition-colors ${
-                viewMode === 'month'
+              className={`px-4 py-2 text-sm flex items-center gap-2 transition-colors ${viewMode === 'month'
                   ? 'bg-blue-500 text-white'
                   : 'bg-white text-gray-700 hover:bg-gray-50'
-              }`}
+                }`}
               onClick={() => setViewMode('month')}
             >
               <CalendarIcon className="w-4 h-4" />
               {t('calendar.month')}
             </button>
             <button
-              className={`px-4 py-2 text-sm flex items-center gap-2 transition-colors ${
-                viewMode === 'week'
+              className={`px-4 py-2 text-sm flex items-center gap-2 transition-colors ${viewMode === 'week'
                   ? 'bg-blue-500 text-white'
                   : 'bg-white text-gray-700 hover:bg-gray-50'
-              }`}
+                }`}
               onClick={() => setViewMode('week')}
             >
               <CalendarIcon className="w-4 h-4" />
@@ -498,7 +498,7 @@ export default function CalendarView() {
           </div>
 
           {/* Add Task Button */}
-          <button 
+          <button
             onClick={handleAddTask}
             className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm font-medium"
           >
@@ -515,30 +515,30 @@ export default function CalendarView() {
             {/* Calendar Header */}
             <div className="flex items-center justify-between p-6 border-b border-gray-100">
               <div className="flex items-center gap-4">
-                <button 
+                <button
                   className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                   onClick={() => navigatePeriod('prev')}
                 >
                   <ChevronLeft className="w-5 h-5" />
                 </button>
-                
+
                 <h2 className="text-lg font-semibold text-gray-900">
-                  {viewMode === 'month' 
+                  {viewMode === 'month'
                     ? getMonthYearString(currentDate)
                     : getWeekRangeString(currentDate)
                   }
                 </h2>
-                
-                <button 
+
+                <button
                   className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                   onClick={() => navigatePeriod('next')}
                 >
                   <ChevronRight className="w-5 h-5" />
                 </button>
               </div>
-              
+
               <div className="flex items-center gap-3">
-                <button 
+                <button
                   className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
                   onClick={goToToday}
                 >
@@ -555,7 +555,7 @@ export default function CalendarView() {
                   {/* Day headers - respecting week start preference */}
                   {(() => {
                     const weekStartDay = getWeekStartDay();
-                    const days = weekStartDay === 1 
+                    const days = weekStartDay === 1
                       ? [dayNamesShort[language][1], dayNamesShort[language][2], dayNamesShort[language][3], dayNamesShort[language][4], dayNamesShort[language][5], dayNamesShort[language][6], dayNamesShort[language][0]]
                       : dayNamesShort[language];
                     return days.map((day: string) => (
@@ -564,14 +564,14 @@ export default function CalendarView() {
                       </div>
                     ));
                   })()}
-                  
+
                   {/* Calendar days */}
                   {displayDays.map((dayInfo) => {
                     const dayTasks = getTasksForDate(dayInfo.dateString);
                     const isToday = new Date().toDateString() === dayInfo.fullDate.toDateString();
                     const isSelected = selectedDate && selectedDate.toDateString() === dayInfo.fullDate.toDateString();
                     const isWeekend = dayInfo.fullDate.getDay() === 0 || dayInfo.fullDate.getDay() === 6;
-                    
+
                     return (
                       <div
                         key={`${dayInfo.date}-${dayInfo.isCurrentMonth}`}
@@ -583,36 +583,33 @@ export default function CalendarView() {
                         `}
                         onClick={() => handleDayClick(dayInfo)}
                       >
-                        <div className={`flex items-center justify-between mb-2 ${
-                          !dayInfo.isCurrentMonth ? 'text-gray-400' : 
-                          isToday ? 'text-blue-600 font-semibold' : 
-                          isWeekend ? 'text-gray-500' : 'text-gray-900'
-                        }`}>
+                        <div className={`flex items-center justify-between mb-2 ${!dayInfo.isCurrentMonth ? 'text-gray-400' :
+                            isToday ? 'text-blue-600 font-semibold' :
+                              isWeekend ? 'text-gray-500' : 'text-gray-900'
+                          }`}>
                           <span className="text-sm font-medium">{dayInfo.date}</span>
                           {isToday && (
                             <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                           )}
                         </div>
-                        
+
                         {/* Tasks for this day */}
                         <div className="space-y-1.5">
                           {dayTasks.slice(0, 4).map((task: Task) => {
                             const status = getTaskStatus(task);
                             return (
-                              <div 
+                              <div
                                 key={task._id}
-                                className={`p-2 rounded-lg border-l-3 cursor-pointer hover:shadow-sm transition-all duration-200 ${
-                                  getPriorityBackgroundColor(task.priority || 'medium')
-                                }`}
+                                className={`p-2 rounded-lg border-l-3 cursor-pointer hover:shadow-sm transition-all duration-200 ${getPriorityBackgroundColor(task.priority || 'medium')
+                                  }`}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleEventClick(task._id);
                                 }}
                               >
                                 <div className="flex items-start gap-2">
-                                  <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${
-                                    getPriorityColor(task.priority || 'medium')
-                                  }`}></div>
+                                  <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${getPriorityColor(task.priority || 'medium')
+                                    }`}></div>
                                   <div className="flex-1 min-w-0">
                                     <div className="text-xs font-medium text-gray-900 truncate">
                                       {task.title}
@@ -628,7 +625,7 @@ export default function CalendarView() {
                               </div>
                             );
                           })}
-                          
+
                           {dayTasks.length > 4 && (
                             <div className="text-xs text-gray-500 text-center py-1 bg-gray-100 rounded">
                               +{dayTasks.length - 4} more
@@ -647,23 +644,21 @@ export default function CalendarView() {
                     {getDisplayWeekDays().map(dayInfo => {
                       const isToday = new Date().toDateString() === dayInfo.fullDate.toDateString();
                       const isSelected = selectedDate && selectedDate.toDateString() === dayInfo.fullDate.toDateString();
-                      
+
                       return (
                         <div
                           key={dayInfo.dateString}
-                          className={`text-center p-3 rounded-lg border transition-colors cursor-pointer ${
-                            isToday 
-                              ? 'bg-blue-500 text-white border-blue-500' 
+                          className={`text-center p-3 rounded-lg border transition-colors cursor-pointer ${isToday
+                              ? 'bg-blue-500 text-white border-blue-500'
                               : isSelected
                                 ? 'bg-gray-100 border-gray-300'
                                 : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
-                          }`}
+                            }`}
                           onClick={() => handleDayClick(dayInfo)}
                         >
                           <div className="text-sm font-medium">{dayInfo.day.substring(0, 3)}</div>
-                          <div className={`text-lg font-bold ${
-                            isToday ? 'text-white' : 'text-gray-900'
-                          }`}>
+                          <div className={`text-lg font-bold ${isToday ? 'text-white' : 'text-gray-900'
+                            }`}>
                             {dayInfo.date}
                           </div>
                         </div>
@@ -676,7 +671,7 @@ export default function CalendarView() {
                     {getDisplayWeekDays().map(dayInfo => {
                       const dayTasks = getTasksForDate(dayInfo.dateString);
                       const isToday = new Date().toDateString() === dayInfo.fullDate.toDateString();
-                      
+
                       return (
                         <div key={dayInfo.dateString} className="space-y-2">
                           <div className="min-h-96 p-3 border border-gray-200 rounded-lg bg-white">
@@ -685,14 +680,14 @@ export default function CalendarView() {
                                 // Calculate task height based on estimated time
                                 const getTaskHeight = (estimatedTime: string) => {
                                   if (!estimatedTime) return 'h-20'; // Default height
-                                  
+
                                   // Parse estimated time (e.g., "2h 30m", "1h", "45m")
                                   const timeMatch = estimatedTime.match(/(\d+)h?\s*(\d+)?m?/i);
                                   if (timeMatch) {
                                     const hours = parseInt(timeMatch[1]) || 0;
                                     const minutes = parseInt(timeMatch[2]) || 0;
                                     const totalMinutes = hours * 60 + minutes;
-                                    
+
                                     // Map to Tailwind height classes
                                     if (totalMinutes <= 30) return 'h-16';      // 30 min or less
                                     if (totalMinutes <= 60) return 'h-20';      // 1 hour
@@ -702,18 +697,17 @@ export default function CalendarView() {
                                     if (totalMinutes <= 240) return 'h-36';      // 4 hours
                                     return 'h-40';                               // 4+ hours
                                   }
-                                  
+
                                   return 'h-20'; // Default height
                                 };
-                                
+
                                 const status = getTaskStatus(task);
-                                
+
                                 return (
                                   <div
                                     key={task._id}
-                                    className={`${getTaskHeight(task.estimatedTime || '')} p-3 rounded-lg border-l-4 cursor-pointer hover:shadow-md transition-all duration-200 ${
-                                      getPriorityBackgroundColor(task.priority || 'medium')
-                                    }`}
+                                    className={`${getTaskHeight(task.estimatedTime || '')} p-3 rounded-lg border-l-4 cursor-pointer hover:shadow-md transition-all duration-200 ${getPriorityBackgroundColor(task.priority || 'medium')
+                                      }`}
                                     onClick={() => handleEventClick(task._id)}
                                   >
                                     <div className="flex items-start justify-between h-full">
@@ -721,26 +715,26 @@ export default function CalendarView() {
                                         <div className="text-sm font-medium text-gray-900 truncate mb-1">
                                           {task.title}
                                         </div>
-                                        
+
                                         {task.description && (
                                           <div className="text-xs text-gray-600 line-clamp-2 mb-2">
                                             {task.description}
                                           </div>
                                         )}
-                                        
+
                                         <div className="flex items-center gap-3 text-xs text-gray-500">
                                           <div className="flex items-center gap-1">
                                             {getStatusIcon(status)}
                                             <span className="capitalize">{status.replace('-', ' ')}</span>
                                           </div>
-                                          
+
                                           {task.estimatedTime && (
                                             <div className="flex items-center gap-1">
                                               <Clock className="w-3 h-3" />
                                               <span>{task.estimatedTime}</span>
                                             </div>
                                           )}
-                                          
+
                                           {task.category && (
                                             <span className="bg-gray-100 px-2 py-1 rounded text-xs">
                                               {task.category}
@@ -748,14 +742,13 @@ export default function CalendarView() {
                                           )}
                                         </div>
                                       </div>
-                                      
+
                                       <div className="flex items-center gap-1 flex-shrink-0 ml-2">
-                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                          task.priority === 'urgent' ? 'bg-red-100 text-red-800' :
-                                          task.priority === 'high' ? 'bg-orange-100 text-orange-800' :
-                                          task.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                                          'bg-blue-100 text-blue-800'
-                                        }`}>
+                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${task.priority === 'urgent' ? 'bg-red-100 text-red-800' :
+                                            task.priority === 'high' ? 'bg-orange-100 text-orange-800' :
+                                              task.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                                                'bg-blue-100 text-blue-800'
+                                          }`}>
                                           {task.priority}
                                         </span>
                                       </div>
@@ -763,10 +756,10 @@ export default function CalendarView() {
                                   </div>
                                 );
                               })}
-                              
+
                               {/* Empty state */}
                               {dayTasks.length === 0 && (
-                                <div 
+                                <div
                                   className="h-32 flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
                                   onClick={() => {
                                     setSelectedDate(dayInfo.fullDate);
@@ -805,27 +798,25 @@ export default function CalendarView() {
                   {getTasksForDate(selectedDate.toISOString().split('T')[0]).map((task: Task) => {
                     const status = getTaskStatus(task);
                     return (
-                      <div 
+                      <div
                         key={task._id}
-                        className={`p-4 rounded-xl border-l-4 cursor-pointer hover:shadow-md transition-all duration-200 ${
-                          getPriorityBackgroundColor(task.priority || 'medium')
-                        }`}
+                        className={`p-4 rounded-xl border-l-4 cursor-pointer hover:shadow-md transition-all duration-200 ${getPriorityBackgroundColor(task.priority || 'medium')
+                          }`}
                         onClick={() => handleEventClick(task._id)}
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <div className="flex items-center gap-3 mb-2">
                               <h4 className="font-medium text-gray-900">{task.title}</h4>
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                task.priority === 'urgent' ? 'bg-red-100 text-red-800' :
-                                task.priority === 'high' ? 'bg-orange-100 text-orange-800' :
-                                task.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-blue-100 text-blue-800'
-                              }`}>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${task.priority === 'urgent' ? 'bg-red-100 text-red-800' :
+                                  task.priority === 'high' ? 'bg-orange-100 text-orange-800' :
+                                    task.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                                      'bg-blue-100 text-blue-800'
+                                }`}>
                                 {task.priority}
                               </span>
                             </div>
-                            
+
                             {task.description && (
                               <p className="text-sm text-gray-600 mb-3 line-clamp-2">
                                 {task.description}
@@ -837,14 +828,14 @@ export default function CalendarView() {
                                 {getStatusIcon(status)}
                                 <span className="capitalize">{status.replace('-', ' ')}</span>
                               </div>
-                              
+
                               {task.estimatedTime && (
                                 <div className="flex items-center gap-1">
                                   <Clock className="w-3 h-3" />
                                   <span>{task.estimatedTime}</span>
                                 </div>
                               )}
-                              
+
                               {task.category && (
                                 <span className="bg-gray-100 px-2 py-1 rounded">
                                   {task.category}
@@ -852,7 +843,7 @@ export default function CalendarView() {
                               )}
                             </div>
                           </div>
-                          
+
                           <button className="p-1 hover:bg-gray-100 rounded transition-colors">
                             <MoreVertical className="w-4 h-4 text-gray-400" />
                           </button>
@@ -860,12 +851,12 @@ export default function CalendarView() {
                       </div>
                     );
                   })}
-                  
+
                   {getTasksForDate(selectedDate.toISOString().split('T')[0]).length === 0 && (
                     <div className="text-center py-8 text-gray-500">
                       <CalendarIcon className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                       <p>No tasks scheduled for this day</p>
-                      <button 
+                      <button
                         onClick={handleAddTask}
                         className="text-blue-500 hover:text-blue-600 font-medium mt-2"
                       >
@@ -921,11 +912,10 @@ export default function CalendarView() {
               ) : filteredAssignedTasks.map((task) => {
                 const status = getTaskStatus(task);
                 return (
-                  <div 
+                  <div
                     key={task._id}
-                    className={`p-4 rounded-xl border-l-4 cursor-pointer hover:shadow-md transition-all duration-200 ${
-                      getPriorityBackgroundColor(task.priority || 'medium')
-                    }`}
+                    className={`p-4 rounded-xl border-l-4 cursor-pointer hover:shadow-md transition-all duration-200 ${getPriorityBackgroundColor(task.priority || 'medium')
+                      }`}
                     onClick={() => handleEventClick(task._id)}
                   >
                     <div className="flex items-start justify-between mb-2">
@@ -936,11 +926,11 @@ export default function CalendarView() {
                         {getStatusIcon(status)}
                       </div>
                     </div>
-                    
+
                     {task.category && (
                       <div className="text-xs text-gray-600 mb-2">{task.category}</div>
                     )}
-                    
+
                     <div className="flex items-center justify-between text-xs text-gray-500">
                       <div className="flex items-center gap-3">
                         <span className="capitalize">{status.replace('-', ' ')}</span>
@@ -951,15 +941,14 @@ export default function CalendarView() {
                           </span>
                         )}
                       </div>
-                      
+
                       {task.dueDate && (
-                        <span className={`px-2 py-1 rounded ${
-                          status === 'overdue' 
-                            ? 'bg-red-100 text-red-700' 
+                        <span className={`px-2 py-1 rounded ${status === 'overdue'
+                            ? 'bg-red-100 text-red-700'
                             : status === 'due-today'
-                            ? 'bg-orange-100 text-orange-700'
-                            : 'bg-gray-100 text-gray-700'
-                        }`}>
+                              ? 'bg-orange-100 text-orange-700'
+                              : 'bg-gray-100 text-gray-700'
+                          }`}>
                           {formatDate(task.dueDate)}
                         </span>
                       )}
@@ -967,7 +956,7 @@ export default function CalendarView() {
                   </div>
                 );
               })}
-              
+
               {!assignedTasksLoading && filteredAssignedTasks.length === 0 && (
                 <div className="text-center py-8 text-gray-500">
                   <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -977,7 +966,7 @@ export default function CalendarView() {
                     {assignedTasksSearch ? t('common.noResults') : t('calendar.noTasksAssigned')}
                   </p>
                   {!assignedTasksSearch && (
-                    <button 
+                    <button
                       onClick={handleAddTask}
                       className="text-blue-500 hover:text-blue-600 font-medium mt-2 text-sm"
                     >

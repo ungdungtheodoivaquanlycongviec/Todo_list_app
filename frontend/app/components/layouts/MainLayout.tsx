@@ -38,9 +38,8 @@ export default function MainLayout({
   const { currentFolder } = useFolder();
   const { t } = useLanguage();
   const isAdmin = user && (user.role === 'admin' || user.role === 'super_admin');
-  // Với user thường, luôn hiển thị sidebar để họ có thể tạo/join group,
-  // không phụ thuộc vào currentFolder (vì tài khoản mới sẽ chưa có folder).
-  const hasFolder = !isAdmin;
+  // Always show sidebar for non-admin users, even when no folder is selected (they need it to create folders/groups)
+  const showSidebar = !isAdmin;
 
   const MIN_SIDEBAR_WIDTH = 200;
   const MAX_SIDEBAR_WIDTH = 400;
@@ -107,7 +106,7 @@ export default function MainLayout({
       {/* Mobile header */}
       <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center gap-3 min-w-0">
-          {hasFolder && (
+          {showSidebar && (
             <button
               aria-label="Open navigation"
               className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200"
@@ -125,7 +124,7 @@ export default function MainLayout({
             </p>
           </div>
         </div>
-        {(isAdmin || hasFolder) && (
+        {(isAdmin || showSidebar) && (
           <button
             aria-label="Open tools"
             className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200"
@@ -141,8 +140,8 @@ export default function MainLayout({
         : `lg:flex`
         }`}>
         {/* Sidebar - desktop - Ẩn nếu là admin hoặc đang ở profile settings */}
-        {!isAdmin && hasFolder && !showProfileSettings && (
-          <div 
+        {!isAdmin && showSidebar && !showProfileSettings && (
+          <div
             className="hidden lg:block border-r border-gray-200 dark:border-gray-800 overflow-hidden flex-shrink-0 relative"
             style={{ width: sidebarWidth }}
           >
@@ -151,13 +150,11 @@ export default function MainLayout({
             <div
               ref={resizeRef}
               onMouseDown={handleMouseDown}
-              className={`absolute top-0 right-0 w-1 h-full cursor-col-resize group hover:bg-blue-500 transition-colors z-10 ${
-                isResizing ? 'bg-blue-500' : 'bg-transparent hover:bg-blue-400'
-              }`}
+              className={`absolute top-0 right-0 w-1 h-full cursor-col-resize group hover:bg-blue-500 transition-colors z-10 ${isResizing ? 'bg-blue-500' : 'bg-transparent hover:bg-blue-400'
+                }`}
             >
-              <div className={`absolute top-1/2 -translate-y-1/2 -right-1 w-3 h-8 flex items-center justify-center rounded bg-gray-200 dark:bg-gray-700 opacity-0 group-hover:opacity-100 transition-opacity ${
-                isResizing ? 'opacity-100 bg-blue-500' : ''
-              }`}>
+              <div className={`absolute top-1/2 -translate-y-1/2 -right-1 w-3 h-8 flex items-center justify-center rounded bg-gray-200 dark:bg-gray-700 opacity-0 group-hover:opacity-100 transition-opacity ${isResizing ? 'opacity-100 bg-blue-500' : ''
+                }`}>
                 <GripVertical className="w-3 h-3 text-gray-500 dark:text-gray-400" />
               </div>
             </div>
@@ -195,7 +192,7 @@ export default function MainLayout({
       </div>
 
       {/* Mobile Sidebar Drawer - ẩn với admin */}
-      {!isAdmin && hasFolder && isSidebarOpen && (
+      {!isAdmin && showSidebar && isSidebarOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={closeAllPanels} />
           <div className="relative h-full w-4/5 max-w-sm bg-white dark:bg-[#1F1F1F] shadow-2xl">
@@ -217,7 +214,7 @@ export default function MainLayout({
       )}
 
       {/* Mobile Tools Drawer */}
-      {(isAdmin || hasFolder) && isToolsSidebarOpen && !showProfileSettings && (
+      {(isAdmin || showSidebar) && isToolsSidebarOpen && !showProfileSettings && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={closeAllPanels} />
           <div className="absolute right-0 top-0 h-full w-4/5 max-w-sm bg-white dark:bg-[#1F1F1F] shadow-2xl">

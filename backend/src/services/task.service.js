@@ -2,6 +2,7 @@ const Task = require('../models/Task.model');
 const Group = require('../models/Group.model');
 const Folder = require('../models/Folder.model');
 const User = require('../models/User.model');
+const mongoose = require('mongoose');
 const { ERROR_MESSAGES, TASK_STATUS, LIMITS, SUCCESS_MESSAGES, HTTP_STATUS, PRIORITY_LEVELS } = require('../config/constants');
 const {
   isValidObjectId,
@@ -24,7 +25,9 @@ const {
   canViewFolder,
   canViewAllFolders,
   requiresFolderAssignment,
-  canAssignFolderMembers
+  canAssignFolderMembers,
+  canEditTask,
+  canDeleteTask
 } = require('../utils/groupPermissions');
 
 const normalizeId = value => {
@@ -312,6 +315,63 @@ const ensureTaskWriteAccess = async (taskDoc, requesterId) => {
 };
 
 /**
+ * Ensure user has permission to EDIT a task (update, timer, repeat, attachments)
+ * Allowed: Admin (PO/PM), task creator, or assignees
+ */
+const ensureTaskEditAccess = async (taskDoc, requesterId) => {
+  if (!taskDoc) {
+    raiseError(ERROR_MESSAGES.TASK_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  const groupId = normalizeId(taskDoc.groupId);
+  if (!groupId) {
+    raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  const { group, role } = await ensureGroupAccess(groupId, requesterId);
+  const normalizedRequesterId = normalizeId(requesterId);
+  const creatorId = normalizeId(taskDoc.createdBy);
+
+  const isCreator = normalizedRequesterId === creatorId;
+  const isAssignee = (taskDoc.assignedTo || []).some(
+    assignee => normalizeId(assignee.userId) === normalizedRequesterId
+  );
+
+  if (!canEditTask({ role, isCreator, isAssignee })) {
+    raiseError('Bạn không có quyền chỉnh sửa task này. Chỉ PM, Product Owner, người tạo task hoặc người được gán mới có thể chỉnh sửa.', HTTP_STATUS.FORBIDDEN);
+  }
+
+  return { group, role, isCreator, isAssignee };
+};
+
+/**
+ * Ensure user has permission to DELETE a task
+ * Allowed: Admin (PO/PM) or task creator only (NOT assignees)
+ */
+const ensureTaskDeleteAccess = async (taskDoc, requesterId) => {
+  if (!taskDoc) {
+    raiseError(ERROR_MESSAGES.TASK_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  const groupId = normalizeId(taskDoc.groupId);
+  if (!groupId) {
+    raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  const { group, role } = await ensureGroupAccess(groupId, requesterId);
+  const normalizedRequesterId = normalizeId(requesterId);
+  const creatorId = normalizeId(taskDoc.createdBy);
+
+  const isCreator = normalizedRequesterId === creatorId;
+
+  if (!canDeleteTask({ role, isCreator })) {
+    raiseError('Bạn không có quyền xóa task này. Chỉ PM, Product Owner hoặc người tạo task mới có thể xóa.', HTTP_STATUS.FORBIDDEN);
+  }
+
+  return { group, role, isCreator };
+};
+
+/**
  * Task Service
  * Chứa toàn bộ business logic liên quan đến Task
  * Controller chỉ gọi service, không xử lý logic
@@ -398,7 +458,7 @@ class TaskService {
       }
     }
 
-    // If task has a folder, verify all assignees have access to that folder
+    // If task has a folder, check and auto-grant folder access for assigned users
     if (taskData.folderId && targetGroup) {
       const folder = await Folder.findById(taskData.folderId);
       if (folder && !folder.isDefault) {
@@ -406,18 +466,30 @@ class TaskService {
           (folder.memberAccess || []).map(access => normalizeId(access.userId)).filter(Boolean)
         );
 
-        // Admins (PM/Product Owner) can assign to anyone in group, but regular users must have folder access
-        const invalidAssignees = assignedIds.filter(id => {
-          if (canAssignToOthers) {
-            // Admins can assign to anyone in group
-            return false;
-          }
-          // Regular users: assignees must have folder access
-          return !folderMemberAccess.has(id);
-        });
+        // Find assignees who don't have folder access
+        const assigneesWithoutAccess = assignedIds.filter(id => !folderMemberAccess.has(id));
 
-        if (invalidAssignees.length > 0) {
-          raiseError('Không thể gán task cho người không có quyền truy cập vào folder này.', HTTP_STATUS.FORBIDDEN);
+        if (assigneesWithoutAccess.length > 0) {
+          if (canAssignToOthers) {
+            // PM/Product Owner can auto-grant folder access to assigned users
+            console.log(`[TaskService] Auto-granting folder access to ${assigneesWithoutAccess.length} users`);
+
+            // Add these users to folder's memberAccess
+            const newMemberAccess = assigneesWithoutAccess.map(userId => ({
+              userId: new mongoose.Types.ObjectId(userId),
+              addedBy: new mongoose.Types.ObjectId(creatorId),
+              addedAt: new Date()
+            }));
+
+            folder.memberAccess = folder.memberAccess || [];
+            folder.memberAccess.push(...newMemberAccess);
+            await folder.save();
+
+            console.log(`[TaskService] Granted folder access to users: ${assigneesWithoutAccess.join(', ')}`);
+          } else {
+            // Regular users cannot assign to people without folder access
+            raiseError('Không thể gán task cho người không có quyền truy cập vào folder này.', HTTP_STATUS.FORBIDDEN);
+          }
         }
       }
     }
@@ -483,6 +555,9 @@ class TaskService {
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
+      .populate('timeEntries.user', 'name email avatar')
+      .populate('scheduledWork.user', 'name email avatar')
+      .populate('activeTimers.userId', 'name email avatar')
       .populate('groupId', 'name description');
     return task;
   }
@@ -614,6 +689,7 @@ class TaskService {
         .populate('createdBy', 'name email avatar')
         .populate('assignedTo.userId', 'name email avatar')
         .populate('comments.user', 'name email avatar')
+        .populate('activeTimers.userId', 'name email avatar')
         .populate('groupId', 'name description')
         .sort(sortOption)
         .skip(skip)
@@ -647,7 +723,20 @@ class TaskService {
       return null;
     }
 
-    const { group: currentGroup, role: initialRole } = await ensureTaskWriteAccess(taskDoc, requesterId);
+    // Validate dueDate: must be >= createdAt
+    if (updateData.dueDate !== undefined && updateData.dueDate !== null) {
+      const newDueDate = new Date(updateData.dueDate);
+      const taskCreatedAt = new Date(taskDoc.createdAt);
+      // Normalize to start of day for comparison
+      const dueDateStart = new Date(newDueDate.getFullYear(), newDueDate.getMonth(), newDueDate.getDate());
+      const createdAtStart = new Date(taskCreatedAt.getFullYear(), taskCreatedAt.getMonth(), taskCreatedAt.getDate());
+
+      if (dueDateStart < createdAtStart) {
+        raiseError('Due date cannot be before the task creation date', HTTP_STATUS.BAD_REQUEST);
+      }
+    }
+
+    const { group: currentGroup, role: initialRole } = await ensureTaskEditAccess(taskDoc, requesterId);
 
     const requesterIdStr = normalizeId(requesterId);
     const creatorIdStr = normalizeId(taskDoc.createdBy);
@@ -775,6 +864,8 @@ class TaskService {
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
+      .populate('timeEntries.user', 'name email avatar')
+      .populate('scheduledWork.user', 'name email avatar')
       .populate('groupId', 'name description');
 
     // Send notifications for changes
@@ -844,7 +935,41 @@ class TaskService {
       return null;
     }
 
-    await ensureTaskWriteAccess(task, requesterId);
+    await ensureTaskDeleteAccess(task, requesterId);
+
+    // Clean up all Cloudinary files before deleting task
+    try {
+      // Delete task attachments from Cloudinary
+      if (task.attachments && task.attachments.length > 0) {
+        const attachmentDeletePromises = task.attachments
+          .filter(attachment => attachment.publicId)
+          .map(attachment =>
+            fileService.deleteFile(attachment.publicId, attachment.resourceType || 'raw')
+              .catch(err => {
+                console.error(`Error deleting task attachment ${attachment.publicId}:`, err);
+                // Continue with other deletions even if one fails
+              })
+          );
+        await Promise.all(attachmentDeletePromises);
+      }
+
+      // Delete comment attachments from Cloudinary
+      if (task.comments && task.comments.length > 0) {
+        const commentAttachmentDeletePromises = task.comments
+          .filter(comment => comment.attachment && comment.attachment.publicId)
+          .map(comment =>
+            fileService.deleteFile(comment.attachment.publicId, comment.attachment.resourceType || 'raw')
+              .catch(err => {
+                console.error(`Error deleting comment attachment ${comment.attachment.publicId}:`, err);
+                // Continue with other deletions even if one fails
+              })
+          );
+        await Promise.all(commentAttachmentDeletePromises);
+      }
+    } catch (error) {
+      console.error('Error cleaning up Cloudinary files during task deletion:', error);
+      // Continue with task deletion even if Cloudinary cleanup fails
+    }
 
     await Task.deleteOne({ _id: taskId });
 
@@ -925,6 +1050,8 @@ class TaskService {
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
+      .populate('timeEntries.user', 'name email avatar')
+      .populate('scheduledWork.user', 'name email avatar')
       .populate('groupId', 'name description')
       .sort({ dueDate: 1, priority: -1 })
       .lean();
@@ -1015,6 +1142,8 @@ class TaskService {
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
+      .populate('timeEntries.user', 'name email avatar')
+      .populate('scheduledWork.user', 'name email avatar')
       .populate('groupId', 'name description')
       .sort({ priority: -1, dueDate: 1, createdAt: -1 })
       .lean();
@@ -1317,6 +1446,8 @@ class TaskService {
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
+      .populate('timeEntries.user', 'name email avatar')
+      .populate('scheduledWork.user', 'name email avatar')
       .populate('groupId', 'name description');
 
     // Send notification for assigned users
@@ -1437,6 +1568,8 @@ class TaskService {
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
+      .populate('timeEntries.user', 'name email avatar')
+      .populate('scheduledWork.user', 'name email avatar')
       .populate('groupId', 'name description');
 
     // Send notification for unassigned user
@@ -1810,6 +1943,8 @@ class TaskService {
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
+      .populate('timeEntries.user', 'name email avatar')
+      .populate('scheduledWork.user', 'name email avatar')
       .populate('groupId', 'name description');
     return task;
   }
@@ -1828,6 +1963,8 @@ class TaskService {
       .populate('createdBy', 'name email avatar')
       .populate('assignedTo.userId', 'name email avatar')
       .populate('comments.user', 'name email avatar')
+      .populate('timeEntries.user', 'name email avatar')
+      .populate('scheduledWork.user', 'name email avatar')
       .populate('groupId', 'name description');
     return task;
   }
@@ -2198,6 +2335,17 @@ class TaskService {
       };
     }
 
+    // Permission check: only admins, task creator, or assignees can upload attachments
+    try {
+      await ensureTaskEditAccess(task, userId);
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'Bạn không có quyền upload tệp đính kèm cho task này',
+        statusCode: error.statusCode || 403
+      };
+    }
+
     // FIXED: No restrictions - file uploads are available for all tasks regardless of due date
 
     // Check attachment limit (max 20 attachments per task)
@@ -2449,19 +2597,54 @@ class TaskService {
       throw new Error(ERROR_MESSAGES.INVALID_TASK_ID);
     }
 
+    if (!isValidObjectId(userId)) {
+      throw new Error(ERROR_MESSAGES.INVALID_ID);
+    }
+
     const task = await Task.findById(taskId);
     if (!task) {
       return null;
     }
 
-    // Set start time
-    task.startTime = new Date();
+    // Permission check: only admins, task creator, or assignees can use timer
+    await ensureTaskEditAccess(task, userId);
+
+    // Cannot start timer for completed or incomplete tasks
+    if (task.status === 'completed' || task.status === 'incomplete') {
+      throw new Error('Cannot start timer for completed or incomplete tasks');
+    }
+
+    // Initialize activeTimers array if not exists
+    if (!task.activeTimers) {
+      task.activeTimers = [];
+    }
+
+    // Check if user already has an active timer
+    const existingTimer = task.activeTimers.find(
+      t => t.userId && t.userId.toString() === userId.toString()
+    );
+    if (existingTimer) {
+      throw new Error('You already have an active timer on this task');
+    }
+
+    // Auto-change status from todo to in_progress when starting timer
+    if (task.status === 'todo') {
+      task.status = 'in_progress';
+    }
+
+    // Add new timer for this user
+    task.activeTimers.push({
+      userId: userId,
+      startTime: new Date()
+    });
+
     await task.save();
 
     // POPULATE USER INFO SAU KHI SAVE
     await task.populate('createdBy', 'name email avatar');
     await task.populate('assignedTo.userId', 'name email avatar');
     await task.populate('comments.user', 'name email avatar');
+    await task.populate('activeTimers.userId', 'name email avatar');
     await task.populate('groupId', 'name description');
 
     await emitTaskRealtime({
@@ -2470,6 +2653,7 @@ class TaskService {
       meta: {
         mutationType: 'update',
         changeType: 'timer:start',
+        timerUserId: normalizeId(userId),
         source: 'task:timer:start'
       }
     });
@@ -2488,33 +2672,47 @@ class TaskService {
       throw new Error(ERROR_MESSAGES.INVALID_TASK_ID);
     }
 
+    if (!isValidObjectId(userId)) {
+      throw new Error(ERROR_MESSAGES.INVALID_ID);
+    }
+
     const task = await Task.findById(taskId);
     if (!task) {
       return null;
     }
 
-    // Calculate elapsed time and add to time entries
-    if (task.startTime) {
-      const now = new Date();
-      const elapsedMs = now.getTime() - task.startTime.getTime();
-      const hours = Math.floor(elapsedMs / (1000 * 60 * 60));
-      const minutes = Math.floor((elapsedMs % (1000 * 60 * 60)) / (1000 * 60));
+    // Permission check: only admins, task creator, or assignees can use timer
+    await ensureTaskEditAccess(task, userId);
 
-      // Add time entry
-      task.timeEntries.push({
-        user: userId,
-        date: now,
-        hours,
-        minutes,
-        description: 'Timer session',
-        billable: true,
-        startTime: task.startTime,
-        endTime: now
-      });
+    // Find the user's active timer
+    const timerIndex = task.activeTimers?.findIndex(
+      t => t.userId && t.userId.toString() === userId.toString()
+    );
 
-      // Clear start time
-      task.startTime = null;
+    if (timerIndex === -1 || timerIndex === undefined) {
+      throw new Error('You do not have an active timer on this task');
     }
+
+    const userTimer = task.activeTimers[timerIndex];
+    const now = new Date();
+    const elapsedMs = now.getTime() - userTimer.startTime.getTime();
+    const hours = Math.floor(elapsedMs / (1000 * 60 * 60));
+    const minutes = Math.floor((elapsedMs % (1000 * 60 * 60)) / (1000 * 60));
+
+    // Add time entry for the user who started the timer
+    task.timeEntries.push({
+      user: userId,
+      date: now,
+      hours,
+      minutes,
+      description: 'Timer session',
+      billable: true,
+      startTime: userTimer.startTime,
+      endTime: now
+    });
+
+    // Remove only this user's timer from active timers
+    task.activeTimers.splice(timerIndex, 1);
 
     await task.save();
 
@@ -2522,6 +2720,9 @@ class TaskService {
     await task.populate('createdBy', 'name email avatar');
     await task.populate('assignedTo.userId', 'name email avatar');
     await task.populate('comments.user', 'name email avatar');
+    await task.populate('timeEntries.user', 'name email avatar');
+    await task.populate('scheduledWork.user', 'name email avatar');
+    await task.populate('activeTimers.userId', 'name email avatar');
     await task.populate('groupId', 'name description');
 
     const latestEntry = task.timeEntries[task.timeEntries.length - 1];
@@ -2532,6 +2733,7 @@ class TaskService {
       meta: {
         mutationType: 'update',
         changeType: 'timer:stop',
+        timerUserId: normalizeId(userId),
         timeEntryId: normalizeId(latestEntry?._id),
         source: 'task:timer:stop'
       }
@@ -2589,9 +2791,10 @@ class TaskService {
    * Set task repetition settings
    * @param {String} taskId - ID của task
    * @param {Object} repetitionSettings - Repetition settings
+   * @param {String} requesterId - ID of the user making the request
    * @returns {Promise<Object|null>} Task hoặc null
    */
-  async setTaskRepetition(taskId, repetitionSettings) {
+  async setTaskRepetition(taskId, repetitionSettings, requesterId = null) {
     if (!isValidObjectId(taskId)) {
       throw new Error(ERROR_MESSAGES.INVALID_TASK_ID);
     }
@@ -2600,6 +2803,9 @@ class TaskService {
     if (!task) {
       return null;
     }
+
+    // Permission check: only admins, task creator, or assignees can set repetition
+    await ensureTaskEditAccess(task, requesterId);
 
     // Update repetition settings
     task.repetition = {

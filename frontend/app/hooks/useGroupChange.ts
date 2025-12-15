@@ -19,7 +19,7 @@ export const groupChangeEmitter = new GroupChangeEventEmitter();
 // Hook to listen for group changes and trigger reload
 export function useGroupChange(onGroupChange: () => void) {
   const callbackRef = useRef(onGroupChange);
-  
+
   // Update callback ref when it changes
   useEffect(() => {
     callbackRef.current = onGroupChange;
@@ -30,7 +30,7 @@ export function useGroupChange(onGroupChange: () => void) {
       callbackRef.current();
     });
 
-    return unsubscribe;
+    return () => { unsubscribe(); };  // Explicitly return void
   }, []);
 }
 

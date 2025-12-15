@@ -31,7 +31,12 @@ import { useFolder } from "../../../contexts/FolderContext"
 import { getMemberRole, canAssignFolderMembers } from "../../../utils/groupRoleUtils"
 import { useLanguage } from "../../../contexts/LanguageContext"
 import { useRegional } from "../../../contexts/RegionalContext"
+import { useTimer, useTimerElapsed } from "../../../contexts/TimerContext"
+import { useToast } from "../../../contexts/ToastContext"
+import { useConfirm } from "../../../contexts/ConfirmContext"
 import EstimatedTimePicker from "./EstimatedTimePicker"
+import MentionInput, { MentionableUser, parseMentions } from "../../common/MentionInput"
+import MentionHighlight from "../../common/MentionHighlight"
 
 interface MinimalUser {
   _id: string;
@@ -62,6 +67,7 @@ interface Comment {
   updatedAt?: string
   isEdited?: boolean
   attachment?: any
+  mentions?: string[]
 }
 
 interface TimeEntry {
@@ -137,10 +143,11 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const [customStatusName, setCustomStatusName] = useState("")
   const [customStatusColor, setCustomStatusColor] = useState("#3B82F6")
 
-  // NEW: State for timer functionality
-  const [isTimerRunning, setIsTimerRunning] = useState(false)
-  const [timerStartTime, setTimerStartTime] = useState<Date | null>(null)
-  const [elapsedTime, setElapsedTime] = useState(0)
+  // Use global timer context for persistent timer state
+  const { startTimer: contextStartTimer, stopTimer: contextStopTimer, isTimerRunning: checkTimerRunning, getAllActiveTimers, syncTimersFromTask } = useTimer()
+  const isTimerRunning = checkTimerRunning(taskId)
+  const elapsedTime = useTimerElapsed(taskId)
+  const [showActiveTimersPopup, setShowActiveTimersPopup] = useState(false)
 
   // NEW: State for repeat task functionality
   const [showRepeatModal, setShowRepeatModal] = useState(false)
@@ -167,6 +174,8 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const { currentFolder } = useFolder()
   const { t } = useLanguage()
   const { formatDate, convertFromUserTimezone, convertToUserTimezone } = useRegional()
+  const toast = useToast()
+  const confirmDialog = useConfirm()
 
   // Check if user can assign to others
   const currentUserRole = currentGroup ? getMemberRole(currentGroup, currentUser?._id) : null
@@ -254,6 +263,41 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       totalCount: assignees.length
     };
   };
+
+  // Helper to get mentionable users from task assignees
+  const getMentionableUsers = useCallback((taskData: Task | null): MentionableUser[] => {
+    if (!taskData || !taskData.assignedTo || taskData.assignedTo.length === 0) {
+      return [];
+    }
+
+    const users: MentionableUser[] = [];
+
+    (taskData.assignedTo as AssignedUser[]).forEach(assignment => {
+      if (!assignment || !assignment.userId) return;
+
+      if (typeof assignment.userId === 'string') {
+        // If current user matches, use their info
+        if (currentUser && assignment.userId === currentUser._id) {
+          users.push({
+            _id: currentUser._id,
+            name: currentUser.name || 'You',
+            email: currentUser.email,
+            avatar: currentUser.avatar || undefined
+          });
+        }
+      } else if (assignment.userId && typeof assignment.userId === 'object') {
+        const user = assignment.userId as MinimalUser;
+        users.push({
+          _id: user._id,
+          name: user.name || 'Unknown User',
+          email: user.email || '',
+          avatar: user.avatar
+        });
+      }
+    });
+
+    return users;
+  }, [currentUser]);
 
   // NEW: Assignee Section Component
   const AssigneeSection = ({ task }: { task: Task }) => {
@@ -395,7 +439,10 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
     } else {
       setComments([])
     }
-  }, [convertToUserTimezone])
+
+    // Sync all active timers from task data
+    syncTimersFromTask(taskData)
+  }, [convertToUserTimezone, syncTimersFromTask])
 
   const fetchTaskDetails = useCallback(async () => {
     if (!isOpen || !taskId) return
@@ -407,7 +454,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       syncTaskState(taskData)
     } catch (error) {
       console.error("Error fetching task details:", error)
-      alert("Failed to load task details: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi tải task")
     } finally {
       setLoading(false)
     }
@@ -457,24 +504,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
     }
   }, [showCommentMenu])
 
-  // NEW: Timer functionality
-  useEffect(() => {
-    let interval: NodeJS.Timeout | null = null
-
-    if (isTimerRunning && timerStartTime) {
-      interval = setInterval(() => {
-        const now = new Date()
-        const elapsed = Math.floor((now.getTime() - timerStartTime.getTime()) / 1000)
-        setElapsedTime(elapsed)
-      }, 1000)
-    }
-
-    return () => {
-      if (interval) {
-        clearInterval(interval)
-      }
-    }
-  }, [isTimerRunning, timerStartTime])
+  // Timer is now managed by TimerContext - no local interval needed
 
   // Save individual field to database
   const saveFieldToDatabase = async (field: string, value: any) => {
@@ -504,7 +534,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
     } catch (error) {
       console.error(`Error updating ${field}:`, error)
-      alert(`Failed to update ${field}: ${(error as Error).message}`)
+      toast.showError((error as Error).message)
     } finally {
       setSaving(false)
     }
@@ -561,7 +591,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       setCustomStatusColor("#3B82F6")
     } catch (error) {
       console.error("Error adding custom status:", error)
-      alert("Failed to add custom status: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi thêm trạng thái")
     }
   }
 
@@ -584,7 +614,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       setSelectedMembers([])
     } catch (error) {
       console.error("Error assigning users:", error)
-      alert("Failed to assign users: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi gán người dùng")
     } finally {
       setSaving(false)
     }
@@ -601,7 +631,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       await fetchTaskDetails()
     } catch (error) {
       console.error("Error unassigning user:", error)
-      alert("Failed to unassign user: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi bỏ gán người dùng")
     } finally {
       setSaving(false)
     }
@@ -609,18 +639,17 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
   // NEW: Timer handlers
   const handleStartTimer = async () => {
-    if (!isTimerRunning) {
+    if (!isTimerRunning && currentUser?._id) {
       try {
         const updatedTask = await taskService.startTimer(taskId)
         setTask(updatedTask)
         onTaskUpdate(updatedTask)
 
-        const now = new Date()
-        setTimerStartTime(now)
-        setIsTimerRunning(true)
+        // Sync timers from the updated task
+        syncTimersFromTask(updatedTask)
       } catch (error) {
         console.error("Error starting timer:", error)
-        alert("Failed to start timer: " + (error as Error).message)
+        toast.showError((error as Error).message, "Lỗi bắt đầu timer")
       }
     }
   }
@@ -628,7 +657,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const handleStopTimer = async () => {
     if (isTimerRunning) {
       try {
-        const updatedTask = await taskService.stopTimer(taskId)
+        const updatedTask = await contextStopTimer(taskId)
         setTask(updatedTask)
         onTaskUpdate(updatedTask)
 
@@ -637,13 +666,11 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
           setTimeEntries((updatedTask as any).timeEntries)
         }
 
-        // Reset timer
-        setIsTimerRunning(false)
-        setTimerStartTime(null)
-        setElapsedTime(0)
+        // Sync timers from the updated task
+        syncTimersFromTask(updatedTask)
       } catch (error) {
         console.error("Error stopping timer:", error)
-        alert("Failed to stop timer: " + (error as Error).message)
+        toast.showError((error as Error).message, "Lỗi dừng timer")
       }
     }
   }
@@ -676,7 +703,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       setShowRepeatModal(false)
     } catch (error) {
       console.error("Error saving repeat settings:", error)
-      alert("Failed to save repeat settings: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi lưu cài đặt lặp lại")
     }
   }
 
@@ -724,11 +751,25 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
         date: new Date(newTimeEntry.date).toISOString()
       }
 
-      const updatedTask = await taskService.updateTask(taskId, {
+      // Build update object - include status change if currently todo
+      const updateData: any = {
         timeEntries: [...timeEntries, timeEntryToAdd]
-      })
+      }
+
+      // Auto-change status from todo to in_progress when logging time
+      if (taskProperties.status === 'todo') {
+        updateData.status = 'in_progress'
+      }
+
+      const updatedTask = await taskService.updateTask(taskId, updateData)
 
       setTimeEntries((updatedTask as any).timeEntries || [])
+
+      // Update local task properties status if changed
+      if (updatedTask.status !== taskProperties.status) {
+        setTaskProperties(prev => ({ ...prev, status: updatedTask.status }))
+      }
+
       setNewTimeEntry({
         date: new Date().toISOString().split('T')[0],
         hours: 0,
@@ -740,9 +781,9 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       onTaskUpdate(updatedTask)
     } catch (error) {
       console.error("Error adding time entry:", error)
-      alert("Failed to add time entry: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi thêm thời gian")
     }
-  }, [task, newTimeEntry, timeEntries, currentUser, taskId, onTaskUpdate])
+  }, [task, newTimeEntry, timeEntries, currentUser, taskId, onTaskUpdate, taskProperties.status])
 
   // Handler for adding scheduled work
   const handleAddScheduledWork = useCallback(async () => {
@@ -771,13 +812,24 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       onTaskUpdate(updatedTask)
     } catch (error) {
       console.error("Error adding scheduled work:", error)
-      alert("Failed to add scheduled work: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi thêm công việc dự kiến")
     }
   }, [task, newScheduledWork, scheduledWork, currentUser, taskId, onTaskUpdate])
 
   // Handler for deleting time entry
   const handleDeleteTimeEntry = useCallback(async (index: number) => {
-    if (!task || !confirm("Are you sure you want to delete this time entry?")) return
+    if (!task) return
+
+    const confirmed = await confirmDialog.confirm({
+      title: 'Xóa mục thời gian',
+      message: 'Bạn có chắc chắn muốn xóa mục thời gian này không?',
+      confirmText: 'Xóa',
+      cancelText: 'Hủy',
+      variant: 'danger',
+      icon: 'delete'
+    })
+
+    if (!confirmed) return
 
     try {
       const updatedTimeEntries = timeEntries.filter((_, i) => i !== index)
@@ -789,13 +841,24 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       onTaskUpdate(updatedTask)
     } catch (error) {
       console.error("Error deleting time entry:", error)
-      alert("Failed to delete time entry: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi xóa mục thời gian")
     }
   }, [task, timeEntries, taskId, onTaskUpdate])
 
   // Handler for deleting scheduled work
   const handleDeleteScheduledWork = useCallback(async (index: number) => {
-    if (!task || !confirm("Are you sure you want to delete this scheduled work?")) return
+    if (!task) return
+
+    const confirmed = await confirmDialog.confirm({
+      title: 'Xóa công việc dự kiến',
+      message: 'Bạn có chắc chắn muốn xóa công việc dự kiến này không?',
+      confirmText: 'Xóa',
+      cancelText: 'Hủy',
+      variant: 'danger',
+      icon: 'delete'
+    })
+
+    if (!confirmed) return
 
     try {
       const updatedScheduledWork = scheduledWork.filter((_, i) => i !== index)
@@ -807,7 +870,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       onTaskUpdate(updatedTask)
     } catch (error) {
       console.error("Error deleting scheduled work:", error)
-      alert("Failed to delete scheduled work: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi xóa công việc dự kiến")
     }
   }, [task, scheduledWork, taskId, onTaskUpdate])
 
@@ -824,7 +887,18 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
   // Rest of your existing handlers
   const handleDelete = useCallback(async () => {
-    if (!task || !confirm("Are you sure you want to delete this task?")) return
+    if (!task) return
+
+    const confirmed = await confirmDialog.confirm({
+      title: 'Xóa task',
+      message: 'Bạn có chắc chắn muốn xóa task này không? Hành động này không thể hoàn tác.',
+      confirmText: 'Xóa',
+      cancelText: 'Hủy',
+      variant: 'danger',
+      icon: 'delete'
+    })
+
+    if (!confirmed) return
 
     try {
       await taskService.deleteTask(taskId)
@@ -832,7 +906,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       onClose()
     } catch (error) {
       console.error("Error deleting task:", error)
-      alert("Failed to delete task: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi xóa task")
     }
   }, [task, taskId, onTaskDelete, onClose])
 
@@ -876,7 +950,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       }
     } catch (error) {
       console.error("Error adding comment:", error)
-      alert("Failed to add comment: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi thêm bình luận")
     } finally {
       setUploadingFiles(false)
     }
@@ -885,7 +959,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const handleUpdateComment = useCallback(async (commentId: string) => {
     if (!editingCommentContent.trim() || !currentUser) {
       if (!currentUser) {
-        alert("You must be logged in to update a comment")
+        toast.showWarning("Bạn phải đăng nhập để cập nhật bình luận")
       }
       return
     }
@@ -927,17 +1001,26 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       }
     } catch (error) {
       console.error("Error updating comment:", error)
-      alert("Failed to update comment: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi cập nhật bình luận")
     }
   }, [editingCommentContent, currentUser, taskId])
 
   const handleDeleteComment = useCallback(async (commentId: string) => {
-    if (!confirm("Are you sure you want to delete this comment?") || !currentUser) {
-      if (!currentUser) {
-        alert("You must be logged in to delete a comment")
-      }
+    if (!currentUser) {
+      toast.showWarning("Bạn phải đăng nhập để xóa bình luận")
       return
     }
+
+    const confirmed = await confirmDialog.confirm({
+      title: 'Xóa bình luận',
+      message: 'Bạn có chắc chắn muốn xóa bình luận này không?',
+      confirmText: 'Xóa',
+      cancelText: 'Hủy',
+      variant: 'danger',
+      icon: 'delete'
+    })
+
+    if (!confirmed) return
 
     try {
       console.log("Deleting comment:", commentId)
@@ -952,7 +1035,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       }
     } catch (error) {
       console.error("Error deleting comment:", error)
-      alert("Failed to delete comment: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi xóa bình luận")
     }
   }, [currentUser, taskId])
 
@@ -1043,7 +1126,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
   const startEditingComment = useCallback((comment: Comment) => {
     if (!currentUser) {
-      alert("You must be logged in to edit a comment")
+      toast.showWarning("Bạn phải đăng nhập để chỉnh sửa bình luận")
       return
     }
     setEditingCommentId(comment._id!)
@@ -1151,7 +1234,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
     } catch (error) {
       console.error('Error uploading files:', error)
-      alert('Failed to upload files: ' + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi tải tệp lên")
     } finally {
       setUploadingFiles(false)
     }
@@ -1159,7 +1242,16 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
   // Delete attachment handler
   const handleDeleteAttachment = useCallback(async (attachmentId: string) => {
-    if (!confirm('Are you sure you want to delete this attachment?')) return
+    const confirmed = await confirmDialog.confirm({
+      title: 'Xóa tệp đính kèm',
+      message: 'Bạn có chắc chắn muốn xóa tệp đính kèm này không?',
+      confirmText: 'Xóa',
+      cancelText: 'Hủy',
+      variant: 'danger',
+      icon: 'delete'
+    })
+
+    if (!confirmed) return
 
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/tasks/${taskId}/attachments/${attachmentId}`, {
@@ -1194,7 +1286,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
     } catch (error) {
       console.error('Error deleting attachment:', error)
-      alert('Failed to delete attachment: ' + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi xóa tệp đính kèm")
     }
   }, [taskId, onTaskUpdate])
 
@@ -1319,7 +1411,12 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
               </div>
             </div>
           ) : (
-            <p className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">{comment.content}</p>
+            <MentionHighlight
+              content={comment.content}
+              mentions={comment.mentions || []}
+              currentUserId={currentUser?._id}
+              className="text-sm text-gray-600 dark:text-gray-400"
+            />
           )}
 
           {comment.attachment && comment.attachment.url && comment.attachment.filename && (
@@ -1793,25 +1890,93 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
                     {t('taskDetail.addStatus')}
                   </button>
 
-                  {/* Timer Button */}
-                  <button
-                    onClick={isTimerRunning ? handleStopTimer : handleStartTimer}
-                    className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm transition-colors shadow-sm ${isTimerRunning
-                      ? 'bg-red-50 border-red-300 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300'
-                      : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                      }`}
-                  >
-                    <PlayCircle className="w-4 h-4" />
-                    {isTimerRunning ? `${t('taskDetail.stopTimer')} (${formatElapsedTime(elapsedTime)})` : t('taskDetail.startTime')}
-                  </button>
+                  {/* Timer Button - Hidden for completed/incomplete tasks */}
+                  {taskProperties.status !== 'completed' && taskProperties.status !== 'incomplete' && (
+                    <div className="relative flex items-center gap-1">
+                      <button
+                        onClick={isTimerRunning ? handleStopTimer : handleStartTimer}
+                        className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm transition-colors shadow-sm ${isTimerRunning
+                          ? 'bg-red-50 border-red-300 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300'
+                          : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                          }`}
+                      >
+                        <PlayCircle className="w-4 h-4" />
+                        {isTimerRunning ? `${t('taskDetail.stopTimer')} (${formatElapsedTime(elapsedTime)})` : t('taskDetail.startTime')}
+                      </button>
 
-                  <button
-                    onClick={() => setShowTimeEntryForm(!showTimeEntryForm)}
-                    className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors shadow-sm"
-                  >
-                    <Timer className="w-4 h-4" />
-                    {t('taskDetail.logTime')}
-                  </button>
+                      {/* Active Timers Menu Button */}
+                      {getAllActiveTimers(taskId).length > 0 && (
+                        <button
+                          onClick={() => setShowActiveTimersPopup(!showActiveTimersPopup)}
+                          className="flex items-center justify-center px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 shadow-sm"
+                          title="View active timers"
+                        >
+                          <MoreVertical className="w-4 h-4" />
+                        </button>
+                      )}
+
+                      {/* Active Timers Popup */}
+                      {showActiveTimersPopup && (
+                        <div className="absolute top-full left-0 mt-2 w-72 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50">
+                          <div className="p-3 border-b border-gray-200 dark:border-gray-700">
+                            <h4 className="font-medium text-sm text-gray-900 dark:text-gray-100">Active Timers</h4>
+                          </div>
+                          <div className="max-h-60 overflow-y-auto">
+                            {getAllActiveTimers(taskId).map((timer) => {
+                              const timerElapsed = Math.floor((Date.now() - timer.startTime.getTime()) / 1000)
+                              const isCurrentUser = timer.userId === currentUser?._id
+
+                              return (
+                                <div key={timer.userId} className="flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 last:border-b-0">
+                                  <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center overflow-hidden">
+                                    {timer.userAvatar ? (
+                                      <img src={timer.userAvatar} alt={timer.userName || 'User'} className="w-full h-full object-cover" />
+                                    ) : (
+                                      <span className="text-xs font-medium text-blue-700 dark:text-blue-300">
+                                        {(timer.userName || 'U').charAt(0).toUpperCase()}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                                        {timer.userName || 'Unknown User'}
+                                      </span>
+                                      {isCurrentUser && (
+                                        <span className="text-xs bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 px-1.5 py-0.5 rounded">You</span>
+                                      )}
+                                    </div>
+                                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                                      {formatElapsedTime(timerElapsed)}
+                                    </span>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                          <div className="p-2 border-t border-gray-200 dark:border-gray-700">
+                            <button
+                              onClick={() => setShowActiveTimersPopup(false)}
+                              className="w-full text-center text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                            >
+                              Close
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Log Time Button - Hidden for completed/incomplete tasks */}
+                  {taskProperties.status !== 'completed' && taskProperties.status !== 'incomplete' && (
+                    <button
+                      onClick={() => setShowTimeEntryForm(!showTimeEntryForm)}
+                      className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors shadow-sm"
+                    >
+                      <Timer className="w-4 h-4" />
+                      {t('taskDetail.logTime')}
+                    </button>
+                  )}
 
                   <button
                     onClick={() => setShowRepeatModal(true)}
@@ -1942,9 +2107,17 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
                               <span className="col-span-2 text-gray-900 dark:text-gray-100">
                                 {formatDate(entry.date)}
                               </span>
-                              <span className="text-gray-500">
-                                <User className="w-4 h-4 inline mr-1" />
-                                {entry.user?.name || "Me"}
+                              <span className="text-gray-500 flex items-center">
+                                {entry.user?.avatar ? (
+                                  <img
+                                    src={entry.user.avatar}
+                                    alt={entry.user.name || "User"}
+                                    className="w-5 h-5 rounded-full mr-1 object-cover"
+                                  />
+                                ) : (
+                                  <User className="w-4 h-4 mr-1" />
+                                )}
+                                {entry.user?.name || "Unknown"}
                               </span>
                               <span className="text-gray-500 truncate" title={entry.description}>
                                 {entry.description || "-"}
@@ -2147,26 +2320,17 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
                           disabled={uploadingFiles}
                         />
                       </label>
-                      <textarea
-                        value={comment}
-                        onChange={(e) => setComment(e.target.value)}
-                        placeholder={t('taskDetail.typeMessage')}
-                        rows={1}
-                        className="flex-1 min-w-0 bg-transparent text-gray-900 dark:text-gray-100 text-sm focus:outline-none resize-none min-h-[24px] max-h-[80px] py-1"
-                        style={{ height: 'auto', overflowY: 'auto' }}
-                        onInput={(e) => {
-                          const target = e.target as HTMLTextAreaElement;
-                          target.style.height = 'auto';
-                          target.style.height = Math.min(target.scrollHeight, 80) + 'px';
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault()
-                            handleAddComment()
-                          }
-                        }}
-                        disabled={uploadingFiles}
-                      />
+                      <div className="flex-1 min-w-0">
+                        <MentionInput
+                          value={comment}
+                          onChange={setComment}
+                          onSubmit={handleAddComment}
+                          placeholder={t('taskDetail.typeMessage')}
+                          mentionableUsers={getMentionableUsers(task)}
+                          disabled={uploadingFiles}
+                          className="bg-transparent text-gray-900 dark:text-gray-100 text-sm focus:outline-none resize-none min-h-[24px] max-h-[80px] py-1 border-0 px-0"
+                        />
+                      </div>
                       <button
                         onClick={handleAddComment}
                         disabled={(!comment.trim() && !pendingAttachment) || uploadingFiles}

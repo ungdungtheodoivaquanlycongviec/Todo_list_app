@@ -1,9 +1,80 @@
 const chatService = require('./chat.service');
 const directChatService = require('./directChat.service');
+const { createMentionNotification } = require('./notification.service');
 const Group = require('../models/Group.model');
 const GroupMessage = require('../models/GroupMessage.model');
 const DirectConversation = require('../models/DirectConversation.model');
 const DirectMessage = require('../models/DirectMessage.model');
+const User = require('../models/User.model');
+
+// Helper to parse mentions from content - supports @[name](id) format
+const parseMentionsFromContent = (content) => {
+  const userIds = [];
+  const roleNames = [];
+
+  if (!content) return { userIds, roleNames };
+
+  // Match @[display name](id) pattern
+  const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
+  let match;
+
+  while ((match = mentionRegex.exec(content)) !== null) {
+    const id = match[2];
+    if (id.startsWith('role:')) {
+      roleNames.push(id.replace('role:', ''));
+    } else {
+      userIds.push(id);
+    }
+  }
+
+  return { userIds, roleNames };
+};
+
+// Helper to parse @name mentions by matching against members list
+const parseMentionsFromContentWithMembers = (content, members, roles = []) => {
+  if (!content) return { userIds: [], roleNames: [], everyone: false };
+
+  // Check for @everyone
+  const everyoneRegex = /@everyone(?:\s|$|,|\.|!|\?)/gi;
+  const hasEveryone = everyoneRegex.test(content);
+
+  // First try legacy @[name](id) format
+  const legacyResult = parseMentionsFromContent(content);
+  if (legacyResult.userIds.length > 0 || legacyResult.roleNames.length > 0) {
+    return { ...legacyResult, everyone: hasEveryone };
+  }
+
+  const userIds = [];
+  const roleNames = [];
+
+  // Match @name against members
+  for (const member of members) {
+    if (!member.name) continue;
+    const escapedName = member.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`@${escapedName}(?:\\s|$|,|\\.|!|\\?)`, 'gi');
+    if (regex.test(content)) {
+      const memberId = member._id?.toString() || member.userId?.toString();
+      if (memberId && !userIds.includes(memberId)) {
+        userIds.push(memberId);
+      }
+    }
+  }
+
+  // Match @role against roles
+  for (const role of roles) {
+    const displayRole = role.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const escapedRole = displayRole.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`@${escapedRole}(?:\\s|$|,|\\.|!|\\?)`, 'gi');
+    if (regex.test(content)) {
+      if (!roleNames.includes(role)) {
+        roleNames.push(role);
+      }
+    }
+  }
+
+  return { userIds, roleNames, everyone: hasEveryone };
+};
+
 
 const normalizeId = (value) => {
   if (!value) return null;
@@ -52,11 +123,11 @@ const setupChatHandlers = (namespace) => {
         // Normalize groupId to ensure consistent room name
         const normalizedGroupId = normalizeId(groupId);
         const roomName = `${GROUP_ROOM_PREFIX}${normalizedGroupId}`;
-        
+
         console.log(`[Chat] User ${userId} (socket ${socket.id}) attempting to join room ${roomName}`);
-        
+
         await socket.join(roomName);
-        
+
         // Verify join was successful
         const socketRooms = Array.from(socket.rooms);
         console.log(`[Chat] Socket ${socket.id} is now in rooms:`, socketRooms);
@@ -142,15 +213,38 @@ const setupChatHandlers = (namespace) => {
           return;
         }
 
+        // Get conversation with participants for mention parsing
+        const conversation = await DirectConversation.findById(conversationId)
+          .populate('participants', 'name email')
+          .lean();
+
+        if (!conversation) {
+          if (callback) callback({ success: false, error: 'Conversation not found' });
+          return;
+        }
+
+        // Build participants list for mention matching (exclude sender)
+        const participantsForMentions = conversation.participants
+          .filter(p => p._id?.toString() !== userId)
+          .map(p => ({
+            _id: p._id?.toString(),
+            name: p.name || ''
+          }))
+          .filter(p => p.name);
+
+        // Parse mentions from content using participant names
+        const { userIds: mentionedUserIds } = parseMentionsFromContentWithMembers(content, participantsForMentions);
+
         const result = await directChatService.createMessage(
           conversationId,
           userId,
           {
             content,
             replyTo,
-            attachments: attachments || []
+            attachments: attachments || [],
+            mentions: mentionedUserIds
           },
-          true
+          true // skipRealtime
         );
 
         const message = result.message;
@@ -176,6 +270,24 @@ const setupChatHandlers = (namespace) => {
             conversation: entry.summary
           });
         });
+
+        // Send mention notifications for direct chat (only if mentions exist)
+        if (mentionedUserIds.length > 0) {
+          try {
+            const sender = await User.findById(userId).select('name').lean();
+            await createMentionNotification({
+              senderId: userId,
+              mentionerName: sender?.name || 'Someone',
+              contextType: 'direct_chat',
+              conversationId: normalizedConversationId,
+              messageId: normalizeId(message._id),
+              preview: content?.substring(0, 100),
+              recipientIds: mentionedUserIds
+            });
+          } catch (notifError) {
+            console.error('[Chat] Error sending mention notification:', notifError);
+          }
+        }
 
         if (callback) callback({ success: true, message: messageData });
       } catch (error) {
@@ -294,11 +406,37 @@ const setupChatHandlers = (namespace) => {
 
         console.log(`[Chat] User ${userId} sending message to group ${groupId}`);
 
+        // Get group with members for mention parsing
+        const group = await Group.findById(groupId)
+          .select('name members')
+          .populate('members.userId', 'name email')
+          .lean();
+
+        if (!group) {
+          if (callback) callback({ success: false, error: 'Group not found' });
+          return;
+        }
+
+        // Build members list with names for mention matching
+        const membersWithNames = group.members.map(m => ({
+          _id: m.userId?._id?.toString() || m.userId?.toString(),
+          name: m.userId?.name || '',
+          role: m.role
+        })).filter(m => m.name);
+
+        // Get unique roles in this group
+        const groupRoles = [...new Set(group.members.map(m => m.role).filter(Boolean))];
+
+        // Parse mentions from content using member names
+        const { userIds: mentionedUserIds, roleNames: mentionedRoles, everyone: mentionEveryone } =
+          parseMentionsFromContentWithMembers(content, membersWithNames, groupRoles);
+
         // Create message using service (skip realtime emit, we'll emit directly)
         const message = await chatService.createMessage(groupId, userId, {
           content,
           replyTo,
-          attachments: attachments || []
+          attachments: attachments || [],
+          mentions: { users: mentionedUserIds, roles: mentionedRoles, everyone: mentionEveryone }
         }, true); // skipRealtime = true
 
         // Convert message to plain object to ensure proper serialization
@@ -310,45 +448,89 @@ const setupChatHandlers = (namespace) => {
         } else {
           messageData = JSON.parse(JSON.stringify(message));
         }
-        
+
         // Normalize groupId to ensure consistent room name
         const normalizedGroupId = normalizeId(groupId);
         const roomName = `${GROUP_ROOM_PREFIX}${normalizedGroupId}`;
-        
+
         console.log(`[Chat] Broadcasting message to room: ${roomName}`);
-        
+
         // Get sockets in room for debugging
         const socketsInRoom = await namespace.in(roomName).fetchSockets();
         console.log(`[Chat] Sockets in room ${roomName}: ${socketsInRoom.length}`);
         socketsInRoom.forEach(s => {
           console.log(`  - Socket ${s.id}, userId: ${s.data.userId}`);
         });
-        
+
         // Broadcast to all members in the group room (including sender)
         // Use .in() to include all sockets in the room, including the sender
         const eventData = {
           type: 'new',
           message: messageData
         };
-        
+
         console.log(`[Chat] Emitting to room ${roomName} with data:`, JSON.stringify(eventData).substring(0, 200));
-        
+
         // Get all sockets in room to verify and emit directly
         const allSockets = await namespace.in(roomName).fetchSockets();
         console.log(`[Chat] Found ${allSockets.length} sockets in room ${roomName}`);
         allSockets.forEach(s => {
           console.log(`  - Emitting to socket ${s.id}, userId: ${s.data.userId}`);
         });
-        
+
         // Emit to all sockets in the room using .in() (includes sender)
         namespace.in(roomName).emit('chat:message', eventData);
-        
+
         // Also emit directly to each socket as backup to ensure delivery
         allSockets.forEach(s => {
           s.emit('chat:message', eventData);
         });
 
         console.log(`[Chat] Message broadcasted successfully to room ${roomName} (${allSockets.length} sockets)`);
+
+        // Send mention notifications for group chat (only mention notification, not regular message notification)
+        let allMentionedUserIds = [...mentionedUserIds];
+
+        // If @everyone is mentioned, add all group members (except sender)
+        if (mentionEveryone && group.members) {
+          group.members.forEach(member => {
+            const memberId = member.userId?._id?.toString() || member.userId?.toString();
+            if (memberId && memberId !== userId && !allMentionedUserIds.includes(memberId)) {
+              allMentionedUserIds.push(memberId);
+            }
+          });
+        }
+
+        // If roles are mentioned, find users with those roles in this group
+        if (mentionedRoles.length > 0 && group.members) {
+          group.members.forEach(member => {
+            if (mentionedRoles.includes(member.role)) {
+              const memberId = member.userId?._id?.toString() || member.userId?.toString();
+              if (memberId && !allMentionedUserIds.includes(memberId)) {
+                allMentionedUserIds.push(memberId);
+              }
+            }
+          });
+        }
+
+        // Only send mention notification if there are mentions (not regular message notification)
+        if (allMentionedUserIds.length > 0) {
+          try {
+            const sender = await User.findById(userId).select('name').lean();
+            await createMentionNotification({
+              senderId: userId,
+              mentionerName: sender?.name || 'Someone',
+              contextType: 'group_chat',
+              groupId: normalizedGroupId,
+              groupName: group.name || 'Group',
+              messageId: normalizeId(message._id),
+              preview: content?.substring(0, 100),
+              recipientIds: allMentionedUserIds
+            });
+          } catch (notifError) {
+            console.error('[Chat] Error sending mention notification:', notifError);
+          }
+        }
 
         if (callback) callback({ success: true, message: messageData });
       } catch (error) {

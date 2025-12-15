@@ -603,6 +603,57 @@ body {
   margin: 0;
 }
 
+/* Global clean scrollbar - apply minimal style to all scrollable elements */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+*:hover {
+  scrollbar-color: rgba(156, 163, 175, 0.5) transparent; /* gray-400 with opacity */
+}
+
+/* Webkit browsers (Chrome, Safari, Edge) */
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 9999px;
+  transition: background-color 0.2s ease;
+}
+
+*:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(156, 163, 175, 0.5); /* gray-400 with opacity */
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(156, 163, 175, 0.8); /* gray-400 darker on thumb hover */
+}
+
+/* Dark mode global scrollbar */
+.dark * {
+  scrollbar-color: transparent transparent;
+}
+
+.dark *:hover {
+  scrollbar-color: rgba(82, 82, 82, 0.6) transparent; /* gray-600 with opacity */
+}
+
+.dark *:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(82, 82, 82, 0.6); /* gray-600 with opacity */
+}
+
+.dark *::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(82, 82, 82, 0.9); /* gray-600 darker on thumb hover */
+}
+
 /* Chat scrollbar theming */
 .chat-scroll {
   scrollbar-width: thin;

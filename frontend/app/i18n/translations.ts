@@ -9,7 +9,7 @@ export const translations = {
     'nav.notes': 'Notes',
     'nav.chat': 'Chat',
     'nav.members': 'Members',
-    
+
     // Common
     'common.save': 'Save',
     'common.cancel': 'Cancel',
@@ -30,7 +30,7 @@ export const translations = {
     'common.no': 'No',
     'common.clear': 'Clear',
     'common.done': 'Done',
-    
+
     // Tasks
     'tasks.title': 'Tasks',
     'tasks.createTask': 'Create Task',
@@ -69,14 +69,17 @@ export const translations = {
     'tasks.descriptionPlaceholder': 'Describe the task in detail...',
     'tasks.tagsPlaceholder': 'urgent, important, project-x',
     'tasks.tagsHelper': 'Separate tags with commas',
-    
+    'tasks.assignTo': 'Assign To',
+    'tasks.selectAssignees': 'Click to select assignees...',
+    'tasks.assignToHelper': 'Select one or more team members to assign this task to.',
+
     // Priority levels
     'priority.none': 'None',
     'priority.low': 'Low',
     'priority.medium': 'Medium',
     'priority.high': 'High',
     'priority.urgent': 'Urgent',
-    
+
     // Status
     'status.todo': 'To Do',
     'status.inProgress': 'In Progress',
@@ -84,14 +87,14 @@ export const translations = {
     'status.incomplete': 'Incomplete',
     'status.pending': 'Pending',
     'status.cancelled': 'Cancelled',
-    
+
     // Custom Status Modal
     'customStatus.title': 'Add Custom Status',
     'customStatus.name': 'Status Name',
     'customStatus.namePlaceholder': 'e.g., In Review, Blocked, On Hold',
     'customStatus.color': 'Color',
     'customStatus.addStatus': 'Add Status',
-    
+
     // Repeat Task Modal
     'repeatTask.title': 'Repeat Task',
     'repeatTask.enableRepetition': 'Enable task repetition',
@@ -101,7 +104,7 @@ export const translations = {
     'repeatTask.weekly': 'Week(s)',
     'repeatTask.monthly': 'Month(s)',
     'repeatTask.yearly': 'Year(s)',
-    
+
     // Timeline
     'timeline.title': 'Timeline',
     'timeline.zoomIn': 'Zoom In',
@@ -138,7 +141,7 @@ export const translations = {
     'timeline.assigned': 'Assigned',
     'timeline.unassigned': 'Unassigned',
     'timeline.untitledTask': 'Untitled Task',
-    
+
     // Calendar
     'calendar.title': 'Calendar',
     'calendar.description': 'Manage your schedule and deadlines',
@@ -152,7 +155,7 @@ export const translations = {
     'calendar.nextMonth': 'Next month',
     'calendar.tasksFor': 'Tasks for',
     'calendar.noTasksAssigned': 'No tasks assigned to you',
-    
+
     // Settings
     'settings.title': 'Account Settings',
     'settings.profile': 'My Profile',
@@ -163,13 +166,13 @@ export const translations = {
     'settings.language': 'Language',
     'settings.notifications': 'Notifications',
     'settings.saved': 'Settings saved',
-    
+
     // Language
     'language.english': 'English',
     'language.vietnamese': 'Vietnamese',
     'language.description': 'Choose your preferred language',
     'language.updated': 'Language updated successfully',
-    
+
     // Regional
     'regional.timezone': 'Time Zone',
     'regional.timezoneDesc': 'Set your local time zone',
@@ -184,14 +187,14 @@ export const translations = {
     'regional.monday': 'Monday',
     'regional.sunday': 'Sunday',
     'regional.updated': 'Regional preferences updated',
-    
+
     // Theme
     'theme.light': 'Light',
     'theme.dark': 'Dark',
     'theme.auto': 'Auto (System)',
     'theme.description': 'Choose how the app looks',
     'theme.updated': 'Theme updated successfully',
-    
+
     // Profile
     'profile.personalInfo': 'Personal Information',
     'profile.personalInfoDesc': 'Update your personal details and profile picture',
@@ -204,7 +207,7 @@ export const translations = {
     'profile.uploadPhoto': 'Upload new photo',
     'profile.photoRequirements': 'JPG, PNG or GIF. Max 5MB.',
     'profile.updated': 'Profile updated successfully',
-    
+
     // Security
     'security.changePassword': 'Change Password',
     'security.currentPassword': 'Current Password',
@@ -214,7 +217,7 @@ export const translations = {
     'security.deleteWarning': 'This action cannot be undone',
     'security.passwordMismatch': 'Passwords do not match',
     'security.passwordChanged': 'Password changed successfully',
-    
+
     // Groups
     'groups.title': 'Groups',
     'groups.myGroups': 'My Groups',
@@ -242,7 +245,7 @@ export const translations = {
     'groups.shareFilesBenefit': 'Share notes and files',
     'groups.currentGroup': 'Current Group',
     'groups.loadingGroups': 'Loading groups...',
-    
+
     // Folders
     'folders.title': 'Folders',
     'folders.createFolder': 'Create Folder',
@@ -250,8 +253,9 @@ export const translations = {
     'folders.createFirstFolder': 'Create your first folder in "{{groupName}}" to start organizing your tasks and notes.',
     'folders.createFirstFolderNoGroup': 'Create a folder to start organizing your tasks and notes.',
     'folders.enterFolderName': 'Enter folder name',
+    'folders.enterFolderDescription': 'Enter folder description (optional)',
     'folders.creating': 'Creating...',
-    
+
     // Notifications
     'notifications.title': 'Notifications',
     'notifications.email': 'Email Notifications',
@@ -272,7 +276,7 @@ export const translations = {
     'notifications.timeAgo.hoursAgo': '{{count}}h ago',
     'notifications.timeAgo.daysAgo': '{{count}}d ago',
     'notifications.updated': 'Notification preference updated successfully',
-    
+
     // Notes
     'notes.title': 'Notes',
     'notes.createNote': 'Create Note',
@@ -305,7 +309,7 @@ export const translations = {
     'notes.createNewNote': 'Create New Note',
     'notes.folder': 'Folder',
     'notes.noContentPreview': 'No content yet. Switch to edit mode to start writing.',
-    
+
     // Chat
     'chat.title': 'Chat',
     'chat.sendMessage': 'Send message',
@@ -338,15 +342,27 @@ export const translations = {
     'chat.copy': 'Copy',
     'chat.copied': 'Copied!',
     'chat.openInNewTab': 'Open in new tab',
-    
+
+    // Mentions
+    'mention.typeToMention': 'Type @ to mention someone',
+    'mention.noUsersFound': 'No users found',
+    'mention.mentionUser': 'Mention user',
+    'mention.mentionRole': 'Mention role',
+    'mention.role': 'Role',
+    'mention.mentionedYou': '@{{name}} mentioned you',
+    'mention.mentionedYouInComment': '@{{name}} mentioned you in a comment',
+    'mention.mentionedYouInGroupChat': '@{{name}} mentioned you in group chat',
+    'mention.mentionedYouInDirectChat': '@{{name}} mentioned you in a direct message',
+
     // Task Context Menu
     'taskContextMenu.complete': 'Complete task',
     'taskContextMenu.startTimer': 'Start timer',
+    'taskContextMenu.stopTimer': 'Stop timer',
     'taskContextMenu.changeType': 'Change type',
     'taskContextMenu.repeat': 'Repeat task',
     'taskContextMenu.moveTo': 'Move to',
     'taskContextMenu.delete': 'Delete task',
-    
+
     // Time
     'time.today': 'Today',
     'time.yesterday': 'Yesterday',
@@ -356,7 +372,7 @@ export const translations = {
     'time.hoursAgo': '{{count}} hours ago',
     'time.minutesAgo': '{{count}} minutes ago',
     'time.justNow': 'Just now',
-    
+
     // Auth
     'auth.login': 'Log In',
     'auth.logout': 'Log Out',
@@ -369,7 +385,7 @@ export const translations = {
     'auth.noAccount': "Don't have an account?",
     'auth.hasAccount': 'Already have an account?',
     'auth.loginWithGoogle': 'Continue with Google',
-    
+
     // Errors
     'error.generic': 'An error occurred',
     'error.tryAgain': 'Please try again',
@@ -379,14 +395,14 @@ export const translations = {
     'error.serverError': 'Server error. Please try again later',
     'error.validation': 'Please check your input',
     'error.required': 'This field is required',
-    
+
     // Success
     'success.saved': 'Changes saved successfully',
     'success.deleted': 'Deleted successfully',
     'success.created': 'Created successfully',
     'success.updated': 'Updated successfully',
     'success.copied': 'Copied to clipboard',
-    
+
     // Sidebar - Create Project Modal
     'sidebar.createProject': 'Create New Project',
     'sidebar.createProjectDesc': 'Add a new project to your workspace',
@@ -396,7 +412,7 @@ export const translations = {
     'sidebar.projectDescPlaceholder': 'Enter project description',
     'sidebar.creating': 'Creating...',
     'sidebar.createProjectBtn': 'Create Project',
-    
+
     // Sidebar - Invite Modal
     'sidebar.inviteTeamMember': 'Invite Team Member',
     'sidebar.inviteDesc': 'Add someone to your project',
@@ -406,7 +422,7 @@ export const translations = {
     'sidebar.assignRole': 'Assign Role',
     'sidebar.sending': 'Sending...',
     'sidebar.sendInvitation': 'Send Invitation',
-    
+
     // Sort options
     'sort.taskName': 'Task name',
     'sort.status': 'Status',
@@ -423,14 +439,14 @@ export const translations = {
     'sort.highToLow': 'High to low',
     'sort.shortestFirst': 'Shortest first',
     'sort.longestFirst': 'Longest first',
-    
+
     // Categories
     'category.operational': 'Operational',
     'category.strategic': 'Strategic',
     'category.financial': 'Financial',
     'category.technical': 'Technical',
     'category.other': 'Other',
-    
+
     // Kanban columns
     'kanban.todo': 'To Do',
     'kanban.inProgress': 'In Progress',
@@ -440,7 +456,7 @@ export const translations = {
     'kanban.noTodo': 'No to do tasks',
     'kanban.noInProgress': 'No in progress tasks',
     'kanban.noIncomplete': 'No incomplete tasks',
-    
+
     // Assignee
     'assignee.addAssignee': '+ Add assignee',
     'assignee.addAssignees': 'Add Assignees',
@@ -448,7 +464,7 @@ export const translations = {
     'assignee.assignSomeone': 'Assign someone',
     'assignee.assignedTo': 'Assigned to',
     'assignee.autoAssign': 'Task will be automatically assigned to you',
-    
+
     // Time options
     'time.15minutes': '15 minutes',
     'time.30minutes': '30 minutes',
@@ -458,12 +474,12 @@ export const translations = {
     'time.1day': '1 day',
     'time.2days': '2 days',
     'time.1week': '1 week',
-    
+
     // Misc
     'misc.untitledTask': 'Untitled Task',
     'misc.saveSettings': 'Save Settings',
     'misc.confirmDeleteFolder': 'Are you sure you want to delete this folder? This will also delete all tasks and notes in this folder.',
-    
+
     // Sidebar
     'sidebar.myProjects': 'My Projects',
     'sidebar.sharedWithMe': 'Shared with me',
@@ -473,10 +489,11 @@ export const translations = {
     'sidebar.noSharedProjects': 'No shared projects',
     'sidebar.searchPlaceholder': 'Search projects, tasks...',
     'sidebar.folderNamePlaceholder': 'Folder name',
+    'sidebar.folderDescriptionPlaceholder': 'Description (optional)',
     'sidebar.creatingFolder': 'Creating...',
     'sidebar.loadingFolders': 'Loading folders...',
     'sidebar.noFoldersYet': 'No folders yet. Create one to start organizing.',
-    
+
     // Task Detail
     'taskDetail.addStatus': 'Add status',
     'taskDetail.startTime': 'Start time',
@@ -522,12 +539,12 @@ export const translations = {
     'taskDetail.dueDateLabel': 'Due date',
     'taskDetail.estimatedTimeLabel': 'Estimated time',
     'taskDetail.typeLabel': 'Type',
-    
+
     // Task Types
     'type.operational': 'Operational',
     'type.strategic': 'Strategic',
     'type.tactical': 'Tactical',
-    
+
     // Group Members
     'groupMembers.addTeamMember': 'Add Team Member',
     'groupMembers.inviteDescription': 'Invite someone to join your group and collaborate together',
@@ -539,10 +556,108 @@ export const translations = {
     'groupMembers.inviteHint': 'The user will receive an email invitation to join your group',
     'groupMembers.addPeople': '+ Add people',
     'groupMembers.addPeopleButton': 'Add people',
-    
+    'groupMembers.loadingMembers': 'Loading members...',
+    'groupMembers.tryAgain': 'Try again',
+    'groupMembers.joinOrCreateTitle': 'Join or Create a Group to View Members',
+    'groupMembers.joinOrCreateDesc': 'You need to join or create a group to view and manage group members.',
+    'groupMembers.noGroupSelected': 'No group selected',
+    'groupMembers.groupUpdated': 'Group updated!',
+    'groupMembers.folderManagement': 'Manage folders by role',
+    'groupMembers.folderManagementDesc': 'Assign team members to folders so they can create/edit content.',
+    'groupMembers.noCustomFolders': 'No custom folders yet. Create more folders for detailed permissions.',
+    'groupMembers.memberLeft': 'Member has left',
+    'groupMembers.membersAssigned': '{{count}} members assigned',
+    'groupMembers.manageAccess': 'Manage access',
+    'groupMembers.otherMembers': '+{{count}} more',
+    'groupMembers.folderNotAssigned': 'Folder not assigned to any member',
+    'groupMembers.tableHeaderMember': 'Member',
+    'groupMembers.tableHeaderEmail': 'Email',
+    'groupMembers.tableHeaderRole': 'Role',
+    'groupMembers.tableHeaderAccess': 'Access scope',
+    'groupMembers.tableHeaderActions': 'Actions',
+    'groupMembers.noMembersFound': 'No members found',
+    'groupMembers.inviteToStart': 'Invite people to get started',
+    'groupMembers.me': 'Me',
+    'groupMembers.you': 'You',
+    'groupMembers.noEmail': 'No email',
+    'groupMembers.remove': 'Remove',
+    'groupMembers.notAssignedFolder': 'Not assigned to folder',
+    'groupMembers.folder': 'Folder',
+    'groupMembers.updatingRole': 'Updating role...',
+    'groupMembers.deleteGroup': 'Delete Group',
+    'groupMembers.deleteGroupConfirm': 'Are you sure you want to delete <strong>{{name}}</strong>? This action cannot be undone. All tasks in this group will be ungrouped.',
+    'groupMembers.deleting': 'Deleting...',
+
+    // Folder Access Modal
+    'folderAccess.title': 'Manage folder access',
+    'folderAccess.folderLabel': 'Folder',
+    'folderAccess.description': 'Only roles that require folder assignment (BA, Tech, Infra, Product Team...) will appear in this list.',
+    'folderAccess.searchPlaceholder': 'Search by name or email',
+    'folderAccess.noMatchingMembers': 'No matching members',
+    'folderAccess.member': 'Member',
+    'folderAccess.saving': 'Saving...',
+    'folderAccess.savePermissions': 'Save permissions',
+    'folderAccess.cannotRemoveWithActiveTasks': 'Cannot remove folder access from users who have active tasks assigned in this folder. Please complete or reassign their tasks first.',
+
+    // Role Labels
+    'roles.productOwner': 'Product Owner',
+    'roles.sale': 'Sale / Account',
+    'roles.qa': 'Quality Assurance',
+    'roles.devManager': 'Developer Manager',
+    'roles.pm': 'Project Manager (PM)',
+    'roles.ba': 'Business Analyst (BA)',
+    'roles.techLead': 'Tech Lead',
+    'roles.botBuilder': 'Bot Builder',
+    'roles.qc': 'Quality Control (QC)',
+    'roles.devops': 'DevOps',
+    'roles.cloudInfra': 'Cloud Infra',
+    'roles.security': 'Security',
+    'roles.chatbot': 'Chatbot Team',
+    'roles.voicebot': 'Voicebot Team',
+    'roles.developer': 'Developer',
+    'roles.unknown': 'Unknown role',
+
+    // Role Section Titles
+    'roles.sections.monitoring': 'Project Monitoring',
+    'roles.sections.management': 'Project Management',
+    'roles.sections.infrastructure': 'Infrastructure (Infra)',
+    'roles.sections.productTeam': 'Product Team',
+
+    // Role Summaries
+    'roles.summary.productOwner': 'Full project administration',
+    'roles.capabilities.productOwner': 'Create/edit all content, manage permissions, assign folders',
+    'roles.summary.pm': 'Project management, folder level',
+    'roles.capabilities.pm': 'Create/edit tasks/notes/folders, assign folders to members',
+    'roles.summary.sale': 'View progress only',
+    'roles.capabilities.sale': 'View all tasks/notes/folders, cannot edit',
+    'roles.summary.qa': 'Quality monitoring',
+    'roles.capabilities.qa': 'View all content, cannot edit',
+    'roles.summary.devManager': 'Track development team',
+    'roles.capabilities.devManager': 'View all access, cannot create/edit',
+    'roles.summary.ba': 'Work in assigned folders',
+    'roles.capabilities.ba': 'Create/edit tasks/notes in folders assigned by PM',
+    'roles.summary.techLead': 'Lead technical work in assigned folders',
+    'roles.capabilities.techLead': 'CRUD access in assigned folders',
+    'roles.summary.botBuilder': 'Execute bot work in assigned folders',
+    'roles.capabilities.botBuilder': 'Full access in assigned folders',
+    'roles.summary.qc': 'Testing in assigned folders',
+    'roles.capabilities.qc': 'Create/edit/delete in assigned folders',
+    'roles.summary.devops': 'Infrastructure operations by folder',
+    'roles.capabilities.devops': 'Edit content in assigned folders',
+    'roles.summary.cloudInfra': 'Cloud/Infra management',
+    'roles.capabilities.cloudInfra': 'Execute access in assigned folders',
+    'roles.summary.security': 'Ensure security in assigned folders',
+    'roles.capabilities.security': 'Edit folder content in assigned folders',
+    'roles.summary.chatbot': 'Chatbot product team',
+    'roles.capabilities.chatbot': 'Execute tasks/notes in assigned folders',
+    'roles.summary.voicebot': 'Voicebot product team',
+    'roles.capabilities.voicebot': 'Execute tasks/notes in assigned folders',
+    'roles.summary.developer': 'Developer executing in assigned folders',
+    'roles.capabilities.developer': 'Full access in assigned folders',
+
     // Tools Sidebar
     'tools.title': 'Tools',
-    
+
     // Task Assignee
     'tasks.includesYou': 'Includes you',
     'tasks.assigned': '{{count}} assigned',
@@ -556,12 +671,16 @@ export const translations = {
     'tasks.assignedTo': 'Assigned to {{name}} ({{email}})',
     'tasks.youWillBeAssigned': 'You will be assigned as the task creator',
     'tasks.canChangeAssigneesLater': 'You can add or change assignees later in the task details',
-    
+    'tasks.elapsedTime': 'Elapsed Time',
+    'tasks.timeTaken': 'Time Taken',
+    'tasks.cannotChangeToTodo': 'Cannot change status to "To Do" because this task has logged time entries. Delete all time entries first to change status.',
+    'tasks.overEstimate': 'Elapsed time exceeds estimate!',
+
     // Sidebar Folder Stats
     'sidebar.tasksCount': '{{count}} tasks',
     'sidebar.notesCount': '{{count}} notes',
     'sidebar.membersCount': '{{count}} members',
-    
+
     // View Mode
     'viewMode.list': 'List',
     'viewMode.kanban': 'Kanban',
@@ -575,17 +694,19 @@ export const translations = {
     'sort.filterByCategory': 'Filter by Category',
     'sort.allStatuses': 'All Statuses',
     'sort.allCategories': 'All Categories',
+    'sort.filterByTag': 'Filter by Tag',
+    'sort.allTags': 'All Tags',
     'sort.allTypes': 'All Types',
     'sort.nearest': 'Nearest',
     'sort.furthest': 'Furthest',
     'sort.clearAll': 'Clear All Filters',
-    
+
     // Kanban
     'kanban.noTasks': 'No tasks',
     'kanban.noCompleted': 'No completed tasks',
     'kanban.noOverdue': 'No overdue tasks',
     'kanban.noCompletedYet': 'No completed tasks yet',
-    
+
     // User Menu
     'userMenu.profileSettings': 'Profile settings',
     'userMenu.theme': 'Theme',
@@ -593,20 +714,20 @@ export const translations = {
     'userMenu.dark': 'Dark',
     'userMenu.auto': 'Auto',
     'userMenu.logout': 'Log out',
-    
+
     // Account Settings
     'accountSettings.title': 'Account Settings',
     'accountSettings.description': 'Manage your profile, preferences, and security settings',
     'accountSettings.saving': 'Saving...',
     'accountSettings.deleting': 'Deleting...',
-    
+
     // Profile Tab Extended
     'profile.deleteAccount': 'Delete Account',
     'profile.deleteConfirmTitle': 'Delete Account',
     'profile.deleteConfirmMessage': 'Are you sure you want to delete your account? This action cannot be undone and all your data will be permanently lost.',
     'profile.deleteConfirmButton': 'Yes, delete my account',
     'profile.enterFullName': 'Enter your full name',
-    
+
     // Security Tab Extended
     'security.title': 'Security Settings',
     'security.description': 'Manage your password and account security',
@@ -623,11 +744,11 @@ export const translations = {
     'security.tipReuse': "Don't reuse passwords",
     'security.lastChanged': 'Last Changed',
     'security.lastChangedInfo': 'Your password was last changed {{time}} ago',
-    
+
     // Preferences Tab Extended
     'preferences.title': 'Preferences',
     'preferences.description': 'Customize your application experience',
-    
+
     // Time Picker
     'timePicker.minute': 'm',
     'timePicker.hour': 'h',
@@ -635,7 +756,7 @@ export const translations = {
     'timePicker.month': 'mo',
     'timePicker.dragToChange': 'Drag or click to change',
   },
-  
+
   vi: {
     // Navigation
     'nav.tasks': 'Công việc',
@@ -644,7 +765,7 @@ export const translations = {
     'nav.notes': 'Ghi chú',
     'nav.chat': 'Trò chuyện',
     'nav.members': 'Thành viên',
-    
+
     // Common
     'common.save': 'Lưu',
     'common.cancel': 'Hủy',
@@ -665,7 +786,7 @@ export const translations = {
     'common.no': 'Không',
     'common.clear': 'Xóa',
     'common.done': 'Xong',
-    
+
     // Tasks
     'tasks.title': 'Công việc',
     'tasks.createTask': 'Tạo công việc',
@@ -704,14 +825,17 @@ export const translations = {
     'tasks.descriptionPlaceholder': 'Mô tả chi tiết công việc...',
     'tasks.tagsPlaceholder': 'khẩn cấp, quan trọng, dự án-x',
     'tasks.tagsHelper': 'Phân cách các nhãn bằng dấu phẩy',
-    
+    'tasks.assignTo': 'Giao cho',
+    'tasks.selectAssignees': 'Nhấn để chọn người thực hiện...',
+    'tasks.assignToHelper': 'Chọn một hoặc nhiều thành viên để giao công việc này.',
+
     // Priority levels
     'priority.none': 'Không có',
     'priority.low': 'Thấp',
     'priority.medium': 'Trung bình',
     'priority.high': 'Cao',
     'priority.urgent': 'Khẩn cấp',
-    
+
     // Status
     'status.todo': 'Cần làm',
     'status.inProgress': 'Đang thực hiện',
@@ -719,14 +843,14 @@ export const translations = {
     'status.incomplete': 'Chưa hoàn thành',
     'status.pending': 'Đang chờ',
     'status.cancelled': 'Đã hủy',
-    
+
     // Custom Status Modal
     'customStatus.title': 'Thêm Trạng Thái Tùy Chỉnh',
     'customStatus.name': 'Tên Trạng Thái',
     'customStatus.namePlaceholder': 'Ví dụ: Đang Xem Xét, Bị Chặn, Tạm Dừng',
     'customStatus.color': 'Màu sắc',
     'customStatus.addStatus': 'Thêm Trạng Thái',
-    
+
     // Repeat Task Modal
     'repeatTask.title': 'Lặp Lại Công Việc',
     'repeatTask.enableRepetition': 'Bật lặp lại công việc',
@@ -736,7 +860,7 @@ export const translations = {
     'repeatTask.weekly': 'Tuần',
     'repeatTask.monthly': 'Tháng',
     'repeatTask.yearly': 'Năm',
-    
+
     // Timeline
     'timeline.title': 'Dòng thời gian',
     'timeline.zoomIn': 'Phóng to',
@@ -773,7 +897,7 @@ export const translations = {
     'timeline.assigned': 'Đã giao',
     'timeline.unassigned': 'Chưa giao',
     'timeline.untitledTask': 'Công việc chưa đặt tên',
-    
+
     // Calendar
     'calendar.title': 'Lịch',
     'calendar.month': 'Tháng',
@@ -787,7 +911,7 @@ export const translations = {
     'calendar.description': 'Quản lý lịch trình và thời hạn của bạn',
     'calendar.tasksFor': 'Công việc cho',
     'calendar.noTasksAssigned': 'Không có công việc nào được giao cho bạn',
-    
+
     // Settings
     'settings.title': 'Cài đặt tài khoản',
     'settings.profile': 'Hồ sơ',
@@ -798,13 +922,13 @@ export const translations = {
     'settings.language': 'Ngôn ngữ',
     'settings.notifications': 'Thông báo',
     'settings.saved': 'Đã lưu cài đặt',
-    
+
     // Language
     'language.english': 'Tiếng Anh',
     'language.vietnamese': 'Tiếng Việt',
     'language.description': 'Chọn ngôn ngữ ưa thích của bạn',
     'language.updated': 'Đã cập nhật ngôn ngữ thành công',
-    
+
     // Regional
     'regional.timezone': 'Múi giờ',
     'regional.timezoneDesc': 'Đặt múi giờ địa phương của bạn',
@@ -819,14 +943,14 @@ export const translations = {
     'regional.monday': 'Thứ Hai',
     'regional.sunday': 'Chủ Nhật',
     'regional.updated': 'Đã cập nhật tùy chọn khu vực',
-    
+
     // Theme
     'theme.light': 'Sáng',
     'theme.dark': 'Tối',
     'theme.auto': 'Tự động (Hệ thống)',
     'theme.description': 'Chọn giao diện ứng dụng',
     'theme.updated': 'Đã cập nhật giao diện',
-    
+
     // Profile
     'profile.personalInfo': 'Thông tin cá nhân',
     'profile.personalInfoDesc': 'Cập nhật thông tin cá nhân và ảnh đại diện',
@@ -839,7 +963,7 @@ export const translations = {
     'profile.uploadPhoto': 'Tải ảnh mới lên',
     'profile.photoRequirements': 'JPG, PNG hoặc GIF. Tối đa 5MB.',
     'profile.updated': 'Đã cập nhật hồ sơ thành công',
-    
+
     // Security
     'security.changePassword': 'Đổi mật khẩu',
     'security.currentPassword': 'Mật khẩu hiện tại',
@@ -849,7 +973,7 @@ export const translations = {
     'security.deleteWarning': 'Hành động này không thể hoàn tác',
     'security.passwordMismatch': 'Mật khẩu không khớp',
     'security.passwordChanged': 'Đã đổi mật khẩu thành công',
-    
+
     // Groups
     'groups.title': 'Nhóm',
     'groups.myGroups': 'Nhóm của tôi',
@@ -877,7 +1001,7 @@ export const translations = {
     'groups.shareFilesBenefit': 'Chia sẻ ghi chú và tệp',
     'groups.currentGroup': 'Nhóm hiện tại',
     'groups.loadingGroups': 'Đang tải nhóm...',
-    
+
     // Folders
     'folders.title': 'Thư mục',
     'folders.createFolder': 'Tạo thư mục',
@@ -885,8 +1009,9 @@ export const translations = {
     'folders.createFirstFolder': 'Tạo thư mục đầu tiên trong "{{groupName}}" để bắt đầu sắp xếp công việc và ghi chú.',
     'folders.createFirstFolderNoGroup': 'Tạo thư mục để bắt đầu sắp xếp công việc và ghi chú.',
     'folders.enterFolderName': 'Nhập tên thư mục',
+    'folders.enterFolderDescription': 'Nhập mô tả thư mục (tùy chọn)',
     'folders.creating': 'Đang tạo...',
-    
+
     // Notifications
     'notifications.title': 'Thông báo',
     'notifications.email': 'Thông báo qua email',
@@ -907,7 +1032,7 @@ export const translations = {
     'notifications.timeAgo.hoursAgo': '{{count}} giờ trước',
     'notifications.timeAgo.daysAgo': '{{count}} ngày trước',
     'notifications.updated': 'Đã cập nhật tùy chọn thông báo',
-    
+
     // Notes
     'notes.title': 'Ghi chú',
     'notes.createNote': 'Tạo ghi chú',
@@ -940,7 +1065,7 @@ export const translations = {
     'notes.createNewNote': 'Tạo ghi chú mới',
     'notes.folder': 'Thư mục',
     'notes.noContentPreview': 'Chưa có nội dung. Chuyển sang chế độ chỉnh sửa để bắt đầu viết.',
-    
+
     // Chat
     'chat.title': 'Trò chuyện',
     'chat.sendMessage': 'Gửi tin nhắn',
@@ -973,15 +1098,27 @@ export const translations = {
     'chat.copy': 'Sao chép',
     'chat.copied': 'Đã sao chép!',
     'chat.openInNewTab': 'Mở trong tab mới',
-    
+
+    // Mentions
+    'mention.typeToMention': 'Gõ @ để đề cập ai đó',
+    'mention.noUsersFound': 'Không tìm thấy người dùng',
+    'mention.mentionUser': 'Đề cập người dùng',
+    'mention.mentionRole': 'Đề cập vai trò',
+    'mention.role': 'Vai trò',
+    'mention.mentionedYou': '@{{name}} đã đề cập bạn',
+    'mention.mentionedYouInComment': '@{{name}} đã đề cập bạn trong bình luận',
+    'mention.mentionedYouInGroupChat': '@{{name}} đã đề cập bạn trong chat nhóm',
+    'mention.mentionedYouInDirectChat': '@{{name}} đã đề cập bạn trong tin nhắn riêng',
+
     // Task Context Menu
     'taskContextMenu.complete': 'Hoàn thành',
     'taskContextMenu.startTimer': 'Bắt đầu hẹn giờ',
+    'taskContextMenu.stopTimer': 'Dừng hẹn giờ',
     'taskContextMenu.changeType': 'Đổi loại',
     'taskContextMenu.repeat': 'Lặp lại',
     'taskContextMenu.moveTo': 'Di chuyển đến',
     'taskContextMenu.delete': 'Xóa nhiệm vụ',
-    
+
     // Time
     'time.today': 'Hôm nay',
     'time.yesterday': 'Hôm qua',
@@ -991,7 +1128,7 @@ export const translations = {
     'time.hoursAgo': '{{count}} giờ trước',
     'time.minutesAgo': '{{count}} phút trước',
     'time.justNow': 'Vừa xong',
-    
+
     // Auth
     'auth.login': 'Đăng nhập',
     'auth.logout': 'Đăng xuất',
@@ -1004,7 +1141,7 @@ export const translations = {
     'auth.noAccount': 'Chưa có tài khoản?',
     'auth.hasAccount': 'Đã có tài khoản?',
     'auth.loginWithGoogle': 'Tiếp tục với Google',
-    
+
     // Errors
     'error.generic': 'Đã xảy ra lỗi',
     'error.tryAgain': 'Vui lòng thử lại',
@@ -1014,14 +1151,14 @@ export const translations = {
     'error.serverError': 'Lỗi máy chủ. Vui lòng thử lại sau',
     'error.validation': 'Vui lòng kiểm tra thông tin nhập',
     'error.required': 'Trường này là bắt buộc',
-    
+
     // Success
     'success.saved': 'Đã lưu thay đổi thành công',
     'success.deleted': 'Đã xóa thành công',
     'success.created': 'Đã tạo thành công',
     'success.updated': 'Đã cập nhật thành công',
     'success.copied': 'Đã sao chép vào clipboard',
-    
+
     // Sidebar - Create Project Modal
     'sidebar.createProject': 'Tạo dự án mới',
     'sidebar.createProjectDesc': 'Thêm dự án mới vào không gian làm việc của bạn',
@@ -1031,7 +1168,7 @@ export const translations = {
     'sidebar.projectDescPlaceholder': 'Nhập mô tả dự án',
     'sidebar.creating': 'Đang tạo...',
     'sidebar.createProjectBtn': 'Tạo dự án',
-    
+
     // Sidebar - Invite Modal
     'sidebar.inviteTeamMember': 'Mời thành viên',
     'sidebar.inviteDesc': 'Thêm người vào dự án của bạn',
@@ -1041,7 +1178,7 @@ export const translations = {
     'sidebar.assignRole': 'Gán vai trò',
     'sidebar.sending': 'Đang gửi...',
     'sidebar.sendInvitation': 'Gửi lời mời',
-    
+
     // Sort options
     'sort.taskName': 'Tên công việc',
     'sort.status': 'Trạng thái',
@@ -1058,14 +1195,14 @@ export const translations = {
     'sort.highToLow': 'Cao đến thấp',
     'sort.shortestFirst': 'Ngắn nhất trước',
     'sort.longestFirst': 'Dài nhất trước',
-    
+
     // Categories
     'category.operational': 'Vận hành',
     'category.strategic': 'Chiến lược',
     'category.financial': 'Tài chính',
     'category.technical': 'Kỹ thuật',
     'category.other': 'Khác',
-    
+
     // Kanban columns
     'kanban.todo': 'Cần làm',
     'kanban.inProgress': 'Đang thực hiện',
@@ -1075,7 +1212,7 @@ export const translations = {
     'kanban.noTodo': 'Không có công việc cần làm',
     'kanban.noInProgress': 'Không có công việc đang thực hiện',
     'kanban.noIncomplete': 'Không có công việc chưa hoàn thành',
-    
+
     // Assignee
     'assignee.addAssignee': '+ Thêm người thực hiện',
     'assignee.addAssignees': 'Thêm người thực hiện',
@@ -1083,7 +1220,7 @@ export const translations = {
     'assignee.assignSomeone': 'Gán cho ai đó',
     'assignee.assignedTo': 'Được giao cho',
     'assignee.autoAssign': 'Công việc sẽ được tự động gán cho bạn',
-    
+
     // Time options
     'time.15minutes': '15 phút',
     'time.30minutes': '30 phút',
@@ -1093,12 +1230,12 @@ export const translations = {
     'time.1day': '1 ngày',
     'time.2days': '2 ngày',
     'time.1week': '1 tuần',
-    
+
     // Misc
     'misc.untitledTask': 'Công việc chưa đặt tên',
     'misc.saveSettings': 'Lưu cài đặt',
     'misc.confirmDeleteFolder': 'Bạn có chắc chắn muốn xóa thư mục này? Điều này cũng sẽ xóa tất cả công việc và ghi chú trong thư mục.',
-    
+
     // Sidebar
     'sidebar.myProjects': 'Dự án của tôi',
     'sidebar.sharedWithMe': 'Được chia sẻ với tôi',
@@ -1108,10 +1245,11 @@ export const translations = {
     'sidebar.noSharedProjects': 'Không có dự án được chia sẻ',
     'sidebar.searchPlaceholder': 'Tìm kiếm dự án, công việc...',
     'sidebar.folderNamePlaceholder': 'Tên thư mục',
+    'sidebar.folderDescriptionPlaceholder': 'Mô tả (tùy chọn)',
     'sidebar.creatingFolder': 'Đang tạo...',
     'sidebar.loadingFolders': 'Đang tải thư mục...',
     'sidebar.noFoldersYet': 'Chưa có thư mục nào. Tạo một thư mục để bắt đầu sắp xếp.',
-    
+
     // Task Detail
     'taskDetail.addStatus': 'Thêm trạng thái',
     'taskDetail.startTime': 'Bắt đầu',
@@ -1157,12 +1295,12 @@ export const translations = {
     'taskDetail.dueDateLabel': 'Ngày hết hạn',
     'taskDetail.estimatedTimeLabel': 'Thời gian ước tính',
     'taskDetail.typeLabel': 'Loại',
-    
+
     // Task Types
     'type.operational': 'Vận hành',
     'type.strategic': 'Chiến lược',
     'type.tactical': 'Chiến thuật',
-    
+
     // Group Members
     'groupMembers.addTeamMember': 'Thêm thành viên',
     'groupMembers.inviteDescription': 'Mời ai đó tham gia nhóm của bạn và cùng nhau hợp tác',
@@ -1174,10 +1312,108 @@ export const translations = {
     'groupMembers.inviteHint': 'Người dùng sẽ nhận được email mời tham gia nhóm của bạn',
     'groupMembers.addPeople': '+ Thêm người',
     'groupMembers.addPeopleButton': 'Thêm người',
-    
+    'groupMembers.loadingMembers': 'Đang tải thành viên...',
+    'groupMembers.tryAgain': 'Thử lại',
+    'groupMembers.joinOrCreateTitle': 'Tham gia hoặc tạo nhóm để xem thành viên',
+    'groupMembers.joinOrCreateDesc': 'Bạn cần tham gia hoặc tạo nhóm để xem và quản lý thành viên.',
+    'groupMembers.noGroupSelected': 'Chưa chọn nhóm',
+    'groupMembers.groupUpdated': 'Nhóm đã cập nhật!',
+    'groupMembers.folderManagement': 'Quản lý folder theo vai trò',
+    'groupMembers.folderManagementDesc': 'Gán các thành viên thực thi vào từng folder để họ có thể tạo/chỉnh sửa nội dung.',
+    'groupMembers.noCustomFolders': 'Chưa có folder tùy chỉnh nào. Hãy tạo thêm folder để phân quyền chi tiết.',
+    'groupMembers.memberLeft': 'Thành viên đã rời nhóm',
+    'groupMembers.membersAssigned': '{{count}} thành viên được gán',
+    'groupMembers.manageAccess': 'Quản lý truy cập',
+    'groupMembers.otherMembers': '+{{count}} thành viên khác',
+    'groupMembers.folderNotAssigned': 'Folder chưa được gán cho thành viên nào',
+    'groupMembers.tableHeaderMember': 'Thành viên',
+    'groupMembers.tableHeaderEmail': 'Email',
+    'groupMembers.tableHeaderRole': 'Vai trò',
+    'groupMembers.tableHeaderAccess': 'Phạm vi truy cập',
+    'groupMembers.tableHeaderActions': 'Hành động',
+    'groupMembers.noMembersFound': 'Không tìm thấy thành viên',
+    'groupMembers.inviteToStart': 'Mời người để bắt đầu',
+    'groupMembers.me': 'Tôi',
+    'groupMembers.you': 'Bạn',
+    'groupMembers.noEmail': 'Không có email',
+    'groupMembers.remove': 'Xóa',
+    'groupMembers.notAssignedFolder': 'Chưa được gán folder',
+    'groupMembers.folder': 'Folder',
+    'groupMembers.updatingRole': 'Đang cập nhật vai trò...',
+    'groupMembers.deleteGroup': 'Xóa nhóm',
+    'groupMembers.deleteGroupConfirm': 'Bạn có chắc chắn muốn xóa <strong>{{name}}</strong>? Hành động này không thể hoàn tác. Tất cả công việc trong nhóm này sẽ bị bỏ nhóm.',
+    'groupMembers.deleting': 'Đang xóa...',
+
+    // Folder Access Modal
+    'folderAccess.title': 'Quản lý truy cập folder',
+    'folderAccess.folderLabel': 'Folder',
+    'folderAccess.description': 'Chỉ những vai trò cần được gán folder (BA, Tech, Infra, Team sản phẩm...) mới xuất hiện trong danh sách này.',
+    'folderAccess.searchPlaceholder': 'Tìm kiếm theo tên hoặc email',
+    'folderAccess.noMatchingMembers': 'Không có thành viên phù hợp',
+    'folderAccess.member': 'Thành viên',
+    'folderAccess.saving': 'Đang lưu...',
+    'folderAccess.savePermissions': 'Lưu phân quyền',
+    'folderAccess.cannotRemoveWithActiveTasks': 'Không thể xóa quyền truy cập folder của người dùng đang có công việc chưa hoàn thành. Vui lòng hoàn thành hoặc chuyển giao công việc trước.',
+
+    // Role Labels
+    'roles.productOwner': 'Product Owner',
+    'roles.sale': 'Sale / Account',
+    'roles.qa': 'Quality Assurance',
+    'roles.devManager': 'Developer Manager',
+    'roles.pm': 'Project Manager (PM)',
+    'roles.ba': 'Business Analyst (BA)',
+    'roles.techLead': 'Tech Lead',
+    'roles.botBuilder': 'Bot Builder',
+    'roles.qc': 'Quality Control (QC)',
+    'roles.devops': 'DevOps',
+    'roles.cloudInfra': 'Cloud Infra',
+    'roles.security': 'Security',
+    'roles.chatbot': 'Chatbot Team',
+    'roles.voicebot': 'Voicebot Team',
+    'roles.developer': 'Developer',
+    'roles.unknown': 'Vai trò không xác định',
+
+    // Role Section Titles
+    'roles.sections.monitoring': 'Giám sát dự án',
+    'roles.sections.management': 'Quản lý dự án',
+    'roles.sections.infrastructure': 'Hạ tầng (Infra)',
+    'roles.sections.productTeam': 'Team sản phẩm',
+
+    // Role Summaries
+    'roles.summary.productOwner': 'Toàn quyền quản trị dự án',
+    'roles.capabilities.productOwner': 'Tạo/chỉnh sửa mọi nội dung, phân quyền, gán folder',
+    'roles.summary.pm': 'Quản lý dự án, cấp thư mục',
+    'roles.capabilities.pm': 'Tạo/chỉnh sửa task/note/folder, gán folder cho thành viên',
+    'roles.summary.sale': 'Chỉ xem tiến độ',
+    'roles.capabilities.sale': 'Xem tất cả task/note/folder, không thể chỉnh sửa',
+    'roles.summary.qa': 'Giám sát chất lượng',
+    'roles.capabilities.qa': 'Xem toàn bộ nội dung, không được chỉnh sửa',
+    'roles.summary.devManager': 'Theo dõi đội phát triển',
+    'roles.capabilities.devManager': 'Quyền xem toàn bộ, không tạo/chỉnh sửa',
+    'roles.summary.ba': 'Làm việc trong folder được gán',
+    'roles.capabilities.ba': 'Tạo/chỉnh sửa task/note trong folder được PM gán',
+    'roles.summary.techLead': 'Dẫn dắt kỹ thuật trong folder được giao',
+    'roles.capabilities.techLead': 'Quyền CRUD trong folder đã được gán',
+    'roles.summary.botBuilder': 'Thực hiện bot theo folder được gán',
+    'roles.capabilities.botBuilder': 'Toàn quyền trong folder được gán',
+    'roles.summary.qc': 'Kiểm thử trong folder được giao',
+    'roles.capabilities.qc': 'Tạo/chỉnh sửa/xóa trong folder đã được gán',
+    'roles.summary.devops': 'Vận hành hạ tầng theo folder',
+    'roles.capabilities.devops': 'Chỉnh sửa nội dung trong folder được giao',
+    'roles.summary.cloudInfra': 'Quản lý cloud/infra',
+    'roles.capabilities.cloudInfra': 'Quyền thực thi trong folder được gán',
+    'roles.summary.security': 'Đảm bảo bảo mật trong folder được phân',
+    'roles.capabilities.security': 'Chỉnh sửa nội dung folder được gán',
+    'roles.summary.chatbot': 'Team sản phẩm Chatbot',
+    'roles.capabilities.chatbot': 'Thực hiện task/note trong folder được gán',
+    'roles.summary.voicebot': 'Team sản phẩm Voicebot',
+    'roles.capabilities.voicebot': 'Thực hiện task/note trong folder được gán',
+    'roles.summary.developer': 'Dev thực thi trong folder được gán',
+    'roles.capabilities.developer': 'Toàn quyền trong folder đã được gán',
+
     // Tools Sidebar
     'tools.title': 'Công cụ',
-    
+
     // Task Assignee
     'tasks.includesYou': 'Bao gồm bạn',
     'tasks.assigned': '{{count}} được giao',
@@ -1191,12 +1427,16 @@ export const translations = {
     'tasks.assignedTo': 'Được giao cho {{name}} ({{email}})',
     'tasks.youWillBeAssigned': 'Bạn sẽ được giao là người tạo công việc',
     'tasks.canChangeAssigneesLater': 'Bạn có thể thêm hoặc thay đổi người được giao sau trong chi tiết công việc',
-    
+    'tasks.elapsedTime': 'Thời gian đã trôi qua',
+    'tasks.timeTaken': 'Thời gian hoàn thành',
+    'tasks.cannotChangeToTodo': 'Không thể đổi trạng thái về "Cần làm" vì công việc này đã có thời gian ghi nhận. Xóa tất cả mục thời gian trước để đổi trạng thái.',
+    'tasks.overEstimate': 'Thời gian đã vượt quá ước tính!',
+
     // Sidebar Folder Stats
     'sidebar.tasksCount': '{{count}} công việc',
     'sidebar.notesCount': '{{count}} ghi chú',
     'sidebar.membersCount': '{{count}} thành viên',
-    
+
     // View Mode
     'viewMode.list': 'Danh sách',
     'viewMode.kanban': 'Bảng Kanban',
@@ -1210,17 +1450,19 @@ export const translations = {
     'sort.filterByCategory': 'Lọc theo danh mục',
     'sort.allStatuses': 'Tất cả trạng thái',
     'sort.allCategories': 'Tất cả danh mục',
+    'sort.filterByTag': 'Lọc theo nhãn',
+    'sort.allTags': 'Tất cả nhãn',
     'sort.allTypes': 'Tất cả loại',
     'sort.nearest': 'Gần nhất',
     'sort.furthest': 'Xa nhất',
     'sort.clearAll': 'Xóa tất cả bộ lọc',
-    
+
     // Kanban
     'kanban.noTasks': 'Không có công việc',
     'kanban.noCompleted': 'Không có công việc hoàn thành',
     'kanban.noOverdue': 'Không có công việc quá hạn',
     'kanban.noCompletedYet': 'Chưa có công việc hoàn thành',
-    
+
     // User Menu
     'userMenu.profileSettings': 'Cài đặt hồ sơ',
     'userMenu.theme': 'Giao diện',
@@ -1228,20 +1470,20 @@ export const translations = {
     'userMenu.dark': 'Tối',
     'userMenu.auto': 'Tự động',
     'userMenu.logout': 'Đăng xuất',
-    
+
     // Account Settings
     'accountSettings.title': 'Cài đặt tài khoản',
     'accountSettings.description': 'Quản lý hồ sơ, tùy chọn và cài đặt bảo mật của bạn',
     'accountSettings.saving': 'Đang lưu...',
     'accountSettings.deleting': 'Đang xóa...',
-    
+
     // Profile Tab Extended
     'profile.deleteAccount': 'Xóa tài khoản',
     'profile.deleteConfirmTitle': 'Xóa tài khoản',
     'profile.deleteConfirmMessage': 'Bạn có chắc chắn muốn xóa tài khoản? Hành động này không thể hoàn tác và tất cả dữ liệu của bạn sẽ bị mất vĩnh viễn.',
     'profile.deleteConfirmButton': 'Có, xóa tài khoản của tôi',
     'profile.enterFullName': 'Nhập họ tên đầy đủ',
-    
+
     // Security Tab Extended
     'security.title': 'Cài đặt bảo mật',
     'security.description': 'Quản lý mật khẩu và bảo mật tài khoản của bạn',
@@ -1258,11 +1500,11 @@ export const translations = {
     'security.tipReuse': 'Không sử dụng lại mật khẩu',
     'security.lastChanged': 'Thay đổi lần cuối',
     'security.lastChangedInfo': 'Mật khẩu của bạn được thay đổi {{time}} trước',
-    
+
     // Preferences Tab Extended
     'preferences.title': 'Tùy chọn',
     'preferences.description': 'Tùy chỉnh trải nghiệm ứng dụng của bạn',
-    
+
     // Time Picker
     'timePicker.minute': 'phút',
     'timePicker.hour': 'giờ',

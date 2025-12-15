@@ -43,7 +43,7 @@ class ChatService {
    * @returns {Promise<Object>} Message đã tạo
    */
   async createMessage(groupId, senderId, messageData, skipRealtime = false) {
-    const { content, replyTo, attachments = [] } = messageData;
+    const { content, replyTo, attachments = [], mentions } = messageData;
 
     // Verify user is member of group
     const group = await Group.findById(groupId);
@@ -86,7 +86,8 @@ class ChatService {
       senderId,
       content: content || '',
       attachments,
-      replyTo: replyTo || null
+      replyTo: replyTo || null,
+      mentions: mentions || { users: [], roles: [] }
     });
 
     const savedMessage = await message.save();
@@ -115,9 +116,19 @@ class ChatService {
 
     const senderName = savedMessage?.senderId?.name || null;
     const preview = buildMessagePreview(content, attachments);
+
+    // Get mentioned user IDs to exclude from regular notification
+    const mentionedUserIds = mentions?.users || [];
+
+    // Exclude sender AND mentioned users from regular chat notification
+    // (mentioned users will get a separate mention notification)
     const groupRecipients = group.members
       .map(member => normalizeId(member.userId))
-      .filter(memberId => memberId && memberId !== normalizedSenderId);
+      .filter(memberId =>
+        memberId &&
+        memberId !== normalizedSenderId &&
+        !mentionedUserIds.includes(memberId)
+      );
 
     if (groupRecipients.length > 0) {
       notificationService

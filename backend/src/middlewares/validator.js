@@ -127,9 +127,8 @@ const validateUpdateTask = (req, res, next) => {
     const dueDateObj = new Date(dueDate);
     if (isNaN(dueDateObj.getTime())) {
       errors.push({ field: 'dueDate', message: 'Ngày hết hạn không hợp lệ' });
-    } else if (dueDateObj < new Date()) {
-      errors.push({ field: 'dueDate', message: 'Ngày hết hạn phải là ngày trong tương lai' });
     }
+    // Note: Past due dates are allowed when updating tasks (e.g., from timeline view)
   }
 
   // Validate priority (nếu có)
@@ -211,9 +210,9 @@ const validateRegister = (req, res, next) => {
   } else {
     const passwordValidation = authService.validatePasswordStrength(password);
     if (!passwordValidation.isValid) {
-      errors.push({ 
-        field: 'password', 
-        message: passwordValidation.errors.join(', ') 
+      errors.push({
+        field: 'password',
+        message: passwordValidation.errors.join(', ')
       });
     }
   }
@@ -305,9 +304,9 @@ const validateChangePassword = (req, res, next) => {
   } else {
     const passwordValidation = authService.validatePasswordStrength(newPassword);
     if (!passwordValidation.isValid) {
-      errors.push({ 
-        field: 'newPassword', 
-        message: passwordValidation.errors.join(', ') 
+      errors.push({
+        field: 'newPassword',
+        message: passwordValidation.errors.join(', ')
       });
     }
   }

@@ -5,11 +5,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { userService } from '../services/user.service';
 import { User, Language } from '../services/types/auth.types';
-import { 
-  ArrowLeft, 
-  User as UserIcon, 
-  Settings, 
-  Shield, 
+import {
+  ArrowLeft,
+  User as UserIcon,
+  Settings,
+  Shield,
   Camera,
   Bell,
   Palette,
@@ -21,6 +21,7 @@ import {
   Upload,
   Trash2
 } from 'lucide-react';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 interface ProfileSettingsProps {
   onClose?: () => void;
@@ -73,11 +74,10 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`flex items-center gap-3 px-6 py-3 rounded-xl text-sm font-medium transition-all flex-1 justify-center ${
-                    activeTab === tab.id
+                  className={`flex items-center gap-3 px-6 py-3 rounded-xl text-sm font-medium transition-all flex-1 justify-center ${activeTab === tab.id
                       ? 'bg-white dark:bg-[#1A1A1A] text-gray-900 dark:text-white shadow-sm'
                       : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-                  }`}
+                    }`}
                 >
                   <Icon className="w-4 h-4" />
                   {tab.label}
@@ -94,7 +94,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
           <div className="bg-white dark:bg-[#1F1F1F] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 w-full">
             <div className="p-8 w-full">
               {activeTab === 'profile' && (
-                <MyProfileTab 
+                <MyProfileTab
                   user={user}
                   loading={loading}
                   setLoading={setLoading}
@@ -103,7 +103,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                 />
               )}
               {activeTab === 'preferences' && (
-                <PreferencesTab 
+                <PreferencesTab
                   user={user}
                   updateUserTheme={updateUserTheme}
                   loading={loading}
@@ -113,7 +113,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                 />
               )}
               {activeTab === 'security' && (
-                <SecurityTab 
+                <SecurityTab
                   loading={loading}
                   setLoading={setLoading}
                   message={message}
@@ -132,6 +132,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
 function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
   const { updateUser } = useAuth();
   const { t } = useLanguage();
+  const confirmDialog = useConfirm();
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
   const [avatar, setAvatar] = useState(user.avatar || '');
@@ -145,12 +146,12 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
     setMessage('');
     try {
       let updatedUser;
-      
+
       // If there's a new avatar file, upload it first
       if (avatarFile) {
         const formData = new FormData();
         formData.append('file', avatarFile);
-        
+
         const uploadResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/users/me/avatar/upload`, {
           method: 'POST',
           headers: {
@@ -158,7 +159,7 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
           },
           body: formData
         });
-        
+
         if (!uploadResponse.ok) {
           let errorMessage = 'Failed to upload avatar'
           try {
@@ -181,7 +182,7 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
         // Just update name and avatar URL
         updatedUser = await userService.updateProfile({ name, avatar });
       }
-      
+
       setMessage(t('profile.updated'));
       setIsEditing(false);
       await updateUser({ name, avatar: updatedUser.avatar });
@@ -202,9 +203,15 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
   };
 
   const handleDeleteAccount = async () => {
-    if (!window.confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
-      return;
-    }
+    const confirmed = await confirmDialog.confirm({
+      title: 'Xóa tài khoản',
+      message: 'Bạn có chắc chắn muốn xóa tài khoản không? Hành động này không thể hoàn tác.',
+      confirmText: 'Xóa tài khoản',
+      cancelText: 'Hủy',
+      variant: 'danger',
+      icon: 'delete'
+    });
+    if (!confirmed) return;
 
     setLoading(true);
     try {
@@ -236,13 +243,13 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
         <div className="w-full lg:w-1/3">
           <div className="bg-gray-50 dark:bg-[#2E2E2E] rounded-2xl p-6 w-full">
             <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-4 text-left">{t('profile.profilePicture')}</h3>
-            
+
             <div className="flex flex-col items-center space-y-4">
               <div className="relative">
                 {avatarPreview || avatar ? (
-                  <img 
-                    src={avatarPreview || avatar} 
-                    alt="Avatar Preview" 
+                  <img
+                    src={avatarPreview || avatar}
+                    alt="Avatar Preview"
                     className="w-32 h-32 rounded-full object-cover border-4 border-white dark:border-[#1F1F1F] shadow-lg"
                   />
                 ) : (
@@ -252,7 +259,7 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
                     </span>
                   </div>
                 )}
-                
+
                 {isEditing && (
                   <label className="absolute bottom-0 right-0 bg-blue-500 text-white p-2 rounded-full cursor-pointer shadow-lg hover:bg-blue-600 transition-colors">
                     <Camera className="w-4 h-4" />
@@ -413,11 +420,10 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage }: any) {
             )}
 
             {message && (
-              <div className={`p-4 rounded-xl w-full text-left ${
-                message.includes('Error') 
-                  ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400' 
+              <div className={`p-4 rounded-xl w-full text-left ${message.includes('Error')
+                  ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'
                   : 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
-              }`}>
+                }`}>
                 {message}
               </div>
             )}
@@ -470,11 +476,11 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
     try {
       setLoading(true);
       setMessage('');
-      
+
       // Update notification preferences via API
       const { notificationService } = await import('../services/notification.service');
       await notificationService.updatePreferences({ [key]: value });
-      
+
       setNotifications(prev => ({ ...prev, [key]: value }));
       setMessage(t('notifications.updated'));
       setTimeout(() => setMessage(''), 3000);
@@ -503,16 +509,16 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
     try {
       setLoading(true);
       setMessage('');
-      
+
       const updatedUser = await userService.updateRegionalPreferences({ [preference]: value });
       await updateUser(updatedUser);
-      
+
       // Update local state
       if (preference === 'timeZone') setTimeZone(value);
       else if (preference === 'dateFormat') setDateFormat(value);
       else if (preference === 'timeFormat') setTimeFormat(value);
       else if (preference === 'weekStart') setWeekStart(value);
-      
+
       setMessage(t('regional.updated'));
       setTimeout(() => setMessage(''), 3000);
     } catch (error: any) {
@@ -679,7 +685,7 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
                         {field.description}
                       </p>
                     </div>
-                    
+
                     <div className="ml-4">
                       {field.type === 'radio' && (
                         <div className="flex gap-4">
@@ -695,19 +701,19 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
                                 checked={field.value === option.value}
                                 onChange={async () => {
                                   const newValue = option.value;
-                                  
+
                                   // Handle language preference
                                   if (field.label === t('settings.language')) {
                                     await handleLanguageChange(newValue as Language);
                                     return;
                                   }
-                                  
+
                                   // Handle theme
                                   if (field.label === t('settings.appearance')) {
                                     (field.onChange as (value: string) => void)(newValue);
                                     return;
                                   }
-                                  
+
                                   // Handle regional preferences
                                   (field.onChange as (value: string) => void)(newValue);
                                   if (field.label === t('regional.dateFormat')) {
@@ -721,11 +727,10 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
                                 disabled={loading}
                                 className="hidden"
                               />
-                              <div className={`w-4 h-4 border-2 rounded-full flex items-center justify-center ${
-                                field.value === option.value
+                              <div className={`w-4 h-4 border-2 rounded-full flex items-center justify-center ${field.value === option.value
                                   ? 'border-blue-500 bg-blue-500'
                                   : 'border-gray-300 dark:border-gray-600'
-                              }`}>
+                                }`}>
                                 {field.value === option.value && (
                                   <div className="w-1.5 h-1.5 bg-white rounded-full" />
                                 )}
@@ -768,7 +773,7 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
                           onClick={async () => {
                             const newValue = !field.value;
                             field.onChange(newValue);
-                            
+
                             // Handle notification preferences
                             if (field.label === 'Email Notifications') {
                               await handleNotificationChange('email', newValue);
@@ -777,16 +782,14 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
                             }
                           }}
                           disabled={loading}
-                          className={`w-12 h-6 rounded-full transition-colors disabled:opacity-50 ${
-                            field.value 
-                              ? 'bg-blue-500' 
+                          className={`w-12 h-6 rounded-full transition-colors disabled:opacity-50 ${field.value
+                              ? 'bg-blue-500'
                               : 'bg-gray-300 dark:bg-gray-600'
-                          }`}
+                            }`}
                         >
                           <div
-                            className={`w-4 h-4 bg-white rounded-full transition-transform ${
-                              field.value ? 'transform translate-x-7' : 'transform translate-x-1'
-                            }`}
+                            className={`w-4 h-4 bg-white rounded-full transition-transform ${field.value ? 'transform translate-x-7' : 'transform translate-x-1'
+                              }`}
                           />
                         </button>
                       )}
@@ -800,11 +803,10 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
       </div>
 
       {message && (
-        <div className={`p-4 rounded-xl w-full text-left ${
-          message.includes('Error') 
-            ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400' 
+        <div className={`p-4 rounded-xl w-full text-left ${message.includes('Error')
+            ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'
             : 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
-        }`}>
+          }`}>
           {message}
         </div>
       )}
@@ -859,12 +861,12 @@ function SecurityTab({ loading, setLoading, message, setMessage }: SecurityTabPr
     }
   };
 
-  const PasswordInput = ({ 
-    value, 
-    onChange, 
-    placeholder, 
-    showPassword, 
-    setShowPassword 
+  const PasswordInput = ({
+    value,
+    onChange,
+    placeholder,
+    showPassword,
+    setShowPassword
   }: any) => (
     <div className="relative">
       <input
@@ -990,11 +992,10 @@ function SecurityTab({ loading, setLoading, message, setMessage }: SecurityTabPr
       </div>
 
       {message && (
-        <div className={`p-4 rounded-xl w-full text-left ${
-          message.includes('Error') 
-            ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400' 
+        <div className={`p-4 rounded-xl w-full text-left ${message.includes('Error')
+            ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'
             : 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
-        }`}>
+          }`}>
           {message}
         </div>
       )}

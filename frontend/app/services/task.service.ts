@@ -98,7 +98,7 @@ export const taskService = {
 
     const data = await response.json();
     const task = normalizeTaskResponse(data);
-    
+
     // Send notification to group members about new task
     if (task.groupId) {
       try {
@@ -107,7 +107,7 @@ export const taskService = {
         console.warn('Failed to send task notification:', notifErr);
       }
     }
-    
+
     return task;
   },
 
@@ -293,7 +293,18 @@ export const taskService = {
 
       const errorText = await response.text();
       console.error('Error response:', errorText);
-      throw new Error(`Failed to update task: ${response.status}`);
+
+      // Parse error response to get actual message from backend
+      let errorMessage = `Failed to update task: ${response.status}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.message || errorMessage;
+      } catch {
+        // If JSON parsing fails, use the raw error text or default message
+        errorMessage = errorText || errorMessage;
+      }
+
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
@@ -331,7 +342,18 @@ export const taskService = {
 
       const errorText = await response.text();
       console.error('Error response:', errorText);
-      throw new Error(`Failed to delete task: ${response.status}`);
+
+      // Parse error response to get actual message from backend
+      let errorMessage = `Failed to delete task: ${response.status}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.message || errorMessage;
+      } catch {
+        // If JSON parsing fails, use the raw error text or default message
+        errorMessage = errorText || errorMessage;
+      }
+
+      throw new Error(errorMessage);
     }
   },
 
@@ -748,7 +770,17 @@ export const taskService = {
 
       const errorText = await response.text();
       console.error('Error response:', errorText);
-      throw new Error(`Failed to start timer: ${response.status}`);
+
+      // Parse error response to get actual message from backend
+      let errorMessage = `Failed to start timer: ${response.status}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
@@ -783,7 +815,17 @@ export const taskService = {
 
       const errorText = await response.text();
       console.error('Error response:', errorText);
-      throw new Error(`Failed to stop timer: ${response.status}`);
+
+      // Parse error response to get actual message from backend
+      let errorMessage = `Failed to stop timer: ${response.status}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
@@ -859,7 +901,17 @@ export const taskService = {
 
       const errorText = await response.text();
       console.error('Error response:', errorText);
-      throw new Error(`Failed to set task repetition: ${response.status}`);
+
+      // Parse error response to get actual message from backend
+      let errorMessage = `Failed to set task repetition: ${response.status}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();

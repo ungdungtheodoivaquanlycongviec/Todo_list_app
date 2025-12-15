@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { 
-  Plus, 
-  ChevronLeft, 
-  ChevronRight, 
+import {
+  Plus,
+  ChevronLeft,
+  ChevronRight,
   Search,
   Filter,
   MoreVertical,
@@ -32,11 +32,12 @@ import { useFolder } from '../../contexts/FolderContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useRegional } from '../../contexts/RegionalContext';
 import { monthNames, dayNamesShort } from '../../i18n/dateLocales';
+import { useToast } from '../../contexts/ToastContext';
 
 type ZoomLevel = 'days' | 'weeks' | 'months' | 'quarters';
 type GroupBy = 'none' | 'folder' | 'category' | 'assignee' | 'status';
 
-interface TimelineTask extends Task {
+interface TimelineTask extends Omit<Task, 'startDate'> {
   startDate: Date;
   endDate: Date;
   left: number;
@@ -49,6 +50,7 @@ export default function TimelineView() {
   const { currentFolder } = useFolder();
   const { t, language } = useLanguage();
   const { formatDate, getWeekStartDay } = useRegional();
+  const toast = useToast();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -65,22 +67,23 @@ export default function TimelineView() {
   const [resizingTask, setResizingTask] = useState<string | null>(null);
   const [resizeType, setResizeType] = useState<'start' | 'end' | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  
+
   const timelineRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const dragAnimationFrame = useRef<number | null>(null);
   const resizeAnimationFrame = useRef<number | null>(null);
-const [resizedTaskPosition, setResizedTaskPosition] = useState<{ startTime?: string; dueDate?: string } | null>(null);
+  const [resizedTaskPosition, setResizedTaskPosition] = useState<{ startTime?: string; dueDate?: string } | null>(null);
+  const wasInteractingRef = useRef(false); // Track if we just finished dragging/resizing
 
-const getTaskColor = useCallback((taskId: string) => {
-  let hash = 0;
-  for (let i = 0; i < taskId.length; i++) {
-    hash = (hash << 5) - hash + taskId.charCodeAt(i);
-    hash |= 0;
-  }
-  const hue = Math.abs(hash) % 360;
-  return `hsl(${hue}, 65%, 55%)`;
-}, []);
+  const getTaskColor = useCallback((taskId: string) => {
+    let hash = 0;
+    for (let i = 0; i < taskId.length; i++) {
+      hash = (hash << 5) - hash + taskId.charCodeAt(i);
+      hash |= 0;
+    }
+    const hue = Math.abs(hash) % 360;
+    return `hsl(${hue}, 65%, 55%)`;
+  }, []);
 
   const daysPerColumn = useMemo(() => {
     switch (zoomLevel) {
@@ -120,13 +123,14 @@ const getTaskColor = useCallback((taskId: string) => {
     let maxDate: Date | null = null;
 
     const getStart = (task: Task) => {
-      if (task.startTime) return new Date(task.startTime);
-      if (task.dueDate) return new Date(task.dueDate);
+      // Use createdAt as start date for timeline display
       if (task.createdAt) return new Date(task.createdAt);
+      if (task.dueDate) return new Date(task.dueDate);
       return null;
     };
 
     const getEnd = (task: Task, start: Date | null) => {
+      // Use dueDate as end date, or createdAt + 1 day if no dueDate
       if (task.dueDate) return new Date(task.dueDate);
       if (start) return new Date(start.getTime() + 24 * 60 * 60 * 1000);
       return null;
@@ -208,8 +212,8 @@ const getTaskColor = useCallback((taskId: string) => {
 
     try {
       setLoading(true);
-      const response = await taskService.getAllTasks({ 
-        folderId: currentFolder?._id 
+      const response = await taskService.getAllTasks({
+        folderId: currentFolder?._id
       });
       setTasks(response.tasks || []);
     } catch (error) {
@@ -249,7 +253,7 @@ const getTaskColor = useCallback((taskId: string) => {
 
     filteredTasks.forEach(task => {
       let key = t('timeline.uncategorized');
-      
+
       switch (groupBy) {
         case 'folder':
           if (task.folderId && typeof task.folderId === 'object' && 'name' in task.folderId) {
@@ -279,7 +283,7 @@ const getTaskColor = useCallback((taskId: string) => {
           }
           break;
         case 'status':
-          key = task.status ? t(`status.${task.status}`) : t('status.todo');
+          key = task.status ? (t as any)(`status.${task.status}`) : t('status.todo');
           break;
       }
 
@@ -298,15 +302,17 @@ const getTaskColor = useCallback((taskId: string) => {
     // Use dragged/resized position if task is being manipulated
     let taskStart: Date;
     let taskEnd: Date;
-    
+
     const getFallbackStart = () => {
-      if (task.startTime) return new Date(task.startTime);
-      if (task.dueDate) return new Date(task.dueDate);
+      // Use startDate (user-editable) with fallback to createdAt for timeline display
+      // if (task.startDate) return new Date(task.startDate);
       if (task.createdAt) return new Date(task.createdAt);
+      if (task.dueDate) return new Date(task.dueDate);
       return new Date();
     };
 
     const getFallbackEnd = (start: Date) => {
+      // Use dueDate as end date, or start + 1 day if no dueDate
       if (task.dueDate) return new Date(task.dueDate);
       return new Date(start.getTime() + 24 * 60 * 60 * 1000);
     };
@@ -332,12 +338,15 @@ const getTaskColor = useCallback((taskId: string) => {
       return null;
     }
 
-    // Calculate left position
-    const daysDiff = Math.floor((taskStart.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    // Calculate left position - normalize dates to start of day to avoid timezone issues
+    const normalizedStart = new Date(taskStart.getFullYear(), taskStart.getMonth(), taskStart.getDate());
+    const normalizedRangeStart = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    const daysDiff = Math.round((normalizedStart.getTime() - normalizedRangeStart.getTime()) / (1000 * 60 * 60 * 24));
     const left = daysDiff * pixelsPerDay;
 
-    // Calculate width
-    const duration = Math.max(1, Math.ceil((taskEnd.getTime() - taskStart.getTime()) / (1000 * 60 * 60 * 24)));
+    // Calculate width - normalize end date as well
+    const normalizedEnd = new Date(taskEnd.getFullYear(), taskEnd.getMonth(), taskEnd.getDate());
+    const duration = Math.max(1, Math.round((normalizedEnd.getTime() - normalizedStart.getTime()) / (1000 * 60 * 60 * 24)));
     const width = duration * pixelsPerDay;
 
     return {
@@ -353,23 +362,23 @@ const getTaskColor = useCallback((taskId: string) => {
   // Calculate row positions for tasks (avoid overlapping)
   const calculateRows = useCallback((timelineTasks: TimelineTask[]): TimelineTask[] => {
     const rows: TimelineTask[][] = [];
-    
+
     // Sort tasks by start date
-    const sorted = [...timelineTasks].sort((a, b) => 
+    const sorted = [...timelineTasks].sort((a, b) =>
       a.startDate.getTime() - b.startDate.getTime()
     );
 
     sorted.forEach(task => {
       let placed = false;
-      
+
       // Try to place in existing row
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
-        const canPlace = row.every(existingTask => 
-          task.endDate <= existingTask.startDate || 
+        const canPlace = row.every(existingTask =>
+          task.endDate <= existingTask.startDate ||
           task.startDate >= existingTask.endDate
         );
-        
+
         if (canPlace) {
           row.push(task);
           task.row = i;
@@ -377,7 +386,7 @@ const getTaskColor = useCallback((taskId: string) => {
           break;
         }
       }
-      
+
       // If can't place, create new row
       if (!placed) {
         rows.push([task]);
@@ -400,7 +409,7 @@ const getTaskColor = useCallback((taskId: string) => {
         .filter((task): task is TimelineTask => task !== null);
 
       const tasksWithRows = calculateRows(tasksWithPositions);
-      
+
       tasksWithRows.forEach(task => {
         task.row += rowOffset;
         allTimelineTasks.push(task);
@@ -418,13 +427,12 @@ const getTaskColor = useCallback((taskId: string) => {
     e.stopPropagation();
     const task = tasks.find(t => t._id === taskId);
     if (task) {
-      const baseStart = task.startTime
-        ? new Date(task.startTime)
+      // Use createdAt as start date, dueDate as end date
+      const baseStart = task.createdAt
+        ? new Date(task.createdAt)
         : task.dueDate
           ? new Date(task.dueDate)
-          : task.createdAt
-            ? new Date(task.createdAt)
-            : new Date();
+          : new Date();
       const baseEnd = task.dueDate ? new Date(task.dueDate) : new Date(baseStart.getTime() + 24 * 60 * 60 * 1000);
       setOriginalTaskData({ startTime: baseStart, dueDate: baseEnd });
     }
@@ -450,17 +458,18 @@ const getTaskColor = useCallback((taskId: string) => {
       const rect = timelineRef.current!.getBoundingClientRect();
       const x = e.clientX - rect.left - 200 - dragOffset; // Subtract sidebar width and offset
       const { start } = getDateRange();
-      
+
       const days = Math.max(0, Math.round(x / pixelsPerDay));
       const newStartDate = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
-      
+
       // Reset to start of day for cleaner alignment
       newStartDate.setHours(0, 0, 0, 0);
 
       const duration = originalTaskData.dueDate.getTime() - originalTaskData.startTime.getTime();
       const newDueDate = new Date(newStartDate.getTime() + duration);
-      newDueDate.setHours(23, 59, 59, 999);
-      
+      // Use start of day to avoid timezone issues when saving
+      newDueDate.setHours(0, 0, 0, 0);
+
       // Only update visual position, don't update tasks state
       setDraggedTaskPosition({
         startTime: newStartDate.toISOString(),
@@ -487,31 +496,36 @@ const getTaskColor = useCallback((taskId: string) => {
 
     const taskId = draggedTask;
     const finalPosition = draggedTaskPosition;
-    
+
     // Reset drag state immediately
     setDraggedTask(null);
     setDragOffset(0);
     setOriginalTaskData(null);
     setDraggedTaskPosition(null);
-    
+
+    // Set flag to prevent click from opening task detail
+    wasInteractingRef.current = true;
+    setTimeout(() => { wasInteractingRef.current = false; }, 100);
+
     // Update task with final position
     if (finalPosition) {
       try {
         await taskService.updateTask(taskId, {
-          startTime: finalPosition.startTime,
           dueDate: finalPosition.dueDate
         });
-        
-        // Only fetch after successful update
-        await fetchTasks();
+
+        // Update local state instead of refetching to preserve scroll position
+        setTasks(prev => prev.map(t =>
+          t._id === taskId
+            ? { ...t, dueDate: finalPosition.dueDate }
+            : t
+        ));
       } catch (error) {
         console.error('Error updating task:', error);
-        alert('Failed to update task: ' + (error instanceof Error ? error.message : 'Unknown error'));
-        // Revert by fetching fresh data
-        await fetchTasks();
+        toast.showError(error instanceof Error ? error.message : 'Unknown error', 'Lỗi cập nhật task');
       }
     }
-  }, [draggedTask, draggedTaskPosition, fetchTasks]);
+  }, [draggedTask, draggedTaskPosition]);
 
   // Handle resize start
   const handleResizeStart = (e: React.MouseEvent, taskId: string, type: 'start' | 'end') => {
@@ -533,33 +547,31 @@ const getTaskColor = useCallback((taskId: string) => {
       const rect = timelineRef.current!.getBoundingClientRect();
       const x = e.clientX - rect.left - 200; // Subtract sidebar width
       const { start } = getDateRange();
-      
+
       const days = Math.max(0, Math.round(x / pixelsPerDay));
       const newDate = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
-      
-      // Reset to start/end of day for cleaner alignment
-      if (resizeType === 'start') {
-        newDate.setHours(0, 0, 0, 0);
-      } else {
-        newDate.setHours(23, 59, 59, 999);
-      }
+
+      // Use start of day to avoid timezone issues when saving
+      newDate.setHours(0, 0, 0, 0);
 
       // Get original task to check constraints
       const originalTask = tasks.find(t => t._id === resizingTask);
       if (originalTask) {
-        const fallbackStart = originalTask.startTime
-          ? new Date(originalTask.startTime)
+        // Use createdAt as start date, dueDate as end date
+        const fallbackStart = originalTask.createdAt
+          ? new Date(originalTask.createdAt)
           : originalTask.dueDate
             ? new Date(originalTask.dueDate)
-            : originalTask.createdAt
-              ? new Date(originalTask.createdAt)
-              : new Date();
+            : new Date();
         const fallbackDue = originalTask.dueDate
           ? new Date(originalTask.dueDate)
           : new Date(fallbackStart.getTime() + 24 * 60 * 60 * 1000);
 
         if (resizeType === 'start') {
-          if (newDate <= fallbackDue) {
+          // Only allow moving start date to the past (not future)
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          if (newDate <= fallbackDue && newDate <= today) {
             setResizedTaskPosition(prev => ({
               startTime: newDate.toISOString(),
               dueDate: prev?.dueDate
@@ -595,39 +607,52 @@ const getTaskColor = useCallback((taskId: string) => {
     const taskId = resizingTask;
     const finalPosition = resizedTaskPosition;
     const originalTask = tasks.find(t => t._id === taskId);
-    
+
     // Reset resize state immediately
     setResizingTask(null);
     setResizeType(null);
     setResizedTaskPosition(null);
-    
+
+    // Set flag to prevent click from opening task detail
+    wasInteractingRef.current = true;
+    setTimeout(() => { wasInteractingRef.current = false; }, 100);
+
     // Update task with final position
     if (finalPosition && originalTask) {
       try {
         const updateData: any = {};
+
+        // Update startDate if start was resized (only for past dates)
         if (finalPosition.startTime) {
-          updateData.startTime = finalPosition.startTime;
-        } else {
-          updateData.startTime = originalTask.startTime || undefined;
+          const newStartDate = new Date(finalPosition.startTime);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          if (newStartDate <= today) {
+            updateData.startDate = finalPosition.startTime;
+          }
         }
+
+        // Update dueDate if end was resized
         if (finalPosition.dueDate) {
           updateData.dueDate = finalPosition.dueDate;
-        } else {
-          updateData.dueDate = originalTask.dueDate || undefined;
         }
-        
-        await taskService.updateTask(taskId, updateData);
-        
-        // Only fetch after successful update
-        await fetchTasks();
+
+        if (Object.keys(updateData).length > 0) {
+          await taskService.updateTask(taskId, updateData);
+
+          // Update local state instead of refetching to preserve scroll position
+          setTasks(prev => prev.map(t =>
+            t._id === taskId
+              ? { ...t, ...(updateData.startDate && { startDate: updateData.startDate }), ...(updateData.dueDate && { dueDate: updateData.dueDate }) }
+              : t
+          ));
+        }
       } catch (error) {
         console.error('Error resizing task:', error);
-        alert('Failed to resize task: ' + (error instanceof Error ? error.message : 'Unknown error'));
-        // Revert by fetching fresh data
-        await fetchTasks();
+        toast.showError(error instanceof Error ? error.message : 'Unknown error', 'Lỗi thay đổi kích thước task');
       }
     }
-  }, [resizingTask, resizedTaskPosition, tasks, fetchTasks]);
+  }, [resizingTask, resizedTaskPosition, tasks]);
 
   // Mouse event handlers
   useEffect(() => {
@@ -681,7 +706,7 @@ const getTaskColor = useCallback((taskId: string) => {
     }
   };
 
-  // Keep current date visible when zoom or range changes
+  // Keep current date visible when zoom level changes (only on explicit navigation)
   useEffect(() => {
     if (!scrollContainerRef.current) return;
     const { start } = getDateRange();
@@ -690,7 +715,8 @@ const getTaskColor = useCallback((taskId: string) => {
     const timelineOffset = Math.max(0, offsetDays * pixelsPerDay);
     const centerAdjust = scrollContainerRef.current.clientWidth / 2;
     scrollContainerRef.current.scrollLeft = Math.max(0, timelineOffset - centerAdjust);
-  }, [zoomLevel, currentDate, pixelsPerDay, getDateRange, dates.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoomLevel, currentDate]);
 
   // Get status color
   const getStatusColor = (status: string) => {
@@ -728,7 +754,7 @@ const getTaskColor = useCallback((taskId: string) => {
     const month = date.getMonth();
     const monthShort = language === 'vi' ? `Th${month + 1}` : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][month];
     const dayShort = dayNamesShort[language][dayOfWeek];
-    
+
     switch (zoomLevel) {
       case 'days':
         return `${dayShort} ${day}`;
@@ -801,14 +827,14 @@ const getTaskColor = useCallback((taskId: string) => {
   const tasksWithPositions = timelineTasks();
   const groups = groupedTasks();
   const today = new Date();
-  const todayIndex = dates.findIndex(d => 
+  const todayIndex = dates.findIndex(d =>
     d.toDateString() === today.toDateString()
   );
 
   // Check if user has a current group
   if (!currentGroup) {
     return (
-      <NoGroupState 
+      <NoGroupState
         title={t('timeline.joinOrCreate')}
         description={t('timeline.needGroup')}
       />
@@ -844,18 +870,17 @@ const getTaskColor = useCallback((taskId: string) => {
             </p>
           )}
         </div>
-        
+
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full md:w-auto">
           {/* Zoom Controls */}
           <div className="flex bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm w-full sm:w-auto">
             {(['days', 'weeks', 'months', 'quarters'] as ZoomLevel[]).map(level => (
               <button
                 key={level}
-                className={`flex-1 px-3 py-2 text-sm capitalize transition-colors ${
-                  zoomLevel === level
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-white text-gray-700 hover:bg-gray-50'
-                }`}
+                className={`flex-1 px-3 py-2 text-sm capitalize transition-colors ${zoomLevel === level
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-white text-gray-700 hover:bg-gray-50'
+                  }`}
                 onClick={() => setZoomLevel(level)}
               >
                 {t(`timeline.${level}`)}
@@ -864,7 +889,7 @@ const getTaskColor = useCallback((taskId: string) => {
           </div>
 
           {/* Add Task Button */}
-          <button 
+          <button
             onClick={() => setShowCreateModal(true)}
             className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm font-medium justify-center w-full sm:w-auto"
           >
@@ -912,26 +937,26 @@ const getTaskColor = useCallback((taskId: string) => {
         {/* Timeline Header */}
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between p-4 border-b border-gray-200 bg-gray-50">
           <div className="flex flex-wrap items-center gap-3">
-            <button 
+            <button
               className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
               onClick={() => navigateTimeline('prev')}
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
-            
+
             <h2 className="text-lg font-semibold text-gray-900">
               {monthNames[language][currentDate.getMonth()]} {currentDate.getFullYear()}
             </h2>
-            
-            <button 
+
+            <button
               className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
               onClick={() => navigateTimeline('next')}
             >
               <ChevronRight className="w-5 h-5" />
             </button>
           </div>
-          
-          <button 
+
+          <button
             className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium w-full md:w-auto"
             onClick={goToToday}
           >
@@ -940,14 +965,14 @@ const getTaskColor = useCallback((taskId: string) => {
         </div>
 
         {/* Timeline Grid */}
-        <div 
+        <div
           ref={scrollContainerRef}
           className="overflow-x-auto overflow-y-auto"
           style={{ maxHeight: 'calc(100vh - 300px)' }}
         >
-          <div 
+          <div
             className="relative"
-            style={{ 
+            style={{
               minHeight: '500px',
               width: `${200 + dates.length * pixelsPerDay}px`
             }}
@@ -966,7 +991,7 @@ const getTaskColor = useCallback((taskId: string) => {
             }}
           >
             {/* Date Headers */}
-            <div 
+            <div
               ref={timelineRef}
               className="sticky top-0 z-20 bg-white border-b border-gray-200 flex"
               style={{ height: `${headerHeight}px` }}
@@ -995,9 +1020,8 @@ const getTaskColor = useCallback((taskId: string) => {
                     return (
                       <div
                         key={index}
-                        className={`border-r border-gray-100 flex-shrink-0 flex flex-col items-center justify-end pb-1 ${
-                          isToday ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-500'
-                        }`}
+                        className={`border-r border-gray-100 flex-shrink-0 flex flex-col items-center justify-end pb-1 ${isToday ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-500'
+                          }`}
                         style={{ width: `${pixelsPerDay}px` }}
                       >
                         {dayLabel && (
@@ -1026,7 +1050,7 @@ const getTaskColor = useCallback((taskId: string) => {
 
             {/* Task Rows */}
             {Object.entries(groups).map(([groupName, groupTasks]) => {
-              const groupTimelineTasks = tasksWithPositions.filter(t => 
+              const groupTimelineTasks = tasksWithPositions.filter(t =>
                 groupTasks.some(gt => gt._id === t._id)
               );
 
@@ -1073,7 +1097,7 @@ const getTaskColor = useCallback((taskId: string) => {
                       return (
                         <div
                           key={task._id}
-                          className="absolute cursor-move group"
+                          className="absolute cursor-pointer group"
                           style={{
                             left: `${200 + task.left}px`,
                             top: `${top}px`,
@@ -1086,11 +1110,12 @@ const getTaskColor = useCallback((taskId: string) => {
                             if ((e.target as HTMLElement).closest('.resize-handle')) {
                               return;
                             }
-                            handleDragStart(e, task._id);
+                            // Drag functionality disabled - only resize handles can be used
+                            // handleDragStart(e, task._id);
                           }}
                           onClick={(e) => {
                             // Only open detail if we didn't drag or resize
-                            if (!draggedTask && !resizingTask && !(e.target as HTMLElement).closest('.resize-handle')) {
+                            if (!draggedTask && !resizingTask && !wasInteractingRef.current && !(e.target as HTMLElement).closest('.resize-handle')) {
                               setSelectedTaskId(task._id);
                               setShowTaskDetail(true);
                             }
@@ -1098,9 +1123,8 @@ const getTaskColor = useCallback((taskId: string) => {
                         >
                           {/* Task Bar */}
                           <div
-                            className={`h-full rounded-md px-3 py-1 flex items-center justify-between shadow-sm hover:shadow-md transition-all task-bar-content ${
-                              draggedTask === task._id ? 'opacity-75 ring-2 ring-blue-400' : ''
-                            } ${resizingTask === task._id ? 'ring-2 ring-yellow-400' : ''}`}
+                            className={`h-full rounded-md px-3 py-1 flex items-center justify-between shadow-sm hover:shadow-md transition-all task-bar-content ${draggedTask === task._id ? 'opacity-75 ring-2 ring-blue-400' : ''
+                              } ${resizingTask === task._id ? 'ring-2 ring-yellow-400' : ''}`}
                             style={{
                               backgroundColor: getTaskColor(task._id),
                               color: '#ffffff'
@@ -1112,15 +1136,9 @@ const getTaskColor = useCallback((taskId: string) => {
                                 {task.title}
                               </span>
                             </div>
-                            
-                            {/* Resize Handles */}
-                            <div
-                              className="resize-handle absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white opacity-0 group-hover:opacity-30 hover:opacity-50 rounded-l-md"
-                              onMouseDown={(e) => {
-                                e.stopPropagation();
-                                handleResizeStart(e, task._id, 'start');
-                              }}
-                            />
+
+                            {/* Resize Handle - Only for end date (right side) */}
+                            {/* Left resize handle removed to prevent changing start/createdAt date */}
                             <div
                               className="resize-handle absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white opacity-0 group-hover:opacity-30 hover:opacity-50 rounded-r-md"
                               onMouseDown={(e) => {
@@ -1172,7 +1190,7 @@ const getTaskColor = useCallback((taskId: string) => {
               const assignedTo = currentUser ? [{ userId: currentUser._id }] : [];
               const startDate = selectedDate || (taskData.startTime ? new Date(taskData.startTime) : new Date());
               const dueDate = taskData.dueDate ? new Date(taskData.dueDate) : new Date(startDate.getTime() + 7 * 24 * 60 * 60 * 1000);
-              
+
               const backendTaskData = {
                 title: taskData.title || t('timeline.untitledTask'),
                 description: taskData.description || "",
@@ -1193,7 +1211,7 @@ const getTaskColor = useCallback((taskId: string) => {
               await fetchTasks();
             } catch (error) {
               console.error("Error creating task:", error);
-              alert("Failed to create task: " + (error instanceof Error ? error.message : 'Unknown error'));
+              toast.showError(error instanceof Error ? error.message : 'Unknown error', 'Lỗi tạo task');
             }
           }}
           currentUser={currentUser}

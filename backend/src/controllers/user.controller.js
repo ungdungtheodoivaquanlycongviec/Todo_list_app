@@ -10,16 +10,16 @@ const { sendSuccess, sendError } = require('../utils/response');
 
 const updateTheme = asyncHandler(async (req, res) => {
   const { theme } = req.body;
-  
+
   // Validate theme
   const validThemes = ['light', 'dark', 'auto'];
   if (!validThemes.includes(theme)) {
     return sendError(res, 'Invalid theme. Must be one of: light, dark, auto', 400);
   }
-  
+
   try {
     const updatedUser = await userService.updateUserTheme(req.user._id, theme);
-    
+
     sendSuccess(res, { user: updatedUser }, 'Theme updated successfully');
   } catch (error) {
     console.error('Update theme error:', error);
@@ -34,16 +34,16 @@ const updateTheme = asyncHandler(async (req, res) => {
  */
 const updateRegionalPreferences = asyncHandler(async (req, res) => {
   const { timeZone, dateFormat, timeFormat, weekStart } = req.body;
-  
+
   try {
     const preferences = {};
     if (timeZone !== undefined) preferences.timeZone = timeZone;
     if (dateFormat !== undefined) preferences.dateFormat = dateFormat;
     if (timeFormat !== undefined) preferences.timeFormat = timeFormat;
     if (weekStart !== undefined) preferences.weekStart = weekStart;
-    
+
     const updatedUser = await userService.updateRegionalPreferences(req.user._id, preferences);
-    
+
     sendSuccess(res, { user: updatedUser }, 'Regional preferences updated successfully');
   } catch (error) {
     console.error('Update regional preferences error:', error);
@@ -61,16 +61,16 @@ const updateRegionalPreferences = asyncHandler(async (req, res) => {
  */
 const updateLanguage = asyncHandler(async (req, res) => {
   const { language } = req.body;
-  
+
   // Validate language
   const validLanguages = ['en', 'vi'];
   if (!validLanguages.includes(language)) {
     return sendError(res, 'Invalid language. Must be one of: en, vi', 400);
   }
-  
+
   try {
     const updatedUser = await userService.updateLanguage(req.user._id, language);
-    
+
     sendSuccess(res, { user: updatedUser }, 'Language updated successfully');
   } catch (error) {
     console.error('Update language error:', error);
@@ -79,11 +79,17 @@ const updateLanguage = asyncHandler(async (req, res) => {
 });
 
 const updateProfile = asyncHandler(async (req, res) => {
-  const { name, avatar } = req.body;
-  
+  const { name, avatar, currentGroupId } = req.body;
+
   try {
-    const user = await userService.updateProfile(req.user._id, { name, avatar });
-    
+    // Build update data object with only provided fields
+    const updateData = {};
+    if (name !== undefined) updateData.name = name;
+    if (avatar !== undefined) updateData.avatar = avatar;
+    if (currentGroupId !== undefined) updateData.currentGroupId = currentGroupId;
+
+    const user = await userService.updateProfile(req.user._id, updateData);
+
     sendSuccess(res, { user }, 'Profile updated successfully');
   } catch (error) {
     if (error.message.includes('cannot exceed')) {
@@ -100,10 +106,10 @@ const updateProfile = asyncHandler(async (req, res) => {
  */
 const changePassword = asyncHandler(async (req, res) => {
   const { oldPassword, newPassword } = req.body;
-  
+
   try {
     const result = await userService.changePassword(req.user._id, oldPassword, newPassword);
-    
+
     sendSuccess(res, null, result.message);
   } catch (error) {
     if (error.message === 'Old password is incorrect') {
@@ -123,13 +129,13 @@ const changePassword = asyncHandler(async (req, res) => {
  */
 const updateAvatar = asyncHandler(async (req, res) => {
   const { avatar } = req.body;
-  
+
   if (!avatar) {
     return sendError(res, 'Avatar URL is required', 400);
   }
-  
+
   const user = await userService.updateAvatar(req.user._id, avatar);
-  
+
   sendSuccess(res, { user }, 'Avatar updated successfully');
 });
 
@@ -140,14 +146,14 @@ const updateAvatar = asyncHandler(async (req, res) => {
  */
 const uploadAvatar = asyncHandler(async (req, res) => {
   const file = req.file;
-  
+
   if (!file) {
     return sendError(res, 'No file was uploaded', 400);
   }
-  
+
   try {
     const user = await userService.uploadAvatar(req.user._id, file);
-    
+
     sendSuccess(res, { user }, 'Avatar uploaded successfully');
   } catch (error) {
     console.error('Upload avatar error:', error);
@@ -162,10 +168,10 @@ const uploadAvatar = asyncHandler(async (req, res) => {
  */
 const updateNotificationSettings = asyncHandler(async (req, res) => {
   const settings = req.body;
-  
+
   try {
     const user = await userService.updateNotificationSettings(req.user._id, settings);
-    
+
     sendSuccess(res, { user }, 'Notification settings updated successfully');
   } catch (error) {
     if (error.message.includes('beforeDue')) {
@@ -182,7 +188,7 @@ const updateNotificationSettings = asyncHandler(async (req, res) => {
  */
 const deactivateAccount = asyncHandler(async (req, res) => {
   const result = await userService.deactivateAccount(req.user._id);
-  
+
   sendSuccess(res, null, result.message);
 });
 

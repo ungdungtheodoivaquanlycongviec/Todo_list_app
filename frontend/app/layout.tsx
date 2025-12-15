@@ -6,6 +6,9 @@ import { FolderProvider } from './contexts/FolderContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { RegionalProvider } from './contexts/RegionalContext';
 import { UIStateProvider } from './contexts/UIStateContext';
+import { TimerProvider } from './contexts/TimerContext';
+import { ToastProvider } from './contexts/ToastContext';
+import { ConfirmProvider } from './contexts/ConfirmContext';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -26,9 +29,15 @@ export default function RootLayout({
           <LanguageProvider>
             <RegionalProvider>
               <FolderProvider>
-                <UIStateProvider>
-                  {children}
-                </UIStateProvider>
+                <TimerProvider>
+                  <UIStateProvider>
+                    <ToastProvider>
+                      <ConfirmProvider>
+                        {children}
+                      </ConfirmProvider>
+                    </ToastProvider>
+                  </UIStateProvider>
+                </TimerProvider>
               </FolderProvider>
             </RegionalProvider>
           </LanguageProvider>
@@ -37,3 +46,4 @@ export default function RootLayout({
     </html>
   );
 }
+

@@ -16,7 +16,8 @@ const {
   notifyTaskUnassigned,
   notifyTaskCompleted,
   notifyCommentAdded,
-  notifyChatMessage
+  notifyChatMessage,
+  notifyMention
 } = require('./notification.events');
 
 const createGroupInvitationNotification = async (recipientId, senderId, groupId, groupName, inviterName, role) => {
@@ -82,7 +83,7 @@ const createGroupNameChangeNotification = async (groupId, senderId, oldName, new
   }
 
   const senderIdStr = senderId.toString();
-  
+
   // Normalize all member IDs to strings for comparison
   const recipientIds = group.members
     .map(member => {
@@ -535,6 +536,61 @@ const createTaskUnassignmentNotification = async ({
   };
 };
 
+const createMentionNotification = async ({
+  senderId,
+  mentionerName,
+  contextType,
+  taskId,
+  taskTitle,
+  groupId,
+  groupName,
+  conversationId,
+  messageId,
+  commentId,
+  preview,
+  recipientIds = []
+}) => {
+  // Filter out self-mentions - don't notify if mentioning yourself
+  const validRecipients = recipientIds
+    .filter(isValidObjectId)
+    .filter(recipientId => recipientId.toString() !== senderId.toString());
+
+  if (validRecipients.length === 0) {
+    return {
+      success: true,
+      statusCode: HTTP_STATUS.OK,
+      message: 'No recipients to notify',
+      data: []
+    };
+  }
+
+  const notificationTasks = validRecipients.map(recipientId =>
+    notifyMention({
+      recipientId,
+      senderId,
+      mentionerName,
+      contextType,
+      taskId,
+      taskTitle,
+      groupId,
+      groupName,
+      conversationId,
+      messageId,
+      commentId,
+      preview: preview ? preview.substring(0, 100) : null
+    }).enqueuePromise
+  );
+
+  const notifications = await Promise.all(notificationTasks);
+
+  return {
+    success: true,
+    statusCode: HTTP_STATUS.CREATED,
+    message: 'Mention notifications created',
+    data: notifications
+  };
+};
+
 module.exports = {
   publishNotification,
   notifyGroupInvitation,
@@ -549,5 +605,6 @@ module.exports = {
   createTaskUnassignmentNotification,
   createTaskCompletedNotification,
   createCommentAddedNotification,
-  createChatMessageNotification
+  createChatMessageNotification,
+  createMentionNotification
 };

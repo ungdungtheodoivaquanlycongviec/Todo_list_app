@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { groupService } from '../../services/group.service';
+import { userService } from '../../services/user.service';
 import { notificationService } from '../../services/notification.service';
 import { Group, GroupMember } from '../../services/types/group.types';
 import { useGroupChange } from '../../hooks/useGroupChange';
@@ -17,7 +18,10 @@ import {
   getRoleLabel,
   ROLE_SUMMARIES,
   GROUP_ROLE_KEYS,
-  GroupRoleKey
+  GroupRoleKey,
+  getRoleSections,
+  getRoleSummaries,
+  ROLE_BADGE_COLORS
 } from '../../constants/groupRoles';
 import {
   getMemberId,
@@ -31,6 +35,7 @@ import { FolderAccessModal } from '../folders/FolderAccessModal';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { TranslationKey } from '../../i18n/translations';
 import { useRegional } from '../../contexts/RegionalContext';
+import { useConfirm } from '../../contexts/ConfirmContext';
 
 interface GroupMembersViewProps {
   groupId?: string;
@@ -41,6 +46,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   const { folders, refreshFolders } = useFolder();
   const { t } = useLanguage();
   const { formatTime } = useRegional();
+  const confirmDialog = useConfirm();
   const [group, setGroup] = useState<Group | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,6 +66,12 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   const [activeFolderForAssignment, setActiveFolderForAssignment] = useState<Folder | null>(null);
   const [folderModalSaving, setFolderModalSaving] = useState(false);
   const [folderModalError, setFolderModalError] = useState<string | null>(null);
+  const [folderBlockedUsers, setFolderBlockedUsers] = useState<Array<{
+    userId: string;
+    userName: string;
+    userEmail: string;
+    tasks: Array<{ taskId: string; taskTitle: string; taskStatus: string }>;
+  }>>([]);
 
   const targetGroupId = groupId || currentGroup?._id;
   const currentUserRole = useMemo(
@@ -77,7 +89,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
     const assignmentMap = new Map<string, string[]>();
     const currentUserId = user?._id;
     const canAssignFolders = canAssignFolderMembers(currentUserRole);
-    
+
     folders.forEach(folder => {
       if (!folder.memberAccess) return;
       folder.memberAccess.forEach(access => {
@@ -170,19 +182,23 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
       setLoading(true);
       setError(null);
       const groupData = await groupService.getGroupById(targetGroupId);
-      
+
+      if (!groupData) {
+        throw new Error('Group not found or access denied');
+      }
+
       // Check if there are changes
       const hasChanges = group && (
         group.name !== groupData.name ||
         group.members.length !== groupData.members.length ||
         JSON.stringify(group.members.map(m => m.userId)) !== JSON.stringify(groupData.members.map(m => m.userId))
       );
-      
+
       setGroup(groupData);
       setMembers(groupData.members || []);
       setLastUpdateTime(Date.now());
       setRoleUpdateError(null);
-      
+
       // Show notification if there are changes and not the initial load
       if (showNotification && hasChanges && group) {
         setShowUpdateNotification(true);
@@ -232,6 +248,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   const handleOpenFolderModal = (folder: Folder) => {
     if (!canAssignFolderMembers(currentUserRole)) return;
     setFolderModalError(null);
+    setFolderBlockedUsers([]);
     setActiveFolderForAssignment(folder);
     setFolderModalOpen(true);
   };
@@ -241,20 +258,33 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
     setFolderModalOpen(false);
     setActiveFolderForAssignment(null);
     setFolderModalError(null);
+    setFolderBlockedUsers([]);
   };
 
   const handleSaveFolderMembers = async (memberIds: string[]) => {
     if (!group?._id || !activeFolderForAssignment) return;
     setFolderModalSaving(true);
     setFolderModalError(null);
+    setFolderBlockedUsers([]);
     try {
       await folderService.setFolderMembers(group._id, activeFolderForAssignment._id, memberIds);
       await refreshFolders(activeFolderForAssignment._id);
       await loadGroupDetails(true);
       setFolderModalOpen(false);
       setActiveFolderForAssignment(null);
-    } catch (err) {
-      setFolderModalError(err instanceof Error ? err.message : 'Không thể cập nhật truy cập folder');
+    } catch (err: unknown) {
+      const error = err as Error & {
+        blockedUsers?: Array<{
+          userId: string;
+          userName: string;
+          userEmail: string;
+          tasks: Array<{ taskId: string; taskTitle: string; taskStatus: string }>;
+        }>
+      };
+      setFolderModalError(error.message || 'Không thể cập nhật truy cập folder');
+      if (error.blockedUsers && Array.isArray(error.blockedUsers)) {
+        setFolderBlockedUsers(error.blockedUsers);
+      }
     } finally {
       setFolderModalSaving(false);
     }
@@ -263,7 +293,14 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   const handleRemoveMember = async (memberId: string, memberName: string) => {
     if (!targetGroupId) return;
 
-    const confirmed = window.confirm(`Are you sure you want to remove ${memberName} from this group?`);
+    const confirmed = await confirmDialog.confirm({
+      title: 'Xóa thành viên',
+      message: `Bạn có chắc chắn muốn xóa ${memberName} khỏi nhóm này không?`,
+      confirmText: 'Xóa',
+      cancelText: 'Hủy',
+      variant: 'danger',
+      icon: 'delete'
+    });
     if (!confirmed) return;
 
     try {
@@ -295,22 +332,22 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
     try {
       setIsUpdating(true);
       setError(null);
-      
+
       const updatedGroup = await groupService.updateGroup(targetGroupId, {
         name: newName
       });
-      
+
       setGroup(updatedGroup);
       setIsEditingName(false);
       setEditingName('');
-      
+
       // Send notification to all group members about name change
       try {
         await notificationService.createGroupNameChangeNotification(targetGroupId, oldName, newName);
       } catch (notifErr) {
         console.warn('Failed to send notification:', notifErr);
       }
-      
+
       // Update current group in context if this is the current group
       if (currentGroup?._id === targetGroupId) {
         // You might want to update the context here
@@ -337,7 +374,32 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
     setIsDeleting(true);
     setError(null);
     try {
+      // First, find a fallback group before deleting
+      const groupsResponse = await groupService.getAllGroups();
+      const allGroups = [...groupsResponse.myGroups, ...groupsResponse.sharedGroups];
+      const fallbackGroup = allGroups.find(g => g._id !== targetGroupId);
+
+      // Update user's currentGroupId on server to fallback group before deleting
+      if (fallbackGroup) {
+        try {
+          await userService.updateProfile({ currentGroupId: fallbackGroup._id });
+          console.log('Pre-set currentGroupId to fallback group:', fallbackGroup._id);
+        } catch (updateError) {
+          console.error('Failed to update currentGroupId before delete:', updateError);
+        }
+      } else {
+        // No other groups, clear the currentGroupId
+        try {
+          await userService.updateProfile({ currentGroupId: undefined });
+          console.log('Cleared currentGroupId - no fallback group available');
+        } catch (updateError) {
+          console.error('Failed to clear currentGroupId:', updateError);
+        }
+      }
+
+      // Now delete the group
       await groupService.deleteGroup(targetGroupId);
+
       // Reload the page or redirect after successful deletion
       window.location.href = '/dashboard';
     } catch (err) {
@@ -375,7 +437,8 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   };
 
   const renderAccessSummary = (member: GroupMember) => {
-    const summary = ROLE_SUMMARIES[member.role];
+    const roleSummaries = getRoleSummaries(t as any);
+    const summary = roleSummaries[member.role];
     const memberId = getMemberId(member);
     const assignedFolders = showFolderAssignments ? getAssignedFolderNames(memberId) : [];
     const needsFolderAssignment =
@@ -394,11 +457,11 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
             {needsFolderAssignment ? (
               <span className="inline-flex items-center text-amber-600 dark:text-amber-400">
                 <AlertTriangle className="w-3 h-3 mr-1" />
-                Chưa được gán folder
+                {t('groupMembers.notAssignedFolder')}
               </span>
             ) : (
               <span className="text-gray-600 dark:text-gray-300">
-                Folder: {assignedFolders.join(', ')}
+                {t('groupMembers.folder')}: {assignedFolders.join(', ')}
               </span>
             )}
           </div>
@@ -408,8 +471,8 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   };
 
   const renderRoleBadge = (role: GroupRoleKey) => {
-    const label = getRoleLabel(role);
-    const gradient = ROLE_SUMMARIES[role]?.badgeColor || 'from-gray-500 to-gray-600';
+    const label = getRoleLabel(role, t as any);
+    const gradient = ROLE_BADGE_COLORS[role] || 'from-gray-500 to-gray-600';
     return (
       <span
         className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white bg-gradient-to-r ${gradient}`}
@@ -437,7 +500,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
           disabled={roleUpdatingMemberId === memberId}
           className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-[#2E2E2E] text-sm rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
         >
-          {ROLE_SECTIONS.map(section => (
+          {getRoleSections(t as any).map(section => (
             <optgroup label={section.title} key={section.title}>
               {section.roles.map(role => (
                 <option value={role.value} key={role.value}>
@@ -448,7 +511,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
           ))}
         </select>
         {roleUpdatingMemberId === memberId && (
-          <p className="text-xs text-blue-600">Đang cập nhật vai trò...</p>
+          <p className="text-xs text-blue-600">{t('groupMembers.updatingRole')}</p>
         )}
       </div>
     );
@@ -467,7 +530,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <span className="ml-3 text-gray-600">Loading members...</span>
+        <span className="ml-3 text-gray-600">{t('groupMembers.loadingMembers')}</span>
       </div>
     );
   }
@@ -476,11 +539,11 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
         <p className="text-red-600">{error}</p>
-        <button 
+        <button
           onClick={() => loadGroupDetails()}
           className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
         >
-          Try again
+          {t('groupMembers.tryAgain')}
         </button>
       </div>
     );
@@ -488,9 +551,9 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
 
   if (!currentGroup) {
     return (
-      <NoGroupState 
-        title="Join or Create a Group to View Members"
-        description="You need to join or create a group to view and manage group members."
+      <NoGroupState
+        title={t('groupMembers.joinOrCreateTitle')}
+        description={t('groupMembers.joinOrCreateDesc')}
       />
     );
   }
@@ -498,7 +561,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   if (!group) {
     return (
       <div className="text-center py-8">
-        <p className="text-gray-500">No group selected</p>
+        <p className="text-gray-500">{t('groupMembers.noGroupSelected')}</p>
       </div>
     );
   }
@@ -511,7 +574,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
-          <span className="text-sm font-medium">Group updated!</span>
+          <span className="text-sm font-medium">{t('groupMembers.groupUpdated')}</span>
         </div>
       )}
       {/* Header */}
@@ -559,12 +622,12 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
                   </div>
                 </div>
               ) : (
-                <div 
+                <div
                   className="flex items-center"
                   onMouseEnter={() => setShowEditButton(true)}
                   onMouseLeave={() => setShowEditButton(false)}
                 >
-                  <h1 
+                  <h1
                     className="text-2xl font-bold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                     onDoubleClick={canEditRoles ? handleStartEditName : undefined}
                     title={canEditRoles ? 'Double click to edit' : undefined}
@@ -585,7 +648,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
                 </div>
               )}
             </div>
-            
+
             <p className="text-gray-600 dark:text-gray-400 mt-2 text-lg">
               {group.description || t('groups.noDescription')}
             </p>
@@ -643,23 +706,23 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
         <div className="p-6 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Quản lý folder theo vai trò</h3>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{t('groupMembers.folderManagement')}</h3>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Gán các thành viên thực thi vào từng folder để họ có thể tạo/chỉnh sửa nội dung.
+                {t('groupMembers.folderManagementDesc')}
               </p>
             </div>
           </div>
           {assignableFolders.length === 0 ? (
             <div className="text-sm text-gray-500 dark:text-gray-400">
-              Chưa có folder tùy chỉnh nào. Hãy tạo thêm folder để phân quyền chi tiết.
+              {t('groupMembers.noCustomFolders')}
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
               {assignableFolders.map(folder => {
                 const assigned = (folder.memberAccess || []).map(access => {
                   const member = memberLookup.get(access.userId);
-                  const name = member ? getMemberName(member) : 'Thành viên đã rời nhóm';
-                  const roleLabel = member ? getRoleLabel(member.role) : '';
+                  const name = member ? getMemberName(member) : t('groupMembers.memberLeft');
+                  const roleLabel = member ? getRoleLabel(member.role, t as any) : '';
                   return { userId: access.userId, name, roleLabel };
                 });
 
@@ -672,14 +735,14 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
                       <div>
                         <p className="text-sm font-semibold text-gray-900 dark:text-white">{folder.name}</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                          {assigned.length} thành viên được gán
+                          {t('groupMembers.membersAssigned', { count: assigned.length })}
                         </p>
                       </div>
                       <button
                         onClick={() => handleOpenFolderModal(folder)}
                         className="text-xs font-semibold text-blue-600 hover:text-blue-800 dark:text-blue-400"
                       >
-                        Quản lý truy cập
+                        {t('groupMembers.manageAccess')}
                       </button>
                     </div>
                     {assigned.length > 0 ? (
@@ -694,14 +757,14 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
                         ))}
                         {assigned.length > 3 && (
                           <span className="text-xs text-gray-500 dark:text-gray-400">
-                            +{assigned.length - 3} thành viên khác
+                            {t('groupMembers.otherMembers', { count: assigned.length - 3 })}
                           </span>
                         )}
                       </div>
                     ) : (
                       <p className="mt-3 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
                         <AlertTriangle className="w-3 h-3" />
-                        Folder chưa được gán cho thành viên nào
+                        {t('groupMembers.folderNotAssigned')}
                       </p>
                     )}
                   </div>
@@ -723,12 +786,12 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
           {/* Table Header */}
           <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-700 dark:to-gray-600 px-6 py-4 border-b border-gray-200 dark:border-gray-600">
             <div className={`grid gap-6 items-center ${canEditRoles ? 'grid-cols-5' : 'grid-cols-4'}`}>
-              <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Thành viên</div>
-              <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Email</div>
-              <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Vai trò</div>
-              <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Phạm vi truy cập</div>
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{t('groupMembers.tableHeaderMember')}</div>
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{t('groupMembers.tableHeaderEmail')}</div>
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{t('groupMembers.tableHeaderRole')}</div>
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{t('groupMembers.tableHeaderAccess')}</div>
               {canEditRoles && (
-                <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Hành động</div>
+                <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{t('groupMembers.tableHeaderActions')}</div>
               )}
             </div>
           </div>
@@ -742,14 +805,14 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
                 </div>
-                <p className="text-gray-500 dark:text-gray-400 text-lg">No members found</p>
-                <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">Invite people to get started</p>
+                <p className="text-gray-500 dark:text-gray-400 text-lg">{t('groupMembers.noMembersFound')}</p>
+                <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">{t('groupMembers.inviteToStart')}</p>
               </div>
             ) : (
               members.map((member) => {
                 const memberAvatar = getMemberAvatar(member);
                 const memberName = getMemberName(member);
-                
+
                 return (
                   <div key={typeof member.userId === 'string' ? member.userId : member.userId._id} className="px-6 py-5 hover:bg-gray-50 dark:hover:bg-[#2E2E2E] transition-colors">
                     <div className={`grid gap-6 items-center ${canEditRoles ? 'grid-cols-5' : 'grid-cols-4'}`}>
@@ -757,8 +820,8 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
                       <div className="flex items-center">
                         <div className="relative">
                           {memberAvatar ? (
-                            <img 
-                              src={memberAvatar} 
+                            <img
+                              src={memberAvatar}
                               alt={memberName || 'User avatar'}
                               className="w-10 h-10 rounded-full object-cover shadow-sm border border-gray-200 dark:border-gray-600"
                               onError={(e) => {
@@ -770,7 +833,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
                               }}
                             />
                           ) : null}
-                          <div 
+                          <div
                             className={`w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white text-sm font-semibold shadow-sm ${memberAvatar ? 'hidden' : 'flex'}`}
                           >
                             {memberName ? memberName.charAt(0).toUpperCase() : '?'}
@@ -786,11 +849,11 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
                         <div className="ml-3">
                           <div className="flex items-center">
                             <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                              {isCurrentUser(member) ? 'Me' : memberName || 'Unknown'}
+                              {isCurrentUser(member) ? t('groupMembers.me') : memberName || 'Unknown'}
                             </span>
                             {isCurrentUser(member) && (
                               <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded-full">
-                                You
+                                {t('groupMembers.you')}
                               </span>
                             )}
                           </div>
@@ -799,7 +862,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
 
                       {/* Email */}
                       <div className="text-sm text-gray-600 dark:text-gray-400">
-                        {getMemberEmail(member) || 'No email'}
+                        {getMemberEmail(member) || t('groupMembers.noEmail')}
                       </div>
 
                       {/* Role */}
@@ -824,9 +887,9 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
                                 }
                               }}
                               className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 text-sm font-medium px-3 py-1 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                              title="Remove member"
+                              title={t('groupMembers.remove')}
                             >
-                              Remove
+                              {t('groupMembers.remove')}
                             </button>
                           ) : (
                             <span className="text-gray-400 text-sm">-</span>
@@ -881,6 +944,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
           onSave={handleSaveFolderMembers}
           saving={folderModalSaving}
           error={folderModalError || undefined}
+          blockedUsers={folderBlockedUsers}
         />
       )}
     </div>
@@ -931,7 +995,7 @@ function InviteUserModal({ onClose, onInvite, t }: InviteUserModalProps) {
             {t('groupMembers.inviteDescription')}
           </p>
         </div>
-        
+
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 text-center">
@@ -967,7 +1031,7 @@ function InviteUserModal({ onClose, onInvite, t }: InviteUserModalProps) {
                 required
                 disabled={loading}
               >
-                {ROLE_SECTIONS.map(section => (
+                {getRoleSections(t as any).map(section => (
                   <optgroup key={section.title} label={section.title}>
                     {section.roles.map(option => (
                       <option key={option.value} value={option.value}>
@@ -1044,6 +1108,8 @@ interface DeleteGroupModalProps {
 }
 
 function DeleteGroupModal({ groupName, onClose, onConfirm, isDeleting }: DeleteGroupModalProps) {
+  const { t } = useLanguage();
+
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white dark:bg-[#1F1F1F] rounded-2xl p-8 w-full max-w-md mx-4 shadow-2xl border border-gray-100 dark:border-gray-700">
@@ -1052,13 +1118,11 @@ function DeleteGroupModal({ groupName, onClose, onConfirm, isDeleting }: DeleteG
             <Trash2 className="w-8 h-8 text-red-600 dark:text-red-400" />
           </div>
           <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-            Delete Group
+            {t('groupMembers.deleteGroup')}
           </h3>
-          <p className="text-gray-600 dark:text-gray-400 text-sm">
-            Are you sure you want to delete <strong>{groupName}</strong>? This action cannot be undone. All tasks in this group will be ungrouped.
-          </p>
+          <p className="text-gray-600 dark:text-gray-400 text-sm" dangerouslySetInnerHTML={{ __html: t('groupMembers.deleteGroupConfirm', { name: groupName }) }} />
         </div>
-        
+
         <div className="flex space-x-4 pt-2">
           <button
             type="button"
@@ -1066,7 +1130,7 @@ function DeleteGroupModal({ groupName, onClose, onConfirm, isDeleting }: DeleteG
             disabled={isDeleting}
             className="flex-1 bg-gray-100 dark:bg-[#2E2E2E] text-gray-700 dark:text-gray-300 py-4 px-6 rounded-xl hover:bg-gray-200 dark:hover:bg-[#3E3E3E] transition-all duration-200 font-medium border border-transparent hover:border-gray-300 dark:hover:border-gray-400 disabled:opacity-50"
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             type="button"
@@ -1077,10 +1141,10 @@ function DeleteGroupModal({ groupName, onClose, onConfirm, isDeleting }: DeleteG
             {isDeleting ? (
               <div className="flex items-center justify-center">
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                Deleting...
+                {t('groupMembers.deleting')}
               </div>
             ) : (
-              'Delete Group'
+              t('groupMembers.deleteGroup')
             )}
           </button>
         </div>

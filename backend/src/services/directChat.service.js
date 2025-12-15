@@ -253,7 +253,7 @@ class DirectChatService {
     const { conversation, normalizedRequesterId, normalizedConversationId } =
       await this.ensureConversationAccess(conversationId, senderId);
 
-    const { content = '', replyTo, attachments = [] } = messageData;
+    const { content = '', replyTo, attachments = [], mentions = [] } = messageData;
 
     if (!ensureContentPresent(content, attachments)) {
       const error = new Error('Tin nhắn phải có nội dung hoặc tệp đính kèm');
@@ -278,7 +278,8 @@ class DirectChatService {
       senderId,
       content: content || '',
       attachments,
-      replyTo: replyTo || null
+      replyTo: replyTo || null,
+      mentions: mentions || []
     });
 
     const savedMessage = await message.save();
@@ -339,7 +340,11 @@ class DirectChatService {
       });
     }
 
-    const notificationRecipients = otherParticipantId ? [otherParticipantId] : [];
+    // Exclude mentioned users from regular notification (they get mention notification)
+    const mentionedUserIds = Array.isArray(mentions) ? mentions : [];
+    const notificationRecipients = otherParticipantId && !mentionedUserIds.includes(otherParticipantId)
+      ? [otherParticipantId]
+      : [];
 
     if (notificationRecipients.length > 0) {
       notificationService

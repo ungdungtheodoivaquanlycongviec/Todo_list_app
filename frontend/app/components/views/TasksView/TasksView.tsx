@@ -16,12 +16,14 @@ import {
   Search,
   X,
   Filter,
+  MoreVertical,
 } from "lucide-react";
 import { taskService } from "../../../services/task.service";
 import { Task } from "../../../services/types/task.types";
 import CreateTaskModal from "./CreateTaskModal";
 import TaskContextMenu from "./TaskContextMenu";
 import TaskDetailModal from "./TaskDetailModal";
+import RepeatTaskModal, { RepeatSettings } from "./RepeatTaskModal";
 import EstimatedTimePicker from "./EstimatedTimePicker";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../contexts/AuthContext";
@@ -34,6 +36,9 @@ import NoGroupState from "../../common/NoGroupState";
 import NoFolderState from "../../common/NoFolderState";
 import { useFolder } from "../../../contexts/FolderContext";
 import { useUIState } from "../../../contexts/UIStateContext";
+import { useTimer } from "../../../contexts/TimerContext";
+import { useToast } from "../../../contexts/ToastContext";
+import { useConfirm } from "../../../contexts/ConfirmContext";
 
 export default function TasksView() {
   const { user: currentUser, currentGroup } = useAuth();
@@ -41,6 +46,10 @@ export default function TasksView() {
   const { t } = useLanguage();
   const { formatDate, convertFromUserTimezone, convertToUserTimezone } = useRegional();
   const { setIsTaskDetailOpen } = useUIState();
+  const timerContext = useTimer();
+  const toast = useToast();
+  const confirmDialog = useConfirm();
+  const router = useRouter();
   const [todoTasksExpanded, setTodoTasksExpanded] = useState(true);
   const [inProgressTasksExpanded, setInProgressTasksExpanded] = useState(true);
   const [incompleteTasksExpanded, setIncompleteTasksExpanded] = useState(true);
@@ -57,6 +66,8 @@ export default function TasksView() {
   } | null>(null);
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
   const [showTaskDetail, setShowTaskDetail] = useState(false);
+  const [showRepeatModal, setShowRepeatModal] = useState(false);
+  const [repeatModalTask, setRepeatModalTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"list" | "kanban">("list");
   const [kanbanData, setKanbanData] = useState<any>(null);
@@ -80,7 +91,7 @@ export default function TasksView() {
   const [activeSearchQuery, setActiveSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
-  const router = useRouter();
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
 
   interface MinimalUser {
     _id: string;
@@ -314,10 +325,31 @@ export default function TasksView() {
 
   // Fetch tasks từ API (chế độ list)
   const fetchTasks = async () => {
+    // Skip fetching if no folder is selected (e.g., during group transition)
+    if (!currentFolder?._id) {
+      setTodoTasks([]);
+      setInProgressTasks([]);
+      setIncompleteTasks([]);
+      setCompletedTasks([]);
+      setLoading(false);
+      return;
+    }
+
+    // Skip fetching if folder doesn't belong to current group (race condition during group switch)
+    if (currentFolder.groupId && currentGroupId && currentFolder.groupId !== currentGroupId) {
+      console.log("Folder group mismatch - skipping fetch, waiting for folder refresh");
+      setTodoTasks([]);
+      setInProgressTasks([]);
+      setIncompleteTasks([]);
+      setCompletedTasks([]);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       const response = await taskService.getAllTasks(
-        { folderId: currentFolder?._id },
+        { folderId: currentFolder._id },
         undefined
       );
 
@@ -366,7 +398,7 @@ export default function TasksView() {
       console.error("Error fetching tasks:", errorMessage);
 
       if (errorMessage.includes("Authentication failed")) {
-        alert("Session expired. Please login again.");
+        toast.showWarning("Phiên làm việc hết hạn. Vui lòng đăng nhập lại.");
         router.push("/");
         return;
       }
@@ -377,8 +409,18 @@ export default function TasksView() {
         return;
       }
 
+      if (errorMessage.includes("Folder not found") || errorMessage.includes("404") || errorMessage.includes("current group no longer exists")) {
+        // Don't show error alert for folder/group not found - this happens during group switching
+        console.log("Folder or group not found - likely switching groups");
+        setTodoTasks([]);
+        setInProgressTasks([]);
+        setIncompleteTasks([]);
+        setCompletedTasks([]);
+        return;
+      }
+
       // For other errors, show alert
-      alert("Failed to fetch tasks: " + errorMessage);
+      toast.showError(errorMessage, "Lỗi tải task");
 
       setTodoTasks([]);
       setInProgressTasks([]);
@@ -391,10 +433,25 @@ export default function TasksView() {
 
   // Fetch kanban data từ API
   const fetchKanbanData = async () => {
+    // Skip fetching if no folder is selected (e.g., during group transition)
+    if (!currentFolder?._id) {
+      setKanbanData(null);
+      setLoading(false);
+      return;
+    }
+
+    // Skip fetching if folder doesn't belong to current group (race condition during group switch)
+    if (currentFolder.groupId && currentGroupId && currentFolder.groupId !== currentGroupId) {
+      console.log("Folder group mismatch - skipping kanban fetch, waiting for folder refresh");
+      setKanbanData(null);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       const response = await taskService.getKanbanView({
-        folderId: currentFolder?._id
+        folderId: currentFolder._id
       });
 
       console.log("=== FETCH KANBAN DEBUG ===");
@@ -406,7 +463,7 @@ export default function TasksView() {
       console.error("Error fetching kanban data:", errorMessage);
 
       if (errorMessage.includes("Authentication failed")) {
-        alert("Session expired. Please login again.");
+        toast.showWarning("Phiên làm việc hết hạn. Vui lòng đăng nhập lại.");
         router.push("/");
         return;
       }
@@ -417,8 +474,15 @@ export default function TasksView() {
         return;
       }
 
+      if (errorMessage.includes("Folder not found") || errorMessage.includes("404") || errorMessage.includes("current group no longer exists")) {
+        // Don't show error alert for folder/group not found - this happens during group switching
+        console.log("Folder or group not found - likely switching groups");
+        setKanbanData(null);
+        return;
+      }
+
       // For other errors, show alert
-      alert("Failed to fetch kanban data: " + errorMessage);
+      toast.showError(errorMessage, "Lỗi tải kanban");
 
       setKanbanData(null);
     } finally {
@@ -426,20 +490,34 @@ export default function TasksView() {
     }
   };
 
-  // Gọi API tương ứng khi chuyển chế độ
+  // Gọi API tương ứng khi chuyển chế độ hoặc thay đổi folder/group
   useEffect(() => {
     if (viewMode === "list") {
       fetchTasks();
     } else {
       fetchKanbanData();
     }
-  }, [viewMode, currentFolder?._id]);
+  }, [viewMode, currentFolder?._id, currentGroupId]);
 
   // Sync task detail open state with global UI context (for hiding chatbot)
   useEffect(() => {
     setIsTaskDetailOpen(showTaskDetail);
     return () => setIsTaskDetailOpen(false); // Clean up on unmount
   }, [showTaskDetail, setIsTaskDetailOpen]);
+
+  // Sync timers from tasks that have active timers (for page reload persistence)
+  // Note: timerContext.syncTimersFromTask is stable via useCallback, so we intentionally
+  // exclude timerContext from deps to prevent infinite loops
+  useEffect(() => {
+    const allTasks = [...todoTasks, ...inProgressTasks, ...incompleteTasks, ...completedTasks];
+    allTasks.forEach((task: Task) => {
+      // Sync active timers from task data
+      if (task.activeTimers && task.activeTimers.length > 0) {
+        timerContext.syncTimersFromTask(task);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todoTasks, inProgressTasks, incompleteTasks, completedTasks]);
 
   // Listen for global group change events
   useGroupChange(() => {
@@ -515,16 +593,379 @@ export default function TasksView() {
   };
 
   // Helper to convert time string to minutes
+  // Supports: Xm (minutes), Xh (hours), Xd (days = 8 working hours), Xmo (months = 160 working hours)
   const convertTimeToMinutes = (timeStr: string): number => {
     if (!timeStr) return 0;
 
-    const hoursMatch = timeStr.match(/(\d+)h/);
-    const minutesMatch = timeStr.match(/(\d+)m/);
+    // Try to match the pattern: number followed by unit (mo, m, h, d)
+    // Note: 'mo' must be checked before 'm' to avoid false matches
+    const monthsMatch = timeStr.match(/(\d+)\s*mo/i);
+    const daysMatch = timeStr.match(/(\d+)\s*d(?!o)/i); // 'd' but not 'do' (part of 'mo')
+    const hoursMatch = timeStr.match(/(\d+)\s*h/i);
+    const minutesMatch = timeStr.match(/(\d+)\s*m(?!o)/i); // 'm' but not 'mo'
 
+    // Working hours conventions:
+    // 1 day = 8 working hours = 480 minutes
+    // 1 month = 20 working days = 160 working hours = 9600 minutes
+    const months = monthsMatch ? parseInt(monthsMatch[1]) : 0;
+    const days = daysMatch ? parseInt(daysMatch[1]) : 0;
     const hours = hoursMatch ? parseInt(hoursMatch[1]) : 0;
     const minutes = minutesMatch ? parseInt(minutesMatch[1]) : 0;
 
-    return hours * 60 + minutes;
+    return (months * 9600) + (days * 480) + (hours * 60) + minutes;
+  };
+
+  // Helper to get total logged time from task timeEntries (in minutes)
+  const getTotalLoggedTimeForTask = (task: Task): number => {
+    const timeEntries = (task as any).timeEntries || [];
+    return timeEntries.reduce((total: number, entry: any) => {
+      return total + ((entry.hours || 0) * 60) + (entry.minutes || 0);
+    }, 0);
+  };
+
+  // Helper to format minutes to readable time string
+  const formatTimeFromMinutes = (totalMinutes: number): string => {
+    if (totalMinutes === 0) return "—";
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+    if (hours > 0) return `${hours}h`;
+    return `${minutes}m`;
+  };
+
+  // Check if task has logged time entries
+  const hasLoggedTimeEntries = (task: Task): boolean => {
+    const timeEntries = (task as any).timeEntries || [];
+    return timeEntries.length > 0;
+  };
+
+  // ElapsedTimeCell component for In Progress tasks - shows elapsed time + estimated time with warning
+  const ElapsedTimeCell = ({ task }: { task: Task }) => {
+    const { isTimerRunning, getElapsedTime, subscribeToTimerUpdates, getAllActiveTimers } = timerContext;
+    const [elapsedSeconds, setElapsedSeconds] = useState(0);
+    const [showActiveTimersPopup, setShowActiveTimersPopup] = useState(false);
+    const running = isTimerRunning(task._id);
+    const intervalRef = useRef<NodeJS.Timeout | null>(null);
+    const popupRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+      // Clear any existing interval
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+
+      if (!running) {
+        setElapsedSeconds(0);
+        return;
+      }
+
+      // Set initial value
+      setElapsedSeconds(getElapsedTime(task._id));
+
+      // Update every second when timer is running
+      intervalRef.current = setInterval(() => {
+        setElapsedSeconds(getElapsedTime(task._id));
+      }, 1000);
+
+      return () => {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+      };
+    }, [running, task._id, getElapsedTime]);
+
+    // Subscribe to timer updates
+    useEffect(() => {
+      const unsubscribe = subscribeToTimerUpdates(() => {
+        if (isTimerRunning(task._id)) {
+          setElapsedSeconds(getElapsedTime(task._id));
+        } else {
+          setElapsedSeconds(0);
+        }
+      });
+      return unsubscribe;
+    }, [task._id, subscribeToTimerUpdates, isTimerRunning, getElapsedTime]);
+
+    // Close popup when clicking outside
+    useEffect(() => {
+      const handleClickOutside = (e: MouseEvent) => {
+        if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
+          setShowActiveTimersPopup(false);
+        }
+      };
+      if (showActiveTimersPopup) {
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+      }
+    }, [showActiveTimersPopup]);
+
+    const loggedMinutes = getTotalLoggedTimeForTask(task);
+    const currentTimerMinutes = Math.floor(elapsedSeconds / 60);
+    const totalElapsedMinutes = loggedMinutes + currentTimerMinutes;
+    const estimatedMinutes = convertTimeToMinutes(task.estimatedTime || "");
+    const activeTimers = getAllActiveTimers(task._id);
+
+    // Check if elapsed time exceeds estimated time
+    const isOverEstimate = estimatedMinutes > 0 && totalElapsedMinutes > estimatedMinutes;
+    const overByMinutes = totalElapsedMinutes - estimatedMinutes;
+
+    const formatElapsedTime = (seconds: number) => {
+      const hrs = Math.floor(seconds / 3600);
+      const mins = Math.floor((seconds % 3600) / 60);
+      const secs = seconds % 60;
+      return hrs > 0
+        ? `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+        : `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    // Show timer if running
+    if (running) {
+      const timerDisplay = formatElapsedTime(elapsedSeconds);
+
+      return (
+        <div className="text-xs flex flex-col gap-0.5 relative">
+          <div className="flex items-center gap-1">
+            <span className="text-green-600 font-medium flex items-center gap-1">
+              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+              {timerDisplay}
+            </span>
+            {loggedMinutes > 0 && (
+              <span className="text-gray-500 text-[10px]">+ {formatTimeFromMinutes(loggedMinutes)}</span>
+            )}
+            {isOverEstimate && (
+              <div className="relative group">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 cursor-help" />
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs bg-gray-800 text-white rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
+                  {t('tasks.overEstimate') || `Over by ${formatTimeFromMinutes(overByMinutes)}`}
+                </div>
+              </div>
+            )}
+            {/* Active Timers Button */}
+            {activeTimers.length > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowActiveTimersPopup(!showActiveTimersPopup); }}
+                className="w-5 h-5 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400 hover:text-gray-600"
+                title="View active timers"
+              >
+                <MoreVertical className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          {task.estimatedTime && (
+            <span className={`text-[10px] ${isOverEstimate ? 'text-amber-600' : 'text-gray-400'}`}>
+              Est: {task.estimatedTime}
+            </span>
+          )}
+          {/* Active Timers Popup */}
+          {showActiveTimersPopup && (
+            <div ref={popupRef} className="absolute bottom-full right-0 mb-1 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-[100]" style={{ minWidth: '200px' }}>
+              <div className="p-2 border-b border-gray-200 dark:border-gray-700">
+                <span className="font-medium text-xs text-gray-900 dark:text-gray-100">Active Timers ({activeTimers.length})</span>
+              </div>
+              <div className="max-h-40 overflow-y-auto">
+                {activeTimers.map((timer) => {
+                  const timerElapsed = Math.floor((Date.now() - timer.startTime.getTime()) / 1000);
+                  const isCurrentUser = timer.userId === currentUser?._id;
+                  return (
+                    <div key={timer.userId} className="flex items-center gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-xs">
+                      <div className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center overflow-hidden flex-shrink-0">
+                        {timer.userAvatar ? (
+                          <img src={timer.userAvatar} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-[10px] font-medium text-blue-700 dark:text-blue-300">
+                            {(timer.userName || 'U').charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <span className="flex-1 truncate text-gray-700 dark:text-gray-300">{timer.userName || 'Unknown'}</span>
+                      {isCurrentUser && <span className="text-[10px] bg-green-100 text-green-700 px-1 rounded">You</span>}
+                      <span className="text-green-600 font-medium">{formatElapsedTime(timerElapsed)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Show logged time + estimated time (no timer running)
+    return (
+      <div className="text-xs flex flex-col gap-0.5 relative">
+        <div className="flex items-center gap-1">
+          <Clock className="w-3 h-3 text-gray-400" />
+          <span className="text-gray-600">{formatTimeFromMinutes(loggedMinutes)}</span>
+          {isOverEstimate && (
+            <div className="relative group">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 cursor-help" />
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs bg-gray-800 text-white rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
+                {t('tasks.overEstimate') || `Over by ${formatTimeFromMinutes(overByMinutes)}`}
+              </div>
+            </div>
+          )}
+          {/* Active Timers Button (for other users' timers when current user isn't running) */}
+          {activeTimers.length > 0 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowActiveTimersPopup(!showActiveTimersPopup); }}
+              className="w-5 h-5 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400 hover:text-gray-600"
+              title="View active timers"
+            >
+              <MoreVertical className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        {task.estimatedTime && (
+          <span className={`text-[10px] ${isOverEstimate ? 'text-amber-600' : 'text-gray-400'}`}>
+            Est: {task.estimatedTime}
+          </span>
+        )}
+        {/* Active Timers Popup */}
+        {showActiveTimersPopup && (
+          <div ref={popupRef} className="absolute bottom-full right-0 mb-1 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-[100]" style={{ minWidth: '200px' }}>
+            <div className="p-2 border-b border-gray-200 dark:border-gray-700">
+              <span className="font-medium text-xs text-gray-900 dark:text-gray-100">Active Timers ({activeTimers.length})</span>
+            </div>
+            <div className="max-h-40 overflow-y-auto">
+              {activeTimers.map((timer) => {
+                const timerElapsed = Math.floor((Date.now() - timer.startTime.getTime()) / 1000);
+                const isCurrentUser = timer.userId === currentUser?._id;
+                return (
+                  <div key={timer.userId} className="flex items-center gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-xs">
+                    <div className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center overflow-hidden flex-shrink-0">
+                      {timer.userAvatar ? (
+                        <img src={timer.userAvatar} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-[10px] font-medium text-blue-700 dark:text-blue-300">
+                          {(timer.userName || 'U').charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <span className="flex-1 truncate text-gray-700 dark:text-gray-300">{timer.userName || 'Unknown'}</span>
+                    {isCurrentUser && <span className="text-[10px] bg-green-100 text-green-700 px-1 rounded">You</span>}
+                    <span className="text-green-600 font-medium">{formatElapsedTime(timerElapsed)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // TimeTakenCell component for Completed tasks - shows total logged time
+  const TimeTakenCell = ({ task }: { task: Task }) => {
+    const loggedMinutes = getTotalLoggedTimeForTask(task);
+
+    return (
+      <div className="text-xs text-gray-600 flex items-center gap-1">
+        <Clock className="w-3 h-3" />
+        {formatTimeFromMinutes(loggedMinutes)}
+      </div>
+    );
+  };
+
+  // KanbanTimeCell - Compact time display for Kanban cards
+  const KanbanTimeCell = ({ task, status }: { task: Task; status: string }) => {
+    const { isTimerRunning, getElapsedTime, subscribeToTimerUpdates } = timerContext;
+    const [elapsedSeconds, setElapsedSeconds] = useState(0);
+    const running = isTimerRunning(task._id);
+    const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+    useEffect(() => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+
+      if (!running) {
+        setElapsedSeconds(0);
+        return;
+      }
+
+      setElapsedSeconds(getElapsedTime(task._id));
+      intervalRef.current = setInterval(() => {
+        setElapsedSeconds(getElapsedTime(task._id));
+      }, 1000);
+
+      return () => {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+      };
+    }, [running, task._id, getElapsedTime]);
+
+    useEffect(() => {
+      const unsubscribe = subscribeToTimerUpdates(() => {
+        if (isTimerRunning(task._id)) {
+          setElapsedSeconds(getElapsedTime(task._id));
+        } else {
+          setElapsedSeconds(0);
+        }
+      });
+      return unsubscribe;
+    }, [task._id, subscribeToTimerUpdates, isTimerRunning, getElapsedTime]);
+
+    const loggedMinutes = getTotalLoggedTimeForTask(task);
+    const currentTimerMinutes = Math.floor(elapsedSeconds / 60);
+    const totalElapsedMinutes = loggedMinutes + currentTimerMinutes;
+    const estimatedMinutes = convertTimeToMinutes(task.estimatedTime || "");
+    const isOverEstimate = estimatedMinutes > 0 && totalElapsedMinutes > estimatedMinutes;
+
+    // For completed tasks - show time taken
+    if (status === "completed") {
+      if (loggedMinutes === 0 && !task.estimatedTime) return null;
+      return (
+        <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+          <Clock className="w-3 h-3" />
+          {loggedMinutes > 0 ? formatTimeFromMinutes(loggedMinutes) : task.estimatedTime}
+        </span>
+      );
+    }
+
+    // For in_progress tasks - show elapsed time with timer
+    if (status === "in_progress") {
+      if (running) {
+        const timerMins = Math.floor(elapsedSeconds / 60);
+        const timerSecs = elapsedSeconds % 60;
+        const timerDisplay = `${timerMins}:${timerSecs.toString().padStart(2, '0')}`;
+
+        return (
+          <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full font-medium">
+            <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+            {timerDisplay}
+            {isOverEstimate && <AlertTriangle className="w-3 h-3 text-amber-500" />}
+          </span>
+        );
+      }
+
+      // Show logged time if any, else show estimated time
+      if (loggedMinutes > 0) {
+        return (
+          <span className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full ${isOverEstimate ? 'text-amber-600 bg-amber-50' : 'text-gray-500 bg-gray-100'}`}>
+            <Clock className="w-3 h-3" />
+            {formatTimeFromMinutes(loggedMinutes)}
+            {isOverEstimate && <AlertTriangle className="w-3 h-3 text-amber-500" />}
+          </span>
+        );
+      }
+    }
+
+    // Default: show estimated time if available
+    if (task.estimatedTime) {
+      return (
+        <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+          <Clock className="w-3 h-3" />
+          {task.estimatedTime}
+        </span>
+      );
+    }
+
+    return null;
   };
 
   // Handle sort selection - toggle sort config (add/remove/update) for a specific section
@@ -633,7 +1074,7 @@ export default function TasksView() {
       }
     } catch (error) {
       console.error("❌ Error creating task:", error);
-      alert("Failed to create task: " + getErrorMessage(error));
+      toast.showError(getErrorMessage(error), "Lỗi tạo task");
     }
   };
 
@@ -723,7 +1164,7 @@ export default function TasksView() {
     setContextMenu({ x: event.clientX, y: event.clientY, task });
   };
 
-  const handleContextMenuAction = async (action: string, task: Task) => {
+  const handleContextMenuAction = async (action: string, task: Task, payload?: any) => {
     setContextMenu(null);
 
     try {
@@ -735,8 +1176,104 @@ export default function TasksView() {
           handleTaskUpdate(completedTask);
           break;
 
+        case "start_timer":
+          const startedTask = await taskService.startTimer(task._id);
+          handleTaskUpdate(startedTask);
+          // Sync timers from updated task
+          timerContext.syncTimersFromTask(startedTask);
+          break;
+
+        case "stop_timer":
+          const stoppedTask = await timerContext.stopTimer(task._id);
+          handleTaskUpdate(stoppedTask);
+          // Sync timers from updated task
+          timerContext.syncTimersFromTask(stoppedTask);
+          break;
+
+        case "change_category":
+          if (payload?.category) {
+            const updatedCategoryTask = await taskService.updateTask(task._id, {
+              category: payload.category,
+            });
+            handleTaskUpdate(updatedCategoryTask);
+          }
+          break;
+
+        case "set_repeat":
+          if (payload) {
+            const repeatTask = await taskService.setTaskRepetition(task._id, payload);
+            handleTaskUpdate(repeatTask);
+          }
+          break;
+
+        case "repeat_custom":
+          // Open custom repeat modal
+          setRepeatModalTask(task);
+          setShowRepeatModal(true);
+          break;
+
+        case "repeat_after_completion":
+          // Set repeat after completion
+          const repeatAfterTask = await taskService.setTaskRepetition(task._id, {
+            isRepeating: true,
+            frequency: 'daily',
+            interval: 1,
+          });
+          handleTaskUpdate(repeatAfterTask);
+          break;
+
+        case "duplicate":
+          // Create a duplicate task
+          const duplicateData = {
+            title: `${task.title} (Copy)`,
+            description: task.description,
+            status: 'todo' as const,
+            priority: task.priority,
+            category: task.category,
+            tags: task.tags,
+            estimatedTime: task.estimatedTime,
+            dueDate: task.dueDate,
+          };
+          const duplicatedTask = await taskService.createTask(duplicateData);
+          // Add the new task to todo list
+          setTodoTasks(prev => [duplicatedTask, ...prev]);
+          break;
+
+        case "move_to_folder":
+          if (payload?.folderId) {
+            const movedTask = await taskService.updateTask(task._id, {
+              folderId: payload.folderId,
+            });
+            handleTaskUpdate(movedTask);
+          }
+          break;
+
+        case "edit_types":
+          // Could open a modal for editing types - for now show task detail
+          setSelectedTask(task._id);
+          setShowTaskDetail(true);
+          break;
+
+        case "remove_repeat":
+          // Remove repeat settings from the task
+          const noRepeatTask = await taskService.setTaskRepetition(task._id, {
+            isRepeating: false,
+            frequency: null,
+            interval: null,
+          });
+          handleTaskUpdate(noRepeatTask);
+          break;
+
         case "delete":
-          if (confirm("Are you sure you want to delete this task?")) {
+          const deleteConfirmed = await confirmDialog.confirm({
+            title: 'Xóa task',
+            message: 'Bạn có chắc chắn muốn xóa task này không? Hành động này không thể hoàn tác.',
+            confirmText: 'Xóa',
+            cancelText: 'Hủy',
+            variant: 'danger',
+            icon: 'delete'
+          });
+          if (deleteConfirmed) {
             await taskService.deleteTask(task._id);
             handleTaskDelete(task._id);
           }
@@ -747,7 +1284,28 @@ export default function TasksView() {
       }
     } catch (error) {
       console.error("Error in context menu action:", error);
-      alert("Failed to perform action: " + getErrorMessage(error));
+      toast.showError(getErrorMessage(error), "Lỗi thực hiện thao tác");
+    }
+  };
+
+  // Handle saving repeat settings from RepeatTaskModal
+  const handleRepeatSave = async (settings: RepeatSettings) => {
+    if (!repeatModalTask) return;
+
+    try {
+      const updatedTask = await taskService.setTaskRepetition(repeatModalTask._id, {
+        isRepeating: settings.isRepeating,
+        frequency: settings.frequency,
+        interval: settings.interval,
+        endDate: settings.endDate,
+        occurrences: settings.occurrences,
+      });
+      handleTaskUpdate(updatedTask);
+      setShowRepeatModal(false);
+      setRepeatModalTask(null);
+    } catch (error) {
+      console.error("Error saving repeat settings:", error);
+      toast.showError(getErrorMessage(error), "Lỗi lưu cài đặt lặp lại");
     }
   };
 
@@ -826,6 +1384,21 @@ export default function TasksView() {
   };
 
   const saveField = async (task: Task, field: string) => {
+    // Check for status change restriction: cannot change to "todo" if task has logged time
+    if (field === "status" && tempValue === "todo") {
+      const currentStatus = task.status;
+      const hasLoggedTime = hasLoggedTimeEntries(task);
+
+      if ((currentStatus === "in_progress" || currentStatus === "completed") && hasLoggedTime) {
+        toast.showWarning(t('tasks.cannotChangeToTodo') ||
+          "Cannot change status to 'To Do' because this task has logged time entries. Delete all time entries first to change status.");
+        setEditingTaskId(null);
+        setEditingField(null);
+        setTempValue("");
+        return;
+      }
+    }
+
     if (tempValue !== (task as any)[field]) {
       try {
         // Convert date fields from user timezone to UTC for backend storage
@@ -841,7 +1414,7 @@ export default function TasksView() {
         handleTaskUpdate(updatedTask);
       } catch (error) {
         console.error(`Error updating ${field}:`, error);
-        alert(`Failed to update ${field}: ${getErrorMessage(error)}`);
+        toast.showError(getErrorMessage(error));
       }
     }
     setEditingTaskId(null);
@@ -866,7 +1439,7 @@ export default function TasksView() {
         handleTaskUpdate(updatedTask);
       } catch (error) {
         console.error(`Error updating ${field}:`, error);
-        alert(`Failed to update ${field}: ${getErrorMessage(error)}`);
+        toast.showError(getErrorMessage(error));
       }
     }
     setEditingTaskId(null);
@@ -961,11 +1534,11 @@ export default function TasksView() {
             {getSortIndicator()}
           </div>
         )}
-        
+
         <div className="flex gap-6 overflow-x-auto pb-6 px-1">
           {statusColumns.map((column) => {
             const columnTasks = getTasksForColumn(column.key);
-            
+
             return (
               <div
                 key={column.key}
@@ -985,171 +1558,166 @@ export default function TasksView() {
                   {/* Removed the add task button from column header */}
                 </div>
 
-              {/* Task List */}
-              <div className="space-y-3 min-h-[200px]">
-                {columnTasks.map((task: Task) => {
-                  const assigneeInfo = getDetailedAssignees(task);
-                  const assigneeSummary = getAssigneeSummary(task);
-                  const isOverdue = isTaskOverdue(task);
+                {/* Task List */}
+                <div className="space-y-3 min-h-[200px]">
+                  {columnTasks.map((task: Task) => {
+                    const assigneeInfo = getDetailedAssignees(task);
+                    const assigneeSummary = getAssigneeSummary(task);
+                    const isOverdue = isTaskOverdue(task);
 
-                  return (
-                    <div
-                      key={task._id}
-                      className={`bg-white rounded-xl border-2 transition-all duration-200 hover:shadow-md hover:border-gray-300 cursor-pointer group
+                    return (
+                      <div
+                        key={task._id}
+                        className={`bg-white rounded-xl border-2 transition-all duration-200 hover:shadow-md hover:border-gray-300 cursor-pointer group
                         ${isOverdue ? "border-red-200 bg-red-50/50" : "border-gray-100"}
                         ${column.key === "completed" ? "opacity-80" : ""}
                       `}
-                      onClick={() => handleTaskClick(task._id)}
-                      onContextMenu={(e) => handleContextMenu(e, task)}
-                    >
-                      <div className="p-4">
-                        {/* Task Header */}
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex items-start gap-2 flex-1 min-w-0">
-                            <h4 className="font-medium text-sm text-gray-900 leading-tight line-clamp-2 group-hover:text-blue-600 transition-colors">
-                              {task.title || "Untitled Task"}
-                            </h4>
-                          </div>
-                          
-                          {/* Priority Badge */}
-                          {task.priority && task.priority !== "medium" && (
-                            <span
-                              className={`text-xs px-2 py-1 rounded-full border flex-shrink-0 ml-2 ${getPriorityColor(
-                                task.priority
-                              )}`}
-                            >
-                              {task.priority}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Description */}
-                        {task.description && (
-                          <p className="text-xs text-gray-600 mb-3 line-clamp-2 leading-relaxed">
-                            {task.description}
-                          </p>
-                        )}
-
-                        {/* Tags and Category */}
-                        <div className="flex flex-wrap gap-1 mb-3">
-                          {task.category && task.category !== "Other" && (
-                            <span
-                              className={`text-xs px-2 py-1 rounded-full border ${getTypeColor(
-                                task.category
-                              )}`}
-                            >
-                              {task.category}
-                            </span>
-                          )}
-                          {task.tags?.slice(0, 2).map((tag, index) => (
-                            <span
-                              key={index}
-                              className="text-xs px-2 py-1 rounded-full border bg-gray-100 text-gray-700 border-gray-200"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                          {task.tags && task.tags.length > 2 && (
-                            <span className="text-xs px-2 py-1 rounded-full border bg-gray-100 text-gray-700 border-gray-200">
-                              +{task.tags.length - 2}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Task Footer */}
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            {/* Assignee Avatars */}
-                            <div className="flex -space-x-1">
-                              {assigneeInfo.assignees.slice(0, 2).map((assignee) => (
-                                <div
-                                  key={assignee._id}
-                                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs border-2 border-white shadow-sm
-                                    ${assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id
-                                      ? "bg-gradient-to-br from-green-100 to-green-200 text-green-800"
-                                      : "bg-gradient-to-br from-blue-100 to-blue-200 text-blue-800"
-                                    }`}
-                                  title={assignee.name}
-                                >
-                                  {assignee.avatar ? (
-                                    <img
-                                      src={assignee.avatar}
-                                      alt=""
-                                      className="w-full h-full rounded-full object-cover"
-                                    />
-                                  ) : (
-                                    assignee.initial
-                                  )}
-                                </div>
-                              ))}
-                              {assigneeInfo.totalCount > 2 && (
-                                <div className="w-6 h-6 bg-gradient-to-br from-gray-100 to-gray-200 text-gray-600 rounded-full flex items-center justify-center text-xs border-2 border-white shadow-sm text-[10px] font-medium">
-                                  +{assigneeInfo.totalCount - 2}
-                                </div>
-                              )}
+                        onClick={() => handleTaskClick(task._id)}
+                        onContextMenu={(e) => handleContextMenu(e, task)}
+                      >
+                        <div className="p-4">
+                          {/* Task Header */}
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-start gap-2 flex-1 min-w-0">
+                              <h4 className="font-medium text-sm text-gray-900 leading-tight line-clamp-2 group-hover:text-blue-600 transition-colors">
+                                {task.title || "Untitled Task"}
+                              </h4>
                             </div>
 
-                            {/* Time Estimate */}
-                            {task.estimatedTime && (
-                              <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                                <Clock className="w-3 h-3" />
-                                {task.estimatedTime}
+                            {/* Priority Badge - Always show */}
+                            {task.priority && (
+                              <span
+                                className={`text-xs px-2 py-1 rounded-full border flex-shrink-0 ml-2 ${getPriorityColor(
+                                  task.priority
+                                )}`}
+                              >
+                                {task.priority}
                               </span>
                             )}
                           </div>
 
-                          {/* Due Date */}
-                          {task.dueDate && (
-                            <span
-                              className={`text-xs px-2 py-1 rounded-full border font-medium
-                                ${isOverdue 
-                                  ? "bg-red-100 text-red-700 border-red-200" 
-                                  : "bg-gray-100 text-gray-700 border-gray-200"
-                                }`}
-                            >
-                              <Calendar className="w-3 h-3 inline mr-1" />
-                              {formatDate(task.dueDate)}
-                            </span>
+                          {/* Description */}
+                          {task.description && (
+                            <p className="text-xs text-gray-600 mb-3 line-clamp-2 leading-relaxed">
+                              {task.description}
+                            </p>
                           )}
+
+                          {/* Tags and Category */}
+                          <div className="flex flex-wrap gap-1 mb-3">
+                            {task.category && task.category !== "Other" && (
+                              <span
+                                className={`text-xs px-2 py-1 rounded-full border ${getTypeColor(
+                                  task.category
+                                )}`}
+                              >
+                                {task.category}
+                              </span>
+                            )}
+                            {task.tags?.slice(0, 2).map((tag, index) => (
+                              <span
+                                key={index}
+                                className="text-xs px-2 py-1 rounded-full border bg-gray-100 text-gray-700 border-gray-200"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                            {task.tags && task.tags.length > 2 && (
+                              <span className="text-xs px-2 py-1 rounded-full border bg-gray-100 text-gray-700 border-gray-200">
+                                +{task.tags.length - 2}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Task Footer */}
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              {/* Assignee Avatars */}
+                              <div className="flex -space-x-1">
+                                {assigneeInfo.assignees.slice(0, 2).map((assignee) => (
+                                  <div
+                                    key={assignee._id}
+                                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs border-2 border-white shadow-sm
+                                    ${assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id
+                                        ? "bg-gradient-to-br from-green-100 to-green-200 text-green-800"
+                                        : "bg-gradient-to-br from-blue-100 to-blue-200 text-blue-800"
+                                      }`}
+                                    title={assignee.name}
+                                  >
+                                    {assignee.avatar ? (
+                                      <img
+                                        src={assignee.avatar}
+                                        alt=""
+                                        className="w-full h-full rounded-full object-cover"
+                                      />
+                                    ) : (
+                                      assignee.initial
+                                    )}
+                                  </div>
+                                ))}
+                                {assigneeInfo.totalCount > 2 && (
+                                  <div className="w-6 h-6 bg-gradient-to-br from-gray-100 to-gray-200 text-gray-600 rounded-full flex items-center justify-center text-xs border-2 border-white shadow-sm text-[10px] font-medium">
+                                    +{assigneeInfo.totalCount - 2}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Time Display - KanbanTimeCell */}
+                              <KanbanTimeCell task={task} status={column.key === "in_progress" ? "in_progress" : column.key} />
+                            </div>
+
+                            {/* Due Date */}
+                            {task.dueDate && (
+                              <span
+                                className={`text-xs px-2 py-1 rounded-full border font-medium
+                                ${isOverdue
+                                    ? "bg-red-100 text-red-700 border-red-200"
+                                    : "bg-gray-100 text-gray-700 border-gray-200"
+                                  }`}
+                              >
+                                <Calendar className="w-3 h-3 inline mr-1" />
+                                {formatDate(task.dueDate)}
+                              </span>
+                            )}
+                          </div>
                         </div>
+
+                        {/* Subtle hover effect */}
+                        <div className="h-1 bg-gradient-to-r from-transparent via-gray-100 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-b-xl" />
                       </div>
+                    );
+                  })}
 
-                      {/* Subtle hover effect */}
-                      <div className="h-1 bg-gradient-to-r from-transparent via-gray-100 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-b-xl" />
+                  {/* Empty State */}
+                  {columnTasks.length === 0 && (
+                    <div className="text-center py-8 text-gray-400 text-sm">
+                      <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                        {column.key === "incomplete" ? (
+                          <div className="w-3 h-3 bg-red-500 rounded-full" />
+                        ) : column.key === "completed" ? (
+                          <div className="w-6 h-6 bg-green-200 rounded-full flex items-center justify-center">
+                            <div className="w-3 h-3 bg-green-500 rounded-full" />
+                          </div>
+                        ) : (
+                          <Plus className="w-6 h-6" />
+                        )}
+                      </div>
+                      <p className="text-gray-500">
+                        {column.key === "incomplete"
+                          ? t('kanban.noIncomplete') || 'No incomplete tasks'
+                          : column.key === "completed"
+                            ? t('kanban.noCompleted')
+                            : t('kanban.noTasks')
+                        }
+                      </p>
                     </div>
-                  );
-                })}
-
-                {/* Empty State */}
-                {columnTasks.length === 0 && (
-                  <div className="text-center py-8 text-gray-400 text-sm">
-                    <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                      {column.key === "incomplete" ? (
-                        <div className="w-3 h-3 bg-red-500 rounded-full" />
-                      ) : column.key === "completed" ? (
-                        <div className="w-6 h-6 bg-green-200 rounded-full flex items-center justify-center">
-                          <div className="w-3 h-3 bg-green-500 rounded-full" />
-                        </div>
-                      ) : (
-                        <Plus className="w-6 h-6" />
-                      )}
-                    </div>
-                    <p className="text-gray-500">
-                      {column.key === "incomplete" 
-                        ? t('kanban.noIncomplete') || 'No incomplete tasks'
-                        : column.key === "completed"
-                        ? t('kanban.noCompleted')
-                        : t('kanban.noTasks')
-                      }
-                    </p>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
         </div>
-      </div>
+      </div >
     );
   };
 
@@ -1158,10 +1726,12 @@ export default function TasksView() {
     task,
     isOverdue = false,
     isCompleted = false,
+    section = "todo",
   }: {
     task: Task;
     isOverdue?: boolean;
     isCompleted?: boolean;
+    section?: "todo" | "inProgress" | "completed" | "incomplete";
   }) => {
     const assigneeInfo = getDetailedAssignees(task);
     const assigneeSummary = getAssigneeSummary(task);
@@ -1389,32 +1959,43 @@ export default function TasksView() {
           </div>
         </div>
 
-        {/* Estimated Time - Inline editable with scroll picker */}
+        {/* Time Column - Changes based on section */}
         <div className="col-span-2 relative">
-          {isEditing && editingField === "estimatedTime" ? (
-            <EstimatedTimePicker
-              value={task.estimatedTime || ""}
-              onSave={(value) => {
-                setTempValue(value);
-                saveFieldDirect(task, "estimatedTime", value);
-              }}
-              onClose={() => setEditingTaskId(null)}
-            />
+          {section === "inProgress" ? (
+            // In Progress: Show elapsed time (timer + logged time)
+            <ElapsedTimeCell task={task} />
+          ) : section === "completed" ? (
+            // Completed: Show total time taken (logged time only)
+            <TimeTakenCell task={task} />
           ) : (
-            <div
-              className="text-xs text-gray-600 cursor-pointer hover:bg-gray-100 px-2 py-1 rounded transition-colors flex items-center gap-1"
-              onClick={(e) => {
-                e.stopPropagation();
-                startEditing(
-                  task._id,
-                  "estimatedTime",
-                  task.estimatedTime || ""
-                );
-              }}
-            >
-              <Clock className="w-3 h-3" />
-              {task.estimatedTime || "—"}
-            </div>
+            // Todo/Incomplete: Show editable estimated time
+            <>
+              {isEditing && editingField === "estimatedTime" ? (
+                <EstimatedTimePicker
+                  value={task.estimatedTime || ""}
+                  onSave={(value) => {
+                    setTempValue(value);
+                    saveFieldDirect(task, "estimatedTime", value);
+                  }}
+                  onClose={() => setEditingTaskId(null)}
+                />
+              ) : (
+                <div
+                  className="text-xs text-gray-600 cursor-pointer hover:bg-gray-100 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startEditing(
+                      task._id,
+                      "estimatedTime",
+                      task.estimatedTime || ""
+                    );
+                  }}
+                >
+                  <Clock className="w-3 h-3" />
+                  {task.estimatedTime || "—"}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -1443,6 +2024,11 @@ export default function TasksView() {
       filtered = filtered.filter(task => task.category === categoryFilter);
     }
 
+    // Apply tag filter
+    if (tagFilter) {
+      filtered = filtered.filter(task => task.tags?.includes(tagFilter));
+    }
+
     return filtered;
   };
 
@@ -1457,6 +2043,7 @@ export default function TasksView() {
     setActiveSearchQuery("");
     setStatusFilter(null);
     setCategoryFilter(null);
+    setTagFilter(null);
     setShowSortDropdown(false);
   };
 
@@ -1524,7 +2111,12 @@ export default function TasksView() {
   );
 
   // Check if any filter is active
-  const hasActiveFilters = activeSearchQuery || statusFilter || categoryFilter;
+  const hasActiveFilters = activeSearchQuery || statusFilter || categoryFilter || tagFilter;
+
+  // Collect all unique tags from all tasks in current folder
+  const allUniqueTags = Array.from(
+    new Set([...todoTasks, ...inProgressTasks, ...completedTasks, ...incompleteTasks].flatMap(task => task.tags || []))
+  ).sort();
 
   // Sort Dropdown ref for click outside detection
   const sortDropdownRef = useRef<HTMLDivElement>(null);
@@ -1662,6 +2254,25 @@ export default function TasksView() {
               </select>
             </div>
 
+            {/* Tag Filter */}
+            {allUniqueTags.length > 0 && (
+              <div>
+                <div className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">
+                  {t('sort.filterByTag') || 'Filter by Tag'}
+                </div>
+                <select
+                  value={tagFilter || ""}
+                  onChange={(e) => setTagFilter(e.target.value || null)}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                >
+                  <option value="">{t('sort.allTags') || 'All Tags'}</option>
+                  {allUniqueTags.map(tag => (
+                    <option key={tag} value={tag}>{tag}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {/* Clear All Button */}
             {hasActiveFilters && (
               <button
@@ -1708,11 +2319,13 @@ export default function TasksView() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{t('tasks.title')}</h1>
-          <p className="text-gray-600 mt-1">
-            {t('tasks.description') || 'Manage your team\'s tasks and projects'}
-          </p>
+          {currentFolder?.description && (
+            <p className="text-gray-600 mt-1">
+              Description: <span className="font-medium">{currentFolder.description}</span>
+            </p>
+          )}
           {currentFolder && (
-            <p className="text-sm text-gray-500 mt-2">
+            <p className="text-sm text-gray-500 mt-1">
               Folder: <span className="font-medium text-gray-800">{currentFolder.name}{currentFolder.isDefault ? ' (Default)' : ''}</span>
             </p>
           )}
@@ -1727,8 +2340,8 @@ export default function TasksView() {
           <div className="flex bg-white border border-gray-300 rounded-lg overflow-hidden shadow-sm">
             <button
               className={`px-4 py-2 text-sm flex items-center gap-2 transition-colors ${viewMode === "list"
-                  ? "bg-blue-500 text-white"
-                  : "bg-white text-gray-700 hover:bg-gray-50"
+                ? "bg-blue-500 text-white"
+                : "bg-white text-gray-700 hover:bg-gray-50"
                 }`}
               onClick={() => setViewMode("list")}
             >
@@ -1737,8 +2350,8 @@ export default function TasksView() {
             </button>
             <button
               className={`px-4 py-2 text-sm flex items-center gap-2 transition-colors ${viewMode === "kanban"
-                  ? "bg-blue-500 text-white"
-                  : "bg-white text-gray-700 hover:bg-gray-50"
+                ? "bg-blue-500 text-white"
+                : "bg-white text-gray-700 hover:bg-gray-50"
                 }`}
               onClick={() => setViewMode("kanban")}
             >
@@ -1848,13 +2461,13 @@ export default function TasksView() {
                     <SortableColumnHeader sortKey="dueDate" section="inProgress" className="col-span-1">{t('tasks.dueDate')}</SortableColumnHeader>
                     <SortableColumnHeader sortKey="priority" section="inProgress" className="col-span-1">{t('tasks.priority')}</SortableColumnHeader>
                     <div className="col-span-2">{t('tasks.assignee')}</div>
-                    <SortableColumnHeader sortKey="estimatedTime" section="inProgress" className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</SortableColumnHeader>
+                    <div className="col-span-2">{t('tasks.elapsedTime') || 'Elapsed Time'}</div>
                   </div>
 
                   {/* Task Rows */}
                   {filterTasks(inProgressTasks).length > 0 ? (
                     sortTasks(filterTasks(inProgressTasks), 'inProgress').map((task) => (
-                      <TaskRow key={task._id} task={task} />
+                      <TaskRow key={task._id} task={task} section="inProgress" />
                     ))
                   ) : (
                     <div className="p-8 text-center text-gray-500">
@@ -1899,12 +2512,12 @@ export default function TasksView() {
                     <SortableColumnHeader sortKey="dueDate" section="completed" className="col-span-1">{t('tasks.dueDate')}</SortableColumnHeader>
                     <SortableColumnHeader sortKey="priority" section="completed" className="col-span-1">{t('tasks.priority')}</SortableColumnHeader>
                     <div className="col-span-2">{t('tasks.assignee')}</div>
-                    <SortableColumnHeader sortKey="estimatedTime" section="completed" className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</SortableColumnHeader>
+                    <div className="col-span-2">{t('tasks.timeTaken') || 'Time Taken'}</div>
                   </div>
 
                   {filterTasks(completedTasks).length > 0 ? (
                     sortTasks(filterTasks(completedTasks), 'completed').map((task) => (
-                      <TaskRow key={task._id} task={task} isCompleted={true} />
+                      <TaskRow key={task._id} task={task} isCompleted={true} section="completed" />
                     ))
                   ) : (
                     <div className="p-8 text-center text-gray-500">
@@ -1956,7 +2569,7 @@ export default function TasksView() {
                   {/* Always show content, even if empty */}
                   {filterTasks(incompleteTasks).length > 0 ? (
                     sortTasks(filterTasks(incompleteTasks), 'incomplete').map((task) => (
-                      <TaskRow key={task._id} task={task} isOverdue={true} />
+                      <TaskRow key={task._id} task={task} isOverdue={true} section="incomplete" />
                     ))
                   ) : (
                     <div className="p-8 text-center text-gray-500">
@@ -1985,6 +2598,7 @@ export default function TasksView() {
           onClose={() => setShowCreateModal(false)}
           onCreateTask={handleCreateTask}
           currentUser={currentUser}
+          groupMembers={currentGroup?.members || []}
         />
       )}
 
@@ -2009,6 +2623,19 @@ export default function TasksView() {
           task={contextMenu.task}
           onAction={handleContextMenuAction}
           onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {/* Repeat Task Modal */}
+      {repeatModalTask && (
+        <RepeatTaskModal
+          task={repeatModalTask}
+          isOpen={showRepeatModal}
+          onClose={() => {
+            setShowRepeatModal(false);
+            setRepeatModalTask(null);
+          }}
+          onSave={handleRepeatSave}
         />
       )}
     </div>

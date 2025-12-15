@@ -32,12 +32,16 @@ import {
   Video,
   Phone
 } from 'lucide-react';
+import { useToast } from '../../contexts/ToastContext';
+import { useConfirm } from '../../contexts/ConfirmContext';
 
 export default function AdminChatView() {
   const { user } = useAuth();
   const { t } = useLanguage();
   const { formatTime } = useRegional();
   const { socket, isConnected } = useSocket();
+  const toast = useToast();
+  const confirmDialog = useConfirm();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [message, setMessage] = useState('');
@@ -66,13 +70,13 @@ export default function AdminChatView() {
     groupId?: string;
     conversationId?: string;
   } | null>(null);
-  
+
   // Admin-specific: All groups admin has joined
   const [allGroups, setAllGroups] = useState<Group[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(true);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [groupSearch, setGroupSearch] = useState('');
-  
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -85,7 +89,7 @@ export default function AdminChatView() {
       const response = await groupService.getAllGroups();
       const groups = [...(response.myGroups || []), ...(response.sharedGroups || [])];
       setAllGroups(groups);
-      
+
       // Auto-select first group if none selected
       if (!selectedGroup && groups.length > 0) {
         setSelectedGroup(groups[0]);
@@ -119,7 +123,7 @@ export default function AdminChatView() {
       setMessages(result.messages);
     } catch (error) {
       console.error('Error loading messages:', error);
-      alert('Failed to load messages: ' + (error as Error).message);
+      toast.showError((error as Error).message, 'Lỗi tải tin nhắn');
     } finally {
       setMessagesLoading(false);
     }
@@ -158,7 +162,7 @@ export default function AdminChatView() {
       }
     } catch (error) {
       console.error('Error loading direct messages:', error);
-      alert('Failed to load messages: ' + (error as Error).message);
+      toast.showError((error as Error).message, 'Lỗi tải tin nhắn');
     } finally {
       setMessagesLoading(false);
     }
@@ -217,12 +221,12 @@ export default function AdminChatView() {
           _id: data.conversation._id || data.conversationId
         };
         upsertDirectConversation(updatedConversation);
-        
+
         if (updatedConversation.unreadCount > 0) {
-          const isActiveConversation = 
+          const isActiveConversation =
             activeContext === 'direct' &&
             activeDirectConversation?._id === updatedConversation._id;
-          
+
           if (!isActiveConversation) {
             setPendingDirectIndicators(prev => ({ ...prev, [updatedConversation._id]: true }));
             setHasDirectUnread(prev => new Set(prev).add(updatedConversation._id));
@@ -452,7 +456,7 @@ export default function AdminChatView() {
       conversationId: string;
       message: ChatMessage;
     }) => {
-      const isActiveConversation = 
+      const isActiveConversation =
         activeContext === 'direct' &&
         activeDirectConversation?._id === data.conversationId;
 
@@ -474,11 +478,11 @@ export default function AdminChatView() {
       } else {
         if (data.type === 'new') {
           const isFromOtherUser = data.message.senderId?._id && data.message.senderId._id !== user?._id;
-          
+
           if (isFromOtherUser) {
             setPendingDirectIndicators(prev => ({ ...prev, [data.conversationId]: true }));
             setHasDirectUnread(prev => new Set(prev).add(data.conversationId));
-            
+
             setDirectConversations(prev => {
               const index = prev.findIndex(conv => conv._id === data.conversationId);
               if (index >= 0) {
@@ -580,7 +584,7 @@ export default function AdminChatView() {
 
   useEffect(() => {
     if (!socket) return;
-  
+
     const handleNotification = (payload: any) => {
       const notification = payload?.notification || payload;
       const eventKey = notification?.eventKey || payload?.eventKey;
@@ -588,7 +592,7 @@ export default function AdminChatView() {
         return;
       }
       const data = notification?.data || {};
-      
+
       if (data.contextType === 'group') {
         if (selectedGroup?._id && data.groupId === selectedGroup._id && activeContext === 'group') {
           return;
@@ -600,14 +604,14 @@ export default function AdminChatView() {
         if (!data.conversationId) {
           return;
         }
-        
+
         if (
           activeContext === 'direct' &&
           activeDirectConversation?._id === data.conversationId
         ) {
           return;
         }
-        
+
         setPendingDirectIndicators(prev => {
           const next = { ...prev, [data.conversationId]: true };
           return next;
@@ -618,14 +622,14 @@ export default function AdminChatView() {
         });
       }
     };
-  
+
     socket.on('notifications:new', handleNotification);
-  
+
     return () => {
       socket.off('notifications:new', handleNotification);
     };
   }, [socket, activeContext, activeDirectConversation?._id, selectedGroup?._id]);
-  
+
   const resetDirectUnread = useCallback((conversationId: string) => {
     setHasDirectUnread(prev => {
       const newSet = new Set(prev);
@@ -633,7 +637,7 @@ export default function AdminChatView() {
       return newSet;
     });
   }, []);
-  
+
   useEffect(() => {
     if (activeContext === 'group') {
       setHasGroupUnread(false);
@@ -654,7 +658,7 @@ export default function AdminChatView() {
 
   const handleAttachmentSelect = (file: File) => {
     setPendingAttachment(file);
-    
+
     if (file.type.startsWith('image/')) {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -704,7 +708,7 @@ export default function AdminChatView() {
           }
         } catch (uploadError) {
           console.error('Error uploading attachment:', uploadError);
-          alert('Failed to upload attachment: ' + (uploadError as Error).message);
+          toast.showError((uploadError as Error).message, 'Lỗi tải tệp lên');
           setUploading(false);
           return;
         }
@@ -722,7 +726,7 @@ export default function AdminChatView() {
           },
           (response: any) => {
             if (!response.success) {
-              alert('Failed to send message: ' + response.error);
+              toast.showError(response.error, 'Lỗi gửi tin nhắn');
             } else {
               setMessage('');
               setReplyingTo(null);
@@ -744,7 +748,7 @@ export default function AdminChatView() {
           },
           (response: any) => {
             if (!response.success) {
-              alert('Failed to send message: ' + response.error);
+              toast.showError(response.error, 'Lỗi gửi tin nhắn');
             } else {
               setMessage('');
               setReplyingTo(null);
@@ -757,7 +761,7 @@ export default function AdminChatView() {
       }
     } catch (error) {
       console.error('[AdminChatView] Error sending message:', error);
-      alert('Failed to send message: ' + (error as Error).message);
+      toast.showError((error as Error).message, 'Lỗi gửi tin nhắn');
       setUploading(false);
     }
   };
@@ -819,7 +823,7 @@ export default function AdminChatView() {
         { messageId, emoji },
         (response: any) => {
           if (!response.success) {
-            alert('Failed to add reaction: ' + response.error);
+            toast.showError(response.error, 'Lỗi thêm reaction');
           }
         }
       );
@@ -829,7 +833,7 @@ export default function AdminChatView() {
         { messageId, emoji },
         (response: any) => {
           if (!response.success) {
-            alert('Failed to add reaction: ' + response.error);
+            toast.showError(response.error, 'Lỗi thêm reaction');
           }
         }
       );
@@ -837,19 +841,27 @@ export default function AdminChatView() {
   };
 
   const handleDelete = async (messageId: string) => {
-    if (!confirm(t('chat.deleteConfirm'))) return;
+    const confirmed = await confirmDialog.confirm({
+      title: 'Xóa tin nhắn',
+      message: t('chat.deleteConfirm') || 'Bạn có chắc chắn muốn xóa tin nhắn này không?',
+      confirmText: 'Xóa',
+      cancelText: 'Hủy',
+      variant: 'danger',
+      icon: 'delete'
+    });
+    if (!confirmed) return;
     if (!socket) return;
 
     if (activeContext === 'group') {
       socket.emit('chat:delete', { messageId }, (response: any) => {
         if (!response.success) {
-          alert('Failed to delete message: ' + response.error);
+          toast.showError(response.error, 'Lỗi xóa tin nhắn');
         }
       });
     } else if (activeContext === 'direct') {
       socket.emit('direct:delete', { messageId }, (response: any) => {
         if (!response.success) {
-          alert('Failed to delete message: ' + response.error);
+          toast.showError(response.error, 'Lỗi xóa tin nhắn');
         }
       });
     }
@@ -861,13 +873,13 @@ export default function AdminChatView() {
     if (activeContext === 'group') {
       socket.emit('chat:edit', { messageId, content: newContent.trim() }, (response: any) => {
         if (!response.success) {
-          alert('Failed to edit message: ' + response.error);
+          toast.showError(response.error, 'Lỗi chỉnh sửa tin nhắn');
         }
       });
     } else if (activeContext === 'direct') {
       socket.emit('direct:edit', { messageId, content: newContent.trim() }, (response: any) => {
         if (!response.success) {
-          alert('Failed to edit message: ' + response.error);
+          toast.showError(response.error, 'Lỗi chỉnh sửa tin nhắn');
         }
       });
     }
@@ -893,7 +905,7 @@ export default function AdminChatView() {
       setDirectSearch('');
     } catch (error) {
       console.error('Error starting direct conversation:', error);
-      alert('Failed to start conversation: ' + (error as Error).message);
+      toast.showError((error as Error).message, 'Lỗi bắt đầu cuộc trò chuyện');
     } finally {
       setStartingDirectChat(false);
     }
@@ -916,9 +928,8 @@ export default function AdminChatView() {
 
   const typingLabel =
     typingUsers.size > 0
-      ? `${Array.from(typingUsers).length} ${
-          Array.from(typingUsers).length === 1 ? t('chat.personTyping') : t('chat.peopleTyping')
-        }`
+      ? `${Array.from(typingUsers).length} ${Array.from(typingUsers).length === 1 ? t('chat.personTyping') : t('chat.peopleTyping')
+      }`
       : '';
 
   // Filter groups by search
@@ -940,11 +951,10 @@ export default function AdminChatView() {
               setActiveContext('group');
               setHasGroupUnread(false);
             }}
-            className={`w-full flex items-center gap-3 rounded-xl border p-3 transition ${
-              activeContext === 'group'
-                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-200'
-                : 'border-transparent bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-800 dark:text-gray-200'
-            }`}
+            className={`w-full flex items-center gap-3 rounded-xl border p-3 transition ${activeContext === 'group'
+              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-200'
+              : 'border-transparent bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-800 dark:text-gray-200'
+              }`}
           >
             <div className="relative">
               <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-300">
@@ -965,7 +975,7 @@ export default function AdminChatView() {
               </p>
             </div>
           </button>
-          
+
           {/* Group search */}
           {activeContext === 'group' && (
             <div className="mt-3 relative">
@@ -1002,11 +1012,10 @@ export default function AdminChatView() {
                         setSelectedGroup(group);
                         setActiveContext('group');
                       }}
-                      className={`w-full flex items-start gap-3 px-4 py-3 text-left transition ${
-                        isActive
-                          ? 'bg-blue-50 dark:bg-blue-900/20'
-                          : 'hover:bg-gray-100 dark:hover:bg-gray-800/60'
-                      }`}
+                      className={`w-full flex items-start gap-3 px-4 py-3 text-left transition ${isActive
+                        ? 'bg-blue-50 dark:bg-blue-900/20'
+                        : 'hover:bg-gray-100 dark:hover:bg-gray-800/60'
+                        }`}
                     >
                       <div className="relative w-10 h-10 flex-shrink-0">
                         <div className="w-10 h-10 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-300 flex items-center justify-center font-semibold">
@@ -1090,7 +1099,7 @@ export default function AdminChatView() {
                   (conversation.unreadCount || 0) > 0 ||
                   Boolean(pendingDirectIndicators[conversation._id]) ||
                   hasDirectUnread.has(conversation._id);
-                
+
                 return (
                   <button
                     key={conversation._id}
@@ -1105,11 +1114,10 @@ export default function AdminChatView() {
                         return next;
                       });
                     }}
-                    className={`w-full flex items-start gap-3 px-4 py-3 text-left transition ${
-                      isActive
-                        ? 'bg-blue-50 dark:bg-blue-900/20'
-                        : 'hover:bg-gray-100 dark:hover:bg-gray-800/60'
-                    }`}
+                    className={`w-full flex items-start gap-3 px-4 py-3 text-left transition ${isActive
+                      ? 'bg-blue-50 dark:bg-blue-900/20'
+                      : 'hover:bg-gray-100 dark:hover:bg-gray-800/60'
+                      }`}
                   >
                     <div className="relative w-10 h-10">
                       <div className="w-10 h-10 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-300 flex items-center justify-center font-semibold">
@@ -1534,11 +1542,10 @@ function MessageItem({
         <div className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'}`}>
           <div className={`flex items-center gap-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
             <div
-              className={`relative rounded-2xl px-4 py-2 ${
-                isOwn
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
-              }`}
+              className={`relative rounded-2xl px-4 py-2 ${isOwn
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
+                }`}
             >
               {message.deletedAt ? (
                 <p className="text-sm italic opacity-70">Message deleted</p>
@@ -1564,15 +1571,13 @@ function MessageItem({
                               href={attachment.url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
-                                isOwn 
-                                  ? 'bg-blue-400/30 border-blue-300/30 hover:bg-blue-400/40' 
-                                  : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
-                              }`}
+                              className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${isOwn
+                                ? 'bg-blue-400/30 border-blue-300/30 hover:bg-blue-400/40'
+                                : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+                                }`}
                             >
-                              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                                isOwn ? 'bg-blue-300/30' : 'bg-gray-100 dark:bg-gray-600'
-                              }`}>
+                              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isOwn ? 'bg-blue-300/30' : 'bg-gray-100 dark:bg-gray-600'
+                                }`}>
                                 <FileText className="w-5 h-5" />
                               </div>
                               <div className="flex-1 min-w-0">
@@ -1595,11 +1600,10 @@ function MessageItem({
                         value={editContent}
                         onChange={(e) => setEditContent(e.target.value)}
                         rows={3}
-                        className={`w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${
-                          isOwn 
-                            ? 'bg-blue-400 border-blue-300 text-white placeholder-blue-200'
-                            : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100'
-                        }`}
+                        className={`w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${isOwn
+                          ? 'bg-blue-400 border-blue-300 text-white placeholder-blue-200'
+                          : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100'
+                          }`}
                         autoFocus
                       />
                       <div className="flex gap-2">
@@ -1649,7 +1653,7 @@ function MessageItem({
                   >
                     <Smile className="w-4 h-4" />
                   </button>
-                  
+
                   {showReactions && (
                     <div className={`absolute ${isOwn ? 'right-0' : 'left-0'} bottom-full mb-2 z-20`}>
                       <div className={`bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-lg ${showExpandedEmojis ? 'p-3 w-72' : 'px-2 py-1.5'}`}>
@@ -1774,11 +1778,10 @@ function MessageItem({
                   <button
                     key={emoji}
                     onClick={() => onReaction(message._id, emoji)}
-                    className={`inline-flex items-center gap-1 text-sm px-2 py-0.5 rounded-full border transition-colors ${
-                      hasReacted
-                        ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
-                        : 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                    }`}
+                    className={`inline-flex items-center gap-1 text-sm px-2 py-0.5 rounded-full border transition-colors ${hasReacted
+                      ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
+                      : 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                      }`}
                     title={reactions.map((r: any) => r.userId).join(', ')}
                   >
                     <span>{emoji}</span>
@@ -1786,7 +1789,7 @@ function MessageItem({
                   </button>
                 );
               })}
-              
+
               <button
                 onClick={() => setShowReactions(!showReactions)}
                 className="inline-flex items-center justify-center w-6 h-6 rounded-full border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
@@ -1804,7 +1807,7 @@ function MessageItem({
       </div>
 
       {lightboxImage && (
-        <div 
+        <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
           onClick={() => setLightboxImage(null)}
         >

@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check, X, Users, Clock, Trash2 } from 'lucide-react';
 import { notificationService, Notification } from '../services/notification.service';
 import { useAuth } from '../contexts/AuthContext';
+import { triggerGroupChange } from '../hooks/useGroupChange';
 import { useSocket } from '../hooks/useSocket';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useRegional } from '../contexts/RegionalContext';
@@ -113,6 +114,9 @@ export default function NotificationDropdown({ className = '' }: NotificationDro
       // Reload notifications and unread count
       await loadNotifications();
       await loadUnreadCount();
+      
+      // Trigger group list refresh in Sidebar
+      triggerGroupChange();
       
       // Show success message
       console.log('Group invitation accepted successfully');
