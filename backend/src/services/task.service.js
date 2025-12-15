@@ -25,7 +25,9 @@ const {
   canViewFolder,
   canViewAllFolders,
   requiresFolderAssignment,
-  canAssignFolderMembers
+  canAssignFolderMembers,
+  canEditTask,
+  canDeleteTask
 } = require('../utils/groupPermissions');
 
 const normalizeId = value => {
@@ -295,6 +297,63 @@ const ensureTaskWriteAccess = async (taskDoc, requesterId) => {
   });
 
   return { group, role };
+};
+
+/**
+ * Ensure user has permission to EDIT a task (update, timer, repeat, attachments)
+ * Allowed: Admin (PO/PM), task creator, or assignees
+ */
+const ensureTaskEditAccess = async (taskDoc, requesterId) => {
+  if (!taskDoc) {
+    raiseError(ERROR_MESSAGES.TASK_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  const groupId = normalizeId(taskDoc.groupId);
+  if (!groupId) {
+    raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  const { group, role } = await ensureGroupAccess(groupId, requesterId);
+  const normalizedRequesterId = normalizeId(requesterId);
+  const creatorId = normalizeId(taskDoc.createdBy);
+
+  const isCreator = normalizedRequesterId === creatorId;
+  const isAssignee = (taskDoc.assignedTo || []).some(
+    assignee => normalizeId(assignee.userId) === normalizedRequesterId
+  );
+
+  if (!canEditTask({ role, isCreator, isAssignee })) {
+    raiseError('Bạn không có quyền chỉnh sửa task này. Chỉ PM, Product Owner, người tạo task hoặc người được gán mới có thể chỉnh sửa.', HTTP_STATUS.FORBIDDEN);
+  }
+
+  return { group, role, isCreator, isAssignee };
+};
+
+/**
+ * Ensure user has permission to DELETE a task
+ * Allowed: Admin (PO/PM) or task creator only (NOT assignees)
+ */
+const ensureTaskDeleteAccess = async (taskDoc, requesterId) => {
+  if (!taskDoc) {
+    raiseError(ERROR_MESSAGES.TASK_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  const groupId = normalizeId(taskDoc.groupId);
+  if (!groupId) {
+    raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  const { group, role } = await ensureGroupAccess(groupId, requesterId);
+  const normalizedRequesterId = normalizeId(requesterId);
+  const creatorId = normalizeId(taskDoc.createdBy);
+
+  const isCreator = normalizedRequesterId === creatorId;
+
+  if (!canDeleteTask({ role, isCreator })) {
+    raiseError('Bạn không có quyền xóa task này. Chỉ PM, Product Owner hoặc người tạo task mới có thể xóa.', HTTP_STATUS.FORBIDDEN);
+  }
+
+  return { group, role, isCreator };
 };
 
 /**
@@ -660,7 +719,7 @@ class TaskService {
       }
     }
 
-    const { group: currentGroup, role: initialRole } = await ensureTaskWriteAccess(taskDoc, requesterId);
+    const { group: currentGroup, role: initialRole } = await ensureTaskEditAccess(taskDoc, requesterId);
 
     const requesterIdStr = normalizeId(requesterId);
     const creatorIdStr = normalizeId(taskDoc.createdBy);
@@ -859,7 +918,7 @@ class TaskService {
       return null;
     }
 
-    await ensureTaskWriteAccess(task, requesterId);
+    await ensureTaskDeleteAccess(task, requesterId);
 
     // Clean up all Cloudinary files before deleting task
     try {
@@ -2259,6 +2318,17 @@ class TaskService {
       };
     }
 
+    // Permission check: only admins, task creator, or assignees can upload attachments
+    try {
+      await ensureTaskEditAccess(task, userId);
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'Bạn không có quyền upload tệp đính kèm cho task này',
+        statusCode: error.statusCode || 403
+      };
+    }
+
     // FIXED: No restrictions - file uploads are available for all tasks regardless of due date
 
     // Check attachment limit (max 20 attachments per task)
@@ -2519,6 +2589,9 @@ class TaskService {
       return null;
     }
 
+    // Permission check: only admins, task creator, or assignees can use timer
+    await ensureTaskEditAccess(task, userId);
+
     // Cannot start timer for completed or incomplete tasks
     if (task.status === 'completed' || task.status === 'incomplete') {
       throw new Error('Cannot start timer for completed or incomplete tasks');
@@ -2590,6 +2663,9 @@ class TaskService {
     if (!task) {
       return null;
     }
+
+    // Permission check: only admins, task creator, or assignees can use timer
+    await ensureTaskEditAccess(task, userId);
 
     // Find the user's active timer
     const timerIndex = task.activeTimers?.findIndex(
@@ -2698,9 +2774,10 @@ class TaskService {
    * Set task repetition settings
    * @param {String} taskId - ID của task
    * @param {Object} repetitionSettings - Repetition settings
+   * @param {String} requesterId - ID of the user making the request
    * @returns {Promise<Object|null>} Task hoặc null
    */
-  async setTaskRepetition(taskId, repetitionSettings) {
+  async setTaskRepetition(taskId, repetitionSettings, requesterId = null) {
     if (!isValidObjectId(taskId)) {
       throw new Error(ERROR_MESSAGES.INVALID_TASK_ID);
     }
@@ -2709,6 +2786,9 @@ class TaskService {
     if (!task) {
       return null;
     }
+
+    // Permission check: only admins, task creator, or assignees can set repetition
+    await ensureTaskEditAccess(task, requesterId);
 
     // Update repetition settings
     task.repetition = {

@@ -505,7 +505,7 @@ const setTaskRepetition = asyncHandler(async (req, res) => {
     interval: parseInt(interval) || 1,
     endDate: endDate ? new Date(endDate) : null,
     occurrences: occurrences ? parseInt(occurrences) : null
-  });
+  }, req.user._id);
 
   if (!task) {
     return sendError(res, ERROR_MESSAGES.TASK_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
@@ -531,7 +531,7 @@ module.exports = {
   assignTask,
   unassignUser,
   getAssignedToMe,
-  getTaskAssignees, 
+  getTaskAssignees,
   addCommentWithFile,
   startTimer,
   stopTimer,
