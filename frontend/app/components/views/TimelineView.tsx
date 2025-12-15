@@ -303,7 +303,7 @@ export default function TimelineView() {
 
     const getFallbackStart = () => {
       // Use startDate (user-editable) with fallback to createdAt for timeline display
-      if (task.startDate) return new Date(task.startDate);
+      // if (task.startDate) return new Date(task.startDate);
       if (task.createdAt) return new Date(task.createdAt);
       if (task.dueDate) return new Date(task.dueDate);
       return new Date();

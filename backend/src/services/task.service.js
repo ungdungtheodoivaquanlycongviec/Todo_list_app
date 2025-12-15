@@ -861,6 +861,40 @@ class TaskService {
 
     await ensureTaskWriteAccess(task, requesterId);
 
+    // Clean up all Cloudinary files before deleting task
+    try {
+      // Delete task attachments from Cloudinary
+      if (task.attachments && task.attachments.length > 0) {
+        const attachmentDeletePromises = task.attachments
+          .filter(attachment => attachment.publicId)
+          .map(attachment =>
+            fileService.deleteFile(attachment.publicId, attachment.resourceType || 'raw')
+              .catch(err => {
+                console.error(`Error deleting task attachment ${attachment.publicId}:`, err);
+                // Continue with other deletions even if one fails
+              })
+          );
+        await Promise.all(attachmentDeletePromises);
+      }
+
+      // Delete comment attachments from Cloudinary
+      if (task.comments && task.comments.length > 0) {
+        const commentAttachmentDeletePromises = task.comments
+          .filter(comment => comment.attachment && comment.attachment.publicId)
+          .map(comment =>
+            fileService.deleteFile(comment.attachment.publicId, comment.attachment.resourceType || 'raw')
+              .catch(err => {
+                console.error(`Error deleting comment attachment ${comment.attachment.publicId}:`, err);
+                // Continue with other deletions even if one fails
+              })
+          );
+        await Promise.all(commentAttachmentDeletePromises);
+      }
+    } catch (error) {
+      console.error('Error cleaning up Cloudinary files during task deletion:', error);
+      // Continue with task deletion even if Cloudinary cleanup fails
+    }
+
     await Task.deleteOne({ _id: taskId });
 
     if (task) {
