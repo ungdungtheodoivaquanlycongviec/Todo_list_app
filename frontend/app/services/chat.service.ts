@@ -36,6 +36,10 @@ export interface ChatMessage {
     createdAt: string;
     deletedAt?: string;
   };
+  mentions?: {
+    users?: string[];
+    roles?: string[];
+  } | string[];
   editedAt?: string;
   deletedAt?: string;
   createdAt: string;
@@ -342,7 +346,7 @@ class ChatService {
     }
   }
 
-  
+
 
   /**
    * Upload file chat riêng

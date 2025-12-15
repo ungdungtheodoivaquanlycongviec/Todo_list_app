@@ -4,6 +4,10 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Task } from '../../../services/types/task.types';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useTimer } from '../../../contexts/TimerContext';
+import { useFolder } from '../../../contexts/FolderContext';
+import { useAuth } from '../../../contexts/AuthContext';
+import { Folder } from '../../../services/types/folder.types';
+import { requiresFolderAssignment } from '../../../utils/groupRoleUtils';
 import {
   CheckCircle,
   PlayCircle,
@@ -15,6 +19,8 @@ import {
   ChevronRight,
   Settings,
   XCircle,
+  AlertTriangle,
+  Folder as FolderIcon,
 } from 'lucide-react';
 
 interface TaskContextMenuProps {
@@ -52,10 +58,14 @@ export default function TaskContextMenu({ x, y, task, onAction, onClose }: TaskC
   const menuRef = useRef<HTMLDivElement>(null);
   const changeTypeRef = useRef<HTMLDivElement>(null);
   const repeatRef = useRef<HTMLDivElement>(null);
+  const moveToRef = useRef<HTMLDivElement>(null);
   const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { t } = useLanguage();
   const { isTimerRunning } = useTimer();
+  const { folders } = useFolder();
+  const { currentGroup } = useAuth();
   const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
+  const [moveWarning, setMoveWarning] = useState<{ folderId: string; missingAssignees: string[] } | null>(null);
 
   // Check if this task has a running timer
   const taskHasRunningTimer = isTimerRunning(task._id);
@@ -165,6 +175,72 @@ export default function TaskContextMenu({ x, y, task, onAction, onClose }: TaskC
   // Estimated heights for submenus
   const categorySubmenuHeight = 320; // ~8 items * 40px
   const repeatSubmenuHeight = 380; // ~9 items * 40px + remove option
+  const moveToSubmenuHeight = 300; // ~7 items * 40px
+
+  // Get assignees who don't have access to target folder
+  // This accounts for role-based access:
+  // - 'full' scope roles (PM, Product Owner) have access to all folders
+  // - 'read_only' roles (Sale, QA, Dev Manager) can view all folders
+  // - 'folder_scoped' roles need explicit memberAccess in the folder
+  const getAssigneesWithoutAccess = (targetFolder: Folder): string[] => {
+    const missingAssignees: string[] = [];
+
+    // Get the folder's member IDs (if any)
+    const folderMemberIds = new Set(
+      targetFolder.memberAccess?.map(m => m.userId) || []
+    );
+
+    task.assignedTo.forEach(assignment => {
+      const userId = typeof assignment.userId === 'string'
+        ? assignment.userId
+        : assignment.userId._id;
+
+      const userName = typeof assignment.userId === 'object'
+        ? assignment.userId.name
+        : 'Unknown User';
+
+      // Find the member in the current group to check their role
+      const groupMember = currentGroup?.members?.find(m => {
+        const memberId = typeof m.userId === 'string' ? m.userId : m.userId?._id;
+        return memberId === userId;
+      });
+
+      // If we can't find the member or they don't require folder assignment, skip
+      // (they have access to all folders by default)
+      if (!groupMember || !requiresFolderAssignment(groupMember.role)) {
+        return; // This user has full access, no need to check
+      }
+
+      // For folder_scoped roles, check if they're in the folder's memberAccess
+      if (!folderMemberIds.has(userId)) {
+        missingAssignees.push(userName);
+      }
+    });
+
+    return missingAssignees;
+  };
+
+  // Handle folder move with access validation
+  const handleFolderMove = (targetFolder: Folder) => {
+    // Get current folder ID
+    const currentFolderId = typeof task.folderId === 'object'
+      ? task.folderId?._id
+      : task.folderId;
+
+    // Skip if already in this folder
+    if (currentFolderId === targetFolder._id) return;
+
+    // Check if all assignees have access
+    const missingAssignees = getAssigneesWithoutAccess(targetFolder);
+
+    if (missingAssignees.length > 0) {
+      // Show warning instead of moving
+      setMoveWarning({ folderId: targetFolder._id, missingAssignees });
+    } else {
+      // All assignees have access - proceed with move
+      handleAction('move_to_folder', { folderId: targetFolder._id });
+    }
+  };
 
   return (
     <div
@@ -336,14 +412,80 @@ export default function TaskContextMenu({ x, y, task, onAction, onClose }: TaskC
           )}
         </div>
 
-        {/* Move To */}
-        <button
-          className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-          onClick={() => handleAction('move_to')}
+        {/* Move To - with submenu */}
+        <div
+          ref={moveToRef}
+          className="relative"
+          onMouseEnter={() => handleSubmenuOpen('move_to')}
+          onMouseLeave={handleSubmenuClose}
         >
-          <FolderInput className="w-4 h-4 text-gray-500" />
-          {t('taskContextMenu.moveTo')}
-        </button>
+          <button
+            className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            <div className="flex items-center gap-3">
+              <FolderInput className="w-4 h-4 text-gray-500" />
+              {t('taskContextMenu.moveTo')}
+            </div>
+            <ChevronRight className="w-4 h-4" />
+          </button>
+
+          {/* Move To Submenu */}
+          {activeSubmenu === 'move_to' && (
+            <div
+              className="absolute left-full w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50"
+              style={getSubmenuStyle(moveToRef, moveToSubmenuHeight)}
+              onMouseEnter={() => handleSubmenuOpen('move_to')}
+              onMouseLeave={handleSubmenuClose}
+            >
+              {/* Invisible bridge to connect main menu to submenu */}
+              <div className="absolute -left-2 top-0 bottom-0 w-2" />
+              <div className="py-1 max-h-64 overflow-y-auto">
+                {folders.length === 0 ? (
+                  <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
+                    No folders available
+                  </div>
+                ) : (
+                  folders.map((folder) => {
+                    const currentFolderId = typeof task.folderId === 'object'
+                      ? task.folderId?._id
+                      : task.folderId;
+                    const isCurrentFolder = currentFolderId === folder._id;
+                    const missingAssignees = getAssigneesWithoutAccess(folder);
+                    const hasWarning = missingAssignees.length > 0;
+
+                    return (
+                      <button
+                        key={folder._id}
+                        className={`w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 ${isCurrentFolder
+                          ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
+                          : 'text-gray-700 dark:text-gray-300'
+                          }`}
+                        onClick={() => handleFolderMove(folder)}
+                        disabled={isCurrentFolder}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <FolderIcon
+                            className={`w-4 h-4 flex-shrink-0 ${isCurrentFolder ? 'text-blue-500' : 'text-gray-400'
+                              }`}
+                          />
+                          <span className="truncate">{folder.name}</span>
+                          {folder.isDefault && (
+                            <span className="text-xs text-gray-400">(default)</span>
+                          )}
+                        </div>
+                        {hasWarning && !isCurrentFolder && (
+                          <div title={`${missingAssignees.length} assignee(s) don't have access`}>
+                            <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Duplicate Task */}
         <button
@@ -365,6 +507,38 @@ export default function TaskContextMenu({ x, y, task, onAction, onClose }: TaskC
           {t('taskContextMenu.delete')}
         </button>
       </div>
+
+      {/* Move Warning Modal */}
+      {moveWarning && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]"
+          onClick={() => setMoveWarning(null)}
+        >
+          <div
+            className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-4 max-w-sm mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 text-amber-600 mb-3">
+              <AlertTriangle className="w-5 h-5" />
+              <span className="font-medium">Cannot Move Task</span>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-300 mb-3">
+              The following assignees don&apos;t have access to this folder:
+            </p>
+            <ul className="text-sm text-gray-700 dark:text-gray-200 mb-4 list-disc list-inside">
+              {moveWarning.missingAssignees.map((name, i) => (
+                <li key={i}>{name}</li>
+              ))}
+            </ul>
+            <button
+              className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600"
+              onClick={() => setMoveWarning(null)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

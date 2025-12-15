@@ -413,6 +413,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Clear everything regardless of API call success
       authService.removeTokens();
       setUser(null);
+      setCurrentGroup(null);
 
       if (typeof window !== 'undefined') {
         localStorage.removeItem('user');
