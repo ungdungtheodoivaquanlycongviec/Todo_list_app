@@ -151,6 +151,22 @@ export default function ChatView() {
     loadDirectConversations();
   }, [loadDirectConversations]);
 
+  // Reset chat state when user changes (e.g., logout/login)
+  useEffect(() => {
+    if (!user) {
+      // Clear all chat-related state when user logs out
+      setMessages([]);
+      setDirectConversations([]);
+      setActiveDirectConversation(null);
+      setActiveContext('group');
+      setTypingUsers(new Set());
+      setReplyingTo(null);
+      setHasGroupUnread(false);
+      setHasDirectUnread(new Set());
+      setPendingDirectIndicators({});
+    }
+  }, [user?._id]);
+
   const upsertDirectConversation = useCallback(
     (summary: DirectConversationSummary | null | undefined) => {
       if (!summary) return;
@@ -1652,7 +1668,11 @@ function MessageItem({
                     message.content && (
                       <MentionHighlight
                         content={message.content}
-                        mentions={message.mentions?.users || message.mentions || []}
+                        mentions={
+                          Array.isArray(message.mentions)
+                            ? message.mentions
+                            : (message.mentions?.users || [])
+                        }
                         currentUserId={currentUserId}
                         isOwnMessage={isOwn}
                         className="text-sm"
