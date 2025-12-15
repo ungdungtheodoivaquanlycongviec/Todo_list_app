@@ -12,6 +12,8 @@ from utils import (
     evaluate_recommended_tasks,
     evaluate_task_completion_status,
     evaluate_future_tasks_status,
+    get_group_progress,
+    get_member_progress,
 )
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -125,16 +127,21 @@ def get_response(msg, context=None, token=None):
     if prob.item() <= 0.75:
         return "I do not understand..."
 
-    # 1. Sau câu chào user, kiểm tra ngày đặc biệt; nếu đúng, trả response từ intent specialDay.
+    # 1. Sau câu chào user, kiểm tra ngày đặc biệt; nếu đúng, trả greeting kèm specialDay.
     if tag == "greeting":
+        greeting_resp = _build_response_for_tag("greeting", context)
+        special_resp = ""
+
         if has_special_day_today():
-            resp = _build_response_for_tag("specialDay", context)
-            if resp:
-                return resp
-        # Không phải ngày đặc biệt hoặc không tìm thấy intent -> dùng greeting bình thường
-        resp = _build_response_for_tag("greeting", context)
-        if resp:
-            return resp
+            special_resp = _build_response_for_tag("specialDay", context)
+
+        # Trả cả câu chào và chúc mừng ngày đặc biệt (nếu có)
+        if greeting_resp and special_resp:
+            return f"{greeting_resp}\n\n{special_resp}"
+        if greeting_resp:
+            return greeting_resp
+        if special_resp:
+            return special_resp
 
     # 2. Logic khi user nói đã hoàn thành tất cả task (finishAllTask)
     #    Kiểm tra trạng thái thực tế từ database:
@@ -228,8 +235,8 @@ def get_response(msg, context=None, token=None):
                     # Không đúng: chưa có task nào completed → trả Warning
                     resp = _build_response_for_tag("Warning", context)
                 
-                if resp:
-                    return resp
+        if resp:
+            return resp
         
         # Fallback: nếu không có dữ liệu DB hoặc tag không phải finishPartOfRecommentedTask
         if tag == "finishAllRecommentedTask":
@@ -258,7 +265,86 @@ def get_response(msg, context=None, token=None):
         if resp:
             return resp
 
-    # 5. Mặc định: dùng intent được model dự đoán với context
+    # 5. Tiến độ toàn team trong group (chỉ cho Product Owner/PM)
+    if tag == "teamProgress":
+        # Nếu thiếu thông tin group trong context, yêu cầu user chỉ định group
+        group_info = (context or {}).get("group") or {}
+        if not group_info.get("id") and not group_info.get("name"):
+            ask_resp = _build_response_for_tag("AskGroupName", context)
+            if ask_resp:
+                return ask_resp
+
+        progress = get_group_progress(token)
+        if not progress:
+            return "Chatbot chỉ hỗ trợ xem tiến độ team cho Product Owner/PM của group này, hoặc hiện chưa có dữ liệu task phù hợp."
+
+        total = progress.get("totalTasks", 0)
+        todo = progress.get("todo", {})
+        in_progress = progress.get("in_progress", {})
+        completed = progress.get("completed", {})
+        incomplete = progress.get("incomplete", {})
+
+        # Map sang placeholders cho intents
+        team_context = {
+            "team_total_tasks": total,
+            "team_todo_count": todo.get("count", 0),
+            "team_todo_percent": todo.get("percent", 0),
+            "team_inprogress_count": in_progress.get("count", 0),
+            "team_inprogress_percent": in_progress.get("percent", 0),
+            "team_completed_count": completed.get("count", 0),
+            "team_completed_percent": completed.get("percent", 0),
+            "team_incomplete_count": incomplete.get("count", 0),
+            "team_incomplete_percent": incomplete.get("percent", 0),
+        }
+
+        # Gộp vào context tạm cho replace_placeholders
+        merged_context = (context or {}).copy()
+        merged_context.setdefault("stats", {})
+        merged_context["stats"].update(team_context)
+
+        resp = _build_response_for_tag("teamProgress", merged_context)
+        if resp:
+            return resp + f"\n(Tổng số task trong group: {total})"
+
+    # 6. Tiến độ theo từng thành viên trong group (chỉ cho Product Owner/PM)
+    if tag == "memberProgress":
+        # Ở phiên bản đơn giản, tạm thời yêu cầu frontend/backend truyền sẵn memberId trong context
+        member_info = (context or {}).get("member") or {}
+        member_id = member_info.get("id") or ""
+        member_name = member_info.get("name") or "thành viên này"
+
+        progress = get_member_progress(token, member_id)
+        if not progress:
+            return "Chatbot chỉ hỗ trợ xem tiến độ theo thành viên cho Product Owner/PM của group này, hoặc hiện chưa có dữ liệu task phù hợp."
+
+        total = progress.get("totalTasks", 0)
+        todo = progress.get("todo", {})
+        in_progress = progress.get("in_progress", {})
+        completed = progress.get("completed", {})
+        incomplete = progress.get("incomplete", {})
+
+        member_context = {
+            "member_name": member_name,
+            "member_total_tasks": total,
+            "member_todo_count": todo.get("count", 0),
+            "member_todo_percent": todo.get("percent", 0),
+            "member_inprogress_count": in_progress.get("count", 0),
+            "member_inprogress_percent": in_progress.get("percent", 0),
+            "member_completed_count": completed.get("count", 0),
+            "member_completed_percent": completed.get("percent", 0),
+            "member_incomplete_count": incomplete.get("count", 0),
+            "member_incomplete_percent": incomplete.get("percent", 0),
+        }
+
+        merged_context = (context or {}).copy()
+        merged_context.setdefault("memberStats", {})
+        merged_context["memberStats"].update(member_context)
+
+        resp = _build_response_for_tag("memberProgress", merged_context)
+        if resp:
+            return resp + f"\n(Tổng số task của {member_name} trong group: {total})"
+
+    # 7. Mặc định: dùng intent được model dự đoán với context
     resp = _build_response_for_tag(tag, context)
     if resp:
         return resp

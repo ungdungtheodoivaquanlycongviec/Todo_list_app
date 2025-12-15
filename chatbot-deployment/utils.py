@@ -1,6 +1,6 @@
 import logging
 from datetime import date
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import requests
 
@@ -120,6 +120,57 @@ def get_today_special_day_label() -> str:
 def has_special_day_today() -> bool:
     """Trả về True nếu hôm nay là 1 trong các ngày đặc biệt được hỗ trợ."""
     return bool(get_today_special_day_label())
+
+
+def _fetch_json_with_auth(url: str, token: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Helper: gọi GET JSON với Bearer token, trả về data.get('data')."""
+    if not token:
+        return None
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+    }
+
+    try:
+        _debug_log("Fetching JSON with auth", url=url)
+        resp = requests.get(url, headers=headers, timeout=5)
+        _debug_log("JSON with auth response", status=resp.status_code)
+
+        if resp.status_code != 200:
+            return None
+
+        data = resp.json()
+        return data.get("data") if isinstance(data, dict) else data
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.exception("Error while fetching JSON with auth: %s", exc)
+        return None
+
+
+def get_group_progress(token: Optional[str]) -> Optional[Dict[str, Any]]:
+    """
+    Lấy thống kê tiến độ cả team trong group hiện tại cho Product Owner/PM.
+    Trả về dict dạng:
+    {
+      "totalTasks": int,
+      "todo": { "count": int, "percent": float },
+      "in_progress": { "count": int, "percent": float },
+      "completed": { "count": int, "percent": float },
+      "incomplete": { "count": int, "percent": float }
+    }
+    """
+    url = f"{BACKEND_API_URL}/chatbot/group-progress"
+    return _fetch_json_with_auth(url, token)
+
+
+def get_member_progress(token: Optional[str], member_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Lấy thống kê tiến độ cho một thành viên trong group hiện tại cho Product Owner/PM.
+    """
+    if not member_id:
+        return None
+    url = f"{BACKEND_API_URL}/chatbot/member-progress?memberId={member_id}"
+    return _fetch_json_with_auth(url, token)
 
 
 def save_recommended_tasks(token: Optional[str], context: Optional[Dict[str, Any]]) -> None:
@@ -270,6 +321,9 @@ def replace_placeholders(template: str, context: Optional[Dict[str, Any]]) -> st
     user = context.get("user") or {}
     tasks = context.get("tasks") or {}
     date_info = context.get("date") or {}
+    group_info = context.get("group") or {}
+    stats = context.get("stats") or {}
+    member_stats = context.get("memberStats") or {}
 
     full_name = user.get("name") or ""
     firstname = user.get("firstname") or ""
@@ -297,8 +351,31 @@ def replace_placeholders(template: str, context: Optional[Dict[str, Any]]) -> st
         "futureTasksCount": str(future_tasks_count),
         "current_date": date_info.get("current_date") or "",
         "current_date_vn": date_info.get("current_date_vn") or "",
+        # Thông tin group
+        "group_name": group_info.get("name") or "",
         # Các placeholder mở rộng
         "special_day": get_today_special_day_label(),
+        # Thống kê tiến độ team
+        "team_total_tasks": str(stats.get("team_total_tasks", 0)),
+        "team_todo_count": str(stats.get("team_todo_count", 0)),
+        "team_todo_percent": str(stats.get("team_todo_percent", 0)),
+        "team_inprogress_count": str(stats.get("team_inprogress_count", 0)),
+        "team_inprogress_percent": str(stats.get("team_inprogress_percent", 0)),
+        "team_completed_count": str(stats.get("team_completed_count", 0)),
+        "team_completed_percent": str(stats.get("team_completed_percent", 0)),
+        "team_incomplete_count": str(stats.get("team_incomplete_count", 0)),
+        "team_incomplete_percent": str(stats.get("team_incomplete_percent", 0)),
+        # Thống kê tiến độ theo thành viên
+        "member_name": member_stats.get("member_name", ""),
+        "member_total_tasks": str(member_stats.get("member_total_tasks", 0)),
+        "member_todo_count": str(member_stats.get("member_todo_count", 0)),
+        "member_todo_percent": str(member_stats.get("member_todo_percent", 0)),
+        "member_inprogress_count": str(member_stats.get("member_inprogress_count", 0)),
+        "member_inprogress_percent": str(member_stats.get("member_inprogress_percent", 0)),
+        "member_completed_count": str(member_stats.get("member_completed_count", 0)),
+        "member_completed_percent": str(member_stats.get("member_completed_percent", 0)),
+        "member_incomplete_count": str(member_stats.get("member_incomplete_count", 0)),
+        "member_incomplete_percent": str(member_stats.get("member_incomplete_percent", 0)),
         "location": "",
         "weather_condition": "",
         "temperature": "",

@@ -15,12 +15,13 @@ interface FolderAccessModalProps {
 }
 
 export function FolderAccessModal({ folder, members, onClose, onSave, saving, error }: FolderAccessModalProps) {
+  // Cho phép gán cho mọi thành viên trong group (trừ trường hợp không có userId),
+  // tránh việc danh sách rỗng vì filter quá chặt.
   const eligibleMembers = useMemo(
     () =>
       members.filter(member => {
         const memberId = getMemberId(member);
-        if (!memberId) return false;
-        return requiresFolderAssignment(member.role);
+        return Boolean(memberId);
       }),
     [members]
   );

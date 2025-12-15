@@ -38,7 +38,9 @@ export default function MainLayout({
   const { currentFolder } = useFolder();
   const { t } = useLanguage();
   const isAdmin = user && (user.role === 'admin' || user.role === 'super_admin');
-  const hasFolder = !!currentFolder && !isAdmin; // Admin không dùng folder sidebar
+  // Với user thường, luôn hiển thị sidebar để họ có thể tạo/join group,
+  // không phụ thuộc vào currentFolder (vì tài khoản mới sẽ chưa có folder).
+  const hasFolder = !isAdmin;
 
   const MIN_SIDEBAR_WIDTH = 200;
   const MAX_SIDEBAR_WIDTH = 400;
