@@ -1235,10 +1235,13 @@ export default function TasksView() {
           setTodoTasks(prev => [duplicatedTask, ...prev]);
           break;
 
-        case "move_to":
-          // Open task detail modal for move functionality
-          setSelectedTask(task._id);
-          setShowTaskDetail(true);
+        case "move_to_folder":
+          if (payload?.folderId) {
+            const movedTask = await taskService.updateTask(task._id, {
+              folderId: payload.folderId,
+            });
+            handleTaskUpdate(movedTask);
+          }
           break;
 
         case "edit_types":
