@@ -71,6 +71,7 @@ export default function TimelineView() {
   const dragAnimationFrame = useRef<number | null>(null);
   const resizeAnimationFrame = useRef<number | null>(null);
   const [resizedTaskPosition, setResizedTaskPosition] = useState<{ startTime?: string; dueDate?: string } | null>(null);
+  const wasInteractingRef = useRef(false); // Track if we just finished dragging/resizing
 
   const getTaskColor = useCallback((taskId: string) => {
     let hash = 0;
@@ -120,13 +121,14 @@ export default function TimelineView() {
     let maxDate: Date | null = null;
 
     const getStart = (task: Task) => {
-      // Use due date or created date as start reference (startTime removed for timer refactor)
-      if (task.dueDate) return new Date(task.dueDate);
+      // Use createdAt as start date for timeline display
       if (task.createdAt) return new Date(task.createdAt);
+      if (task.dueDate) return new Date(task.dueDate);
       return null;
     };
 
     const getEnd = (task: Task, start: Date | null) => {
+      // Use dueDate as end date, or createdAt + 1 day if no dueDate
       if (task.dueDate) return new Date(task.dueDate);
       if (start) return new Date(start.getTime() + 24 * 60 * 60 * 1000);
       return null;
@@ -300,13 +302,14 @@ export default function TimelineView() {
     let taskEnd: Date;
 
     const getFallbackStart = () => {
-      // Use due date or created date as start reference (startTime removed for timer refactor)
-      if (task.dueDate) return new Date(task.dueDate);
+      // Use createdAt as start date for timeline display
       if (task.createdAt) return new Date(task.createdAt);
+      if (task.dueDate) return new Date(task.dueDate);
       return new Date();
     };
 
     const getFallbackEnd = (start: Date) => {
+      // Use dueDate as end date, or start + 1 day if no dueDate
       if (task.dueDate) return new Date(task.dueDate);
       return new Date(start.getTime() + 24 * 60 * 60 * 1000);
     };
@@ -332,12 +335,15 @@ export default function TimelineView() {
       return null;
     }
 
-    // Calculate left position
-    const daysDiff = Math.floor((taskStart.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    // Calculate left position - normalize dates to start of day to avoid timezone issues
+    const normalizedStart = new Date(taskStart.getFullYear(), taskStart.getMonth(), taskStart.getDate());
+    const normalizedRangeStart = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    const daysDiff = Math.round((normalizedStart.getTime() - normalizedRangeStart.getTime()) / (1000 * 60 * 60 * 24));
     const left = daysDiff * pixelsPerDay;
 
-    // Calculate width
-    const duration = Math.max(1, Math.ceil((taskEnd.getTime() - taskStart.getTime()) / (1000 * 60 * 60 * 24)));
+    // Calculate width - normalize end date as well
+    const normalizedEnd = new Date(taskEnd.getFullYear(), taskEnd.getMonth(), taskEnd.getDate());
+    const duration = Math.max(1, Math.round((normalizedEnd.getTime() - normalizedStart.getTime()) / (1000 * 60 * 60 * 24)));
     const width = duration * pixelsPerDay;
 
     return {
@@ -366,8 +372,8 @@ export default function TimelineView() {
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         const canPlace = row.every(existingTask =>
-          task.endDate <= existingTask.startDate ||
-          task.startDate >= existingTask.endDate
+          task.endDate < existingTask.startDate ||
+          task.startDate > existingTask.endDate
         );
 
         if (canPlace) {
@@ -418,11 +424,11 @@ export default function TimelineView() {
     e.stopPropagation();
     const task = tasks.find(t => t._id === taskId);
     if (task) {
-      // Use due date or created date as start reference (startTime removed for timer refactor)
-      const baseStart = task.dueDate
-        ? new Date(task.dueDate)
-        : task.createdAt
-          ? new Date(task.createdAt)
+      // Use createdAt as start date, dueDate as end date
+      const baseStart = task.createdAt
+        ? new Date(task.createdAt)
+        : task.dueDate
+          ? new Date(task.dueDate)
           : new Date();
       const baseEnd = task.dueDate ? new Date(task.dueDate) : new Date(baseStart.getTime() + 24 * 60 * 60 * 1000);
       setOriginalTaskData({ startTime: baseStart, dueDate: baseEnd });
@@ -458,7 +464,8 @@ export default function TimelineView() {
 
       const duration = originalTaskData.dueDate.getTime() - originalTaskData.startTime.getTime();
       const newDueDate = new Date(newStartDate.getTime() + duration);
-      newDueDate.setHours(23, 59, 59, 999);
+      // Use start of day to avoid timezone issues when saving
+      newDueDate.setHours(0, 0, 0, 0);
 
       // Only update visual position, don't update tasks state
       setDraggedTaskPosition({
@@ -493,24 +500,29 @@ export default function TimelineView() {
     setOriginalTaskData(null);
     setDraggedTaskPosition(null);
 
+    // Set flag to prevent click from opening task detail
+    wasInteractingRef.current = true;
+    setTimeout(() => { wasInteractingRef.current = false; }, 100);
+
     // Update task with final position
     if (finalPosition) {
       try {
         await taskService.updateTask(taskId, {
-          startTime: finalPosition.startTime,
           dueDate: finalPosition.dueDate
         });
 
-        // Only fetch after successful update
-        await fetchTasks();
+        // Update local state instead of refetching to preserve scroll position
+        setTasks(prev => prev.map(t =>
+          t._id === taskId
+            ? { ...t, dueDate: finalPosition.dueDate }
+            : t
+        ));
       } catch (error) {
         console.error('Error updating task:', error);
         alert('Failed to update task: ' + (error instanceof Error ? error.message : 'Unknown error'));
-        // Revert by fetching fresh data
-        await fetchTasks();
       }
     }
-  }, [draggedTask, draggedTaskPosition, fetchTasks]);
+  }, [draggedTask, draggedTaskPosition]);
 
   // Handle resize start
   const handleResizeStart = (e: React.MouseEvent, taskId: string, type: 'start' | 'end') => {
@@ -536,21 +548,17 @@ export default function TimelineView() {
       const days = Math.max(0, Math.round(x / pixelsPerDay));
       const newDate = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
 
-      // Reset to start/end of day for cleaner alignment
-      if (resizeType === 'start') {
-        newDate.setHours(0, 0, 0, 0);
-      } else {
-        newDate.setHours(23, 59, 59, 999);
-      }
+      // Use start of day to avoid timezone issues when saving
+      newDate.setHours(0, 0, 0, 0);
 
       // Get original task to check constraints
       const originalTask = tasks.find(t => t._id === resizingTask);
       if (originalTask) {
-        // Use due date or created date as start reference (startTime removed for timer refactor)
-        const fallbackStart = originalTask.dueDate
-          ? new Date(originalTask.dueDate)
-          : originalTask.createdAt
-            ? new Date(originalTask.createdAt)
+        // Use createdAt as start date, dueDate as end date
+        const fallbackStart = originalTask.createdAt
+          ? new Date(originalTask.createdAt)
+          : originalTask.dueDate
+            ? new Date(originalTask.dueDate)
             : new Date();
         const fallbackDue = originalTask.dueDate
           ? new Date(originalTask.dueDate)
@@ -599,6 +607,10 @@ export default function TimelineView() {
     setResizeType(null);
     setResizedTaskPosition(null);
 
+    // Set flag to prevent click from opening task detail
+    wasInteractingRef.current = true;
+    setTimeout(() => { wasInteractingRef.current = false; }, 100);
+
     // Update task with final position
     if (finalPosition && originalTask) {
       try {
@@ -612,16 +624,18 @@ export default function TimelineView() {
 
         await taskService.updateTask(taskId, updateData);
 
-        // Only fetch after successful update
-        await fetchTasks();
+        // Update local state instead of refetching to preserve scroll position
+        setTasks(prev => prev.map(t =>
+          t._id === taskId
+            ? { ...t, dueDate: updateData.dueDate }
+            : t
+        ));
       } catch (error) {
         console.error('Error resizing task:', error);
         alert('Failed to resize task: ' + (error instanceof Error ? error.message : 'Unknown error'));
-        // Revert by fetching fresh data
-        await fetchTasks();
       }
     }
-  }, [resizingTask, resizedTaskPosition, tasks, fetchTasks]);
+  }, [resizingTask, resizedTaskPosition, tasks]);
 
   // Mouse event handlers
   useEffect(() => {
@@ -675,7 +689,7 @@ export default function TimelineView() {
     }
   };
 
-  // Keep current date visible when zoom or range changes
+  // Keep current date visible when zoom level changes (only on explicit navigation)
   useEffect(() => {
     if (!scrollContainerRef.current) return;
     const { start } = getDateRange();
@@ -684,7 +698,8 @@ export default function TimelineView() {
     const timelineOffset = Math.max(0, offsetDays * pixelsPerDay);
     const centerAdjust = scrollContainerRef.current.clientWidth / 2;
     scrollContainerRef.current.scrollLeft = Math.max(0, timelineOffset - centerAdjust);
-  }, [zoomLevel, currentDate, pixelsPerDay, getDateRange, dates.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoomLevel, currentDate]);
 
   // Get status color
   const getStatusColor = (status: string) => {
@@ -1082,7 +1097,7 @@ export default function TimelineView() {
                           }}
                           onClick={(e) => {
                             // Only open detail if we didn't drag or resize
-                            if (!draggedTask && !resizingTask && !(e.target as HTMLElement).closest('.resize-handle')) {
+                            if (!draggedTask && !resizingTask && !wasInteractingRef.current && !(e.target as HTMLElement).closest('.resize-handle')) {
                               setSelectedTaskId(task._id);
                               setShowTaskDetail(true);
                             }
