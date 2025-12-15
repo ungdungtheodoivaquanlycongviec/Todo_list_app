@@ -2,10 +2,11 @@ const asyncHandler = require('../middlewares/asyncHandler');
 const { sendSuccess, sendError } = require('../utils/response');
 const taskService = require('../services/task.service');
 const User = require('../models/User.model');
+const Group = require('../models/Group.model');
 const Task = require('../models/Task.model');
 const ChatbotState = require('../models/ChatbotState.model');
 const mongoose = require('mongoose');
-const { HTTP_STATUS } = require('../config/constants');
+const { HTTP_STATUS, GROUP_ROLE_KEYS } = require('../config/constants');
 
 /**
  * @desc    Lấy context của user cho chatbot (user info, tasks hôm nay, etc.)
@@ -107,6 +108,15 @@ const getChatbotContext = asyncHandler(async (req, res) => {
   // Lấy ngày hiện tại
   const currentDate = formatDate(today);
 
+  // Lấy thông tin group (tên group để chatbot có thể nhắc lại)
+  let groupName = '';
+  try {
+    const groupDoc = await Group.findById(currentGroupId).select('name').lean();
+    groupName = groupDoc?.name || '';
+  } catch (e) {
+    groupName = '';
+  }
+
   // Trả về context
   const context = {
     user: {
@@ -133,7 +143,8 @@ const getChatbotContext = asyncHandler(async (req, res) => {
       current_date_vn: formatDateVN(today)
     },
     group: {
-      id: currentGroupId.toString()
+      id: currentGroupId.toString(),
+      name: groupName
     }
   };
 
@@ -319,10 +330,173 @@ const evaluateRecommendedTasks = asyncHandler(async (req, res) => {
   );
 });
 
+/**
+ * @desc    Thống kê tiến độ task của cả team trong group hiện tại (chỉ PM/Product Owner)
+ * @route   GET /api/chatbot/group-progress
+ * @access  Private
+ */
+const getGroupProgressSummary = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const currentGroupId = req.user.currentGroupId;
+
+  if (!currentGroupId) {
+    return sendError(res, 'You must join or create a group to use the chatbot', HTTP_STATUS.FORBIDDEN);
+  }
+
+  // Tìm role của user trong group
+  const group = await mongoose.model('Group').findById(currentGroupId).select('members').lean();
+  if (!group) {
+    return sendError(res, 'Group not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  const member = (group.members || []).find(
+    m => m.userId?.toString() === userId.toString()
+  );
+
+  if (!member || ![GROUP_ROLE_KEYS.PRODUCT_OWNER, GROUP_ROLE_KEYS.PM].includes(member.role)) {
+    return sendError(
+      res,
+      'Chatbot chỉ hỗ trợ xem tiến độ team cho Product Owner/PM của group này',
+      HTTP_STATUS.FORBIDDEN
+    );
+  }
+
+  // Lấy toàn bộ task (không giới hạn) trong group để tính % theo status
+  const tasks = await Task.find({ groupId: currentGroupId }).select('status').lean();
+
+  const total = tasks.length || 0;
+  const countByStatus = {
+    todo: 0,
+    in_progress: 0,
+    completed: 0,
+    incomplete: 0
+  };
+
+  tasks.forEach(task => {
+    if (countByStatus[task.status] !== undefined) {
+      countByStatus[task.status]++;
+    }
+  });
+
+  const toPercent = count => (total === 0 ? 0 : Math.round((count * 10000) / total) / 100);
+
+  const summary = {
+    totalTasks: total,
+    todo: {
+      count: countByStatus.todo,
+      percent: toPercent(countByStatus.todo)
+    },
+    in_progress: {
+      count: countByStatus.in_progress,
+      percent: toPercent(countByStatus.in_progress)
+    },
+    completed: {
+      count: countByStatus.completed,
+      percent: toPercent(countByStatus.completed)
+    },
+    incomplete: {
+      count: countByStatus.incomplete,
+      percent: toPercent(countByStatus.incomplete)
+    }
+  };
+
+  return sendSuccess(res, summary, 'Group progress summary retrieved successfully');
+});
+
+/**
+ * @desc    Thống kê tiến độ task của một thành viên trong group (chỉ PM/Product Owner)
+ * @route   GET /api/chatbot/member-progress?memberId=...
+ * @access  Private
+ */
+const getMemberProgressSummary = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const currentGroupId = req.user.currentGroupId;
+  const { memberId } = req.query;
+
+  if (!currentGroupId) {
+    return sendError(res, 'You must join or create a group to use the chatbot', HTTP_STATUS.FORBIDDEN);
+  }
+
+  if (!memberId) {
+    return sendError(res, 'memberId is required', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  const group = await mongoose.model('Group').findById(currentGroupId).select('members').lean();
+  if (!group) {
+    return sendError(res, 'Group not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  const requesterMember = (group.members || []).find(
+    m => m.userId?.toString() === userId.toString()
+  );
+
+  if (!requesterMember || ![GROUP_ROLE_KEYS.PRODUCT_OWNER, GROUP_ROLE_KEYS.PM].includes(requesterMember.role)) {
+    return sendError(
+      res,
+      'Chatbot chỉ hỗ trợ xem tiến độ thành viên cho Product Owner/PM của group này',
+      HTTP_STATUS.FORBIDDEN
+    );
+  }
+
+  const targetMember = (group.members || []).find(
+    m => m.userId?.toString() === memberId.toString()
+  );
+
+  if (!targetMember) {
+    return sendError(res, 'Thành viên không thuộc group này', HTTP_STATUS.FORBIDDEN);
+  }
+
+  const tasks = await Task.find({
+    groupId: currentGroupId,
+    'assignedTo.userId': memberId
+  }).select('status').lean();
+
+  const total = tasks.length || 0;
+  const countByStatus = {
+    todo: 0,
+    in_progress: 0,
+    completed: 0,
+    incomplete: 0
+  };
+
+  tasks.forEach(task => {
+    if (countByStatus[task.status] !== undefined) {
+      countByStatus[task.status]++;
+    }
+  });
+
+  const toPercent = count => (total === 0 ? 0 : Math.round((count * 10000) / total) / 100);
+
+  const summary = {
+    totalTasks: total,
+    todo: {
+      count: countByStatus.todo,
+      percent: toPercent(countByStatus.todo)
+    },
+    in_progress: {
+      count: countByStatus.in_progress,
+      percent: toPercent(countByStatus.in_progress)
+    },
+    completed: {
+      count: countByStatus.completed,
+      percent: toPercent(countByStatus.completed)
+    },
+    incomplete: {
+      count: countByStatus.incomplete,
+      percent: toPercent(countByStatus.incomplete)
+    }
+  };
+
+  return sendSuccess(res, summary, 'Member progress summary retrieved successfully');
+});
+
 module.exports = {
   getChatbotContext,
   saveRecommendedTasks,
   evaluateRecommendedTasks
+  ,
+  getGroupProgressSummary,
+  getMemberProgressSummary
 };
 
 

@@ -226,15 +226,24 @@ const buildScopedFolderFilter = async ({
   role
 }) => {
   if (folderId) {
-    const { folder } = await enforceFolderAccess({
-      group,
-      groupId,
-      folderId,
-      requesterId,
-      role,
-      requireWrite: false
-    });
-    return buildFolderClauses(folder);
+    try {
+      const { folder } = await enforceFolderAccess({
+        group,
+        groupId,
+        folderId,
+        requesterId,
+        role,
+        requireWrite: false
+      });
+      return buildFolderClauses(folder);
+    } catch (error) {
+      // Nếu folder không tồn tại trong group, không chặn việc load task,
+      // chỉ bỏ qua filter theo folder để tránh 404 không cần thiết.
+      if (error && error.message === ERROR_MESSAGES.FOLDER_NOT_FOUND) {
+        return [];
+      }
+      throw error;
+    }
   }
 
   if (!requiresFolderAssignment(role)) {
@@ -249,7 +258,13 @@ const buildScopedFolderFilter = async ({
     .lean();
 
   if (!assignedFolders || assignedFolders.length === 0) {
-    raiseError(ERROR_MESSAGES.FOLDER_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
+    // Không có folder được gán cho user này → trả về filter rỗng để không lỗi 403/404,
+    // nhưng cũng không trả ra task nào.
+    return [
+      {
+        folderId: { $in: [] }
+      }
+    ];
   }
 
   const clauses = [];

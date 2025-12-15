@@ -34,8 +34,7 @@ export function FolderAccessModal({ folder, members, onClose, onSave, saving, er
     () =>
       members.filter(member => {
         const memberId = getMemberId(member);
-        if (!memberId) return false;
-        return requiresFolderAssignment(member.role);
+        return Boolean(memberId);
       }),
     [members]
   );
