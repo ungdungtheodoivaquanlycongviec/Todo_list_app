@@ -213,22 +213,49 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
         let userData;
 
         if (typeof assignment.userId === 'string') {
-          // Nếu userId là string ID, tạo minimal user object
-          userData = {
-            _id: assignment.userId,
-            name: 'Loading...', // Tạm thời
-            email: '',
-            avatar: undefined
-          };
-
           // Nếu là currentUser, sử dụng thông tin currentUser
           if (currentUser && assignment.userId === currentUser._id) {
             userData = {
               _id: currentUser._id,
               name: currentUser.name || 'You',
-              email: currentUser.email,
+              email: currentUser.email || '',
               avatar: currentUser.avatar
             };
+          } else {
+            // Try to resolve from group members
+            const member = currentGroup?.members?.find((m: any) => {
+              const memberId = typeof m.userId === 'object' ? m.userId?._id : m.userId;
+              return memberId === assignment.userId;
+            });
+            
+            if (member) {
+              const userObj = typeof member.userId === 'object' ? member.userId : null;
+              const userName = userObj?.name || member.name;
+              if (userName) {
+                userData = {
+                  _id: assignment.userId,
+                  name: userName,
+                  email: userObj?.email || member.email || '',
+                  avatar: userObj?.avatar || member.avatar
+                };
+              } else {
+                // Fallback if no name found
+                userData = {
+                  _id: assignment.userId,
+                  name: 'Loading...',
+                  email: '',
+                  avatar: undefined
+                };
+              }
+            } else {
+              // Fallback if not found in members
+              userData = {
+                _id: assignment.userId,
+                name: 'Loading...',
+                email: '',
+                avatar: undefined
+              };
+            }
           }
         } else if (assignment.userId && typeof assignment.userId === 'object') {
           // Nếu userId là object (đã populated)
@@ -277,27 +304,47 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
       if (typeof assignment.userId === 'string') {
         // If current user matches, use their info
-        if (currentUser && assignment.userId === currentUser._id) {
+        if (currentUser && assignment.userId === currentUser._id && currentUser.name) {
           users.push({
             _id: currentUser._id,
-            name: currentUser.name || 'You',
-            email: currentUser.email,
+            name: currentUser.name,
+            email: currentUser.email || '',
             avatar: currentUser.avatar || undefined
           });
+        } else {
+          // Try to find in group members
+          const member = currentGroup?.members?.find((m: any) => {
+            const memberId = typeof m.userId === 'object' ? m.userId?._id : m.userId;
+            return memberId === assignment.userId;
+          });
+          if (member) {
+            const userObj = typeof member.userId === 'object' ? member.userId : null;
+            const userName = userObj?.name || member.name;
+            if (userName) {
+              users.push({
+                _id: assignment.userId,
+                name: userName,
+                email: userObj?.email || member.email || '',
+                avatar: userObj?.avatar || member.avatar
+              });
+            }
+          }
         }
       } else if (assignment.userId && typeof assignment.userId === 'object') {
         const user = assignment.userId as MinimalUser;
-        users.push({
-          _id: user._id,
-          name: user.name || 'Unknown User',
-          email: user.email || '',
-          avatar: user.avatar
-        });
+        if (user._id && user.name) {
+          users.push({
+            _id: user._id,
+            name: user.name,
+            email: user.email || '',
+            avatar: user.avatar
+          });
+        }
       }
     });
 
-    return users;
-  }, [currentUser]);
+    return users.filter((user): user is MentionableUser => !!user._id && !!user.name);
+  }, [currentUser, currentGroup]);
 
   // NEW: Assignee Section Component
   const AssigneeSection = ({ task }: { task: Task }) => {
@@ -2522,9 +2569,20 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
                 })
                 .map((member) => {
                   const userId = typeof member.userId === 'object' ? member.userId._id : member.userId;
-                  const userName = typeof member.userId === 'object' ? member.userId.name : member.name || 'Unknown';
-                  const userEmail = typeof member.userId === 'object' ? member.userId.email : member.email || '';
-                  const userAvatar = typeof member.userId === 'object' ? member.userId.avatar : member.avatar;
+                  // Properly extract user info with fallbacks
+                  let userName = 'Unknown';
+                  let userEmail = '';
+                  let userAvatar: string | undefined;
+                  
+                  if (typeof member.userId === 'object' && member.userId) {
+                    userName = member.userId.name || member.name || 'Unknown';
+                    userEmail = member.userId.email || member.email || '';
+                    userAvatar = member.userId.avatar || member.avatar;
+                  } else {
+                    userName = member.name || 'Unknown';
+                    userEmail = member.email || '';
+                    userAvatar = member.avatar;
+                  }
 
                   const isAlreadyAssigned = task?.assignedTo?.some(
                     (assignee: any) => {

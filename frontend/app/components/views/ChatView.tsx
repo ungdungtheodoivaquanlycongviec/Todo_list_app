@@ -962,23 +962,35 @@ export default function ChatView() {
       // For group chat: get all group members except current user
       return currentGroup.members
         .filter((member: any) => {
-          const memberId = typeof member.userId === 'object' ? member.userId._id : member.userId;
-          return memberId !== user?._id;
+          const memberId = typeof member.userId === 'object' ? member.userId?._id : member.userId;
+          return memberId && memberId !== user?._id;
         })
         .map((member: any) => {
-          const userObj = typeof member.userId === 'object' ? member.userId : null;
+          // Handle populated userId object
+          if (member.userId && typeof member.userId === 'object' && member.userId._id) {
+            return {
+              _id: member.userId._id,
+              name: member.userId.name || member.name || '',
+              email: member.userId.email || member.email || '',
+              avatar: member.userId.avatar || member.avatar,
+              role: member.role
+            };
+          }
+          // Handle userId as string ID - use member's name/avatar directly
+          const userId = member.userId as string;
           return {
-            _id: userObj?._id || member.userId,
-            name: userObj?.name || member.name || 'Unknown User',
-            email: userObj?.email || member.email || '',
-            avatar: userObj?.avatar || member.avatar,
+            _id: userId,
+            name: member.name || '',
+            email: member.email || '',
+            avatar: member.avatar,
             role: member.role
           };
-        });
+        })
+        .filter((user): user is MentionableUser => !!user._id && !!user.name);
     } else if (activeContext === 'direct' && activeDirectConversation) {
       // For direct chat: only the conversation partner
       const partnerId = activeDirectConversation.participants.find(p => p._id !== user?._id);
-      if (partnerId) {
+      if (partnerId && partnerId.name) {
         return [{
           _id: partnerId._id,
           name: partnerId.name,

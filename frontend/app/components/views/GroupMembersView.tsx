@@ -410,29 +410,38 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
 
 
   const getMemberName = (member: GroupMember) => {
-    // Handle populated userId object
-    if (member.userId && typeof member.userId === 'object' && 'name' in member.userId) {
-      return (member.userId as any).name;
+    // Handle populated userId object - prioritize userId.name if it exists
+    if (member.userId && typeof member.userId === 'object' && member.userId._id) {
+      const userName = (member.userId as any).name;
+      if (userName) return userName;
+      // Fallback to member.name if userId.name doesn't exist
+      if (member.name) return member.name;
     }
-    // Handle direct name property
+    // Handle direct name property (when userId is a string)
     return member.name;
   };
 
   const getMemberEmail = (member: GroupMember) => {
-    // Handle populated userId object
-    if (member.userId && typeof member.userId === 'object' && 'email' in member.userId) {
-      return (member.userId as any).email;
+    // Handle populated userId object - prioritize userId.email if it exists
+    if (member.userId && typeof member.userId === 'object' && member.userId._id) {
+      const userEmail = (member.userId as any).email;
+      if (userEmail) return userEmail;
+      // Fallback to member.email if userId.email doesn't exist
+      if (member.email) return member.email;
     }
-    // Handle direct email property
+    // Handle direct email property (when userId is a string)
     return member.email;
   };
 
   const getMemberAvatar = (member: GroupMember) => {
-    // Handle populated userId object
-    if (member.userId && typeof member.userId === 'object' && 'avatar' in member.userId) {
-      return (member.userId as any).avatar;
+    // Handle populated userId object - prioritize userId.avatar if it exists
+    if (member.userId && typeof member.userId === 'object' && member.userId._id) {
+      const userAvatar = (member.userId as any).avatar;
+      if (userAvatar) return userAvatar;
+      // Fallback to member.avatar if userId.avatar doesn't exist
+      if (member.avatar) return member.avatar;
     }
-    // Handle direct avatar property
+    // Handle direct avatar property (when userId is a string)
     return member.avatar;
   };
 

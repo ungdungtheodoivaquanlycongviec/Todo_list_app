@@ -195,9 +195,20 @@ export default function TaskContextMenu({ x, y, task, onAction, onClose }: TaskC
         ? assignment.userId
         : assignment.userId._id;
 
-      const userName = typeof assignment.userId === 'object'
-        ? assignment.userId.name
-        : 'Unknown User';
+      let userName = 'Unknown User';
+      if (typeof assignment.userId === 'object' && assignment.userId) {
+        userName = assignment.userId.name || 'Unknown User';
+      } else if (typeof assignment.userId === 'string') {
+        // Try to resolve from group members
+        const member = currentGroup?.members?.find((m: any) => {
+          const memberId = typeof m.userId === 'object' ? m.userId?._id : m.userId;
+          return memberId === assignment.userId;
+        });
+        if (member) {
+          const userObj = typeof member.userId === 'object' ? member.userId : null;
+          userName = userObj?.name || member.name || 'Unknown User';
+        }
+      }
 
       // Find the member in the current group to check their role
       const groupMember = currentGroup?.members?.find(m => {

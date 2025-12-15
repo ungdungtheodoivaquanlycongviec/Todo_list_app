@@ -194,22 +194,49 @@ export default function TasksView() {
         let userData;
 
         if (typeof assignment.userId === 'string') {
-          // Nếu userId là string ID, tạo minimal user object
-          userData = {
-            _id: assignment.userId,
-            name: 'Loading...', // Tạm thời
-            email: '',
-            avatar: undefined
-          };
-
           // Nếu là currentUser, sử dụng thông tin currentUser
           if (currentUser && assignment.userId === currentUser._id) {
             userData = {
               _id: currentUser._id,
               name: currentUser.name || t('tasks.you'),
-              email: currentUser.email,
+              email: currentUser.email || '',
               avatar: currentUser.avatar
             };
+          } else {
+            // Try to resolve from group members
+            const member = currentGroup?.members?.find((m: any) => {
+              const memberId = typeof m.userId === 'object' ? m.userId?._id : m.userId;
+              return memberId === assignment.userId;
+            });
+            
+            if (member) {
+              const userObj = typeof member.userId === 'object' ? member.userId : null;
+              const userName = userObj?.name || member.name;
+              if (userName) {
+                userData = {
+                  _id: assignment.userId,
+                  name: userName,
+                  email: userObj?.email || member.email || '',
+                  avatar: userObj?.avatar || member.avatar
+                };
+              } else {
+                // Fallback if no name found
+                userData = {
+                  _id: assignment.userId,
+                  name: 'Loading...',
+                  email: '',
+                  avatar: undefined
+                };
+              }
+            } else {
+              // Fallback if not found in members
+              userData = {
+                _id: assignment.userId,
+                name: 'Loading...',
+                email: '',
+                avatar: undefined
+              };
+            }
           }
         } else if (assignment.userId && typeof assignment.userId === 'object') {
           // Nếu userId là object (đã populated)
