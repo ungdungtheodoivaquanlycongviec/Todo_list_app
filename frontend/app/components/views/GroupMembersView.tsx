@@ -35,6 +35,7 @@ import { FolderAccessModal } from '../folders/FolderAccessModal';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { TranslationKey } from '../../i18n/translations';
 import { useRegional } from '../../contexts/RegionalContext';
+import { useConfirm } from '../../contexts/ConfirmContext';
 
 interface GroupMembersViewProps {
   groupId?: string;
@@ -45,6 +46,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   const { folders, refreshFolders } = useFolder();
   const { t } = useLanguage();
   const { formatTime } = useRegional();
+  const confirmDialog = useConfirm();
   const [group, setGroup] = useState<Group | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -271,12 +273,14 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
       setFolderModalOpen(false);
       setActiveFolderForAssignment(null);
     } catch (err: unknown) {
-      const error = err as Error & { blockedUsers?: Array<{
-        userId: string;
-        userName: string;
-        userEmail: string;
-        tasks: Array<{ taskId: string; taskTitle: string; taskStatus: string }>;
-      }> };
+      const error = err as Error & {
+        blockedUsers?: Array<{
+          userId: string;
+          userName: string;
+          userEmail: string;
+          tasks: Array<{ taskId: string; taskTitle: string; taskStatus: string }>;
+        }>
+      };
       setFolderModalError(error.message || 'Không thể cập nhật truy cập folder');
       if (error.blockedUsers && Array.isArray(error.blockedUsers)) {
         setFolderBlockedUsers(error.blockedUsers);
@@ -289,7 +293,14 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   const handleRemoveMember = async (memberId: string, memberName: string) => {
     if (!targetGroupId) return;
 
-    const confirmed = window.confirm(`Are you sure you want to remove ${memberName} from this group?`);
+    const confirmed = await confirmDialog.confirm({
+      title: 'Xóa thành viên',
+      message: `Bạn có chắc chắn muốn xóa ${memberName} khỏi nhóm này không?`,
+      confirmText: 'Xóa',
+      cancelText: 'Hủy',
+      variant: 'danger',
+      icon: 'delete'
+    });
     if (!confirmed) return;
 
     try {

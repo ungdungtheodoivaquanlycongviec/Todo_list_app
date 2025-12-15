@@ -32,12 +32,16 @@ import {
 } from 'lucide-react';
 import MentionInput, { MentionableUser, parseMentions } from '../common/MentionInput';
 import MentionHighlight from '../common/MentionHighlight';
+import { useToast } from '../../contexts/ToastContext';
+import { useConfirm } from '../../contexts/ConfirmContext';
 
 export default function ChatView() {
   const { user, currentGroup } = useAuth();
   const { t } = useLanguage();
   const { formatTime } = useRegional();
   const { socket, isConnected } = useSocket();
+  const toast = useToast();
+  const confirmDialog = useConfirm();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [message, setMessage] = useState('');
@@ -90,7 +94,7 @@ export default function ChatView() {
       setMessages(result.messages);
     } catch (error) {
       console.error('Error loading messages:', error);
-      alert('Failed to load messages: ' + (error as Error).message);
+      toast.showError((error as Error).message, 'Lỗi tải tin nhắn');
     } finally {
       setMessagesLoading(false);
     }
@@ -129,7 +133,7 @@ export default function ChatView() {
       }
     } catch (error) {
       console.error('Error loading direct messages:', error);
-      alert('Failed to load messages: ' + (error as Error).message);
+      toast.showError((error as Error).message, 'Lỗi tải tin nhắn');
     } finally {
       setMessagesLoading(false);
     }
@@ -761,7 +765,7 @@ export default function ChatView() {
           }
         } catch (uploadError) {
           console.error('Error uploading attachment:', uploadError);
-          alert('Failed to upload attachment: ' + (uploadError as Error).message);
+          toast.showError((uploadError as Error).message, 'Lỗi tải tệp lên');
           setUploading(false);
           return;
         }
@@ -779,7 +783,7 @@ export default function ChatView() {
           },
           (response: any) => {
             if (!response.success) {
-              alert('Failed to send message: ' + response.error);
+              toast.showError(response.error, 'Lỗi gửi tin nhắn');
             } else {
               setMessage('');
               setReplyingTo(null);
@@ -801,7 +805,7 @@ export default function ChatView() {
           },
           (response: any) => {
             if (!response.success) {
-              alert('Failed to send message: ' + response.error);
+              toast.showError(response.error, 'Lỗi gửi tin nhắn');
             } else {
               setMessage('');
               setReplyingTo(null);
@@ -814,7 +818,7 @@ export default function ChatView() {
       }
     } catch (error) {
       console.error('[ChatView] Error sending message:', error);
-      alert('Failed to send message: ' + (error as Error).message);
+      toast.showError((error as Error).message, 'Lỗi gửi tin nhắn');
       setUploading(false);
     }
   };
@@ -878,7 +882,7 @@ export default function ChatView() {
         { messageId, emoji },
         (response: any) => {
           if (!response.success) {
-            alert('Failed to add reaction: ' + response.error);
+            toast.showError(response.error, 'Lỗi thêm reaction');
           }
         }
       );
@@ -888,7 +892,7 @@ export default function ChatView() {
         { messageId, emoji },
         (response: any) => {
           if (!response.success) {
-            alert('Failed to add reaction: ' + response.error);
+            toast.showError(response.error, 'Lỗi thêm reaction');
           }
         }
       );
@@ -897,19 +901,27 @@ export default function ChatView() {
 
   // Delete message
   const handleDelete = async (messageId: string) => {
-    if (!confirm(t('chat.deleteConfirm'))) return;
+    const confirmed = await confirmDialog.confirm({
+      title: 'Xóa tin nhắn',
+      message: t('chat.deleteConfirm') || 'Bạn có chắc chắn muốn xóa tin nhắn này không?',
+      confirmText: 'Xóa',
+      cancelText: 'Hủy',
+      variant: 'danger',
+      icon: 'delete'
+    });
+    if (!confirmed) return;
     if (!socket) return;
 
     if (activeContext === 'group') {
       socket.emit('chat:delete', { messageId }, (response: any) => {
         if (!response.success) {
-          alert('Failed to delete message: ' + response.error);
+          toast.showError(response.error, 'Lỗi xóa tin nhắn');
         }
       });
     } else if (activeContext === 'direct') {
       socket.emit('direct:delete', { messageId }, (response: any) => {
         if (!response.success) {
-          alert('Failed to delete message: ' + response.error);
+          toast.showError(response.error, 'Lỗi xóa tin nhắn');
         }
       });
     }
@@ -922,13 +934,13 @@ export default function ChatView() {
     if (activeContext === 'group') {
       socket.emit('chat:edit', { messageId, content: newContent.trim() }, (response: any) => {
         if (!response.success) {
-          alert('Failed to edit message: ' + response.error);
+          toast.showError(response.error, 'Lỗi chỉnh sửa tin nhắn');
         }
       });
     } else if (activeContext === 'direct') {
       socket.emit('direct:edit', { messageId, content: newContent.trim() }, (response: any) => {
         if (!response.success) {
-          alert('Failed to edit message: ' + response.error);
+          toast.showError(response.error, 'Lỗi chỉnh sửa tin nhắn');
         }
       });
     }
@@ -1001,7 +1013,7 @@ export default function ChatView() {
       setDirectSearch('');
     } catch (error) {
       console.error('Error starting direct conversation:', error);
-      alert('Failed to start conversation: ' + (error as Error).message);
+      toast.showError((error as Error).message, 'Lỗi bắt đầu cuộc trò chuyện');
     } finally {
       setStartingDirectChat(false);
     }

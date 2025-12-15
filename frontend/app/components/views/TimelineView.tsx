@@ -32,6 +32,7 @@ import { useFolder } from '../../contexts/FolderContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useRegional } from '../../contexts/RegionalContext';
 import { monthNames, dayNamesShort } from '../../i18n/dateLocales';
+import { useToast } from '../../contexts/ToastContext';
 
 type ZoomLevel = 'days' | 'weeks' | 'months' | 'quarters';
 type GroupBy = 'none' | 'folder' | 'category' | 'assignee' | 'status';
@@ -49,6 +50,7 @@ export default function TimelineView() {
   const { currentFolder } = useFolder();
   const { t, language } = useLanguage();
   const { formatDate, getWeekStartDay } = useRegional();
+  const toast = useToast();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -520,7 +522,7 @@ export default function TimelineView() {
         ));
       } catch (error) {
         console.error('Error updating task:', error);
-        alert('Failed to update task: ' + (error instanceof Error ? error.message : 'Unknown error'));
+        toast.showError(error instanceof Error ? error.message : 'Unknown error', 'Lỗi cập nhật task');
       }
     }
   }, [draggedTask, draggedTaskPosition]);
@@ -647,7 +649,7 @@ export default function TimelineView() {
         }
       } catch (error) {
         console.error('Error resizing task:', error);
-        alert('Failed to resize task: ' + (error instanceof Error ? error.message : 'Unknown error'));
+        toast.showError(error instanceof Error ? error.message : 'Unknown error', 'Lỗi thay đổi kích thước task');
       }
     }
   }, [resizingTask, resizedTaskPosition, tasks]);
@@ -1209,7 +1211,7 @@ export default function TimelineView() {
               await fetchTasks();
             } catch (error) {
               console.error("Error creating task:", error);
-              alert("Failed to create task: " + (error instanceof Error ? error.message : 'Unknown error'));
+              toast.showError(error instanceof Error ? error.message : 'Unknown error', 'Lỗi tạo task');
             }
           }}
           currentUser={currentUser}
