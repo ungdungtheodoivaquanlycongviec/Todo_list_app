@@ -343,6 +343,17 @@ export const translations = {
     'chat.copied': 'Copied!',
     'chat.openInNewTab': 'Open in new tab',
 
+    // Mentions
+    'mention.typeToMention': 'Type @ to mention someone',
+    'mention.noUsersFound': 'No users found',
+    'mention.mentionUser': 'Mention user',
+    'mention.mentionRole': 'Mention role',
+    'mention.role': 'Role',
+    'mention.mentionedYou': '@{{name}} mentioned you',
+    'mention.mentionedYouInComment': '@{{name}} mentioned you in a comment',
+    'mention.mentionedYouInGroupChat': '@{{name}} mentioned you in group chat',
+    'mention.mentionedYouInDirectChat': '@{{name}} mentioned you in a direct message',
+
     // Task Context Menu
     'taskContextMenu.complete': 'Complete task',
     'taskContextMenu.startTimer': 'Start timer',
@@ -1087,6 +1098,17 @@ export const translations = {
     'chat.copy': 'Sao chép',
     'chat.copied': 'Đã sao chép!',
     'chat.openInNewTab': 'Mở trong tab mới',
+
+    // Mentions
+    'mention.typeToMention': 'Gõ @ để đề cập ai đó',
+    'mention.noUsersFound': 'Không tìm thấy người dùng',
+    'mention.mentionUser': 'Đề cập người dùng',
+    'mention.mentionRole': 'Đề cập vai trò',
+    'mention.role': 'Vai trò',
+    'mention.mentionedYou': '@{{name}} đã đề cập bạn',
+    'mention.mentionedYouInComment': '@{{name}} đã đề cập bạn trong bình luận',
+    'mention.mentionedYouInGroupChat': '@{{name}} đã đề cập bạn trong chat nhóm',
+    'mention.mentionedYouInDirectChat': '@{{name}} đã đề cập bạn trong tin nhắn riêng',
 
     // Task Context Menu
     'taskContextMenu.complete': 'Hoàn thành',

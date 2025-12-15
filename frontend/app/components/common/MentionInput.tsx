@@ -31,12 +31,12 @@ interface MentionSuggestion {
     avatar?: string
 }
 
-// Parse mentions from content - format: @[display name](id)
+// Parse mentions from content - supports both @[name](id) and @name formats
 export const parseMentions = (content: string): { userIds: string[], roleNames: string[] } => {
     const userIds: string[] = []
     const roleNames: string[] = []
 
-    // Match @[display name](id) pattern
+    // Match @[display name](id) pattern (legacy format)
     const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g
     let match
 
@@ -53,6 +53,49 @@ export const parseMentions = (content: string): { userIds: string[], roleNames: 
     return { userIds, roleNames }
 }
 
+// Parse @name mentions and resolve to user IDs by matching against mentionable users
+export const parseMentionsByName = (
+    content: string,
+    mentionableUsers: MentionableUser[],
+    mentionableRoles: string[] = []
+): { userIds: string[], roleNames: string[] } => {
+    const userIds: string[] = []
+    const roleNames: string[] = []
+
+    if (!content) return { userIds, roleNames }
+
+    // First check for @[name](id) format (legacy)
+    const legacyResult = parseMentions(content)
+    if (legacyResult.userIds.length > 0 || legacyResult.roleNames.length > 0) {
+        return legacyResult
+    }
+
+    // Match @name pattern (name can contain spaces until next @ or end of string)
+    // Look for @followed by text that matches a known user/role name
+    for (const user of mentionableUsers) {
+        const escapedName = user.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const regex = new RegExp(`@${escapedName}(?:\\s|$|,|\\.|!|\\?)`, 'gi')
+        if (regex.test(content)) {
+            if (!userIds.includes(user._id)) {
+                userIds.push(user._id)
+            }
+        }
+    }
+
+    for (const role of mentionableRoles) {
+        const displayRole = role.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+        const escapedRole = displayRole.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const regex = new RegExp(`@${escapedRole}(?:\\s|$|,|\\.|!|\\?)`, 'gi')
+        if (regex.test(content)) {
+            if (!roleNames.includes(role)) {
+                roleNames.push(role)
+            }
+        }
+    }
+
+    return { userIds, roleNames }
+}
+
 // Convert mention format to plain text for display
 export const mentionsToPlainText = (content: string): string => {
     return content.replace(/@\[([^\]]+)\]\([^)]+\)/g, '@$1')
@@ -60,8 +103,9 @@ export const mentionsToPlainText = (content: string): string => {
 
 // Check if content contains mentions
 export const hasMentions = (content: string): boolean => {
-    return /@\[([^\]]+)\]\([^)]+\)/.test(content)
+    return /@\[([^\]]+)\]\([^)]+\)/.test(content) || /@\w/.test(content)
 }
+
 
 export default function MentionInput({
     value,
@@ -84,8 +128,17 @@ export default function MentionInput({
     const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null)
     const suggestionsRef = useRef<HTMLDivElement>(null)
 
-    // Build all suggestions (users + roles)
+
+    // Build all suggestions (users + roles + @everyone)
     const getAllSuggestions = useCallback((): MentionSuggestion[] => {
+        // Add @everyone as the first option
+        const everyoneSuggestion: MentionSuggestion = {
+            type: 'role',
+            id: 'everyone',
+            display: 'everyone',
+            subtext: 'Notify all members'
+        }
+
         const userSuggestions: MentionSuggestion[] = mentionableUsers.map(user => ({
             type: 'user',
             id: user._id,
@@ -101,7 +154,7 @@ export default function MentionInput({
             subtext: 'Role'
         }))
 
-        return [...userSuggestions, ...roleSuggestions]
+        return [everyoneSuggestion, ...userSuggestions, ...roleSuggestions]
     }, [mentionableUsers, mentionableRoles])
 
     // Filter suggestions based on query
@@ -169,8 +222,9 @@ export default function MentionInput({
         const before = value.slice(0, mentionStartIndex)
         const after = value.slice(cursorPos)
 
-        // Format: @[display name](id)
-        const mention = `@[${suggestion.display}](${suggestion.id}) `
+        // Format: Just @name for cleaner display
+        // The mention ID is tracked separately via parseMentions matching mentionableUsers
+        const mention = `@${suggestion.display} `
         const newValue = before + mention + after
 
         onChange(newValue)

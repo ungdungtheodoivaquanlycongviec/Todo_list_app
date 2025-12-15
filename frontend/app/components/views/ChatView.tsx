@@ -1560,7 +1560,7 @@ function MessageItem({
             <div
               className={`relative rounded-2xl px-4 py-2 ${isOwn
                 ? 'bg-blue-500 text-white'
-                : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
+                : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 shadow-sm'
                 }`}
             >
               {message.deletedAt ? (
@@ -1654,6 +1654,7 @@ function MessageItem({
                         content={message.content}
                         mentions={message.mentions?.users || message.mentions || []}
                         currentUserId={currentUserId}
+                        isOwnMessage={isOwn}
                         className="text-sm"
                       />
                     )
