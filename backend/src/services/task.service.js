@@ -647,6 +647,19 @@ class TaskService {
       return null;
     }
 
+    // Validate dueDate: must be >= createdAt
+    if (updateData.dueDate !== undefined && updateData.dueDate !== null) {
+      const newDueDate = new Date(updateData.dueDate);
+      const taskCreatedAt = new Date(taskDoc.createdAt);
+      // Normalize to start of day for comparison
+      const dueDateStart = new Date(newDueDate.getFullYear(), newDueDate.getMonth(), newDueDate.getDate());
+      const createdAtStart = new Date(taskCreatedAt.getFullYear(), taskCreatedAt.getMonth(), taskCreatedAt.getDate());
+
+      if (dueDateStart < createdAtStart) {
+        raiseError('Due date cannot be before the task creation date', HTTP_STATUS.BAD_REQUEST);
+      }
+    }
+
     const { group: currentGroup, role: initialRole } = await ensureTaskWriteAccess(taskDoc, requesterId);
 
     const requesterIdStr = normalizeId(requesterId);

@@ -36,7 +36,7 @@ import { monthNames, dayNamesShort } from '../../i18n/dateLocales';
 type ZoomLevel = 'days' | 'weeks' | 'months' | 'quarters';
 type GroupBy = 'none' | 'folder' | 'category' | 'assignee' | 'status';
 
-interface TimelineTask extends Task {
+interface TimelineTask extends Omit<Task, 'startDate'> {
   startDate: Date;
   endDate: Date;
   left: number;
@@ -302,7 +302,8 @@ export default function TimelineView() {
     let taskEnd: Date;
 
     const getFallbackStart = () => {
-      // Use createdAt as start date for timeline display
+      // Use startDate (user-editable) with fallback to createdAt for timeline display
+      if (task.startDate) return new Date(task.startDate);
       if (task.createdAt) return new Date(task.createdAt);
       if (task.dueDate) return new Date(task.dueDate);
       return new Date();
@@ -372,8 +373,8 @@ export default function TimelineView() {
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         const canPlace = row.every(existingTask =>
-          task.endDate < existingTask.startDate ||
-          task.startDate > existingTask.endDate
+          task.endDate <= existingTask.startDate ||
+          task.startDate >= existingTask.endDate
         );
 
         if (canPlace) {
@@ -565,7 +566,10 @@ export default function TimelineView() {
           : new Date(fallbackStart.getTime() + 24 * 60 * 60 * 1000);
 
         if (resizeType === 'start') {
-          if (newDate <= fallbackDue) {
+          // Only allow moving start date to the past (not future)
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          if (newDate <= fallbackDue && newDate <= today) {
             setResizedTaskPosition(prev => ({
               startTime: newDate.toISOString(),
               dueDate: prev?.dueDate
@@ -615,21 +619,32 @@ export default function TimelineView() {
     if (finalPosition && originalTask) {
       try {
         const updateData: any = {};
-        // Note: Only updating dueDate since startTime was removed from Task model
-        if (finalPosition.dueDate) {
-          updateData.dueDate = finalPosition.dueDate;
-        } else {
-          updateData.dueDate = originalTask.dueDate || undefined;
+
+        // Update startDate if start was resized (only for past dates)
+        if (finalPosition.startTime) {
+          const newStartDate = new Date(finalPosition.startTime);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          if (newStartDate <= today) {
+            updateData.startDate = finalPosition.startTime;
+          }
         }
 
-        await taskService.updateTask(taskId, updateData);
+        // Update dueDate if end was resized
+        if (finalPosition.dueDate) {
+          updateData.dueDate = finalPosition.dueDate;
+        }
 
-        // Update local state instead of refetching to preserve scroll position
-        setTasks(prev => prev.map(t =>
-          t._id === taskId
-            ? { ...t, dueDate: updateData.dueDate }
-            : t
-        ));
+        if (Object.keys(updateData).length > 0) {
+          await taskService.updateTask(taskId, updateData);
+
+          // Update local state instead of refetching to preserve scroll position
+          setTasks(prev => prev.map(t =>
+            t._id === taskId
+              ? { ...t, ...(updateData.startDate && { startDate: updateData.startDate }), ...(updateData.dueDate && { dueDate: updateData.dueDate }) }
+              : t
+          ));
+        }
       } catch (error) {
         console.error('Error resizing task:', error);
         alert('Failed to resize task: ' + (error instanceof Error ? error.message : 'Unknown error'));
@@ -1080,7 +1095,7 @@ export default function TimelineView() {
                       return (
                         <div
                           key={task._id}
-                          className="absolute cursor-move group"
+                          className="absolute cursor-pointer group"
                           style={{
                             left: `${200 + task.left}px`,
                             top: `${top}px`,
@@ -1093,7 +1108,8 @@ export default function TimelineView() {
                             if ((e.target as HTMLElement).closest('.resize-handle')) {
                               return;
                             }
-                            handleDragStart(e, task._id);
+                            // Drag functionality disabled - only resize handles can be used
+                            // handleDragStart(e, task._id);
                           }}
                           onClick={(e) => {
                             // Only open detail if we didn't drag or resize
@@ -1119,14 +1135,8 @@ export default function TimelineView() {
                               </span>
                             </div>
 
-                            {/* Resize Handles */}
-                            <div
-                              className="resize-handle absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white opacity-0 group-hover:opacity-30 hover:opacity-50 rounded-l-md"
-                              onMouseDown={(e) => {
-                                e.stopPropagation();
-                                handleResizeStart(e, task._id, 'start');
-                              }}
-                            />
+                            {/* Resize Handle - Only for end date (right side) */}
+                            {/* Left resize handle removed to prevent changing start/createdAt date */}
                             <div
                               className="resize-handle absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white opacity-0 group-hover:opacity-30 hover:opacity-50 rounded-r-md"
                               onMouseDown={(e) => {
