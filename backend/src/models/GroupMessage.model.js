@@ -92,6 +92,16 @@ const groupMessageSchema = new mongoose.Schema(
       ref: 'GroupMessage',
       default: null
     },
+    mentions: {
+      users: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      }],
+      roles: [{
+        type: String,
+        trim: true
+      }]
+    },
     editedAt: {
       type: Date,
       default: null

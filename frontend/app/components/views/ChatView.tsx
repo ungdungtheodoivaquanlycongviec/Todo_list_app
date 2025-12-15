@@ -30,6 +30,8 @@ import {
   Video,
   Phone
 } from 'lucide-react';
+import MentionInput, { MentionableUser, parseMentions } from '../common/MentionInput';
+import MentionHighlight from '../common/MentionHighlight';
 
 export default function ChatView() {
   const { user, currentGroup } = useAuth();
@@ -926,6 +928,52 @@ export default function ChatView() {
     return formatTime(date);
   };
 
+  // Helper to get mentionable users based on chat context
+  const getMentionableUsers = useCallback((): MentionableUser[] => {
+    if (activeContext === 'group' && currentGroup) {
+      // For group chat: get all group members except current user
+      return currentGroup.members
+        .filter((member: any) => {
+          const memberId = typeof member.userId === 'object' ? member.userId._id : member.userId;
+          return memberId !== user?._id;
+        })
+        .map((member: any) => {
+          const userObj = typeof member.userId === 'object' ? member.userId : null;
+          return {
+            _id: userObj?._id || member.userId,
+            name: userObj?.name || member.name || 'Unknown User',
+            email: userObj?.email || member.email || '',
+            avatar: userObj?.avatar || member.avatar,
+            role: member.role
+          };
+        });
+    } else if (activeContext === 'direct' && activeDirectConversation) {
+      // For direct chat: only the conversation partner
+      const partnerId = activeDirectConversation.participants.find(p => p._id !== user?._id);
+      if (partnerId) {
+        return [{
+          _id: partnerId._id,
+          name: partnerId.name,
+          email: partnerId.email || '',
+          avatar: partnerId.avatar
+        }];
+      }
+    }
+    return [];
+  }, [activeContext, currentGroup, activeDirectConversation, user?._id]);
+
+  // Get mentionable roles for group chat
+  const getMentionableRoles = useCallback((): string[] => {
+    if (activeContext === 'group' && currentGroup) {
+      const roles = new Set<string>();
+      currentGroup.members.forEach((member: any) => {
+        if (member.role) roles.add(member.role);
+      });
+      return Array.from(roles);
+    }
+    return [];
+  }, [activeContext, currentGroup]);
+
   const handleStartDirectConversation = async () => {
     if (!directSearch.trim()) return;
     try {
@@ -977,8 +1025,8 @@ export default function ChatView() {
               setHasGroupUnread(false);
             }}
             className={`w-full flex items-center gap-3 rounded-xl border p-3 transition ${activeContext === 'group'
-                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-200'
-                : 'border-transparent bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-800 dark:text-gray-200'
+              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-200'
+              : 'border-transparent bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-800 dark:text-gray-200'
               }`}
           >
             <div className="relative">
@@ -1073,8 +1121,8 @@ export default function ChatView() {
                       });
                     }}
                     className={`w-full flex items-start gap-3 px-4 py-3 text-left transition ${isActive
-                        ? 'bg-blue-50 dark:bg-blue-900/20'
-                        : 'hover:bg-gray-100 dark:hover:bg-gray-800/60'
+                      ? 'bg-blue-50 dark:bg-blue-900/20'
+                      : 'hover:bg-gray-100 dark:hover:bg-gray-800/60'
                       }`}
                   >
                     <div className="relative w-10 h-10">
@@ -1267,24 +1315,21 @@ export default function ChatView() {
             <div className="border-t border-gray-200 dark:border-gray-700 p-4">
               <div className="flex items-center gap-2">
                 <div className="flex-1 relative min-w-0">
-                  <textarea
+                  <MentionInput
                     value={message}
-                    onChange={(e) => {
-                      setMessage(e.target.value);
+                    onChange={(value) => {
+                      setMessage(value);
                       handleTyping();
                     }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSend();
-                      }
-                    }}
+                    onSubmit={handleSend}
                     placeholder={
                       activeContext === 'group'
                         ? t('chat.messageToGroup')
                         : t('chat.messageToDirect')
                     }
-                    rows={1}
+                    mentionableUsers={getMentionableUsers()}
+                    mentionableRoles={activeContext === 'group' ? getMentionableRoles() : undefined}
+                    disabled={uploading}
                     className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                   />
                   {showEmojiPicker && (
@@ -1514,8 +1559,8 @@ function MessageItem({
             {/* Message bubble */}
             <div
               className={`relative rounded-2xl px-4 py-2 ${isOwn
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
                 }`}
             >
               {message.deletedAt ? (
@@ -1544,8 +1589,8 @@ function MessageItem({
                               target="_blank"
                               rel="noopener noreferrer"
                               className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${isOwn
-                                  ? 'bg-blue-400/30 border-blue-300/30 hover:bg-blue-400/40'
-                                  : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+                                ? 'bg-blue-400/30 border-blue-300/30 hover:bg-blue-400/40'
+                                : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
                                 }`}
                             >
                               <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isOwn ? 'bg-blue-300/30' : 'bg-gray-100 dark:bg-gray-600'
@@ -1574,8 +1619,8 @@ function MessageItem({
                         onChange={(e) => setEditContent(e.target.value)}
                         rows={3}
                         className={`w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${isOwn
-                            ? 'bg-blue-400 border-blue-300 text-white placeholder-blue-200'
-                            : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100'
+                          ? 'bg-blue-400 border-blue-300 text-white placeholder-blue-200'
+                          : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100'
                           }`}
                         autoFocus
                       />
@@ -1605,7 +1650,12 @@ function MessageItem({
                     </div>
                   ) : (
                     message.content && (
-                      <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                      <MentionHighlight
+                        content={message.content}
+                        mentions={message.mentions?.users || message.mentions || []}
+                        currentUserId={currentUserId}
+                        className="text-sm"
+                      />
                     )
                   )}
 
@@ -1762,8 +1812,8 @@ function MessageItem({
                     key={emoji}
                     onClick={() => onReaction(message._id, emoji)}
                     className={`inline-flex items-center gap-1 text-sm px-2 py-0.5 rounded-full border transition-colors ${hasReacted
-                        ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
-                        : 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                      ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
+                      : 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
                       }`}
                     title={reactions.map((r: any) => r.userId).join(', ')}
                   >

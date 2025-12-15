@@ -93,6 +93,10 @@ const directMessageSchema = new mongoose.Schema(
       ref: 'DirectMessage',
       default: null
     },
+    mentions: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    }],
     editedAt: {
       type: Date,
       default: null

@@ -243,9 +243,8 @@ const EVENT_REGISTRY = {
         payload.contextType === 'direct'
           ? 'New direct message'
           : `New message in ${payload.groupName || 'group'}`,
-      message: `${payload.senderName || 'A teammate'}: ${
-        payload.preview || 'New message just arrived'
-      }`,
+      message: `${payload.senderName || 'A teammate'}: ${payload.preview || 'New message just arrived'
+        }`,
       data: {
         contextType: payload.contextType,
         groupId: payload.groupId || null,
@@ -259,6 +258,48 @@ const EVENT_REGISTRY = {
       categories: ['chat'],
       channels: ['in_app']
     })
+  },
+  [NOTIFICATION_EVENTS.COMMENT_MENTION]: {
+    transform: payload => {
+      let title = 'You were mentioned';
+      let message = `${payload.mentionerName || 'Someone'} mentioned you`;
+
+      if (payload.contextType === 'task_comment') {
+        title = 'Mentioned in Comment';
+        message = `${payload.mentionerName || 'Someone'} mentioned you in a comment on "${payload.taskTitle || 'a task'}"`;
+      } else if (payload.contextType === 'group_chat') {
+        title = 'Mentioned in Group Chat';
+        message = `${payload.mentionerName || 'Someone'} mentioned you in ${payload.groupName || 'group chat'}`;
+      } else if (payload.contextType === 'direct_chat') {
+        title = 'Mentioned in Direct Message';
+        message = `${payload.mentionerName || 'Someone'} mentioned you in a direct message`;
+      }
+
+      return {
+        recipient: payload.recipientId,
+        sender: payload.senderId ?? null,
+        type: 'mention',
+        eventKey: NOTIFICATION_EVENTS.COMMENT_MENTION,
+        title,
+        message,
+        data: {
+          contextType: payload.contextType,
+          taskId: payload.taskId || null,
+          taskTitle: payload.taskTitle || null,
+          groupId: payload.groupId || null,
+          groupName: payload.groupName || null,
+          conversationId: payload.conversationId || null,
+          messageId: payload.messageId || null,
+          commentId: payload.commentId || null,
+          preview: payload.preview || null
+        },
+        metadata: {
+          mentionerName: payload.mentionerName || null
+        },
+        categories: payload.contextType === 'task_comment' ? ['task'] : ['chat'],
+        channels: ['in_app']
+      };
+    }
   }
 };
 
@@ -487,6 +528,36 @@ const notifyChatMessage = ({
   });
 };
 
+const notifyMention = ({
+  recipientId,
+  senderId,
+  mentionerName,
+  contextType,
+  taskId,
+  taskTitle,
+  groupId,
+  groupName,
+  conversationId,
+  messageId,
+  commentId,
+  preview
+}) => {
+  return publishNotification(NOTIFICATION_EVENTS.COMMENT_MENTION, {
+    recipientId,
+    senderId,
+    mentionerName,
+    contextType,
+    taskId,
+    taskTitle,
+    groupId,
+    groupName,
+    conversationId,
+    messageId,
+    commentId,
+    preview
+  });
+};
+
 module.exports = {
   EVENT_REGISTRY,
   publishNotification,
@@ -501,5 +572,6 @@ module.exports = {
   notifyTaskCompleted,
   notifyCommentAdded,
   notifyTaskDueSoon,
-  notifyChatMessage
+  notifyChatMessage,
+  notifyMention
 };

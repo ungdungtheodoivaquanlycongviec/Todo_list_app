@@ -33,6 +33,8 @@ import { useLanguage } from "../../../contexts/LanguageContext"
 import { useRegional } from "../../../contexts/RegionalContext"
 import { useTimer, useTimerElapsed } from "../../../contexts/TimerContext"
 import EstimatedTimePicker from "./EstimatedTimePicker"
+import MentionInput, { MentionableUser, parseMentions } from "../../common/MentionInput"
+import MentionHighlight from "../../common/MentionHighlight"
 
 interface MinimalUser {
   _id: string;
@@ -63,6 +65,7 @@ interface Comment {
   updatedAt?: string
   isEdited?: boolean
   attachment?: any
+  mentions?: string[]
 }
 
 interface TimeEntry {
@@ -256,6 +259,41 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       totalCount: assignees.length
     };
   };
+
+  // Helper to get mentionable users from task assignees
+  const getMentionableUsers = useCallback((taskData: Task | null): MentionableUser[] => {
+    if (!taskData || !taskData.assignedTo || taskData.assignedTo.length === 0) {
+      return [];
+    }
+
+    const users: MentionableUser[] = [];
+
+    (taskData.assignedTo as AssignedUser[]).forEach(assignment => {
+      if (!assignment || !assignment.userId) return;
+
+      if (typeof assignment.userId === 'string') {
+        // If current user matches, use their info
+        if (currentUser && assignment.userId === currentUser._id) {
+          users.push({
+            _id: currentUser._id,
+            name: currentUser.name || 'You',
+            email: currentUser.email,
+            avatar: currentUser.avatar || undefined
+          });
+        }
+      } else if (assignment.userId && typeof assignment.userId === 'object') {
+        const user = assignment.userId as MinimalUser;
+        users.push({
+          _id: user._id,
+          name: user.name || 'Unknown User',
+          email: user.email || '',
+          avatar: user.avatar
+        });
+      }
+    });
+
+    return users;
+  }, [currentUser]);
 
   // NEW: Assignee Section Component
   const AssigneeSection = ({ task }: { task: Task }) => {
@@ -1318,7 +1356,12 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
               </div>
             </div>
           ) : (
-            <p className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">{comment.content}</p>
+            <MentionHighlight
+              content={comment.content}
+              mentions={comment.mentions || []}
+              currentUserId={currentUser?._id}
+              className="text-sm text-gray-600 dark:text-gray-400"
+            />
           )}
 
           {comment.attachment && comment.attachment.url && comment.attachment.filename && (
@@ -2222,26 +2265,17 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
                           disabled={uploadingFiles}
                         />
                       </label>
-                      <textarea
-                        value={comment}
-                        onChange={(e) => setComment(e.target.value)}
-                        placeholder={t('taskDetail.typeMessage')}
-                        rows={1}
-                        className="flex-1 min-w-0 bg-transparent text-gray-900 dark:text-gray-100 text-sm focus:outline-none resize-none min-h-[24px] max-h-[80px] py-1"
-                        style={{ height: 'auto', overflowY: 'auto' }}
-                        onInput={(e) => {
-                          const target = e.target as HTMLTextAreaElement;
-                          target.style.height = 'auto';
-                          target.style.height = Math.min(target.scrollHeight, 80) + 'px';
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault()
-                            handleAddComment()
-                          }
-                        }}
-                        disabled={uploadingFiles}
-                      />
+                      <div className="flex-1 min-w-0">
+                        <MentionInput
+                          value={comment}
+                          onChange={setComment}
+                          onSubmit={handleAddComment}
+                          placeholder={t('taskDetail.typeMessage')}
+                          mentionableUsers={getMentionableUsers(task)}
+                          disabled={uploadingFiles}
+                          className="bg-transparent text-gray-900 dark:text-gray-100 text-sm focus:outline-none resize-none min-h-[24px] max-h-[80px] py-1 border-0 px-0"
+                        />
+                      </div>
                       <button
                         onClick={handleAddComment}
                         disabled={(!comment.trim() && !pendingAttachment) || uploadingFiles}
