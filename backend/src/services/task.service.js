@@ -542,6 +542,7 @@ class TaskService {
       .populate('comments.user', 'name email avatar')
       .populate('timeEntries.user', 'name email avatar')
       .populate('scheduledWork.user', 'name email avatar')
+      .populate('activeTimers.userId', 'name email avatar')
       .populate('groupId', 'name description');
     return task;
   }
@@ -673,6 +674,7 @@ class TaskService {
         .populate('createdBy', 'name email avatar')
         .populate('assignedTo.userId', 'name email avatar')
         .populate('comments.user', 'name email avatar')
+        .populate('activeTimers.userId', 'name email avatar')
         .populate('groupId', 'name description')
         .sort(sortOption)
         .skip(skip)
