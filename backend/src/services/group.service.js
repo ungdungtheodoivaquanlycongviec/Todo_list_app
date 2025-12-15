@@ -276,11 +276,11 @@ class GroupService {
     ]);
 
     // Separate groups into "My Groups" and "Shared with me"
-    const myGroups = allGroups.filter(group => 
+    const myGroups = allGroups.filter(group =>
       normalizeId(group.createdBy?._id || group.createdBy) === normalizeId(userId)
     );
-    
-    const sharedGroups = allGroups.filter(group => 
+
+    const sharedGroups = allGroups.filter(group =>
       normalizeId(group.createdBy?._id || group.createdBy) !== normalizeId(userId)
     );
 
@@ -432,7 +432,7 @@ class GroupService {
 
     const groupData = group.toObject ? group.toObject() : group;
     const recipients = group.members.map(member => normalizeId(member.userId)).filter(Boolean);
-    
+
     await Group.findByIdAndDelete(groupId);
     await Task.updateMany({ groupId }, { $set: { groupId: null } });
 
@@ -774,6 +774,7 @@ class GroupService {
         .populate('createdBy', 'name email avatar')
         .populate('assignedTo.userId', 'name email avatar')
         .populate('comments.user', 'name email avatar')
+        .populate('activeTimers.userId', 'name email avatar')
         .populate('groupId', 'name description')
         .sort(sortOption)
         .skip(skip)
@@ -941,7 +942,7 @@ class GroupService {
     }
 
     // Check if inviter is admin of the group
-    const inviterMember = group.members.find(member => 
+    const inviterMember = group.members.find(member =>
       member.userId.toString() === inviterId.toString()
     );
 
@@ -953,9 +954,9 @@ class GroupService {
       };
     }
 
-  const inviterProfile = await User.findById(inviterId).select('name email');
+    const inviterProfile = await User.findById(inviterId).select('name email');
 
-  // Check if user with email exists
+    // Check if user with email exists
     const invitedUser = await User.findOne({ email, isActive: true });
     if (!invitedUser) {
       return {
@@ -966,7 +967,7 @@ class GroupService {
     }
 
     // Check if user is already a member
-    const isAlreadyMember = group.members.some(member => 
+    const isAlreadyMember = group.members.some(member =>
       member.userId.toString() === invitedUser._id.toString()
     );
 
@@ -997,7 +998,7 @@ class GroupService {
         inviterProfile?.name || null,
         role
       );
-      
+
       if (!notificationResult.success) {
         return {
           success: false,

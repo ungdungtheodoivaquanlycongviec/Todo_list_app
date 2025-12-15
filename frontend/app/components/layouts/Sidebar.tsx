@@ -26,6 +26,7 @@ import FolderContextMenu from '../folders/FolderContextMenu';
 import { FolderAccessModal } from '../folders/FolderAccessModal';
 import { useSocket } from '../../hooks/useSocket';
 import { useGroupChange } from '../../hooks/useGroupChange';
+import { useConfirm } from '../../contexts/ConfirmContext';
 
 // Create Group Modal Component
 interface CreateGroupModalProps {
@@ -276,6 +277,7 @@ export default function Sidebar() {
   const { t } = useLanguage();
   const { user, currentGroup, setCurrentGroup } = useAuth();
   const { socket, isConnected } = useSocket();
+  const confirmDialog = useConfirm();
   const userRole = currentGroup && user ? getMemberRole(currentGroup, user._id) : null;
   const canDeleteFolders = canManageFolders(userRole);
   const canEditFolders = canManageFolders(userRole);
@@ -717,7 +719,15 @@ export default function Sidebar() {
   };
 
   const handleDeleteFolder = async (groupId: string, folderId: string) => {
-    if (!confirm('Are you sure you want to delete this folder? This will also delete all tasks and notes in this folder.')) return;
+    const confirmed = await confirmDialog.confirm({
+      title: 'Xóa thư mục',
+      message: 'Bạn có chắc chắn muốn xóa thư mục này không? Tất cả các task và ghi chú trong thư mục này cũng sẽ bị xóa.',
+      confirmText: 'Xóa',
+      cancelText: 'Hủy',
+      variant: 'danger',
+      icon: 'delete'
+    });
+    if (!confirmed) return;
 
     setDeletingFolderId(folderId);
     setDeleteError(null);
@@ -820,12 +830,14 @@ export default function Sidebar() {
       setShowFolderAccessModal(false);
       setSelectedFolderForAccess(null);
     } catch (error: unknown) {
-      const err = error as Error & { blockedUsers?: Array<{
-        userId: string;
-        userName: string;
-        userEmail: string;
-        tasks: Array<{ taskId: string; taskTitle: string; taskStatus: string }>;
-      }> };
+      const err = error as Error & {
+        blockedUsers?: Array<{
+          userId: string;
+          userName: string;
+          userEmail: string;
+          tasks: Array<{ taskId: string; taskTitle: string; taskStatus: string }>;
+        }>
+      };
       setAssignError(err.message || 'Failed to assign folder members');
       if (err.blockedUsers && Array.isArray(err.blockedUsers)) {
         setBlockedUsers(err.blockedUsers);

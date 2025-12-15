@@ -84,6 +84,54 @@ const canViewFolder = (role, { isAssigned = false } = {}) => {
   return false;
 };
 
+/**
+ * Check if role is an admin role (Product Owner or PM)
+ * @param {String} role - User's role in the group
+ * @returns {Boolean}
+ */
+const isAdminRole = role =>
+  role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM;
+
+/**
+ * Check if user can edit a task (update, timer, repeat, attachments)
+ * Allowed: Admin roles, task creator, or assignees
+ * @param {Object} params
+ * @param {String} params.role - User's role in the group
+ * @param {Boolean} params.isCreator - Is user the task creator
+ * @param {Boolean} params.isAssignee - Is user assigned to the task
+ * @returns {Boolean}
+ */
+const canEditTask = ({ role, isCreator = false, isAssignee = false }) => {
+  if (isAdminRole(role)) {
+    return true;
+  }
+  if (isCreator) {
+    return true;
+  }
+  if (isAssignee) {
+    return true;
+  }
+  return false;
+};
+
+/**
+ * Check if user can delete a task
+ * Allowed: Admin roles or task creator only (NOT assignees)
+ * @param {Object} params
+ * @param {String} params.role - User's role in the group
+ * @param {Boolean} params.isCreator - Is user the task creator
+ * @returns {Boolean}
+ */
+const canDeleteTask = ({ role, isCreator = false }) => {
+  if (isAdminRole(role)) {
+    return true;
+  }
+  if (isCreator) {
+    return true;
+  }
+  return false;
+};
+
 module.exports = {
   READ_ONLY_ROLES,
   FOLDER_SCOPED_ROLES,
@@ -98,6 +146,9 @@ module.exports = {
   canManageGroupSettings,
   canWriteInFolder,
   canCreateTasks,
-  canViewFolder
+  canViewFolder,
+  isAdminRole,
+  canEditTask,
+  canDeleteTask
 };
 

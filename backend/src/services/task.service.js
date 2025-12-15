@@ -25,7 +25,9 @@ const {
   canViewFolder,
   canViewAllFolders,
   requiresFolderAssignment,
-  canAssignFolderMembers
+  canAssignFolderMembers,
+  canEditTask,
+  canDeleteTask
 } = require('../utils/groupPermissions');
 
 const normalizeId = value => {
@@ -298,6 +300,63 @@ const ensureTaskWriteAccess = async (taskDoc, requesterId) => {
 };
 
 /**
+ * Ensure user has permission to EDIT a task (update, timer, repeat, attachments)
+ * Allowed: Admin (PO/PM), task creator, or assignees
+ */
+const ensureTaskEditAccess = async (taskDoc, requesterId) => {
+  if (!taskDoc) {
+    raiseError(ERROR_MESSAGES.TASK_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  const groupId = normalizeId(taskDoc.groupId);
+  if (!groupId) {
+    raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  const { group, role } = await ensureGroupAccess(groupId, requesterId);
+  const normalizedRequesterId = normalizeId(requesterId);
+  const creatorId = normalizeId(taskDoc.createdBy);
+
+  const isCreator = normalizedRequesterId === creatorId;
+  const isAssignee = (taskDoc.assignedTo || []).some(
+    assignee => normalizeId(assignee.userId) === normalizedRequesterId
+  );
+
+  if (!canEditTask({ role, isCreator, isAssignee })) {
+    raiseError('Bạn không có quyền chỉnh sửa task này. Chỉ PM, Product Owner, người tạo task hoặc người được gán mới có thể chỉnh sửa.', HTTP_STATUS.FORBIDDEN);
+  }
+
+  return { group, role, isCreator, isAssignee };
+};
+
+/**
+ * Ensure user has permission to DELETE a task
+ * Allowed: Admin (PO/PM) or task creator only (NOT assignees)
+ */
+const ensureTaskDeleteAccess = async (taskDoc, requesterId) => {
+  if (!taskDoc) {
+    raiseError(ERROR_MESSAGES.TASK_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  const groupId = normalizeId(taskDoc.groupId);
+  if (!groupId) {
+    raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  const { group, role } = await ensureGroupAccess(groupId, requesterId);
+  const normalizedRequesterId = normalizeId(requesterId);
+  const creatorId = normalizeId(taskDoc.createdBy);
+
+  const isCreator = normalizedRequesterId === creatorId;
+
+  if (!canDeleteTask({ role, isCreator })) {
+    raiseError('Bạn không có quyền xóa task này. Chỉ PM, Product Owner hoặc người tạo task mới có thể xóa.', HTTP_STATUS.FORBIDDEN);
+  }
+
+  return { group, role, isCreator };
+};
+
+/**
  * Task Service
  * Chứa toàn bộ business logic liên quan đến Task
  * Controller chỉ gọi service, không xử lý logic
@@ -483,6 +542,7 @@ class TaskService {
       .populate('comments.user', 'name email avatar')
       .populate('timeEntries.user', 'name email avatar')
       .populate('scheduledWork.user', 'name email avatar')
+      .populate('activeTimers.userId', 'name email avatar')
       .populate('groupId', 'name description');
     return task;
   }
@@ -614,6 +674,7 @@ class TaskService {
         .populate('createdBy', 'name email avatar')
         .populate('assignedTo.userId', 'name email avatar')
         .populate('comments.user', 'name email avatar')
+        .populate('activeTimers.userId', 'name email avatar')
         .populate('groupId', 'name description')
         .sort(sortOption)
         .skip(skip)
@@ -647,7 +708,20 @@ class TaskService {
       return null;
     }
 
-    const { group: currentGroup, role: initialRole } = await ensureTaskWriteAccess(taskDoc, requesterId);
+    // Validate dueDate: must be >= createdAt
+    if (updateData.dueDate !== undefined && updateData.dueDate !== null) {
+      const newDueDate = new Date(updateData.dueDate);
+      const taskCreatedAt = new Date(taskDoc.createdAt);
+      // Normalize to start of day for comparison
+      const dueDateStart = new Date(newDueDate.getFullYear(), newDueDate.getMonth(), newDueDate.getDate());
+      const createdAtStart = new Date(taskCreatedAt.getFullYear(), taskCreatedAt.getMonth(), taskCreatedAt.getDate());
+
+      if (dueDateStart < createdAtStart) {
+        raiseError('Due date cannot be before the task creation date', HTTP_STATUS.BAD_REQUEST);
+      }
+    }
+
+    const { group: currentGroup, role: initialRole } = await ensureTaskEditAccess(taskDoc, requesterId);
 
     const requesterIdStr = normalizeId(requesterId);
     const creatorIdStr = normalizeId(taskDoc.createdBy);
@@ -846,7 +920,41 @@ class TaskService {
       return null;
     }
 
-    await ensureTaskWriteAccess(task, requesterId);
+    await ensureTaskDeleteAccess(task, requesterId);
+
+    // Clean up all Cloudinary files before deleting task
+    try {
+      // Delete task attachments from Cloudinary
+      if (task.attachments && task.attachments.length > 0) {
+        const attachmentDeletePromises = task.attachments
+          .filter(attachment => attachment.publicId)
+          .map(attachment =>
+            fileService.deleteFile(attachment.publicId, attachment.resourceType || 'raw')
+              .catch(err => {
+                console.error(`Error deleting task attachment ${attachment.publicId}:`, err);
+                // Continue with other deletions even if one fails
+              })
+          );
+        await Promise.all(attachmentDeletePromises);
+      }
+
+      // Delete comment attachments from Cloudinary
+      if (task.comments && task.comments.length > 0) {
+        const commentAttachmentDeletePromises = task.comments
+          .filter(comment => comment.attachment && comment.attachment.publicId)
+          .map(comment =>
+            fileService.deleteFile(comment.attachment.publicId, comment.attachment.resourceType || 'raw')
+              .catch(err => {
+                console.error(`Error deleting comment attachment ${comment.attachment.publicId}:`, err);
+                // Continue with other deletions even if one fails
+              })
+          );
+        await Promise.all(commentAttachmentDeletePromises);
+      }
+    } catch (error) {
+      console.error('Error cleaning up Cloudinary files during task deletion:', error);
+      // Continue with task deletion even if Cloudinary cleanup fails
+    }
 
     await Task.deleteOne({ _id: taskId });
 
@@ -2212,6 +2320,17 @@ class TaskService {
       };
     }
 
+    // Permission check: only admins, task creator, or assignees can upload attachments
+    try {
+      await ensureTaskEditAccess(task, userId);
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'Bạn không có quyền upload tệp đính kèm cho task này',
+        statusCode: error.statusCode || 403
+      };
+    }
+
     // FIXED: No restrictions - file uploads are available for all tasks regardless of due date
 
     // Check attachment limit (max 20 attachments per task)
@@ -2472,6 +2591,9 @@ class TaskService {
       return null;
     }
 
+    // Permission check: only admins, task creator, or assignees can use timer
+    await ensureTaskEditAccess(task, userId);
+
     // Cannot start timer for completed or incomplete tasks
     if (task.status === 'completed' || task.status === 'incomplete') {
       throw new Error('Cannot start timer for completed or incomplete tasks');
@@ -2543,6 +2665,9 @@ class TaskService {
     if (!task) {
       return null;
     }
+
+    // Permission check: only admins, task creator, or assignees can use timer
+    await ensureTaskEditAccess(task, userId);
 
     // Find the user's active timer
     const timerIndex = task.activeTimers?.findIndex(
@@ -2651,9 +2776,10 @@ class TaskService {
    * Set task repetition settings
    * @param {String} taskId - ID của task
    * @param {Object} repetitionSettings - Repetition settings
+   * @param {String} requesterId - ID of the user making the request
    * @returns {Promise<Object|null>} Task hoặc null
    */
-  async setTaskRepetition(taskId, repetitionSettings) {
+  async setTaskRepetition(taskId, repetitionSettings, requesterId = null) {
     if (!isValidObjectId(taskId)) {
       throw new Error(ERROR_MESSAGES.INVALID_TASK_ID);
     }
@@ -2662,6 +2788,9 @@ class TaskService {
     if (!task) {
       return null;
     }
+
+    // Permission check: only admins, task creator, or assignees can set repetition
+    await ensureTaskEditAccess(task, requesterId);
 
     // Update repetition settings
     task.repetition = {

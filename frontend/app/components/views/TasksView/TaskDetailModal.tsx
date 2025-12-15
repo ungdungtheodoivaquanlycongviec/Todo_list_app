@@ -32,6 +32,8 @@ import { getMemberRole, canAssignFolderMembers } from "../../../utils/groupRoleU
 import { useLanguage } from "../../../contexts/LanguageContext"
 import { useRegional } from "../../../contexts/RegionalContext"
 import { useTimer, useTimerElapsed } from "../../../contexts/TimerContext"
+import { useToast } from "../../../contexts/ToastContext"
+import { useConfirm } from "../../../contexts/ConfirmContext"
 import EstimatedTimePicker from "./EstimatedTimePicker"
 import MentionInput, { MentionableUser, parseMentions } from "../../common/MentionInput"
 import MentionHighlight from "../../common/MentionHighlight"
@@ -172,6 +174,8 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const { currentFolder } = useFolder()
   const { t } = useLanguage()
   const { formatDate, convertFromUserTimezone, convertToUserTimezone } = useRegional()
+  const toast = useToast()
+  const confirmDialog = useConfirm()
 
   // Check if user can assign to others
   const currentUserRole = currentGroup ? getMemberRole(currentGroup, currentUser?._id) : null
@@ -450,7 +454,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       syncTaskState(taskData)
     } catch (error) {
       console.error("Error fetching task details:", error)
-      alert("Failed to load task details: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi tải task")
     } finally {
       setLoading(false)
     }
@@ -530,7 +534,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
     } catch (error) {
       console.error(`Error updating ${field}:`, error)
-      alert(`Failed to update ${field}: ${(error as Error).message}`)
+      toast.showError((error as Error).message)
     } finally {
       setSaving(false)
     }
@@ -587,7 +591,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       setCustomStatusColor("#3B82F6")
     } catch (error) {
       console.error("Error adding custom status:", error)
-      alert("Failed to add custom status: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi thêm trạng thái")
     }
   }
 
@@ -610,7 +614,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       setSelectedMembers([])
     } catch (error) {
       console.error("Error assigning users:", error)
-      alert("Failed to assign users: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi gán người dùng")
     } finally {
       setSaving(false)
     }
@@ -627,7 +631,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       await fetchTaskDetails()
     } catch (error) {
       console.error("Error unassigning user:", error)
-      alert("Failed to unassign user: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi bỏ gán người dùng")
     } finally {
       setSaving(false)
     }
@@ -645,7 +649,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
         syncTimersFromTask(updatedTask)
       } catch (error) {
         console.error("Error starting timer:", error)
-        alert("Failed to start timer: " + (error as Error).message)
+        toast.showError((error as Error).message, "Lỗi bắt đầu timer")
       }
     }
   }
@@ -666,7 +670,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
         syncTimersFromTask(updatedTask)
       } catch (error) {
         console.error("Error stopping timer:", error)
-        alert("Failed to stop timer: " + (error as Error).message)
+        toast.showError((error as Error).message, "Lỗi dừng timer")
       }
     }
   }
@@ -699,7 +703,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       setShowRepeatModal(false)
     } catch (error) {
       console.error("Error saving repeat settings:", error)
-      alert("Failed to save repeat settings: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi lưu cài đặt lặp lại")
     }
   }
 
@@ -777,7 +781,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       onTaskUpdate(updatedTask)
     } catch (error) {
       console.error("Error adding time entry:", error)
-      alert("Failed to add time entry: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi thêm thời gian")
     }
   }, [task, newTimeEntry, timeEntries, currentUser, taskId, onTaskUpdate, taskProperties.status])
 
@@ -808,13 +812,24 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       onTaskUpdate(updatedTask)
     } catch (error) {
       console.error("Error adding scheduled work:", error)
-      alert("Failed to add scheduled work: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi thêm công việc dự kiến")
     }
   }, [task, newScheduledWork, scheduledWork, currentUser, taskId, onTaskUpdate])
 
   // Handler for deleting time entry
   const handleDeleteTimeEntry = useCallback(async (index: number) => {
-    if (!task || !confirm("Are you sure you want to delete this time entry?")) return
+    if (!task) return
+
+    const confirmed = await confirmDialog.confirm({
+      title: 'Xóa mục thời gian',
+      message: 'Bạn có chắc chắn muốn xóa mục thời gian này không?',
+      confirmText: 'Xóa',
+      cancelText: 'Hủy',
+      variant: 'danger',
+      icon: 'delete'
+    })
+
+    if (!confirmed) return
 
     try {
       const updatedTimeEntries = timeEntries.filter((_, i) => i !== index)
@@ -826,13 +841,24 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       onTaskUpdate(updatedTask)
     } catch (error) {
       console.error("Error deleting time entry:", error)
-      alert("Failed to delete time entry: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi xóa mục thời gian")
     }
   }, [task, timeEntries, taskId, onTaskUpdate])
 
   // Handler for deleting scheduled work
   const handleDeleteScheduledWork = useCallback(async (index: number) => {
-    if (!task || !confirm("Are you sure you want to delete this scheduled work?")) return
+    if (!task) return
+
+    const confirmed = await confirmDialog.confirm({
+      title: 'Xóa công việc dự kiến',
+      message: 'Bạn có chắc chắn muốn xóa công việc dự kiến này không?',
+      confirmText: 'Xóa',
+      cancelText: 'Hủy',
+      variant: 'danger',
+      icon: 'delete'
+    })
+
+    if (!confirmed) return
 
     try {
       const updatedScheduledWork = scheduledWork.filter((_, i) => i !== index)
@@ -844,7 +870,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       onTaskUpdate(updatedTask)
     } catch (error) {
       console.error("Error deleting scheduled work:", error)
-      alert("Failed to delete scheduled work: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi xóa công việc dự kiến")
     }
   }, [task, scheduledWork, taskId, onTaskUpdate])
 
@@ -861,7 +887,18 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
   // Rest of your existing handlers
   const handleDelete = useCallback(async () => {
-    if (!task || !confirm("Are you sure you want to delete this task?")) return
+    if (!task) return
+
+    const confirmed = await confirmDialog.confirm({
+      title: 'Xóa task',
+      message: 'Bạn có chắc chắn muốn xóa task này không? Hành động này không thể hoàn tác.',
+      confirmText: 'Xóa',
+      cancelText: 'Hủy',
+      variant: 'danger',
+      icon: 'delete'
+    })
+
+    if (!confirmed) return
 
     try {
       await taskService.deleteTask(taskId)
@@ -869,7 +906,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       onClose()
     } catch (error) {
       console.error("Error deleting task:", error)
-      alert("Failed to delete task: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi xóa task")
     }
   }, [task, taskId, onTaskDelete, onClose])
 
@@ -913,7 +950,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       }
     } catch (error) {
       console.error("Error adding comment:", error)
-      alert("Failed to add comment: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi thêm bình luận")
     } finally {
       setUploadingFiles(false)
     }
@@ -922,7 +959,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const handleUpdateComment = useCallback(async (commentId: string) => {
     if (!editingCommentContent.trim() || !currentUser) {
       if (!currentUser) {
-        alert("You must be logged in to update a comment")
+        toast.showWarning("Bạn phải đăng nhập để cập nhật bình luận")
       }
       return
     }
@@ -964,17 +1001,26 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       }
     } catch (error) {
       console.error("Error updating comment:", error)
-      alert("Failed to update comment: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi cập nhật bình luận")
     }
   }, [editingCommentContent, currentUser, taskId])
 
   const handleDeleteComment = useCallback(async (commentId: string) => {
-    if (!confirm("Are you sure you want to delete this comment?") || !currentUser) {
-      if (!currentUser) {
-        alert("You must be logged in to delete a comment")
-      }
+    if (!currentUser) {
+      toast.showWarning("Bạn phải đăng nhập để xóa bình luận")
       return
     }
+
+    const confirmed = await confirmDialog.confirm({
+      title: 'Xóa bình luận',
+      message: 'Bạn có chắc chắn muốn xóa bình luận này không?',
+      confirmText: 'Xóa',
+      cancelText: 'Hủy',
+      variant: 'danger',
+      icon: 'delete'
+    })
+
+    if (!confirmed) return
 
     try {
       console.log("Deleting comment:", commentId)
@@ -989,7 +1035,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       }
     } catch (error) {
       console.error("Error deleting comment:", error)
-      alert("Failed to delete comment: " + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi xóa bình luận")
     }
   }, [currentUser, taskId])
 
@@ -1080,7 +1126,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
   const startEditingComment = useCallback((comment: Comment) => {
     if (!currentUser) {
-      alert("You must be logged in to edit a comment")
+      toast.showWarning("Bạn phải đăng nhập để chỉnh sửa bình luận")
       return
     }
     setEditingCommentId(comment._id!)
@@ -1188,7 +1234,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
     } catch (error) {
       console.error('Error uploading files:', error)
-      alert('Failed to upload files: ' + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi tải tệp lên")
     } finally {
       setUploadingFiles(false)
     }
@@ -1196,7 +1242,16 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
   // Delete attachment handler
   const handleDeleteAttachment = useCallback(async (attachmentId: string) => {
-    if (!confirm('Are you sure you want to delete this attachment?')) return
+    const confirmed = await confirmDialog.confirm({
+      title: 'Xóa tệp đính kèm',
+      message: 'Bạn có chắc chắn muốn xóa tệp đính kèm này không?',
+      confirmText: 'Xóa',
+      cancelText: 'Hủy',
+      variant: 'danger',
+      icon: 'delete'
+    })
+
+    if (!confirmed) return
 
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/tasks/${taskId}/attachments/${attachmentId}`, {
@@ -1231,7 +1286,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
     } catch (error) {
       console.error('Error deleting attachment:', error)
-      alert('Failed to delete attachment: ' + (error as Error).message)
+      toast.showError((error as Error).message, "Lỗi xóa tệp đính kèm")
     }
   }, [taskId, onTaskUpdate])
 

@@ -37,6 +37,8 @@ import NoFolderState from "../../common/NoFolderState";
 import { useFolder } from "../../../contexts/FolderContext";
 import { useUIState } from "../../../contexts/UIStateContext";
 import { useTimer } from "../../../contexts/TimerContext";
+import { useToast } from "../../../contexts/ToastContext";
+import { useConfirm } from "../../../contexts/ConfirmContext";
 
 export default function TasksView() {
   const { user: currentUser, currentGroup } = useAuth();
@@ -45,6 +47,9 @@ export default function TasksView() {
   const { formatDate, convertFromUserTimezone, convertToUserTimezone } = useRegional();
   const { setIsTaskDetailOpen } = useUIState();
   const timerContext = useTimer();
+  const toast = useToast();
+  const confirmDialog = useConfirm();
+  const router = useRouter();
   const [todoTasksExpanded, setTodoTasksExpanded] = useState(true);
   const [inProgressTasksExpanded, setInProgressTasksExpanded] = useState(true);
   const [incompleteTasksExpanded, setIncompleteTasksExpanded] = useState(true);
@@ -87,7 +92,6 @@ export default function TasksView() {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
-  const router = useRouter();
 
   interface MinimalUser {
     _id: string;
@@ -394,7 +398,7 @@ export default function TasksView() {
       console.error("Error fetching tasks:", errorMessage);
 
       if (errorMessage.includes("Authentication failed")) {
-        alert("Session expired. Please login again.");
+        toast.showWarning("Phiên làm việc hết hạn. Vui lòng đăng nhập lại.");
         router.push("/");
         return;
       }
@@ -416,7 +420,7 @@ export default function TasksView() {
       }
 
       // For other errors, show alert
-      alert("Failed to fetch tasks: " + errorMessage);
+      toast.showError(errorMessage, "Lỗi tải task");
 
       setTodoTasks([]);
       setInProgressTasks([]);
@@ -459,7 +463,7 @@ export default function TasksView() {
       console.error("Error fetching kanban data:", errorMessage);
 
       if (errorMessage.includes("Authentication failed")) {
-        alert("Session expired. Please login again.");
+        toast.showWarning("Phiên làm việc hết hạn. Vui lòng đăng nhập lại.");
         router.push("/");
         return;
       }
@@ -478,7 +482,7 @@ export default function TasksView() {
       }
 
       // For other errors, show alert
-      alert("Failed to fetch kanban data: " + errorMessage);
+      toast.showError(errorMessage, "Lỗi tải kanban");
 
       setKanbanData(null);
     } finally {
@@ -1070,7 +1074,7 @@ export default function TasksView() {
       }
     } catch (error) {
       console.error("❌ Error creating task:", error);
-      alert("Failed to create task: " + getErrorMessage(error));
+      toast.showError(getErrorMessage(error), "Lỗi tạo task");
     }
   };
 
@@ -1261,7 +1265,15 @@ export default function TasksView() {
           break;
 
         case "delete":
-          if (confirm("Are you sure you want to delete this task?")) {
+          const deleteConfirmed = await confirmDialog.confirm({
+            title: 'Xóa task',
+            message: 'Bạn có chắc chắn muốn xóa task này không? Hành động này không thể hoàn tác.',
+            confirmText: 'Xóa',
+            cancelText: 'Hủy',
+            variant: 'danger',
+            icon: 'delete'
+          });
+          if (deleteConfirmed) {
             await taskService.deleteTask(task._id);
             handleTaskDelete(task._id);
           }
@@ -1272,7 +1284,7 @@ export default function TasksView() {
       }
     } catch (error) {
       console.error("Error in context menu action:", error);
-      alert("Failed to perform action: " + getErrorMessage(error));
+      toast.showError(getErrorMessage(error), "Lỗi thực hiện thao tác");
     }
   };
 
@@ -1293,7 +1305,7 @@ export default function TasksView() {
       setRepeatModalTask(null);
     } catch (error) {
       console.error("Error saving repeat settings:", error);
-      alert("Failed to save repeat settings: " + getErrorMessage(error));
+      toast.showError(getErrorMessage(error), "Lỗi lưu cài đặt lặp lại");
     }
   };
 
@@ -1378,7 +1390,7 @@ export default function TasksView() {
       const hasLoggedTime = hasLoggedTimeEntries(task);
 
       if ((currentStatus === "in_progress" || currentStatus === "completed") && hasLoggedTime) {
-        alert(t('tasks.cannotChangeToTodo') ||
+        toast.showWarning(t('tasks.cannotChangeToTodo') ||
           "Cannot change status to 'To Do' because this task has logged time entries. Delete all time entries first to change status.");
         setEditingTaskId(null);
         setEditingField(null);
@@ -1402,7 +1414,7 @@ export default function TasksView() {
         handleTaskUpdate(updatedTask);
       } catch (error) {
         console.error(`Error updating ${field}:`, error);
-        alert(`Failed to update ${field}: ${getErrorMessage(error)}`);
+        toast.showError(getErrorMessage(error));
       }
     }
     setEditingTaskId(null);
@@ -1427,7 +1439,7 @@ export default function TasksView() {
         handleTaskUpdate(updatedTask);
       } catch (error) {
         console.error(`Error updating ${field}:`, error);
-        alert(`Failed to update ${field}: ${getErrorMessage(error)}`);
+        toast.showError(getErrorMessage(error));
       }
     }
     setEditingTaskId(null);
