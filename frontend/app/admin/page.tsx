@@ -231,7 +231,6 @@ function UsersTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState<any>(null);
-  const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
 
   useEffect(() => {
@@ -285,15 +284,7 @@ function UsersTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">User Management</h2>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="bg-blue-600 dark:bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-700 dark:hover:bg-blue-600"
-        >
-          Create User
-        </button>
-      </div>
+      <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">User Management</h2>
 
       {/* Filters */}
       <div className="bg-white rounded-lg shadow p-4 mb-6">
@@ -456,19 +447,16 @@ function UsersTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         </>
       )}
 
-      {/* Create/Edit Modal - Simplified version */}
-      {(showCreateModal || editingUser) && (
+      {/* Edit Modal - Simplified version */}
+      {editingUser && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold mb-4">
-              {editingUser ? 'Edit User' : 'Create User'}
-            </h3>
+            <h3 className="text-xl font-bold mb-4">Edit User</h3>
             <p className="text-gray-600 mb-4">
-              Create/Edit user functionality requires full form implementation.
+              Editing user details requires full form implementation.
             </p>
             <button
               onClick={() => {
-                setShowCreateModal(false);
                 setEditingUser(null);
               }}
               className="bg-gray-200 text-gray-800 px-4 py-2 rounded hover:bg-gray-300"

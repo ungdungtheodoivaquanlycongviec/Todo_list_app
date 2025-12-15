@@ -46,6 +46,15 @@ const attachmentSchema = new mongoose.Schema(
     thumbnailUrl: {
       type: String,
       default: null
+    },
+    publicId: {
+      type: String,
+      default: null
+    },
+    resourceType: {
+      type: String,
+      enum: ['image', 'raw'],
+      default: 'raw'
     }
   },
   { _id: false }
@@ -104,7 +113,7 @@ directMessageSchema.index({ conversationId: 1, senderId: 1 });
 directMessageSchema.index({ 'reactions.userId': 1 });
 directMessageSchema.index({ replyTo: 1 });
 
-directMessageSchema.virtual('reactionCounts').get(function() {
+directMessageSchema.virtual('reactionCounts').get(function () {
   const counts = {};
   if (!Array.isArray(this.reactions)) {
     return [];
@@ -125,7 +134,7 @@ directMessageSchema.virtual('reactionCounts').get(function() {
   return Object.values(counts);
 });
 
-directMessageSchema.methods.addReaction = function(emoji, userId) {
+directMessageSchema.methods.addReaction = function (emoji, userId) {
   this.reactions = this.reactions.filter(
     reaction => !(reaction.emoji === emoji && reaction.userId.toString() === userId.toString())
   );
@@ -134,14 +143,14 @@ directMessageSchema.methods.addReaction = function(emoji, userId) {
   return this.save();
 };
 
-directMessageSchema.methods.removeReaction = function(emoji, userId) {
+directMessageSchema.methods.removeReaction = function (emoji, userId) {
   this.reactions = this.reactions.filter(
     reaction => !(reaction.emoji === emoji && reaction.userId.toString() === userId.toString())
   );
   return this.save();
 };
 
-directMessageSchema.methods.toggleReaction = function(emoji, userId) {
+directMessageSchema.methods.toggleReaction = function (emoji, userId) {
   const existingIndex = this.reactions.findIndex(
     reaction => reaction.emoji === emoji && reaction.userId.toString() === userId.toString()
   );
@@ -156,7 +165,7 @@ directMessageSchema.methods.toggleReaction = function(emoji, userId) {
   return this.save().then(() => ({ added: true, reaction: newReaction }));
 };
 
-directMessageSchema.methods.softDelete = function() {
+directMessageSchema.methods.softDelete = function () {
   this.deletedAt = new Date();
   this.content = '[Message deleted]';
   this.attachments = [];

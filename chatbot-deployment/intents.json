@@ -144,12 +144,7 @@
         "lợn nhựa"
       ],
       "responses": [
-        "súc vật làm việc đi",
-        "chó ngu làm việc của mày đi",
-        "cả nhà mày chết đói",
-        "con chó ngu",
-        "nigga",
-        "chó nô lệ làm việc đi"
+        "Đừng nói những từ xấu này nữa, đó là vi phạm đạo đức"
       ]
     },
     {
@@ -296,16 +291,67 @@
       ]
     },
     {
+      "tag": "teamProgress",
+      "patterns": [
+        "Tiến độ của cả team hiện tại thế nào?",
+        "Tình hình task của cả nhóm ra sao?",
+        "Tổng quan tiến độ công việc của team?",
+        "Cho tôi xem tỷ lệ task của team",
+        "Team đang hoàn thành được bao nhiêu phần trăm task?",
+        "Tổng quan task của group này thế nào?"
+      ],
+      "responses": [
+        "Tiến độ team của group {group_name}: Todo: {team_todo_percent}% ({team_todo_count} task), In Progress: {team_inprogress_percent}% ({team_inprogress_count} task), Completed: {team_completed_percent}% ({team_completed_count} task), Incomplete: {team_incomplete_percent}% ({team_incomplete_count} task).",
+        "Trong group {group_name}: Todo: {team_todo_count} task ({team_todo_percent}%), In Progress: {team_inprogress_count} task ({team_inprogress_percent}%), Completed: {team_completed_count} task ({team_completed_percent}%), Incomplete: {team_incomplete_count} task ({team_incomplete_percent}%)."
+      ]
+    },
+    {
+      "tag": "memberProgress",
+      "patterns": [
+        "Tiến độ của thành viên {member_name} thế nào?",
+        "Cho tôi xem task của {member_name}",
+        "Tiến độ công việc của bạn {member_name}?",
+        "Tình hình task của {member_name} ra sao?",
+        "Trong group này, {member_name} làm được bao nhiêu task rồi?"
+      ],
+      "responses": [
+        "Tiến độ của {member_name} trong group {group_name}: Todo: {member_todo_percent}% ({member_todo_count} task), In Progress: {member_inprogress_percent}% ({member_inprogress_count} task), Completed: {member_completed_percent}% ({member_completed_count} task), Incomplete: {member_incomplete_percent}% ({member_incomplete_count} task).",
+        "Trong group {group_name}, {member_name} đang có: Todo: {member_todo_count} task ({member_todo_percent}%), In Progress: {member_inprogress_count} task ({member_inprogress_percent}%), Completed: {member_completed_count} task ({member_completed_percent}%), Incomplete: {member_incomplete_count} task ({member_incomplete_percent}%)."
+      ]
+    },
+    {
+      "tag": "AskGroupName",
+      "patterns": [
+        "Tôi muốn xem tiến độ team",
+        "Cho tôi xem tiến độ nhóm",
+        "Xem tiến độ của team",
+        "Tiến độ nhóm làm việc",
+        "Tình hình các group"
+      ],
+      "responses": [
+        "Bạn đang muốn xem tiến độ của group nào?"
+      ]
+    },
+    {
       "tag": "goodbye",
       "patterns": [
         "Bye",
         "See you later",
-        "Goodbye"
+        "Goodbye",
+        "Tạm biệt",
+        "Tạm biệt và hẹn gặp lại",
+        "Hẹn gặp lại",
+        "Hẹn gặp lại sau",
+        "Hẹn gặp lại sau"
       ],
       "responses": [
         "See you later, thanks for visiting",
         "Have a nice day",
-        "Bye! Come back again soon."
+        "Bye! Come back again soon.",
+        "Tạm biệt! Hẹn gặp lại sau",
+        "Tạm biệt!",
+        "Hẹn gặp lại!",
+        "Hẹn gặp lại sau!"
       ]
     },
     {
@@ -314,49 +360,17 @@
         "Thanks",
         "Thank you",
         "That's helpful",
-        "Thank's a lot!"
+        "Thank's a lot!",
+        "Cảm ơn!",
+        "Cảm ơn bạn!",
+        "Cảm ơn bạn với lời giải đáp!"
       ],
       "responses": [
         "Happy to help!",
         "Any time!",
-        "My pleasure"
-      ]
-    },
-    {
-      "tag": "items",
-      "patterns": [
-        "Which items do you have?",
-        "What kinds of items are there?",
-        "What do you sell?"
-      ],
-      "responses": [
-        "We sell coffee and tea",
-        "We have coffee and tea"
-      ]
-    },
-    {
-      "tag": "payments",
-      "patterns": [
-        "Do you take credit cards?",
-        "Do you accept Mastercard?",
-        "Can I pay with Paypal?",
-        "Are you cash only?"
-      ],
-      "responses": [
-        "We accept VISA, Mastercard and Paypal",
-        "We accept most major credit cards, and Paypal"
-      ]
-    },
-    {
-      "tag": "delivery",
-      "patterns": [
-        "How long does delivery take?",
-        "How long does shipping take?",
-        "When do I get my delivery?"
-      ],
-      "responses": [
-        "Delivery takes 2-4 days",
-        "Shipping takes 2-4 days"
+        "My pleasure",
+        "You're welcome!",
+        "Không có gì!"
       ]
     },
     {

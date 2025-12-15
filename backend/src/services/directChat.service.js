@@ -474,6 +474,23 @@ class DirectChatService {
       throw error;
     }
 
+    // Delete attachments from Cloudinary before soft delete
+    if (message.attachments && message.attachments.length > 0) {
+      for (const attachment of message.attachments) {
+        if (attachment.publicId) {
+          try {
+            await fileService.deleteFile(
+              attachment.publicId,
+              attachment.resourceType || 'raw'
+            );
+          } catch (error) {
+            console.error('Error deleting direct chat attachment from Cloudinary:', error);
+            // Continue with message deletion even if Cloudinary deletion fails
+          }
+        }
+      }
+    }
+
     await message.softDelete();
     await message.populate('senderId', 'name email avatar');
 
@@ -537,7 +554,9 @@ class DirectChatService {
         filename: uploadResult.filename || file.originalname,
         size: uploadResult.size || file.size,
         mimeType: uploadResult.mimetype || file.mimetype,
-        thumbnailUrl: isImage ? uploadResult.url : null
+        thumbnailUrl: isImage ? uploadResult.url : null,
+        publicId: uploadResult.publicId,
+        resourceType: uploadResult.resourceType
       };
     } catch (error) {
       console.error('Error uploading file to Cloudinary:', error);

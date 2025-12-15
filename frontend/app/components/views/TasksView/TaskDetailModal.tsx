@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import {
   X,
   Calendar,
@@ -96,11 +96,11 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const [comment, setComment] = useState("")
   const [comments, setComments] = useState<Comment[]>([])
   const [estimatedTime, setEstimatedTime] = useState("")
-  
+
   // State for editable fields
   const [editingField, setEditingField] = useState<string | null>(null)
   const [tempValue, setTempValue] = useState("")
-  
+
   // Task properties state
   const [taskProperties, setTaskProperties] = useState({
     title: "",
@@ -155,6 +155,8 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editingCommentContent, setEditingCommentContent] = useState("")
   const [showCommentMenu, setShowCommentMenu] = useState<string | null>(null)
+  const commentsScrollRef = useRef<HTMLDivElement>(null)
+  const scrollPositionRef = useRef<number>(0)
   const [uploadingFiles, setUploadingFiles] = useState(false)
   const [pendingAttachment, setPendingAttachment] = useState<File | null>(null)
   const [pendingAttachmentPreview, setPendingAttachmentPreview] = useState<string | null>(null)
@@ -165,13 +167,13 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const { currentFolder } = useFolder()
   const { t } = useLanguage()
   const { formatDate, convertFromUserTimezone, convertToUserTimezone } = useRegional()
-  
+
   // Check if user can assign to others
   const currentUserRole = currentGroup ? getMemberRole(currentGroup, currentUser?._id) : null
   const canAssignToOthers = canAssignFolderMembers(currentUserRole)
-  
+
   // Get folder member access list
-  const folderMemberAccess = currentFolder && !currentFolder.isDefault 
+  const folderMemberAccess = currentFolder && !currentFolder.isDefault
     ? new Set((currentFolder.memberAccess || []).map((access: any) => access.userId).filter(Boolean))
     : null
 
@@ -179,84 +181,84 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const taskTypeOptions = ["Operational", "Strategic", "Financial", "Technical", "Other"]
   const priorityOptions = ["low", "medium", "high", "urgent"]
   const statusOptions = ["todo", "in_progress", "completed", "incomplete", "archived"]
-  
+
   // State for assign functionality
   const [showAssignModal, setShowAssignModal] = useState(false)
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
 
   // NEW: Helper để lấy danh sách assignees chi tiết
   const getDetailedAssignees = (task: Task) => {
-  if (!task.assignedTo || task.assignedTo.length === 0) {
-    return {
-      hasAssignees: false,
-      assignees: [],
-      currentUserIsAssigned: false,
-      totalCount: 0
-    };
-  }
-
-  const assignees = (task.assignedTo as AssignedUser[])
-    .filter(assignment => assignment && assignment.userId)
-    .map(assignment => {
-      // Xử lý cả trường hợp userId là string hoặc object
-      let userData;
-      
-      if (typeof assignment.userId === 'string') {
-        // Nếu userId là string ID, tạo minimal user object
-        userData = {
-          _id: assignment.userId,
-          name: 'Loading...', // Tạm thời
-          email: '',
-          avatar: undefined
-        };
-        
-        // Nếu là currentUser, sử dụng thông tin currentUser
-        if (currentUser && assignment.userId === currentUser._id) {
-          userData = {
-            _id: currentUser._id,
-            name: currentUser.name || 'You',
-            email: currentUser.email,
-            avatar: currentUser.avatar
-          };
-        }
-      } else if (assignment.userId && typeof assignment.userId === 'object') {
-        // Nếu userId là object (đã populated)
-        const user = assignment.userId as MinimalUser;
-        userData = {
-          _id: user._id,
-          name: user.name || 'Unknown User',
-          email: user.email || '',
-          avatar: user.avatar
-        };
-      } else {
-        // Fallback nếu userId không hợp lệ
-        return null;
-      }
-
-      if (!userData) return null;
-
+    if (!task.assignedTo || task.assignedTo.length === 0) {
       return {
-        ...userData,
-        initial: (userData.name?.charAt(0) || 'U').toUpperCase()
+        hasAssignees: false,
+        assignees: [],
+        currentUserIsAssigned: false,
+        totalCount: 0
       };
-    })
-    .filter((assignee): assignee is NonNullable<typeof assignee> => assignee !== null);
+    }
 
-  const currentUserIsAssigned = currentUser && 
-    assignees.some(assignee => assignee._id === currentUser._id);
+    const assignees = (task.assignedTo as AssignedUser[])
+      .filter(assignment => assignment && assignment.userId)
+      .map(assignment => {
+        // Xử lý cả trường hợp userId là string hoặc object
+        let userData;
 
-  return {
-    hasAssignees: assignees.length > 0,
-    assignees,
-    currentUserIsAssigned,
-    totalCount: assignees.length
+        if (typeof assignment.userId === 'string') {
+          // Nếu userId là string ID, tạo minimal user object
+          userData = {
+            _id: assignment.userId,
+            name: 'Loading...', // Tạm thời
+            email: '',
+            avatar: undefined
+          };
+
+          // Nếu là currentUser, sử dụng thông tin currentUser
+          if (currentUser && assignment.userId === currentUser._id) {
+            userData = {
+              _id: currentUser._id,
+              name: currentUser.name || 'You',
+              email: currentUser.email,
+              avatar: currentUser.avatar
+            };
+          }
+        } else if (assignment.userId && typeof assignment.userId === 'object') {
+          // Nếu userId là object (đã populated)
+          const user = assignment.userId as MinimalUser;
+          userData = {
+            _id: user._id,
+            name: user.name || 'Unknown User',
+            email: user.email || '',
+            avatar: user.avatar
+          };
+        } else {
+          // Fallback nếu userId không hợp lệ
+          return null;
+        }
+
+        if (!userData) return null;
+
+        return {
+          ...userData,
+          initial: (userData.name?.charAt(0) || 'U').toUpperCase()
+        };
+      })
+      .filter((assignee): assignee is NonNullable<typeof assignee> => assignee !== null);
+
+    const currentUserIsAssigned = currentUser &&
+      assignees.some(assignee => assignee._id === currentUser._id);
+
+    return {
+      hasAssignees: assignees.length > 0,
+      assignees,
+      currentUserIsAssigned,
+      totalCount: assignees.length
+    };
   };
-};
 
   // NEW: Assignee Section Component
   const AssigneeSection = ({ task }: { task: Task }) => {
     const assigneeInfo = getDetailedAssignees(task);
-    
+
     return (
       <div className="space-y-3">
         <div className="flex items-center justify-between">
@@ -264,7 +266,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
             {t('assignee.assignedTo')} ({assigneeInfo.totalCount})
           </h4>
           {(canAssignToOthers || assigneeInfo.totalCount === 0) && (
-            <button 
+            <button
               onClick={handleAddAssignee}
               className="text-blue-500 hover:text-blue-600 text-sm"
             >
@@ -272,13 +274,13 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
             </button>
           )}
         </div>
-        
+
         {assigneeInfo.assignees.length === 0 ? (
           <div className="text-center py-4 text-gray-500 dark:text-gray-400 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
             <User className="w-8 h-8 mx-auto mb-2 text-gray-400" />
             <p className="text-sm">{t('assignee.noOneAssigned')}</p>
             {(canAssignToOthers || !currentUser) && (
-              <button 
+              <button
                 onClick={handleAddAssignee}
                 className="text-blue-500 hover:text-blue-600 text-xs mt-1"
               >
@@ -298,14 +300,13 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
                 key={assignee._id}
                 className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
               >
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${
-                  assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id
-                    ? "bg-green-100 text-green-800 border border-green-200"
-                    : "bg-blue-100 text-blue-800 border border-blue-200"
-                }`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id
+                  ? "bg-green-100 text-green-800 border border-green-200"
+                  : "bg-blue-100 text-blue-800 border border-blue-200"
+                  }`}>
                   {assignee.avatar ? (
-                    <img 
-                      src={assignee.avatar} 
+                    <img
+                      src={assignee.avatar}
                       alt={assignee.name}
                       className="w-full h-full rounded-full object-cover"
                     />
@@ -329,7 +330,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
                   </p>
                 </div>
                 {(canAssignToOthers || assignee._id === currentUser?._id) && (
-                  <button 
+                  <button
                     onClick={() => handleUnassign(assignee._id)}
                     disabled={saving}
                     className="text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50"
@@ -481,26 +482,26 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
     try {
       setSaving(true)
-      
+
       // Convert date fields from user timezone to UTC for backend storage
       let updateValue = value
       if (field === 'dueDate' && value) {
         const userDate = new Date(value + 'T23:59:59') // Set to end of day
         updateValue = convertFromUserTimezone(userDate).toISOString()
       }
-      
+
       const updateData = { [field]: updateValue }
       const updatedTask = await taskService.updateTask(taskId, updateData)
-      
+
       setTask(updatedTask)
       onTaskUpdate(updatedTask)
-      
+
       // Update local state with the original value (for display)
       setTaskProperties(prev => ({
         ...prev,
         [field]: value
       }))
-      
+
     } catch (error) {
       console.error(`Error updating ${field}:`, error)
       alert(`Failed to update ${field}: ${(error as Error).message}`)
@@ -551,10 +552,10 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
     try {
       // Use the new API method to set custom status
       const updatedTask = await taskService.setCustomStatus(taskId, customStatusName.trim(), customStatusColor)
-      
+
       setTask(updatedTask)
       onTaskUpdate(updatedTask)
-      
+
       setShowCustomStatusModal(false)
       setCustomStatusName("")
       setCustomStatusColor("#3B82F6")
@@ -571,14 +572,14 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
   const handleConfirmAssign = async () => {
     if (!task || selectedMembers.length === 0) return
-    
+
     try {
       setSaving(true)
       const response = await taskService.assignUsersToTask(taskId, selectedMembers)
-      
+
       // Refresh task details
       await fetchTaskDetails()
-      
+
       setShowAssignModal(false)
       setSelectedMembers([])
     } catch (error) {
@@ -591,11 +592,11 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
   const handleUnassign = async (userId: string) => {
     if (!task) return
-    
+
     try {
       setSaving(true)
       await taskService.unassignUserFromTask(taskId, userId)
-      
+
       // Refresh task details
       await fetchTaskDetails()
     } catch (error) {
@@ -613,7 +614,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
         const updatedTask = await taskService.startTimer(taskId)
         setTask(updatedTask)
         onTaskUpdate(updatedTask)
-        
+
         const now = new Date()
         setTimerStartTime(now)
         setIsTimerRunning(true)
@@ -630,12 +631,12 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
         const updatedTask = await taskService.stopTimer(taskId)
         setTask(updatedTask)
         onTaskUpdate(updatedTask)
-        
+
         // Update time entries from the response
         if ((updatedTask as any).timeEntries) {
           setTimeEntries((updatedTask as any).timeEntries)
         }
-        
+
         // Reset timer
         setIsTimerRunning(false)
         setTimerStartTime(null)
@@ -651,7 +652,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
     const hours = Math.floor(seconds / 3600)
     const minutes = Math.floor((seconds % 3600) / 60)
     const secs = seconds % 60
-    
+
     if (hours > 0) {
       return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
     }
@@ -692,7 +693,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
   // Get status display text
   const getStatusDisplay = (status: string) => {
-    return status.split('_').map(word => 
+    return status.split('_').map(word =>
       word.charAt(0).toUpperCase() + word.slice(1)
     ).join(' ')
   }
@@ -815,7 +816,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
     const totalMinutes = timeEntries.reduce((total, entry) => {
       return total + (entry.hours * 60) + (entry.minutes || 0)
     }, 0)
-    
+
     const hours = Math.floor(totalMinutes / 60)
     const minutes = totalMinutes % 60
     return `${hours}:${minutes.toString().padStart(2, '0')}h`
@@ -843,7 +844,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
     try {
       setUploadingFiles(true)
       let updatedTask
-      
+
       if (pendingAttachment) {
         // Use addCommentWithFile when there's an attachment
         updatedTask = await taskService.addCommentWithFile(taskId, comment.trim(), pendingAttachment)
@@ -851,7 +852,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
         // Use regular addComment for text-only comments
         updatedTask = await taskService.addComment(taskId, comment)
       }
-      
+
       // Clear comment and attachment
       setComment("")
       setPendingAttachment(null)
@@ -889,6 +890,11 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       return
     }
 
+    // Save scroll position before state change
+    if (commentsScrollRef.current) {
+      scrollPositionRef.current = commentsScrollRef.current.scrollTop
+    }
+
     try {
       console.log("Updating comment:", commentId, editingCommentContent)
 
@@ -899,16 +905,23 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
           prev.map((comment) =>
             comment._id === commentId
               ? {
-                  ...comment,
-                  content: editingCommentContent,
-                  updatedAt: new Date().toISOString(),
-                  isEdited: true,
-                }
+                ...comment,
+                content: editingCommentContent,
+                updatedAt: new Date().toISOString(),
+                isEdited: true,
+              }
               : comment,
           ),
         )
         setEditingCommentId(null)
         setEditingCommentContent("")
+
+        // Restore scroll position after state change
+        requestAnimationFrame(() => {
+          if (commentsScrollRef.current && scrollPositionRef.current > 0) {
+            commentsScrollRef.current.scrollTop = scrollPositionRef.current
+          }
+        })
       } else {
         throw new Error(result.message)
       }
@@ -944,89 +957,89 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   }, [currentUser, taskId])
 
   const getUserDisplayName = useCallback((comment: Comment): string => {
-  // Check if comment has user object with name
-  if (comment.user && typeof comment.user === "object") {
-    return (comment.user as MinimalUser).name || (comment.user as MinimalUser).email || "User";
-  }
-  
-  // Check if userId is an object (populated user)
-  if (comment.userId && typeof comment.userId === "object") {
-    return (comment.userId as MinimalUser).name || (comment.userId as MinimalUser).email || "User";
-  }
-  
-  // If userId is string, try to find user in assignees or use current user
-  if (typeof comment.userId === "string") {
-    // Check if it's current user
-    if (currentUser && comment.userId === currentUser._id) {
-      return currentUser.name || currentUser.email || "You";
+    // Check if comment has user object with name
+    if (comment.user && typeof comment.user === "object") {
+      return (comment.user as MinimalUser).name || (comment.user as MinimalUser).email || "User";
     }
-    
-    // Check in task assignees
-    if (task && task.assignedTo) {
-      const assignee = task.assignedTo.find((assignment: any) => 
-        assignment.userId && typeof assignment.userId === 'object' && 
-        (assignment.userId as MinimalUser)._id === comment.userId
-      );
-      if (assignee && typeof assignee.userId === 'object') {
-        return (assignee.userId as MinimalUser).name || (assignee.userId as MinimalUser).email || "User";
+
+    // Check if userId is an object (populated user)
+    if (comment.userId && typeof comment.userId === "object") {
+      return (comment.userId as MinimalUser).name || (comment.userId as MinimalUser).email || "User";
+    }
+
+    // If userId is string, try to find user in assignees or use current user
+    if (typeof comment.userId === "string") {
+      // Check if it's current user
+      if (currentUser && comment.userId === currentUser._id) {
+        return currentUser.name || currentUser.email || "You";
+      }
+
+      // Check in task assignees
+      if (task && task.assignedTo) {
+        const assignee = task.assignedTo.find((assignment: any) =>
+          assignment.userId && typeof assignment.userId === 'object' &&
+          (assignment.userId as MinimalUser)._id === comment.userId
+        );
+        if (assignee && typeof assignee.userId === 'object') {
+          return (assignee.userId as MinimalUser).name || (assignee.userId as MinimalUser).email || "User";
+        }
       }
     }
-  }
-  
-  return "User";
-}, [currentUser, task]);
 
-const getUserInitial = useCallback((comment: Comment): string => {
-  const name = getUserDisplayName(comment);
-  return name.charAt(0).toUpperCase();
-}, [getUserDisplayName]);
+    return "User";
+  }, [currentUser, task]);
 
-const getUserAvatar = useCallback((comment: Comment): string | null => {
-  // Check if comment has user object with avatar
-  if (comment.user && typeof comment.user === "object") {
-    return (comment.user as MinimalUser).avatar || null;
-  }
-  
-  // Check if userId is an object (populated user)
-  if (comment.userId && typeof comment.userId === "object") {
-    return (comment.userId as MinimalUser).avatar || null;
-  }
-  
-  // If userId is string, try to find user in assignees or use current user
-  if (typeof comment.userId === "string") {
-    // Check if it's current user
-    if (currentUser && comment.userId === currentUser._id) {
-      return currentUser.avatar || null;
+  const getUserInitial = useCallback((comment: Comment): string => {
+    const name = getUserDisplayName(comment);
+    return name.charAt(0).toUpperCase();
+  }, [getUserDisplayName]);
+
+  const getUserAvatar = useCallback((comment: Comment): string | null => {
+    // Check if comment has user object with avatar
+    if (comment.user && typeof comment.user === "object") {
+      return (comment.user as MinimalUser).avatar || null;
     }
-    
-    // Check in task assignees
-    if (task && task.assignedTo) {
-      const assignee = task.assignedTo.find((assignment: any) => 
-        assignment.userId && typeof assignment.userId === 'object' && 
-        (assignment.userId as MinimalUser)._id === comment.userId
-      );
-      if (assignee && typeof assignee.userId === 'object') {
-        return (assignee.userId as MinimalUser).avatar || null;
+
+    // Check if userId is an object (populated user)
+    if (comment.userId && typeof comment.userId === "object") {
+      return (comment.userId as MinimalUser).avatar || null;
+    }
+
+    // If userId is string, try to find user in assignees or use current user
+    if (typeof comment.userId === "string") {
+      // Check if it's current user
+      if (currentUser && comment.userId === currentUser._id) {
+        return currentUser.avatar || null;
+      }
+
+      // Check in task assignees
+      if (task && task.assignedTo) {
+        const assignee = task.assignedTo.find((assignment: any) =>
+          assignment.userId && typeof assignment.userId === 'object' &&
+          (assignment.userId as MinimalUser)._id === comment.userId
+        );
+        if (assignee && typeof assignee.userId === 'object') {
+          return (assignee.userId as MinimalUser).avatar || null;
+        }
       }
     }
-  }
-  
-  return null;
-}, [currentUser, task]);
 
-const isCommentOwner = useCallback((comment: Comment): boolean => {
-  if (!currentUser) return false;
+    return null;
+  }, [currentUser, task]);
 
-  if (comment.userId && typeof comment.userId === "object") {
-    return (comment.userId as MinimalUser)._id === currentUser._id;
-  }
+  const isCommentOwner = useCallback((comment: Comment): boolean => {
+    if (!currentUser) return false;
 
-  if (typeof comment.userId === "string") {
-    return comment.userId === currentUser._id;
-  }
+    if (comment.userId && typeof comment.userId === "object") {
+      return (comment.userId as MinimalUser)._id === currentUser._id;
+    }
 
-  return false;
-}, [currentUser]);
+    if (typeof comment.userId === "string") {
+      return comment.userId === currentUser._id;
+    }
+
+    return false;
+  }, [currentUser]);
 
   const startEditingComment = useCallback((comment: Comment) => {
     if (!currentUser) {
@@ -1039,8 +1052,20 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
   }, [currentUser])
 
   const cancelEditingComment = useCallback(() => {
+    // Save scroll position before state change
+    if (commentsScrollRef.current) {
+      scrollPositionRef.current = commentsScrollRef.current.scrollTop
+    }
+
     setEditingCommentId(null)
     setEditingCommentContent("")
+
+    // Restore scroll position after state change
+    requestAnimationFrame(() => {
+      if (commentsScrollRef.current && scrollPositionRef.current > 0) {
+        commentsScrollRef.current.scrollTop = scrollPositionRef.current
+      }
+    })
   }, [])
 
   // Handler for comment attachment - stores file for preview before sending
@@ -1049,21 +1074,21 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
     if (!files || files.length === 0) return
 
     const file = files[0] // Only allow one attachment per comment
-    
+
     // Revoke previous preview URL if exists
     if (pendingAttachmentPreview) {
       URL.revokeObjectURL(pendingAttachmentPreview)
     }
-    
+
     setPendingAttachment(file)
-    
+
     // Create preview URL for images
     if (file.type.startsWith('image/')) {
       setPendingAttachmentPreview(URL.createObjectURL(file))
     } else {
       setPendingAttachmentPreview(null)
     }
-    
+
     // Clear file input
     event.target.value = ''
   }, [pendingAttachmentPreview])
@@ -1085,7 +1110,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
     try {
       setUploadingFiles(true)
       const formData = new FormData()
-      
+
       // Add all selected files to FormData
       Array.from(files).forEach(file => {
         formData.append('files', file)
@@ -1116,14 +1141,14 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
       } catch (parseError) {
         throw new Error('Invalid response from server')
       }
-      
+
       // Update task with new attachments
       setTask(result.data)
       onTaskUpdate(result.data)
-      
+
       // Clear file input
       event.target.value = ''
-      
+
     } catch (error) {
       console.error('Error uploading files:', error)
       alert('Failed to upload files: ' + (error as Error).message)
@@ -1162,11 +1187,11 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
       } catch (parseError) {
         throw new Error('Invalid response from server')
       }
-      
+
       // Update task with removed attachment
       setTask(result.data)
       onTaskUpdate(result.data)
-      
+
     } catch (error) {
       console.error('Error deleting attachment:', error)
       alert('Failed to delete attachment: ' + (error as Error).message)
@@ -1203,13 +1228,13 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
     const isOwner = isCommentOwner(comment)
 
     const avatarUrl = getUserAvatar(comment);
-    
+
     return (
       <div key={comment._id || `comment-${index}`} className="flex gap-3 group">
         <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs text-white font-medium flex-shrink-0 overflow-hidden">
           {avatarUrl ? (
-            <img 
-              src={avatarUrl} 
+            <img
+              src={avatarUrl}
               alt={getUserDisplayName(comment)}
               className="w-full h-full object-cover"
               onError={(e) => {
@@ -1241,9 +1266,15 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
               <div className="relative">
                 <button
                   onClick={(e) => {
+                    e.preventDefault()
                     e.stopPropagation()
+                    // Save scroll position before state change
+                    if (commentsScrollRef.current) {
+                      scrollPositionRef.current = commentsScrollRef.current.scrollTop
+                    }
                     setShowCommentMenu(showCommentMenu === comment._id ? null : comment._id!)
                   }}
+                  type="button"
                   className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-opacity"
                 >
                   <MoreVertical className="w-3 h-3" />
@@ -1294,13 +1325,13 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
           {comment.attachment && comment.attachment.url && comment.attachment.filename && (
             <div className="mt-2 inline-block">
               {comment.attachment.mimetype?.startsWith('image/') ? (
-                <button 
+                <button
                   type="button"
                   onClick={() => setLightboxImage(comment.attachment!.url)}
                   className="cursor-pointer rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 inline-block"
                 >
-                  <img 
-                    src={comment.attachment.url} 
+                  <img
+                    src={comment.attachment.url}
                     alt={comment.attachment.filename}
                     className="max-w-full max-h-48 object-contain block"
                   />
@@ -1333,7 +1364,14 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
         </div>
       </div>
     )
-  }, [editingCommentId, editingCommentContent, showCommentMenu, isCommentOwner, getUserInitial, getUserDisplayName, getUserAvatar, CommentMenu, startEditingComment, handleDeleteComment, handleUpdateComment, cancelEditingComment, formatDate, setLightboxImage])
+  }, [editingCommentId, editingCommentContent, showCommentMenu, commentsScrollRef, scrollPositionRef, isCommentOwner, getUserInitial, getUserDisplayName, getUserAvatar, CommentMenu, startEditingComment, handleDeleteComment, handleUpdateComment, cancelEditingComment, formatDate, setLightboxImage])
+
+  // Restore scroll position after showCommentMenu changes
+  useEffect(() => {
+    if (commentsScrollRef.current && scrollPositionRef.current > 0) {
+      commentsScrollRef.current.scrollTop = scrollPositionRef.current
+    }
+  }, [showCommentMenu])
 
   // Time Entry Form Component
   const TimeEntryForm = () => (
@@ -1345,7 +1383,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
           <input
             type="date"
             value={newTimeEntry.date}
-            onChange={(e) => setNewTimeEntry({...newTimeEntry, date: e.target.value})}
+            onChange={(e) => setNewTimeEntry({ ...newTimeEntry, date: e.target.value })}
             className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded text-sm"
           />
         </div>
@@ -1354,7 +1392,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
           <input
             type="number"
             value={newTimeEntry.hours}
-            onChange={(e) => setNewTimeEntry({...newTimeEntry, hours: parseInt(e.target.value) || 0})}
+            onChange={(e) => setNewTimeEntry({ ...newTimeEntry, hours: parseInt(e.target.value) || 0 })}
             className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded text-sm"
           />
         </div>
@@ -1363,7 +1401,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
           <input
             type="number"
             value={newTimeEntry.minutes}
-            onChange={(e) => setNewTimeEntry({...newTimeEntry, minutes: parseInt(e.target.value) || 0})}
+            onChange={(e) => setNewTimeEntry({ ...newTimeEntry, minutes: parseInt(e.target.value) || 0 })}
             className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded text-sm"
           />
         </div>
@@ -1372,7 +1410,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
             <input
               type="checkbox"
               checked={newTimeEntry.billable}
-              onChange={(e) => setNewTimeEntry({...newTimeEntry, billable: e.target.checked})}
+              onChange={(e) => setNewTimeEntry({ ...newTimeEntry, billable: e.target.checked })}
               className="mr-2"
             />
             {t('taskDetail.billable')}
@@ -1383,7 +1421,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
           <input
             type="text"
             value={newTimeEntry.description}
-            onChange={(e) => setNewTimeEntry({...newTimeEntry, description: e.target.value})}
+            onChange={(e) => setNewTimeEntry({ ...newTimeEntry, description: e.target.value })}
             placeholder={t('taskDetail.optionalDescription')}
             className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded text-sm"
           />
@@ -1416,7 +1454,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
           <input
             type="date"
             value={newScheduledWork.scheduledDate}
-            onChange={(e) => setNewScheduledWork({...newScheduledWork, scheduledDate: e.target.value})}
+            onChange={(e) => setNewScheduledWork({ ...newScheduledWork, scheduledDate: e.target.value })}
             className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded text-sm"
           />
         </div>
@@ -1425,7 +1463,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
           <input
             type="number"
             value={newScheduledWork.estimatedHours}
-            onChange={(e) => setNewScheduledWork({...newScheduledWork, estimatedHours: parseInt(e.target.value) || 0})}
+            onChange={(e) => setNewScheduledWork({ ...newScheduledWork, estimatedHours: parseInt(e.target.value) || 0 })}
             className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded text-sm"
           />
         </div>
@@ -1434,7 +1472,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
           <input
             type="number"
             value={newScheduledWork.estimatedMinutes}
-            onChange={(e) => setNewScheduledWork({...newScheduledWork, estimatedMinutes: parseInt(e.target.value) || 0})}
+            onChange={(e) => setNewScheduledWork({ ...newScheduledWork, estimatedMinutes: parseInt(e.target.value) || 0 })}
             className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded text-sm"
           />
         </div>
@@ -1442,7 +1480,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
           <label className="text-xs text-gray-600 dark:text-gray-400">{t('taskDetail.status')}</label>
           <select
             value={newScheduledWork.status}
-            onChange={(e) => setNewScheduledWork({...newScheduledWork, status: e.target.value})}
+            onChange={(e) => setNewScheduledWork({ ...newScheduledWork, status: e.target.value })}
             className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded text-sm"
           >
             <option value="scheduled">{t('taskDetail.scheduled')}</option>
@@ -1456,7 +1494,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
           <input
             type="text"
             value={newScheduledWork.description}
-            onChange={(e) => setNewScheduledWork({...newScheduledWork, description: e.target.value})}
+            onChange={(e) => setNewScheduledWork({ ...newScheduledWork, description: e.target.value })}
             placeholder={t('taskDetail.optionalDescription')}
             className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded text-sm"
           />
@@ -1530,38 +1568,28 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
     <>
       {/* Backdrop */}
       <div
-        className={`fixed inset-0 z-50 transition-all duration-300 ${
-          isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
-        }`}
+        className={`fixed inset-0 z-50 transition-all duration-300 ${isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
+          }`}
         onClick={onClose}
       />
 
-      {/* Modal */}
+      {/* Modal - Responsive: full width on mobile, 2/3 on tablet, 1/2 on desktop */}
       <div
-        className={`fixed right-0 top-0 h-full w-1/2 bg-white dark:bg-gray-800 shadow-2xl z-50 transition-transform duration-300 ${
-          isOpen ? "translate-x-0" : "translate-x-full"
-        }`}
+        className={`fixed right-0 top-0 h-full w-full sm:w-[85%] md:w-[75%] lg:w-[60%] xl:w-1/2 bg-white dark:bg-gray-800 shadow-2xl z-50 transition-transform duration-300 ${isOpen ? "translate-x-0" : "translate-x-full"
+          }`}
       >
         <div className="flex flex-col h-full">
           {/* Close Button */}
-          <div
-            className="absolute top-6 left-0 w-9 h-9 z-10"
+          <button
+            onClick={onClose}
+            className="absolute top-6 left-0 w-9 h-9 z-10 flex items-center justify-center rounded-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 shadow-lg text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
             style={{
               transform: "translateX(-50%)",
             }}
+            aria-label="Close"
           >
-            <div className="relative w-full h-full">
-              <div className="absolute inset-0 rounded-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 shadow-lg"></div>
-              <div className="absolute top-0 right-0 w-1/2 h-full bg-white dark:bg-gray-800"></div>
-              <button
-                onClick={onClose}
-                className="absolute inset-0 flex items-center justify-center rounded-full text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-50/75 dark:hover:bg-gray-700/75 transition-colors"
-                aria-label="Close"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
+            <X className="w-5 h-5" />
+          </button>
 
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
@@ -1577,7 +1605,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                   autoFocus
                 />
               ) : (
-                <h2 
+                <h2
                   className="text-xl font-semibold text-gray-900 dark:text-gray-100 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 px-2 py-1 rounded"
                   onClick={() => startEditing('title', taskProperties.title)}
                 >
@@ -1593,10 +1621,10 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
             </button>
           </div>
 
-          {/* Main Content */}
-          <div className="flex-1 overflow-hidden flex">
-            {/* Task Details - 2/3 width */}
-            <div className="w-2/3 border-r border-gray-200 dark:border-gray-700 overflow-auto scrollbar-minimal">
+          {/* Main Content - Responsive: stack on mobile, side-by-side on larger screens */}
+          <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
+            {/* Task Details - Full width on mobile, 60% on larger screens */}
+            <div className="flex-1 md:w-3/5 md:flex-none border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-700 overflow-auto scrollbar-minimal">
               <div className="p-6 space-y-6">
                 {/* Task Properties - Interactive */}
                 <div className="space-y-3">
@@ -1621,7 +1649,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                         ))}
                       </select>
                     ) : (
-                      <div 
+                      <div
                         className="flex items-center gap-2 flex-1 justify-end"
                         onClick={() => startEditing('status', taskProperties.status)}
                       >
@@ -1650,7 +1678,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                         autoFocus
                       />
                     ) : (
-                      <div 
+                      <div
                         className="flex items-center gap-2 flex-1 justify-end"
                         onClick={() => startEditing('dueDate', taskProperties.dueDate)}
                       >
@@ -1668,7 +1696,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                       <Clock className="w-4 h-4 text-gray-500 flex-shrink-0" />
                       <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('taskDetail.estimatedTimeLabel')}</span>
                     </div>
-                    <div 
+                    <div
                       className="flex items-center gap-2 flex-1 justify-end"
                       onClick={() => setShowEstimatedTimePicker(true)}
                     >
@@ -1706,7 +1734,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                         ))}
                       </select>
                     ) : (
-                      <div 
+                      <div
                         className="flex items-center gap-2 flex-1 justify-end"
                         onClick={() => startEditing('type', taskProperties.type)}
                       >
@@ -1742,7 +1770,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                         ))}
                       </select>
                     ) : (
-                      <div 
+                      <div
                         className="flex items-center gap-2 flex-1 justify-end"
                         onClick={() => startEditing('priority', taskProperties.priority)}
                       >
@@ -1757,36 +1785,35 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
 
                 {/* Action Buttons */}
                 <div className="flex flex-wrap gap-2 pt-4">
-                  <button 
+                  <button
                     onClick={() => setShowCustomStatusModal(true)}
                     className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors shadow-sm"
                   >
                     <Plus className="w-4 h-4" />
                     {t('taskDetail.addStatus')}
                   </button>
-                  
+
                   {/* Timer Button */}
-                  <button 
+                  <button
                     onClick={isTimerRunning ? handleStopTimer : handleStartTimer}
-                    className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm transition-colors shadow-sm ${
-                      isTimerRunning 
-                        ? 'bg-red-50 border-red-300 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300' 
-                        : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                    }`}
+                    className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm transition-colors shadow-sm ${isTimerRunning
+                      ? 'bg-red-50 border-red-300 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300'
+                      : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                      }`}
                   >
                     <PlayCircle className="w-4 h-4" />
                     {isTimerRunning ? `${t('taskDetail.stopTimer')} (${formatElapsedTime(elapsedTime)})` : t('taskDetail.startTime')}
                   </button>
-                  
-                  <button 
+
+                  <button
                     onClick={() => setShowTimeEntryForm(!showTimeEntryForm)}
                     className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors shadow-sm"
                   >
                     <Timer className="w-4 h-4" />
                     {t('taskDetail.logTime')}
                   </button>
-                  
-                  <button 
+
+                  <button
                     onClick={() => setShowRepeatModal(true)}
                     className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors shadow-sm"
                   >
@@ -1812,7 +1839,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                       autoFocus
                     />
                   ) : (
-                    <p 
+                    <p
                       className="text-gray-600 dark:text-gray-400 whitespace-pre-wrap cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded"
                       onClick={() => startEditing('description', taskProperties.description)}
                     >
@@ -1825,7 +1852,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('taskDetail.scheduledWork')}</h3>
-                    <button 
+                    <button
                       onClick={() => setShowScheduledWorkForm(!showScheduledWorkForm)}
                       className="text-blue-500 hover:text-blue-600 text-sm flex items-center gap-1"
                     >
@@ -1833,7 +1860,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                       {t('taskDetail.scheduleWork')}
                     </button>
                   </div>
-                  
+
                   {/* Scheduled Work Form */}
                   {showScheduledWorkForm && <ScheduledWorkForm />}
 
@@ -1861,12 +1888,11 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                               {work.estimatedHours === 0 && work.estimatedMinutes === 0 && "—"}
                             </span>
                             <div className="flex items-center justify-between">
-                              <span className={`px-2 py-1 rounded text-xs ${
-                                work.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                              <span className={`px-2 py-1 rounded text-xs ${work.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
                                 work.status === 'in-progress' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
-                                work.status === 'cancelled' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
-                                'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                              }`}>
+                                  work.status === 'cancelled' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
+                                    'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                                }`}>
                                 {work.status}
                               </span>
                               <button
@@ -1908,7 +1934,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                           <span>{t('taskDetail.billable')}</span>
                           <span>{t('taskDetail.time')}</span>
                         </div>
-                        
+
                         {/* Logged time entries */}
                         <div className="space-y-3">
                           {timeEntries.map((entry, index) => (
@@ -2000,7 +2026,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                         <p className="text-sm">{t('taskDetail.noFilesAttached')}</p>
                       </div>
                     )}
-                    
+
                     <div className="mt-4">
                       <input
                         type="file"
@@ -2013,11 +2039,10 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                       />
                       <label
                         htmlFor="file-upload"
-                        className={`flex items-center gap-2 text-sm cursor-pointer ${
-                          uploadingFiles 
-                            ? 'text-gray-400 cursor-not-allowed' 
-                            : 'text-blue-500 hover:text-blue-600'
-                        }`}
+                        className={`flex items-center gap-2 text-sm cursor-pointer ${uploadingFiles
+                          ? 'text-gray-400 cursor-not-allowed'
+                          : 'text-blue-500 hover:text-blue-600'
+                          }`}
                       >
                         {uploadingFiles ? (
                           <>
@@ -2037,9 +2062,9 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
               </div>
             </div>
 
-            {/* Comments - 1/3 width - FIXED: Always show comment form for all task statuses regardless of due date */}
-            <div className="w-1/3 flex flex-col h-full overflow-hidden">
-              <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 scrollbar-minimal">
+            {/* Comments - Full width on mobile, 40% on larger screens - FIXED: Always show comment form for all task statuses regardless of due date */}
+            <div className="flex-1 md:w-2/5 md:flex-none flex flex-col h-full min-h-[300px] md:min-h-0 overflow-hidden">
+              <div ref={commentsScrollRef} className="flex-1 overflow-y-auto overflow-x-hidden p-6 scrollbar-minimal">
                 <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
                   <MessageSquare className="w-4 h-4" />
                   {t('taskDetail.comments')} ({comments.length})
@@ -2060,8 +2085,8 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                 <div className="flex gap-3 items-start">
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs text-white font-medium flex-shrink-0 overflow-hidden self-start mt-1">
                     {currentUser?.avatar ? (
-                      <img 
-                        src={currentUser.avatar} 
+                      <img
+                        src={currentUser.avatar}
                         alt={currentUser.name || "User"}
                         className="w-full h-full object-cover"
                         onError={(e) => {
@@ -2087,8 +2112,8 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                       <div className="mb-2 p-2 border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700">
                         <div className="flex items-center gap-2">
                           {pendingAttachmentPreview ? (
-                            <img 
-                              src={pendingAttachmentPreview} 
+                            <img
+                              src={pendingAttachmentPreview}
                               alt={pendingAttachment.name}
                               className="w-16 h-16 object-cover rounded"
                             />
@@ -2170,7 +2195,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
               {t('customStatus.title')}
             </h3>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -2185,7 +2210,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                   autoFocus
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   {t('customStatus.color')}
@@ -2195,16 +2220,15 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                     <button
                       key={color}
                       onClick={() => setCustomStatusColor(color)}
-                      className={`w-8 h-8 rounded-full border-2 ${
-                        customStatusColor === color ? 'border-gray-900 dark:border-gray-100' : 'border-gray-300'
-                      }`}
+                      className={`w-8 h-8 rounded-full border-2 ${customStatusColor === color ? 'border-gray-900 dark:border-gray-100' : 'border-gray-300'
+                        }`}
                       style={{ backgroundColor: color }}
                     />
                   ))}
                 </div>
               </div>
             </div>
-            
+
             <div className="flex gap-3 mt-6">
               <button
                 onClick={handleAddCustomStatus}
@@ -2231,21 +2255,21 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
               {t('repeatTask.title')}
             </h3>
-            
+
             <div className="space-y-4">
               <div className="flex items-center">
                 <input
                   type="checkbox"
                   id="isRepeating"
                   checked={repeatSettings.isRepeating}
-                  onChange={(e) => setRepeatSettings({...repeatSettings, isRepeating: e.target.checked})}
+                  onChange={(e) => setRepeatSettings({ ...repeatSettings, isRepeating: e.target.checked })}
                   className="mr-3"
                 />
                 <label htmlFor="isRepeating" className="text-sm font-medium text-gray-700 dark:text-gray-300">
                   {t('repeatTask.enableRepetition')}
                 </label>
               </div>
-              
+
               {repeatSettings.isRepeating && (
                 <>
                   <div>
@@ -2256,13 +2280,13 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                       <input
                         type="number"
                         value={repeatSettings.interval}
-                        onChange={(e) => setRepeatSettings({...repeatSettings, interval: parseInt(e.target.value) || 1})}
+                        onChange={(e) => setRepeatSettings({ ...repeatSettings, interval: parseInt(e.target.value) || 1 })}
                         min="1"
                         className="w-20 p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                       />
                       <select
                         value={repeatSettings.frequency}
-                        onChange={(e) => setRepeatSettings({...repeatSettings, frequency: e.target.value})}
+                        onChange={(e) => setRepeatSettings({ ...repeatSettings, frequency: e.target.value })}
                         className="flex-1 p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                       >
                         <option value="daily">{t('repeatTask.daily')}</option>
@@ -2272,7 +2296,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                       </select>
                     </div>
                   </div>
-                  
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       {t('repeatTask.endDate')}
@@ -2280,14 +2304,14 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                     <input
                       type="date"
                       value={repeatSettings.endDate}
-                      onChange={(e) => setRepeatSettings({...repeatSettings, endDate: e.target.value})}
+                      onChange={(e) => setRepeatSettings({ ...repeatSettings, endDate: e.target.value })}
                       className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                     />
                   </div>
                 </>
               )}
             </div>
-            
+
             <div className="flex gap-3 mt-6">
               <button
                 onClick={handleSaveRepeatSettings}
@@ -2313,98 +2337,96 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
               {t('assignee.addAssignees')}
             </h3>
-            
+
             <div className="space-y-2 max-h-[300px] overflow-y-auto">
               {currentGroup.members
                 .filter((member) => {
                   const userId = typeof member.userId === 'object' ? member.userId._id : member.userId;
-                  
+
                   // If user cannot assign to others, only show themselves
                   if (!canAssignToOthers) {
                     return userId === currentUser?._id;
                   }
-                  
+
                   // If task has a folder, only show users with folder access
                   if (folderMemberAccess && task?.folderId) {
                     return folderMemberAccess.has(userId);
                   }
-                  
+
                   // Otherwise show all members
                   return true;
                 })
                 .map((member) => {
-                const userId = typeof member.userId === 'object' ? member.userId._id : member.userId;
-                const userName = typeof member.userId === 'object' ? member.userId.name : member.name || 'Unknown';
-                const userEmail = typeof member.userId === 'object' ? member.userId.email : member.email || '';
-                const userAvatar = typeof member.userId === 'object' ? member.userId.avatar : member.avatar;
-                
-                const isAlreadyAssigned = task?.assignedTo?.some(
-                  (assignee: any) => {
-                    const assigneeId = typeof assignee.userId === 'object' ? assignee.userId._id : assignee.userId;
-                    return assigneeId === userId;
-                  }
-                );
-                
-                const isSelected = selectedMembers.includes(userId);
-                
-                return (
-                  <label
-                    key={userId}
-                    className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
-                      isAlreadyAssigned 
+                  const userId = typeof member.userId === 'object' ? member.userId._id : member.userId;
+                  const userName = typeof member.userId === 'object' ? member.userId.name : member.name || 'Unknown';
+                  const userEmail = typeof member.userId === 'object' ? member.userId.email : member.email || '';
+                  const userAvatar = typeof member.userId === 'object' ? member.userId.avatar : member.avatar;
+
+                  const isAlreadyAssigned = task?.assignedTo?.some(
+                    (assignee: any) => {
+                      const assigneeId = typeof assignee.userId === 'object' ? assignee.userId._id : assignee.userId;
+                      return assigneeId === userId;
+                    }
+                  );
+
+                  const isSelected = selectedMembers.includes(userId);
+
+                  return (
+                    <label
+                      key={userId}
+                      className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${isAlreadyAssigned
                         ? 'bg-gray-100 dark:bg-gray-700 opacity-50 cursor-not-allowed'
                         : isSelected
-                        ? 'bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-500'
-                        : 'bg-gray-50 dark:bg-gray-700/50 border-2 border-transparent hover:bg-gray-100 dark:hover:bg-gray-700'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      disabled={isAlreadyAssigned}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedMembers([...selectedMembers, userId]);
-                        } else {
-                          setSelectedMembers(selectedMembers.filter(id => id !== userId));
-                        }
-                      }}
-                      className="sr-only"
-                    />
-                    <div className="flex items-center gap-3 flex-1">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm ${
-                        isSelected ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-800'
-                      }`}>
-                        {userAvatar ? (
-                          <img 
-                            src={userAvatar} 
-                            alt={userName}
-                            className="w-full h-full rounded-full object-cover"
-                          />
-                        ) : (
-                          (userName?.charAt(0) || 'U').toUpperCase()
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                            {userName}
-                          </span>
-                          {isAlreadyAssigned && (
-                            <span className="text-xs bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded">
-                              Already assigned
-                            </span>
+                          ? 'bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-500'
+                          : 'bg-gray-50 dark:bg-gray-700/50 border-2 border-transparent hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        disabled={isAlreadyAssigned}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedMembers([...selectedMembers, userId]);
+                          } else {
+                            setSelectedMembers(selectedMembers.filter(id => id !== userId));
+                          }
+                        }}
+                        className="sr-only"
+                      />
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm ${isSelected ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-800'
+                          }`}>
+                          {userAvatar ? (
+                            <img
+                              src={userAvatar}
+                              alt={userName}
+                              className="w-full h-full rounded-full object-cover"
+                            />
+                          ) : (
+                            (userName?.charAt(0) || 'U').toUpperCase()
                           )}
                         </div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                          {userEmail}
-                        </p>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                              {userName}
+                            </span>
+                            {isAlreadyAssigned && (
+                              <span className="text-xs bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded">
+                                Already assigned
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                            {userEmail}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  </label>
-                );
-              })}
-              
+                    </label>
+                  );
+                })}
+
               {currentGroup.members.filter((member) => {
                 const userId = typeof member.userId === 'object' ? member.userId._id : member.userId;
                 if (!canAssignToOthers) {
@@ -2415,19 +2437,19 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
                 }
                 return true;
               }).length === 0 && (
-                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                  <User className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-                  <p className="text-sm">
-                    {!canAssignToOthers 
-                      ? "Bạn chỉ có thể gán task cho chính mình" 
-                      : folderMemberAccess && task?.folderId
-                      ? "Không có thành viên nào có quyền truy cập vào folder này"
-                      : "No members in this group"}
-                  </p>
-                </div>
-              )}
+                  <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                    <User className="w-12 h-12 mx-auto mb-2 text-gray-400" />
+                    <p className="text-sm">
+                      {!canAssignToOthers
+                        ? "Bạn chỉ có thể gán task cho chính mình"
+                        : folderMemberAccess && task?.folderId
+                          ? "Không có thành viên nào có quyền truy cập vào folder này"
+                          : "No members in this group"}
+                    </p>
+                  </div>
+                )}
             </div>
-            
+
             <div className="flex gap-3 mt-6">
               <button
                 onClick={handleConfirmAssign}
@@ -2453,7 +2475,7 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
 
       {/* Lightbox for viewing images */}
       {lightboxImage && (
-        <div 
+        <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm"
           onClick={() => setLightboxImage(null)}
         >
@@ -2465,8 +2487,8 @@ const isCommentOwner = useCallback((comment: Comment): boolean => {
             >
               <X className="w-6 h-6" />
             </button>
-            <img 
-              src={lightboxImage} 
+            <img
+              src={lightboxImage}
               alt="Full size preview"
               className="max-w-full max-h-[85vh] object-contain rounded-lg"
               onClick={(e) => e.stopPropagation()}

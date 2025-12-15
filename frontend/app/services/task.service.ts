@@ -158,19 +158,26 @@ export const taskService = {
         throw new Error('Authentication failed. Please login again.');
       }
 
-      if (response.status === 403) {
-        const errorText = await response.text();
-        let errorMessage = 'You must join or create a group to manage tasks';
+      const errorText = await response.text();
+
+      if (response.status === 403 || response.status === 404) {
+        let errorMessage =
+          response.status === 403
+            ? 'You must join or create a group to manage tasks'
+            : `Failed to fetch tasks: ${response.status}`;
+
         try {
           const errorData = JSON.parse(errorText);
-          errorMessage = errorData.message || errorMessage;
+          if (errorData && typeof errorData.message === 'string') {
+            errorMessage = errorData.message;
+          }
         } catch {
           // Use default message if parsing fails
         }
+
         throw new Error(errorMessage);
       }
 
-      const errorText = await response.text();
       console.error('Error response:', errorText);
       throw new Error(`Failed to fetch tasks: ${response.status}`);
     }

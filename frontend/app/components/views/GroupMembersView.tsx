@@ -504,7 +504,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-50 dark:bg-[#1A1A1A] relative overflow-hidden">
+    <div className="h-full overflow-y-auto bg-gray-50 dark:bg-[#1A1A1A] relative">
       {/* Update Notification */}
       {showUpdateNotification && (
         <div className="fixed top-4 right-4 z-50 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg flex items-center space-x-2 animate-slide-in">
@@ -514,352 +514,347 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
           <span className="text-sm font-medium">Group updated!</span>
         </div>
       )}
-      
-      {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto">
-        {/* Header */}
-        <div className="bg-white dark:bg-[#1F1F1F] border-b border-gray-200 dark:border-gray-700 px-6 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              {/* Group Name with Inline Editing */}
-              <div className="flex items-center group">
-                {isEditingName ? (
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="text"
-                      value={editingName}
-                      onChange={(e) => setEditingName(e.target.value)}
-                      onKeyDown={handleKeyPress}
-                      className="text-3xl font-bold text-gray-900 dark:text-white bg-transparent border-b-2 border-blue-500 focus:outline-none focus:border-blue-600 px-1 py-1 min-w-0 flex-1"
-                      autoFocus
-                      disabled={isUpdating}
-                    />
-                    <div className="flex items-center space-x-1">
-                      <button
-                        onClick={handleSaveName}
-                        disabled={isUpdating || !editingName.trim()}
-                        className="p-1 text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Save"
-                      >
-                        {isUpdating ? (
-                          <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin"></div>
-                        ) : (
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                        )}
-                      </button>
-                      <button
-                        onClick={handleCancelEditName}
-                        disabled={isUpdating}
-                        className="p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Cancel"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div 
-                    className="flex items-center"
-                    onMouseEnter={() => setShowEditButton(true)}
-                    onMouseLeave={() => setShowEditButton(false)}
-                  >
-                    <h1 
-                      className="text-2xl font-bold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                      onDoubleClick={canEditRoles ? handleStartEditName : undefined}
-                      title={canEditRoles ? 'Double click to edit' : undefined}
+      {/* Header */}
+      <div className="bg-white dark:bg-[#1F1F1F] border-b border-gray-200 dark:border-gray-700 px-6 py-6">
+        <div className="flex items-center justify-between">
+          <div className="flex-1">
+            {/* Group Name with Inline Editing */}
+            <div className="flex items-center group">
+              {isEditingName ? (
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="text"
+                    value={editingName}
+                    onChange={(e) => setEditingName(e.target.value)}
+                    onKeyDown={handleKeyPress}
+                    className="text-3xl font-bold text-gray-900 dark:text-white bg-transparent border-b-2 border-blue-500 focus:outline-none focus:border-blue-600 px-1 py-1 min-w-0 flex-1"
+                    autoFocus
+                    disabled={isUpdating}
+                  />
+                  <div className="flex items-center space-x-1">
+                    <button
+                      onClick={handleSaveName}
+                      disabled={isUpdating || !editingName.trim()}
+                      className="p-1 text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Save"
                     >
-                      {group.name}
-                    </h1>
-                    {canEditRoles && (
-                      <button
-                        onClick={handleStartEditName}
-                        className="ml-3 p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2E2E2E] rounded-lg transition-all"
-                        title="Edit group name"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-              
-              <p className="text-gray-600 dark:text-gray-400 mt-2 text-lg">
-                {group.description || t('groups.noDescription')}
-              </p>
-              <div className="flex items-center justify-between mt-3">
-                <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
-                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                  {members.length} {members.length !== 1 ? t('groups.members') : t('groups.member')}
-                </div>
-                <div className="flex items-center text-xs text-gray-400 dark:text-gray-500">
-                  <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  {t('groups.lastUpdated')}: {formatTime(new Date(lastUpdateTime))}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              <button
-                onClick={() => loadGroupDetails()}
-                disabled={loading}
-                className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Refresh"
-              >
-                <svg className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-              </button>
-              {canEditRoles && (
-                <button
-                  onClick={() => setShowDeleteModal(true)}
-                  className="p-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                  title="Delete group"
-                >
-                  <Trash2 className="w-5 h-5" />
-                </button>
-              )}
-              {canAddMembersCheck && (
-                <button
-                  onClick={() => setShowInviteModal(true)}
-                  className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-xl transition-all duration-200 flex items-center shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 font-medium"
-                >
-                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                  </svg>
-                  {t('groupMembers.addPeopleButton')}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Folder Assignments Section */}
-        {canAssignFolderMembers(currentUserRole) && showFolderAssignments && (
-          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Quản lý folder theo vai trò</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Gán các thành viên thực thi vào từng folder để họ có thể tạo/chỉnh sửa nội dung.
-                </p>
-              </div>
-            </div>
-            {assignableFolders.length === 0 ? (
-              <div className="text-sm text-gray-500 dark:text-gray-400">
-                Chưa có folder tùy chỉnh nào. Hãy tạo thêm folder để phân quyền chi tiết.
-              </div>
-            ) : (
-              <div className="grid gap-4 md:grid-cols-2">
-                {assignableFolders.map(folder => {
-                  const assigned = (folder.memberAccess || []).map(access => {
-                    const member = memberLookup.get(access.userId);
-                    const name = member ? getMemberName(member) : 'Thành viên đã rời nhóm';
-                    const roleLabel = member ? getRoleLabel(member.role) : '';
-                    return { userId: access.userId, name, roleLabel };
-                  });
-
-                  return (
-                    <div
-                      key={folder._id}
-                      className="p-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#151515] shadow-sm"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-gray-900 dark:text-white">{folder.name}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                            {assigned.length} thành viên được gán
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => handleOpenFolderModal(folder)}
-                          className="text-xs font-semibold text-blue-600 hover:text-blue-800 dark:text-blue-400"
-                        >
-                          Quản lý truy cập
-                        </button>
-                      </div>
-                      {assigned.length > 0 ? (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {assigned.slice(0, 3).map(user => (
-                            <span
-                              key={user.userId}
-                              className="text-xs px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200"
-                            >
-                              {user.name} • {user.roleLabel}
-                            </span>
-                          ))}
-                          {assigned.length > 3 && (
-                            <span className="text-xs text-gray-500 dark:text-gray-400">
-                              +{assigned.length - 3} thành viên khác
-                            </span>
-                          )}
-                        </div>
+                      {isUpdating ? (
+                        <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin"></div>
                       ) : (
-                        <p className="mt-3 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3" />
-                          Folder chưa được gán cho thành viên nào
-                        </p>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
                       )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Members List */}
-        <div className="p-6">
-          <div className="bg-white dark:bg-[#1F1F1F] rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-            {roleUpdateError && (
-              <div className="px-6 py-3 bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300 border-b border-red-100 dark:border-red-800">
-                {roleUpdateError}
-              </div>
-            )}
-            {/* Table Header */}
-            <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-700 dark:to-gray-600 px-6 py-4 border-b border-gray-200 dark:border-gray-600">
-              <div className={`grid gap-6 items-center ${canEditRoles ? 'grid-cols-5' : 'grid-cols-4'}`}>
-                <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Thành viên</div>
-                <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Email</div>
-                <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Vai trò</div>
-                <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Phạm vi truy cập</div>
-                {canEditRoles && (
-                  <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Hành động</div>
-                )}
-              </div>
-            </div>
-
-            {/* Members */}
-            <div className="divide-y divide-gray-200 dark:divide-gray-600">
-              {members.length === 0 ? (
-                <div className="px-6 py-12 text-center">
-                  <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 dark:bg-[#2E2E2E] rounded-full flex items-center justify-center">
-                    <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                    </svg>
+                    </button>
+                    <button
+                      onClick={handleCancelEditName}
+                      disabled={isUpdating}
+                      className="p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Cancel"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
                   </div>
-                  <p className="text-gray-500 dark:text-gray-400 text-lg">No members found</p>
-                  <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">Invite people to get started</p>
                 </div>
               ) : (
-                members.map((member) => {
-                  const memberAvatar = getMemberAvatar(member);
-                  const memberName = getMemberName(member);
-                  
-                  return (
-                    <div key={typeof member.userId === 'string' ? member.userId : member.userId._id} className="px-6 py-5 hover:bg-gray-50 dark:hover:bg-[#2E2E2E] transition-colors">
-                      <div className={`grid gap-6 items-center ${canEditRoles ? 'grid-cols-5' : 'grid-cols-4'}`}>
-                        {/* Name with Real Avatar */}
-                        <div className="flex items-center">
-                          <div className="relative">
-                            {memberAvatar ? (
-                              <img 
-                                src={memberAvatar} 
-                                alt={memberName || 'User avatar'}
-                                className="w-10 h-10 rounded-full object-cover shadow-sm border border-gray-200 dark:border-gray-600"
-                                onError={(e) => {
-                                  // Fallback to initial if image fails to load
-                                  const target = e.target as HTMLImageElement;
-                                  target.style.display = 'none';
-                                  const fallback = target.nextSibling as HTMLElement;
-                                  if (fallback) fallback.style.display = 'flex';
-                                }}
-                              />
-                            ) : null}
-                            <div 
-                              className={`w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white text-sm font-semibold shadow-sm ${memberAvatar ? 'hidden' : 'flex'}`}
-                            >
-                              {memberName ? memberName.charAt(0).toUpperCase() : '?'}
-                            </div>
-                            {member.role === GROUP_ROLE_KEYS.PRODUCT_OWNER && (
-                              <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-400 rounded-full flex items-center justify-center border border-white dark:border-gray-800">
-                                <svg className="w-2.5 h-2.5 text-yellow-800" fill="currentColor" viewBox="0 0 20 20">
-                                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                                </svg>
-                              </div>
-                            )}
-                          </div>
-                          <div className="ml-3">
-                            <div className="flex items-center">
-                              <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                                {isCurrentUser(member) ? 'Me' : memberName || 'Unknown'}
-                              </span>
-                              {isCurrentUser(member) && (
-                                <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded-full">
-                                  You
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Email */}
-                        <div className="text-sm text-gray-600 dark:text-gray-400">
-                          {getMemberEmail(member) || 'No email'}
-                        </div>
-
-                        {/* Role */}
-                        <div>
-                          {renderRoleCell(member)}
-                        </div>
-
-                        {/* Access */}
-                        <div>
-                          {renderAccessSummary(member)}
-                        </div>
-
-                        {/* Actions */}
-                        {canEditRoles && (
-                          <div className="flex items-center">
-                            {canRemoveMember(member) ? (
-                              <button
-                                onClick={() => {
-                                  const memberId = getMemberId(member);
-                                  if (memberId) {
-                                    handleRemoveMember(memberId, memberName || 'Unknown');
-                                  }
-                                }}
-                                className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 text-sm font-medium px-3 py-1 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                                title="Remove member"
-                              >
-                                Remove
-                              </button>
-                            ) : (
-                              <span className="text-gray-400 text-sm">-</span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
+                <div 
+                  className="flex items-center"
+                  onMouseEnter={() => setShowEditButton(true)}
+                  onMouseLeave={() => setShowEditButton(false)}
+                >
+                  <h1 
+                    className="text-2xl font-bold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                    onDoubleClick={canEditRoles ? handleStartEditName : undefined}
+                    title={canEditRoles ? 'Double click to edit' : undefined}
+                  >
+                    {group.name}
+                  </h1>
+                  {canEditRoles && (
+                    <button
+                      onClick={handleStartEditName}
+                      className="ml-3 p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2E2E2E] rounded-lg transition-all"
+                      title="Edit group name"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
               )}
             </div>
+            
+            <p className="text-gray-600 dark:text-gray-400 mt-2 text-lg">
+              {group.description || t('groups.noDescription')}
+            </p>
+            <div className="flex items-center justify-between mt-3">
+              <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
+                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                {members.length} {members.length !== 1 ? t('groups.members') : t('groups.member')}
+              </div>
+              <div className="flex items-center text-xs text-gray-400 dark:text-gray-500">
+                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {t('groups.lastUpdated')}: {formatTime(new Date(lastUpdateTime))}
+              </div>
+            </div>
           </div>
-
-          {/* Add People Link */}
-          {members.length > 0 && canAddMembersCheck && (
-            <div className="mt-4 text-center">
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => loadGroupDetails()}
+              disabled={loading}
+              className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Refresh"
+            >
+              <svg className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+            {canEditRoles && (
+              <button
+                onClick={() => setShowDeleteModal(true)}
+                className="p-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                title="Delete group"
+              >
+                <Trash2 className="w-5 h-5" />
+              </button>
+            )}
+            {canAddMembersCheck && (
               <button
                 onClick={() => setShowInviteModal(true)}
-                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm underline"
+                className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-xl transition-all duration-200 flex items-center shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 font-medium"
               >
-                {t('groupMembers.addPeople')}
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                {t('groupMembers.addPeopleButton')}
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Modals */}
+      {canAssignFolderMembers(currentUserRole) && showFolderAssignments && (
+        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Quản lý folder theo vai trò</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Gán các thành viên thực thi vào từng folder để họ có thể tạo/chỉnh sửa nội dung.
+              </p>
+            </div>
+          </div>
+          {assignableFolders.length === 0 ? (
+            <div className="text-sm text-gray-500 dark:text-gray-400">
+              Chưa có folder tùy chỉnh nào. Hãy tạo thêm folder để phân quyền chi tiết.
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {assignableFolders.map(folder => {
+                const assigned = (folder.memberAccess || []).map(access => {
+                  const member = memberLookup.get(access.userId);
+                  const name = member ? getMemberName(member) : 'Thành viên đã rời nhóm';
+                  const roleLabel = member ? getRoleLabel(member.role) : '';
+                  return { userId: access.userId, name, roleLabel };
+                });
+
+                return (
+                  <div
+                    key={folder._id}
+                    className="p-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#151515] shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">{folder.name}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {assigned.length} thành viên được gán
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleOpenFolderModal(folder)}
+                        className="text-xs font-semibold text-blue-600 hover:text-blue-800 dark:text-blue-400"
+                      >
+                        Quản lý truy cập
+                      </button>
+                    </div>
+                    {assigned.length > 0 ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {assigned.slice(0, 3).map(user => (
+                          <span
+                            key={user.userId}
+                            className="text-xs px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200"
+                          >
+                            {user.name} • {user.roleLabel}
+                          </span>
+                        ))}
+                        {assigned.length > 3 && (
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            +{assigned.length - 3} thành viên khác
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" />
+                        Folder chưa được gán cho thành viên nào
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Members List */}
+      <div className="p-6">
+        <div className="bg-white dark:bg-[#1F1F1F] rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+          {roleUpdateError && (
+            <div className="px-6 py-3 bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300 border-b border-red-100 dark:border-red-800">
+              {roleUpdateError}
+            </div>
+          )}
+          {/* Table Header */}
+          <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-700 dark:to-gray-600 px-6 py-4 border-b border-gray-200 dark:border-gray-600">
+            <div className={`grid gap-6 items-center ${canEditRoles ? 'grid-cols-5' : 'grid-cols-4'}`}>
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Thành viên</div>
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Email</div>
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Vai trò</div>
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Phạm vi truy cập</div>
+              {canEditRoles && (
+                <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Hành động</div>
+              )}
+            </div>
+          </div>
+
+          {/* Members */}
+          <div className="divide-y divide-gray-200 dark:divide-gray-600">
+            {members.length === 0 ? (
+              <div className="px-6 py-12 text-center">
+                <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 dark:bg-[#2E2E2E] rounded-full flex items-center justify-center">
+                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                </div>
+                <p className="text-gray-500 dark:text-gray-400 text-lg">No members found</p>
+                <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">Invite people to get started</p>
+              </div>
+            ) : (
+              members.map((member) => {
+                const memberAvatar = getMemberAvatar(member);
+                const memberName = getMemberName(member);
+                
+                return (
+                  <div key={typeof member.userId === 'string' ? member.userId : member.userId._id} className="px-6 py-5 hover:bg-gray-50 dark:hover:bg-[#2E2E2E] transition-colors">
+                    <div className={`grid gap-6 items-center ${canEditRoles ? 'grid-cols-5' : 'grid-cols-4'}`}>
+                      {/* Name with Real Avatar */}
+                      <div className="flex items-center">
+                        <div className="relative">
+                          {memberAvatar ? (
+                            <img 
+                              src={memberAvatar} 
+                              alt={memberName || 'User avatar'}
+                              className="w-10 h-10 rounded-full object-cover shadow-sm border border-gray-200 dark:border-gray-600"
+                              onError={(e) => {
+                                // Fallback to initial if image fails to load
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                                const fallback = target.nextSibling as HTMLElement;
+                                if (fallback) fallback.style.display = 'flex';
+                              }}
+                            />
+                          ) : null}
+                          <div 
+                            className={`w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white text-sm font-semibold shadow-sm ${memberAvatar ? 'hidden' : 'flex'}`}
+                          >
+                            {memberName ? memberName.charAt(0).toUpperCase() : '?'}
+                          </div>
+                          {member.role === GROUP_ROLE_KEYS.PRODUCT_OWNER && (
+                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-400 rounded-full flex items-center justify-center border border-white dark:border-gray-800">
+                              <svg className="w-2.5 h-2.5 text-yellow-800" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                              </svg>
+                            </div>
+                          )}
+                        </div>
+                        <div className="ml-3">
+                          <div className="flex items-center">
+                            <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                              {isCurrentUser(member) ? 'Me' : memberName || 'Unknown'}
+                            </span>
+                            {isCurrentUser(member) && (
+                              <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded-full">
+                                You
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Email */}
+                      <div className="text-sm text-gray-600 dark:text-gray-400">
+                        {getMemberEmail(member) || 'No email'}
+                      </div>
+
+                      {/* Role */}
+                      <div>
+                        {renderRoleCell(member)}
+                      </div>
+
+                      {/* Access */}
+                      <div>
+                        {renderAccessSummary(member)}
+                      </div>
+
+                      {/* Actions */}
+                      {canEditRoles && (
+                        <div className="flex items-center">
+                          {canRemoveMember(member) ? (
+                            <button
+                              onClick={() => {
+                                const memberId = getMemberId(member);
+                                if (memberId) {
+                                  handleRemoveMember(memberId, memberName || 'Unknown');
+                                }
+                              }}
+                              className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 text-sm font-medium px-3 py-1 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                              title="Remove member"
+                            >
+                              Remove
+                            </button>
+                          ) : (
+                            <span className="text-gray-400 text-sm">-</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Add People Link */}
+        {members.length > 0 && canAddMembersCheck && (
+          <div className="mt-4 text-center">
+            <button
+              onClick={() => setShowInviteModal(true)}
+              className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm underline"
+            >
+              {t('groupMembers.addPeople')}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Invite Modal */}
       {showInviteModal && (
         <InviteUserModal
           onClose={() => setShowInviteModal(false)}
@@ -954,7 +949,7 @@ function InviteUserModal({ onClose, onInvite, t }: InviteUserModalProps) {
               />
               <div className="absolute inset-y-0 right-0 flex items-center pr-4">
                 <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12a4 4 0 10-8 0 4 4 0 018 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
                 </svg>
               </div>
             </div>

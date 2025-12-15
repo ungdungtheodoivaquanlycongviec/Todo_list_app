@@ -33,12 +33,14 @@ import { useTaskRealtime } from "../../../hooks/useTaskRealtime";
 import NoGroupState from "../../common/NoGroupState";
 import NoFolderState from "../../common/NoFolderState";
 import { useFolder } from "../../../contexts/FolderContext";
+import { useUIState } from "../../../contexts/UIStateContext";
 
 export default function TasksView() {
   const { user: currentUser, currentGroup } = useAuth();
   const { currentFolder } = useFolder();
   const { t } = useLanguage();
   const { formatDate, convertFromUserTimezone, convertToUserTimezone } = useRegional();
+  const { setIsTaskDetailOpen } = useUIState();
   const [todoTasksExpanded, setTodoTasksExpanded] = useState(true);
   const [inProgressTasksExpanded, setInProgressTasksExpanded] = useState(true);
   const [incompleteTasksExpanded, setIncompleteTasksExpanded] = useState(true);
@@ -165,72 +167,72 @@ export default function TasksView() {
   // NEW: Helper để lấy danh sách assignees chi tiết
   // Type-safe helper to get detailed assignees
   const getDetailedAssignees = (task: Task) => {
-  if (!task.assignedTo || task.assignedTo.length === 0) {
-    return {
-      hasAssignees: false,
-      assignees: [],
-      currentUserIsAssigned: false,
-      totalCount: 0
-    };
-  }
-
-  const assignees = (task.assignedTo as any[])
-    .filter(assignment => assignment && assignment.userId)
-    .map(assignment => {
-      // Xử lý cả trường hợp userId là string hoặc object
-      let userData;
-      
-      if (typeof assignment.userId === 'string') {
-        // Nếu userId là string ID, tạo minimal user object
-        userData = {
-          _id: assignment.userId,
-          name: 'Loading...', // Tạm thời
-          email: '',
-          avatar: undefined
-        };
-        
-        // Nếu là currentUser, sử dụng thông tin currentUser
-        if (currentUser && assignment.userId === currentUser._id) {
-          userData = {
-            _id: currentUser._id,
-            name: currentUser.name || t('tasks.you'),
-            email: currentUser.email,
-            avatar: currentUser.avatar
-          };
-        }
-      } else if (assignment.userId && typeof assignment.userId === 'object') {
-        // Nếu userId là object (đã populated)
-        const user = assignment.userId as { _id: string; name?: string; email?: string; avatar?: string };
-        userData = {
-          _id: user._id,
-          name: user.name || 'Unknown User',
-          email: user.email || '',
-          avatar: user.avatar
-        };
-      } else {
-        // Fallback nếu userId không hợp lệ
-        return null;
-      }
-
-      if (!userData) return null;
-
+    if (!task.assignedTo || task.assignedTo.length === 0) {
       return {
-        ...userData,
-        initial: (userData.name?.charAt(0) || 'U').toUpperCase()
+        hasAssignees: false,
+        assignees: [],
+        currentUserIsAssigned: false,
+        totalCount: 0
       };
-    })
-    .filter((assignee): assignee is NonNullable<typeof assignee> => assignee !== null);
+    }
 
-  const currentUserIsAssigned = currentUser && 
-    assignees.some(assignee => assignee._id === currentUser._id);
+    const assignees = (task.assignedTo as any[])
+      .filter(assignment => assignment && assignment.userId)
+      .map(assignment => {
+        // Xử lý cả trường hợp userId là string hoặc object
+        let userData;
 
-  return {
-    hasAssignees: assignees.length > 0,
-    assignees,
-    currentUserIsAssigned,
-    totalCount: assignees.length
+        if (typeof assignment.userId === 'string') {
+          // Nếu userId là string ID, tạo minimal user object
+          userData = {
+            _id: assignment.userId,
+            name: 'Loading...', // Tạm thời
+            email: '',
+            avatar: undefined
+          };
+
+          // Nếu là currentUser, sử dụng thông tin currentUser
+          if (currentUser && assignment.userId === currentUser._id) {
+            userData = {
+              _id: currentUser._id,
+              name: currentUser.name || t('tasks.you'),
+              email: currentUser.email,
+              avatar: currentUser.avatar
+            };
+          }
+        } else if (assignment.userId && typeof assignment.userId === 'object') {
+          // Nếu userId là object (đã populated)
+          const user = assignment.userId as { _id: string; name?: string; email?: string; avatar?: string };
+          userData = {
+            _id: user._id,
+            name: user.name || 'Unknown User',
+            email: user.email || '',
+            avatar: user.avatar
+          };
+        } else {
+          // Fallback nếu userId không hợp lệ
+          return null;
+        }
+
+        if (!userData) return null;
+
+        return {
+          ...userData,
+          initial: (userData.name?.charAt(0) || 'U').toUpperCase()
+        };
+      })
+      .filter((assignee): assignee is NonNullable<typeof assignee> => assignee !== null);
+
+    const currentUserIsAssigned = currentUser &&
+      assignees.some(assignee => assignee._id === currentUser._id);
+
+    return {
+      hasAssignees: assignees.length > 0,
+      assignees,
+      currentUserIsAssigned,
+      totalCount: assignees.length
+    };
   };
-};
 
   // Type-safe helper to get assignee summary
   const getAssigneeSummary = (task: Task) => {
@@ -256,7 +258,7 @@ export default function TasksView() {
       const othersCount = totalCount - 1;
       return {
         displayText: t('tasks.youPlus', { count: othersCount }),
-        tooltip: othersCount > 1 
+        tooltip: othersCount > 1
           ? t('tasks.assignedToYouAndPlural', { count: othersCount })
           : t('tasks.assignedToYouAnd', { count: othersCount }),
         isCurrentUser: true
@@ -433,6 +435,12 @@ export default function TasksView() {
     }
   }, [viewMode, currentFolder?._id]);
 
+  // Sync task detail open state with global UI context (for hiding chatbot)
+  useEffect(() => {
+    setIsTaskDetailOpen(showTaskDetail);
+    return () => setIsTaskDetailOpen(false); // Clean up on unmount
+  }, [showTaskDetail, setIsTaskDetailOpen]);
+
   // Listen for global group change events
   useGroupChange(() => {
     console.log('Group change detected, reloading TasksView');
@@ -450,7 +458,7 @@ export default function TasksView() {
 
     const getSortValue = (task: Task, key: string): any => {
       const value = task[key as keyof Task];
-      
+
       switch (key) {
         case "title":
           return (value || "").toString().toLowerCase();
@@ -524,7 +532,7 @@ export default function TasksView() {
     setSortConfigs(prev => {
       const sectionConfigs = prev[section];
       const existingIndex = sectionConfigs.findIndex(c => c.key === key);
-      
+
       let newSectionConfigs;
       if (existingIndex >= 0) {
         // If same key and direction, remove it
@@ -538,7 +546,7 @@ export default function TasksView() {
         // Add new sort config
         newSectionConfigs = [...sectionConfigs, { key, direction }];
       }
-      
+
       return { ...prev, [section]: newSectionConfigs };
     });
   };
@@ -569,13 +577,13 @@ export default function TasksView() {
   const getSortIndicator = () => {
     const sectionConfigs = sortConfigs.todo;
     if (sectionConfigs.length === 0) return null;
-    
+
     const labels = sectionConfigs.map(config => {
       const option = sortOptions.find((opt) => opt.key === config.key);
       if (!option) return "";
       return `${option.label} ${config.direction === "asc" ? "↑" : "↓"}`;
     }).filter(Boolean).join(", ");
-    
+
     return (
       <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full border border-blue-200">
         Sorted by {labels}
@@ -590,9 +598,9 @@ export default function TasksView() {
   const handleCreateTask = async (taskData: any) => {
     try {
       // Mặc định gán người tạo là assignee
-      const assignedTo = taskData.assignedTo && taskData.assignedTo.length > 0 
-      ? taskData.assignedTo 
-      : (currentUser ? [{ userId: currentUser._id }] : []);
+      const assignedTo = taskData.assignedTo && taskData.assignedTo.length > 0
+        ? taskData.assignedTo
+        : (currentUser ? [{ userId: currentUser._id }] : []);
 
       const backendTaskData = {
         title: taskData.title || "Untitled Task",
@@ -826,7 +834,7 @@ export default function TasksView() {
           const userDate = new Date(tempValue + 'T23:59:59'); // Set to end of day
           updateValue = convertFromUserTimezone(userDate).toISOString();
         }
-        
+
         const updatedTask = await taskService.updateTask(task._id, {
           [field]: updateValue,
         });
@@ -851,7 +859,7 @@ export default function TasksView() {
           const userDate = new Date(value + 'T23:59:59'); // Set to end of day
           updateValue = convertFromUserTimezone(userDate).toISOString();
         }
-        
+
         const updatedTask = await taskService.updateTask(task._id, {
           [field]: updateValue,
         });
@@ -904,33 +912,33 @@ export default function TasksView() {
     }
 
     const statusColumns = [
-      { 
-        key: "todo", 
-        title: t('kanban.todo'), 
+      {
+        key: "todo",
+        title: t('kanban.todo'),
         icon: <div className="w-2 h-2 bg-gray-400 rounded-full" />,
         count: kanbanData.kanbanBoard.todo?.count || 0,
         color: "bg-gray-50 border-gray-200",
         textColor: "text-gray-700"
       },
-      { 
-        key: "in_progress", 
-        title: t('kanban.inProgress'), 
+      {
+        key: "in_progress",
+        title: t('kanban.inProgress'),
         icon: <div className="w-2 h-2 bg-blue-500 rounded-full" />,
         count: kanbanData.kanbanBoard.in_progress?.count || 0,
         color: "bg-blue-50 border-blue-200",
         textColor: "text-blue-700"
       },
-      { 
-        key: "completed", 
-        title: t('kanban.completed'), 
+      {
+        key: "completed",
+        title: t('kanban.completed'),
         icon: <div className="w-2 h-2 bg-green-500 rounded-full" />,
         count: kanbanData.kanbanBoard.completed?.count || 0,
         color: "bg-green-50 border-green-200",
         textColor: "text-green-700"
       },
-      { 
-        key: "incomplete", 
-        title: t('kanban.incomplete') || 'Incomplete', 
+      {
+        key: "incomplete",
+        title: t('kanban.incomplete') || 'Incomplete',
         icon: <div className="w-2 h-2 bg-red-500 rounded-full" />,
         count: kanbanData.kanbanBoard.incomplete?.count || 0,
         color: "bg-red-50 border-red-200",
@@ -940,217 +948,206 @@ export default function TasksView() {
 
     const getTasksForColumn = (columnKey: string) => {
       const tasks = kanbanData.kanbanBoard[columnKey]?.tasks || [];
-      
+
       // Apply filtering and sorting to Kanban tasks (use 'todo' section for Kanban)
       return sortTasks(filterTasks(tasks), 'todo');
     };
 
     return (
-      <div className="h-full flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="flex-shrink-0 p-3 sm:p-4 md:p-6">
-          {/* Header content */}
-        </div>
+      <div className="space-y-4">
+        {/* Sort Indicator for Kanban View */}
+        {getSortIndicator() && (
+          <div className="flex justify-center">
+            {getSortIndicator()}
+          </div>
+        )}
         
-        {/* Kanban columns - responsive */}
-        <div className="flex-1 overflow-x-auto overflow-y-hidden px-3 sm:px-4 md:px-6 pb-4">
-          <div className="flex gap-3 sm:gap-4 md:gap-6 h-full min-w-max">
-            {statusColumns.map((column) => {
-              const columnTasks = getTasksForColumn(column.key);
-              
-              return (
-                <div
-                  key={column.key}
-                  className={`
-                    flex-shrink-0 
-                    w-[280px] sm:w-[300px] md:w-[320px] lg:w-[360px]
-                    ${column.color} 
-                    border rounded-xl sm:rounded-2xl 
-                    p-3 sm:p-4 
-                    shadow-sm hover:shadow-md 
-                    transition-shadow duration-200
-                    flex flex-col
-                    max-h-full
-                  `}
-                >
-                  {/* Column Header */}
-                  <div className="flex items-center justify-between mb-4 p-2 rounded-lg bg-white/50">
-                    <div className="flex items-center gap-3">
-                      {column.icon}
-                      <h3 className={`font-semibold text-sm ${column.textColor}`}>
-                        {column.title}
-                      </h3>
-                      <span className={`text-xs ${column.textColor} bg-white/80 px-2 py-1 rounded-full font-medium border`}>
-                        {column.count}
-                      </span>
-                    </div>
-                    {/* Removed the add task button from column header */}
+        <div className="flex gap-6 overflow-x-auto pb-6 px-1">
+          {statusColumns.map((column) => {
+            const columnTasks = getTasksForColumn(column.key);
+            
+            return (
+              <div
+                key={column.key}
+                className={`flex-shrink-0 w-92 ${column.color} border rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow duration-200`}
+              >
+                {/* Column Header */}
+                <div className="flex items-center justify-between mb-4 p-2 rounded-lg bg-white/50">
+                  <div className="flex items-center gap-3">
+                    {column.icon}
+                    <h3 className={`font-semibold text-sm ${column.textColor}`}>
+                      {column.title}
+                    </h3>
+                    <span className={`text-xs ${column.textColor} bg-white/80 px-2 py-1 rounded-full font-medium border`}>
+                      {column.count}
+                    </span>
                   </div>
+                  {/* Removed the add task button from column header */}
+                </div>
 
-                {/* Task List */}
-                <div className="flex-1 overflow-y-auto">
-                  {columnTasks.map((task: Task) => {
-                    const assigneeInfo = getDetailedAssignees(task);
-                    const assigneeSummary = getAssigneeSummary(task);
-                    const isOverdue = isTaskOverdue(task);
+              {/* Task List */}
+              <div className="space-y-3 min-h-[200px]">
+                {columnTasks.map((task: Task) => {
+                  const assigneeInfo = getDetailedAssignees(task);
+                  const assigneeSummary = getAssigneeSummary(task);
+                  const isOverdue = isTaskOverdue(task);
 
-                    return (
-                      <div
-                        key={task._id}
-                        className={`bg-white rounded-xl border-2 transition-all duration-200 hover:shadow-md hover:border-gray-300 cursor-pointer group
-                          ${isOverdue ? "border-red-200 bg-red-50/50" : "border-gray-100"}
-                          ${column.key === "completed" ? "opacity-80" : ""}
-                        `}
-                        onClick={() => handleTaskClick(task._id)}
-                        onContextMenu={(e) => handleContextMenu(e, task)}
-                      >
-                        <div className="p-4">
-                          {/* Task Header */}
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex items-start gap-2 flex-1 min-w-0">
-                              <h4 className="font-medium text-sm text-gray-900 leading-tight line-clamp-2 group-hover:text-blue-600 transition-colors">
-                                {task.title || "Untitled Task"}
-                              </h4>
-                            </div>
-                            
-                            {/* Priority Badge */}
-                            {task.priority && task.priority !== "medium" && (
-                              <span
-                                className={`text-xs px-2 py-1 rounded-full border flex-shrink-0 ml-2 ${getPriorityColor(
-                                  task.priority
-                                )}`}
-                              >
-                                {task.priority}
-                              </span>
-                            )}
+                  return (
+                    <div
+                      key={task._id}
+                      className={`bg-white rounded-xl border-2 transition-all duration-200 hover:shadow-md hover:border-gray-300 cursor-pointer group
+                        ${isOverdue ? "border-red-200 bg-red-50/50" : "border-gray-100"}
+                        ${column.key === "completed" ? "opacity-80" : ""}
+                      `}
+                      onClick={() => handleTaskClick(task._id)}
+                      onContextMenu={(e) => handleContextMenu(e, task)}
+                    >
+                      <div className="p-4">
+                        {/* Task Header */}
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex items-start gap-2 flex-1 min-w-0">
+                            <h4 className="font-medium text-sm text-gray-900 leading-tight line-clamp-2 group-hover:text-blue-600 transition-colors">
+                              {task.title || "Untitled Task"}
+                            </h4>
                           </div>
-
-                          {/* Description */}
-                          {task.description && (
-                            <p className="text-xs text-gray-600 mb-3 line-clamp-2 leading-relaxed">
-                              {task.description}
-                            </p>
+                          
+                          {/* Priority Badge */}
+                          {task.priority && task.priority !== "medium" && (
+                            <span
+                              className={`text-xs px-2 py-1 rounded-full border flex-shrink-0 ml-2 ${getPriorityColor(
+                                task.priority
+                              )}`}
+                            >
+                              {task.priority}
+                            </span>
                           )}
+                        </div>
 
-                          {/* Tags and Category */}
-                          <div className="flex flex-wrap gap-1 mb-3">
-                            {task.category && task.category !== "Other" && (
-                              <span
-                                className={`text-xs px-2 py-1 rounded-full border ${getTypeColor(
-                                  task.category
-                                )}`}
-                              >
-                                {task.category}
-                              </span>
-                            )}
-                            {task.tags?.slice(0, 2).map((tag, index) => (
-                              <span
-                                key={index}
-                                className="text-xs px-2 py-1 rounded-full border bg-gray-100 text-gray-700 border-gray-200"
-                              >
-                                {tag}
-                              </span>
-                            ))}
-                            {task.tags && task.tags.length > 2 && (
-                              <span className="text-xs px-2 py-1 rounded-full border bg-gray-100 text-gray-700 border-gray-200">
-                                +{task.tags.length - 2}
-                              </span>
-                            )}
-                          </div>
+                        {/* Description */}
+                        {task.description && (
+                          <p className="text-xs text-gray-600 mb-3 line-clamp-2 leading-relaxed">
+                            {task.description}
+                          </p>
+                        )}
 
-                          {/* Task Footer */}
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              {/* Assignee Avatars */}
-                              <div className="flex -space-x-1">
-                                {assigneeInfo.assignees.slice(0, 2).map((assignee) => (
-                                  <div
-                                    key={assignee._id}
-                                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs border-2 border-white shadow-sm
-                                      ${assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id
-                                        ? "bg-gradient-to-br from-green-100 to-green-200 text-green-800"
-                                        : "bg-gradient-to-br from-blue-100 to-blue-200 text-blue-800"
-                                      }`}
-                                    title={assignee.name}
-                                  >
-                                    {assignee.avatar ? (
-                                      <img
-                                        src={assignee.avatar}
-                                        alt=""
-                                        className="w-full h-full rounded-full object-cover"
-                                      />
-                                    ) : (
-                                      assignee.initial
-                                    )}
-                                  </div>
-                                ))}
-                                {assigneeInfo.totalCount > 2 && (
-                                  <div className="w-6 h-6 bg-gradient-to-br from-gray-100 to-gray-200 text-gray-600 rounded-full flex items-center justify-center text-xs border-2 border-white shadow-sm text-[10px] font-medium">
-                                    +{assigneeInfo.totalCount - 2}
-                                  </div>
-                                )}
-                              </div>
+                        {/* Tags and Category */}
+                        <div className="flex flex-wrap gap-1 mb-3">
+                          {task.category && task.category !== "Other" && (
+                            <span
+                              className={`text-xs px-2 py-1 rounded-full border ${getTypeColor(
+                                task.category
+                              )}`}
+                            >
+                              {task.category}
+                            </span>
+                          )}
+                          {task.tags?.slice(0, 2).map((tag, index) => (
+                            <span
+                              key={index}
+                              className="text-xs px-2 py-1 rounded-full border bg-gray-100 text-gray-700 border-gray-200"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                          {task.tags && task.tags.length > 2 && (
+                            <span className="text-xs px-2 py-1 rounded-full border bg-gray-100 text-gray-700 border-gray-200">
+                              +{task.tags.length - 2}
+                            </span>
+                          )}
+                        </div>
 
-                              {/* Time Estimate */}
-                              {task.estimatedTime && (
-                                <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                                  <Clock className="w-3 h-3" />
-                                  {task.estimatedTime}
-                                </span>
+                        {/* Task Footer */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            {/* Assignee Avatars */}
+                            <div className="flex -space-x-1">
+                              {assigneeInfo.assignees.slice(0, 2).map((assignee) => (
+                                <div
+                                  key={assignee._id}
+                                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs border-2 border-white shadow-sm
+                                    ${assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id
+                                      ? "bg-gradient-to-br from-green-100 to-green-200 text-green-800"
+                                      : "bg-gradient-to-br from-blue-100 to-blue-200 text-blue-800"
+                                    }`}
+                                  title={assignee.name}
+                                >
+                                  {assignee.avatar ? (
+                                    <img
+                                      src={assignee.avatar}
+                                      alt=""
+                                      className="w-full h-full rounded-full object-cover"
+                                    />
+                                  ) : (
+                                    assignee.initial
+                                  )}
+                                </div>
+                              ))}
+                              {assigneeInfo.totalCount > 2 && (
+                                <div className="w-6 h-6 bg-gradient-to-br from-gray-100 to-gray-200 text-gray-600 rounded-full flex items-center justify-center text-xs border-2 border-white shadow-sm text-[10px] font-medium">
+                                  +{assigneeInfo.totalCount - 2}
+                                </div>
                               )}
                             </div>
 
-                            {/* Due Date */}
-                            {task.dueDate && (
-                              <span
-                                className={`text-xs px-2 py-1 rounded-full border font-medium
-                                  ${isOverdue 
-                                    ? "bg-red-100 text-red-700 border-red-200" 
-                                    : "bg-gray-100 text-gray-700 border-gray-200"
-                                  }`}
-                              >
-                                <Calendar className="w-3 h-3 inline mr-1" />
-                                {formatDate(task.dueDate)}
+                            {/* Time Estimate */}
+                            {task.estimatedTime && (
+                              <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                                <Clock className="w-3 h-3" />
+                                {task.estimatedTime}
                               </span>
                             )}
                           </div>
+
+                          {/* Due Date */}
+                          {task.dueDate && (
+                            <span
+                              className={`text-xs px-2 py-1 rounded-full border font-medium
+                                ${isOverdue 
+                                  ? "bg-red-100 text-red-700 border-red-200" 
+                                  : "bg-gray-100 text-gray-700 border-gray-200"
+                                }`}
+                            >
+                              <Calendar className="w-3 h-3 inline mr-1" />
+                              {formatDate(task.dueDate)}
+                            </span>
+                          )}
                         </div>
-
-                        {/* Subtle hover effect */}
-                        <div className="h-1 bg-gradient-to-r from-transparent via-gray-100 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-b-xl" />
                       </div>
-                    );
-                  })}
 
-                  {/* Empty State */}
-                  {columnTasks.length === 0 && (
-                    <div className="text-center py-8 text-gray-400 text-sm">
-                      <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                        {column.key === "incomplete" ? (
-                          <div className="w-3 h-3 bg-red-500 rounded-full" />
-                        ) : column.key === "completed" ? (
-                          <div className="w-6 h-6 bg-green-200 rounded-full flex items-center justify-center">
-                            <div className="w-3 h-3 bg-green-500 rounded-full" />
-                          </div>
-                        ) : (
-                          <Plus className="w-6 h-6" />
-                        )}
-                      </div>
-                      <p className="text-gray-500">
-                        {column.key === "incomplete" 
-                          ? t('kanban.noIncomplete') || 'No incomplete tasks'
-                          : column.key === "completed"
-                          ? t('kanban.noCompleted')
-                          : t('kanban.noTasks')
-                        }
-                      </p>
+                      {/* Subtle hover effect */}
+                      <div className="h-1 bg-gradient-to-r from-transparent via-gray-100 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-b-xl" />
                     </div>
-                  )}
-                </div>
-                </div>
-              );
-            })}
-          </div>
+                  );
+                })}
+
+                {/* Empty State */}
+                {columnTasks.length === 0 && (
+                  <div className="text-center py-8 text-gray-400 text-sm">
+                    <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                      {column.key === "incomplete" ? (
+                        <div className="w-3 h-3 bg-red-500 rounded-full" />
+                      ) : column.key === "completed" ? (
+                        <div className="w-6 h-6 bg-green-200 rounded-full flex items-center justify-center">
+                          <div className="w-3 h-3 bg-green-500 rounded-full" />
+                        </div>
+                      ) : (
+                        <Plus className="w-6 h-6" />
+                      )}
+                    </div>
+                    <p className="text-gray-500">
+                      {column.key === "incomplete" 
+                        ? t('kanban.noIncomplete') || 'No incomplete tasks'
+                        : column.key === "completed"
+                        ? t('kanban.noCompleted')
+                        : t('kanban.noTasks')
+                      }
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
         </div>
       </div>
     );
@@ -1173,10 +1170,10 @@ export default function TasksView() {
     return (
       <div
         className={`grid grid-cols-12 gap-4 p-4 border-b hover:bg-gray-50 transition-colors ${isCompleted
-            ? "bg-gray-50 border-gray-100"
-            : isOverdue
-              ? "bg-red-50 border-red-100"
-              : "bg-white border-gray-100"
+          ? "bg-gray-50 border-gray-100"
+          : isOverdue
+            ? "bg-red-50 border-red-100"
+            : "bg-white border-gray-100"
           }`}
         onContextMenu={(e) => handleContextMenu(e, task)}
       >
@@ -1188,20 +1185,20 @@ export default function TasksView() {
           <div className="flex items-center gap-3">
             <div
               className={`w-2 h-2 rounded-full ${task.priority === "urgent" || task.priority === "critical"
-                  ? "bg-red-500"
-                  : task.priority === "high"
-                    ? "bg-orange-500"
-                    : task.priority === "medium"
-                      ? "bg-yellow-500"
-                      : "bg-gray-400"
+                ? "bg-red-500"
+                : task.priority === "high"
+                  ? "bg-orange-500"
+                  : task.priority === "medium"
+                    ? "bg-yellow-500"
+                    : "bg-gray-400"
                 }`}
             />
             <span
               className={`text-sm font-medium ${isCompleted
-                  ? "text-gray-500 line-through"
-                  : isOverdue
-                    ? "text-red-700"
-                    : "text-gray-900"
+                ? "text-gray-500 line-through"
+                : isOverdue
+                  ? "text-red-700"
+                  : "text-gray-900"
                 } hover:text-blue-600 transition-colors`}
             >
               {task.title || "Untitled Task"}
@@ -1352,8 +1349,8 @@ export default function TasksView() {
                 <div
                   key={assignee._id}
                   className={`w-6 h-6 rounded-full flex items-center justify-center text-xs border-2 border-white ${assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id
-                      ? "bg-green-100 text-green-800 border-green-200"
-                      : "bg-blue-100 text-blue-800 border-blue-200"
+                    ? "bg-green-100 text-green-800 border-green-200"
+                    : "bg-blue-100 text-blue-800 border-blue-200"
                     }`}
                   title={`${assignee.name}${assigneeInfo.currentUserIsAssigned && assignee._id === currentUser?._id ? ` (${t('tasks.you')})` : ''}`}
                 >
@@ -1378,8 +1375,8 @@ export default function TasksView() {
             {/* Assignee text */}
             <div className="flex flex-col min-w-0">
               <span className={`text-xs font-medium truncate ${assigneeSummary.isCurrentUser
-                  ? "text-green-700"
-                  : "text-gray-700"
+                ? "text-green-700"
+                : "text-gray-700"
                 }`}>
                 {assigneeSummary.displayText}
               </span>
@@ -1427,25 +1424,25 @@ export default function TasksView() {
   // Filter tasks by search query, status, and category
   const filterTasks = (tasks: Task[]) => {
     let filtered = tasks;
-    
+
     // Apply search filter
     if (activeSearchQuery.trim()) {
       const query = activeSearchQuery.toLowerCase();
-      filtered = filtered.filter(task => 
+      filtered = filtered.filter(task =>
         task.title?.toLowerCase().includes(query)
       );
     }
-    
+
     // Apply status filter
     if (statusFilter) {
       filtered = filtered.filter(task => task.status === statusFilter);
     }
-    
+
     // Apply category filter
     if (categoryFilter) {
       filtered = filtered.filter(task => task.category === categoryFilter);
     }
-    
+
     return filtered;
   };
 
@@ -1471,7 +1468,7 @@ export default function TasksView() {
     setSortConfigs(prev => {
       const sectionConfigs = prev[section];
       const existingIndex = sectionConfigs.findIndex(c => c.key === key);
-      
+
       let newSectionConfigs;
       if (existingIndex >= 0) {
         const currentDirection = sectionConfigs[existingIndex].direction;
@@ -1487,7 +1484,7 @@ export default function TasksView() {
         // Add new sort config as PRIMARY (at beginning) with asc direction
         newSectionConfigs = [{ key, direction: "asc" as const }, ...sectionConfigs];
       }
-      
+
       return { ...prev, [section]: newSectionConfigs };
     });
   };
@@ -1497,9 +1494,9 @@ export default function TasksView() {
     const sectionConfigs = sortConfigs[section];
     const config = sectionConfigs.find(c => c.key === key);
     const index = sectionConfigs.findIndex(c => c.key === key);
-    
+
     if (!config) return null;
-    
+
     return (
       <span className="inline-flex items-center gap-1 ml-1">
         <span className={`text-blue-600 ${config.direction === "asc" ? "" : "rotate-180 inline-block"}`}>
@@ -1553,11 +1550,10 @@ export default function TasksView() {
   const renderSortDropdown = () => (
     <div className="relative" ref={sortDropdownRef}>
       <button
-        className={`flex items-center gap-2 px-3 py-2 border rounded-lg hover:bg-gray-50 transition-colors text-sm min-w-[100px] justify-between ${
-          hasActiveFilters 
-            ? "bg-blue-50 border-blue-300 text-blue-700" 
-            : "bg-white border-gray-300 text-gray-700"
-        }`}
+        className={`flex items-center gap-2 px-3 py-2 border rounded-lg hover:bg-gray-50 transition-colors text-sm min-w-[100px] justify-between ${hasActiveFilters
+          ? "bg-blue-50 border-blue-300 text-blue-700"
+          : "bg-white border-gray-300 text-gray-700"
+          }`}
         onClick={(e) => {
           e.stopPropagation();
           setShowSortDropdown(!showSortDropdown);
@@ -1683,200 +1679,304 @@ export default function TasksView() {
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-[#1A1A1A]">
+      <div className="p-6 flex items-center justify-center">
         <div className="text-center">
           <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">Loading...</p>
+          <p className="text-gray-600">{t('common.loading')}</p>
         </div>
       </div>
     );
   }
 
+  // Check if user has a current group
   if (!currentGroup) {
     return (
-      <NoGroupState 
+      <NoGroupState
         title="Join or Create a Group to Manage Tasks"
         description="You need to join or create a group to manage tasks and collaborate with your team."
       />
     );
   }
 
+  // Check if user has a current folder
   if (!currentFolder) {
     return <NoFolderState />;
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-50 dark:bg-[#1A1A1A] overflow-hidden">
-      {/* Header */}
-      <div className="flex-shrink-0 bg-white dark:bg-[#1F1F1F] border-b border-gray-200 dark:border-gray-700 px-4 sm:px-6 py-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          {/* Title and folder info */}
-          <div className="flex-1 min-w-0">
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white truncate">
-              {t('tasks.title')}
-            </h1>
-            {currentFolder && (
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                {t('tasks.folder')}: <span className="font-medium">{currentFolder.name}</span>
-              </p>
-            )}
+    <div className="p-6 bg-gray-50 h-full overflow-y-auto">
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">{t('tasks.title')}</h1>
+          <p className="text-gray-600 mt-1">
+            {t('tasks.description') || 'Manage your team\'s tasks and projects'}
+          </p>
+          {currentFolder && (
+            <p className="text-sm text-gray-500 mt-2">
+              Folder: <span className="font-medium text-gray-800">{currentFolder.name}{currentFolder.isDefault ? ' (Default)' : ''}</span>
+            </p>
+          )}
+        </div>
+        <div className="flex gap-3 items-center">
+          {/* Sort Button - Available for both List and Kanban views */}
+          <div className="relative">
+            {renderSortDropdown()}
           </div>
 
-          {/* Actions */}
-          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-            {/* View Mode Toggle */}
-            <div className="flex bg-white dark:bg-[#2E2E2E] border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden">
-              <button
-                onClick={() => setViewMode("list")}
-                className={`p-2 ${viewMode === "list" ? "bg-blue-500 text-white" : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#3E3E3E]"}`}
-                title="List View"
-              >
-                <List className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setViewMode("kanban")}
-                className={`p-2 ${viewMode === "kanban" ? "bg-blue-500 text-white" : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#3E3E3E]"}`}
-                title="Kanban View"
-              >
-                <Layout className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Filter/Sort Dropdown */}
-            {renderSortDropdown()}
-
-            {/* Add Task Button */}
+          {/* View Mode Toggle */}
+          <div className="flex bg-white border border-gray-300 rounded-lg overflow-hidden shadow-sm">
             <button
-              onClick={handleAddTask}
-              className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors font-medium"
+              className={`px-4 py-2 text-sm flex items-center gap-2 transition-colors ${viewMode === "list"
+                  ? "bg-blue-500 text-white"
+                  : "bg-white text-gray-700 hover:bg-gray-50"
+                }`}
+              onClick={() => setViewMode("list")}
             >
-              <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">{t('common.add')}</span>
+              <List className="w-4 h-4" />
+              {t('viewMode.list')}
+            </button>
+            <button
+              className={`px-4 py-2 text-sm flex items-center gap-2 transition-colors ${viewMode === "kanban"
+                  ? "bg-blue-500 text-white"
+                  : "bg-white text-gray-700 hover:bg-gray-50"
+                }`}
+              onClick={() => setViewMode("kanban")}
+            >
+              <Layout className="w-4 h-4" />
+              {t('viewMode.kanban')}
             </button>
           </div>
+
+          {/* Add Task Button */}
+          <button
+            onClick={handleAddTask}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            {t('tasks.createTask')}
+          </button>
         </div>
       </div>
 
-      {/* Content Area with Scroll */}
-      <div className="flex-1 overflow-y-auto">
-        {viewMode === "list" ? (
-          <div className="p-4 sm:p-6 space-y-4">
-            {/* Todo Tasks Section */}
-            <div className="bg-white dark:bg-[#1F1F1F] rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-              <button
+      {/* Main Content */}
+      {viewMode === "list" ? (
+        <div className="space-y-6">
+          {/* Todo Tasks Section */}
+          {(!statusFilter || statusFilter === "todo") && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div
+                className="p-6 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
                 onClick={() => setTodoTasksExpanded(!todoTasksExpanded)}
-                className="w-full flex items-center justify-between px-4 py-3 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
               >
-                <div className="flex items-center gap-2">
-                  {todoTasksExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                  <span className="font-semibold text-blue-700 dark:text-blue-300">{t('status.todo')}</span>
-                  <span className="text-sm text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-800 px-2 py-0.5 rounded-full">
-                    {filterTasks(sortTasks(todoTasks, 'todo')).length}
+                <div className="flex items-center gap-3">
+                  {todoTasksExpanded ? (
+                    <ChevronDown className="w-5 h-5 text-gray-600" />
+                  ) : (
+                    <ChevronRight className="w-5 h-5 text-gray-600" />
+                  )}
+                  <h2 className="font-semibold text-gray-900">{t('tasks.todo') || 'To Do'}</h2>
+                  <span className="bg-gray-100 text-gray-800 text-sm px-2 py-1 rounded-full">
+                    {hasActiveFilters ? `${filterTasks(todoTasks).length}/${todoTasks.length}` : todoTasks.length}
                   </span>
                 </div>
-              </button>
+              </div>
+
               {todoTasksExpanded && (
-                <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {filterTasks(sortTasks(todoTasks, 'todo')).map(task => (
-                    <TaskRow key={task._id} task={task} />
-                  ))}
-                  {filterTasks(sortTasks(todoTasks, 'todo')).length === 0 && (
-                    <div className="p-4 text-center text-gray-500 dark:text-gray-400">
-                      {t('tasks.noTasks')}
+                <div>
+                  {/* Header Row with sortable columns */}
+                  <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                    <SortableColumnHeader sortKey="title" section="todo" className="col-span-3">{t('tasks.taskName')}</SortableColumnHeader>
+                    <div className="col-span-1">{t('tasks.status')}</div>
+                    <div className="col-span-1">{t('tasks.category')}</div>
+                    <SortableColumnHeader sortKey="dueDate" section="todo" className="col-span-1">{t('tasks.dueDate')}</SortableColumnHeader>
+                    <SortableColumnHeader sortKey="priority" section="todo" className="col-span-1">{t('tasks.priority')}</SortableColumnHeader>
+                    <div className="col-span-2">{t('tasks.assignee')}</div>
+                    <SortableColumnHeader sortKey="estimatedTime" section="todo" className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</SortableColumnHeader>
+                  </div>
+
+                  {/* Task Rows */}
+                  {filterTasks(todoTasks).length > 0 ? (
+                    sortTasks(filterTasks(todoTasks), 'todo').map((task) => (
+                      <TaskRow key={task._id} task={task} />
+                    ))
+                  ) : (
+                    <div className="p-8 text-center text-gray-500">
+                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Plus className="w-8 h-8 text-gray-400" />
+                      </div>
+                      <p className="text-gray-600 mb-2">{t('tasks.noTodoTasks') || 'No tasks to do'}</p>
+                      <button
+                        onClick={handleAddTask}
+                        className="text-blue-500 hover:text-blue-600 font-medium"
+                      >
+                        {t('tasks.addFirstTask')}
+                      </button>
                     </div>
                   )}
                 </div>
               )}
             </div>
+          )}
 
-            {/* In Progress Tasks Section */}
-            <div className="bg-white dark:bg-[#1F1F1F] rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-              <button
+          {/* In Progress Tasks Section */}
+          {(!statusFilter || statusFilter === "in_progress") && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div
+                className="p-6 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
                 onClick={() => setInProgressTasksExpanded(!inProgressTasksExpanded)}
-                className="w-full flex items-center justify-between px-4 py-3 bg-yellow-50 dark:bg-yellow-900/20 hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors"
               >
-                <div className="flex items-center gap-2">
-                  {inProgressTasksExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                  <span className="font-semibold text-yellow-700 dark:text-yellow-300">{t('status.inProgress')}</span>
-                  <span className="text-sm text-yellow-600 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-800 px-2 py-0.5 rounded-full">
-                    {filterTasks(sortTasks(inProgressTasks, 'inProgress')).length}
+                <div className="flex items-center gap-3">
+                  {inProgressTasksExpanded ? (
+                    <ChevronDown className="w-5 h-5 text-gray-600" />
+                  ) : (
+                    <ChevronRight className="w-5 h-5 text-gray-600" />
+                  )}
+                  <h2 className="font-semibold text-gray-900">{t('tasks.inProgress') || 'In Progress'}</h2>
+                  <span className="bg-blue-100 text-blue-800 text-sm px-2 py-1 rounded-full">
+                    {hasActiveFilters ? `${filterTasks(inProgressTasks).length}/${inProgressTasks.length}` : inProgressTasks.length}
                   </span>
                 </div>
-              </button>
+              </div>
+
               {inProgressTasksExpanded && (
-                <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {filterTasks(sortTasks(inProgressTasks, 'inProgress')).map(task => (
-                    <TaskRow key={task._id} task={task} />
-                  ))}
-                  {filterTasks(sortTasks(inProgressTasks, 'inProgress')).length === 0 && (
-                    <div className="p-4 text-center text-gray-500 dark:text-gray-400">
-                      {t('tasks.noTasks')}
+                <div>
+                  {/* Header Row with sortable columns */}
+                  <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                    <SortableColumnHeader sortKey="title" section="inProgress" className="col-span-3">{t('tasks.taskName')}</SortableColumnHeader>
+                    <div className="col-span-1">{t('tasks.status')}</div>
+                    <div className="col-span-1">{t('tasks.category')}</div>
+                    <SortableColumnHeader sortKey="dueDate" section="inProgress" className="col-span-1">{t('tasks.dueDate')}</SortableColumnHeader>
+                    <SortableColumnHeader sortKey="priority" section="inProgress" className="col-span-1">{t('tasks.priority')}</SortableColumnHeader>
+                    <div className="col-span-2">{t('tasks.assignee')}</div>
+                    <SortableColumnHeader sortKey="estimatedTime" section="inProgress" className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</SortableColumnHeader>
+                  </div>
+
+                  {/* Task Rows */}
+                  {filterTasks(inProgressTasks).length > 0 ? (
+                    sortTasks(filterTasks(inProgressTasks), 'inProgress').map((task) => (
+                      <TaskRow key={task._id} task={task} />
+                    ))
+                  ) : (
+                    <div className="p-8 text-center text-gray-500">
+                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Clock className="w-8 h-8 text-gray-400" />
+                      </div>
+                      <p className="text-gray-600 mb-2">{t('tasks.noInProgressTasks') || 'No tasks in progress'}</p>
                     </div>
                   )}
                 </div>
               )}
             </div>
+          )}
 
-            {/* Completed Tasks Section */}
-            <div className="bg-white dark:bg-[#1F1F1F] rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-              <button
+          {/* Completed Tasks Section */}
+          {(!statusFilter || statusFilter === "completed") && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div
+                className="p-6 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
                 onClick={() => setCompletedTasksExpanded(!completedTasksExpanded)}
-                className="w-full flex items-center justify-between px-4 py-3 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
               >
-                <div className="flex items-center gap-2">
-                  {completedTasksExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                  <span className="font-semibold text-green-700 dark:text-green-300">{t('status.completed')}</span>
-                  <span className="text-sm text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-800 px-2 py-0.5 rounded-full">
-                    {filterTasks(sortTasks(completedTasks, 'completed')).length}
+                <div className="flex items-center gap-3">
+                  {completedTasksExpanded ? (
+                    <ChevronDown className="w-5 h-5 text-gray-600" />
+                  ) : (
+                    <ChevronRight className="w-5 h-5 text-gray-600" />
+                  )}
+                  <h2 className="font-semibold text-gray-900">{t('tasks.completed')}</h2>
+                  <span className="bg-green-100 text-green-800 text-sm px-2 py-1 rounded-full">
+                    {hasActiveFilters ? `${filterTasks(completedTasks).length}/${completedTasks.length}` : completedTasks.length}
                   </span>
                 </div>
-              </button>
-              {completedTasksExpanded && (
-                <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {filterTasks(sortTasks(completedTasks, 'completed')).map(task => (
-                    <TaskRow key={task._id} task={task} isCompleted />
-                  ))}
-                  {filterTasks(sortTasks(completedTasks, 'completed')).length === 0 && (
-                    <div className="p-4 text-center text-gray-500 dark:text-gray-400">
-                      {t('tasks.noTasks')}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+              </div>
 
-            {/* Incomplete Tasks Section */}
-            <div className="bg-white dark:bg-[#1F1F1F] rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-              <button
-                onClick={() => setIncompleteTasksExpanded(!incompleteTasksExpanded)}
-                className="w-full flex items-center justify-between px-4 py-3 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  {incompleteTasksExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                  <span className="font-semibold text-red-700 dark:text-red-300">{t('status.incomplete')}</span>
-                  <span className="text-sm text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-800 px-2 py-0.5 rounded-full">
-                    {filterTasks(sortTasks(incompleteTasks, 'incomplete')).length}
-                  </span>
-                </div>
-              </button>
-              {incompleteTasksExpanded && (
-                <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {filterTasks(sortTasks(incompleteTasks, 'incomplete')).map(task => (
-                    <TaskRow key={task._id} task={task} isOverdue />
-                  ))}
-                  {filterTasks(sortTasks(incompleteTasks, 'incomplete')).length === 0 && (
-                    <div className="p-4 text-center text-gray-500 dark:text-gray-400">
-                      {t('tasks.noTasks')}
+              {completedTasksExpanded && (
+                <div>
+                  {/* Header Row with sortable columns */}
+                  <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                    <SortableColumnHeader sortKey="title" section="completed" className="col-span-3">{t('tasks.taskName')}</SortableColumnHeader>
+                    <div className="col-span-1">{t('tasks.status')}</div>
+                    <div className="col-span-1">{t('tasks.category')}</div>
+                    <SortableColumnHeader sortKey="dueDate" section="completed" className="col-span-1">{t('tasks.dueDate')}</SortableColumnHeader>
+                    <SortableColumnHeader sortKey="priority" section="completed" className="col-span-1">{t('tasks.priority')}</SortableColumnHeader>
+                    <div className="col-span-2">{t('tasks.assignee')}</div>
+                    <SortableColumnHeader sortKey="estimatedTime" section="completed" className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</SortableColumnHeader>
+                  </div>
+
+                  {filterTasks(completedTasks).length > 0 ? (
+                    sortTasks(filterTasks(completedTasks), 'completed').map((task) => (
+                      <TaskRow key={task._id} task={task} isCompleted={true} />
+                    ))
+                  ) : (
+                    <div className="p-8 text-center text-gray-500">
+                      <p className="text-gray-600">{t('kanban.noCompletedYet')}</p>
                     </div>
                   )}
                 </div>
               )}
             </div>
-          </div>
-        ) : (
-          <KanbanView />
-        )}
-      </div>
+          )}
+
+          {/* Incomplete Tasks Section */}
+          {(!statusFilter || statusFilter === "incomplete") && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div
+                className="p-6 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() =>
+                  setIncompleteTasksExpanded(!incompleteTasksExpanded)
+                }
+              >
+                <div className="flex items-center gap-3">
+                  {incompleteTasksExpanded ? (
+                    <ChevronDown className="w-5 h-5 text-gray-600" />
+                  ) : (
+                    <ChevronRight className="w-5 h-5 text-gray-600" />
+                  )}
+                  <div className="flex items-center gap-2">
+                    <h2 className="font-semibold text-red-700">{t('tasks.incomplete') || 'Incomplete'}</h2>
+                  </div>
+                  <span className="bg-red-100 text-red-800 text-sm px-2 py-1 rounded-full">
+                    {hasActiveFilters ? `${filterTasks(incompleteTasks).length}/${incompleteTasks.length}` : incompleteTasks.length}
+                  </span>
+                </div>
+              </div>
+
+              {incompleteTasksExpanded && (
+                <div>
+                  {/* Header Row with sortable columns */}
+                  <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                    <SortableColumnHeader sortKey="title" section="incomplete" className="col-span-3">{t('tasks.taskName')}</SortableColumnHeader>
+                    <div className="col-span-1">{t('tasks.status')}</div>
+                    <div className="col-span-1">{t('tasks.category')}</div>
+                    <SortableColumnHeader sortKey="dueDate" section="incomplete" className="col-span-1">{t('tasks.dueDate')}</SortableColumnHeader>
+                    <SortableColumnHeader sortKey="priority" section="incomplete" className="col-span-1">{t('tasks.priority')}</SortableColumnHeader>
+                    <div className="col-span-2">{t('tasks.assignee')}</div>
+                    <SortableColumnHeader sortKey="estimatedTime" section="incomplete" className="col-span-2">{t('tasks.estimatedTime') || 'Time'}</SortableColumnHeader>
+                  </div>
+
+                  {/* Always show content, even if empty */}
+                  {filterTasks(incompleteTasks).length > 0 ? (
+                    sortTasks(filterTasks(incompleteTasks), 'incomplete').map((task) => (
+                      <TaskRow key={task._id} task={task} isOverdue={true} />
+                    ))
+                  ) : (
+                    <div className="p-8 text-center text-gray-500">
+                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <AlertTriangle className="w-8 h-8 text-gray-400" />
+                      </div>
+                      <p className="text-gray-600 mb-2">{t('tasks.noIncompleteTasks') || 'No incomplete tasks'}</p>
+                      <p className="text-sm text-gray-500">
+                        {t('tasks.incompleteDescription') || 'Overdue tasks will appear here'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        <KanbanView />
+      )}
 
       {/* Modals */}
       {showCreateModal && (
@@ -1884,13 +1984,14 @@ export default function TasksView() {
           isOpen={showCreateModal}
           onClose={() => setShowCreateModal(false)}
           onCreateTask={handleCreateTask}
+          currentUser={currentUser}
         />
       )}
 
       {showTaskDetail && selectedTask && (
         <TaskDetailModal
-          isOpen={showTaskDetail}
           taskId={selectedTask}
+          isOpen={showTaskDetail}
           onClose={() => {
             setShowTaskDetail(false);
             setSelectedTask(null);
@@ -1900,6 +2001,7 @@ export default function TasksView() {
         />
       )}
 
+      {/* Context Menu */}
       {contextMenu && (
         <TaskContextMenu
           x={contextMenu.x}
