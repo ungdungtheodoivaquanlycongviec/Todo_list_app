@@ -2,14 +2,15 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator } from 'react-native';
 
 // 👇 QUAN TRỌNG: Tất cả đều dùng dấu ngoặc nhọn { }
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { FolderProvider } from '../context/FolderContext';
-import { LanguageProvider } from '../context/LanguageContext'; // Đã khớp với export function
+import { LanguageProvider } from '../context/LanguageContext';
 import { ThemeProvider } from '../context/ThemeContext'; 
 import { RegionalProvider } from '../context/RegionalContext'; 
+import { TimerProvider } from '../context/TimerContext'; // 👈 BỔ SUNG Ở ĐÂY
 
 import AppInterface from '../screens/AppInterface';
 import AuthPage from '../screens/AuthPage';
@@ -46,9 +47,13 @@ export default function AppNavigator() {
         <RegionalProvider>
           <ThemeProvider>
             <FolderProvider>
-               <NavigationContainer>
-                 <RootNavigator />
-               </NavigationContainer>
+              {/* 👇 BỔ SUNG TIMER PROVIDER VÀO ĐÂY */}
+              <TimerProvider> 
+                <NavigationContainer>
+                  <RootNavigator />
+                </NavigationContainer>
+              </TimerProvider>
+              {/* 👆 KẾT THÚC TIMER PROVIDER */}
             </FolderProvider>
           </ThemeProvider>
         </RegionalProvider>
