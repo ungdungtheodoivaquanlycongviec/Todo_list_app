@@ -6,7 +6,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useRegional } from '../../contexts/RegionalContext';
 import { chatService, ChatMessage, DirectConversationSummary } from '../../services/chat.service';
 import { useSocket } from '../../hooks/useSocket';
-import { MeetingConfig } from '../../services/meeting.service';
+import { MeetingConfig, meetingService, StoredMeetingState } from '../../services/meeting.service';
 import MeetingView from './MeetingView';
 import IncomingCallNotification from './IncomingCallNotification';
 import {
@@ -70,6 +70,7 @@ export default function ChatView() {
     groupId?: string;
     conversationId?: string;
   } | null>(null);
+  const [pendingStoredMeeting, setPendingStoredMeeting] = useState<StoredMeetingState | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -243,6 +244,15 @@ export default function ChatView() {
   useEffect(() => {
     loadDirectConversations();
   }, [loadDirectConversations]);
+
+  // Check for stored meeting on mount (for page refresh persistence)
+  useEffect(() => {
+    const storedMeeting = meetingService.getStoredMeeting();
+    if (storedMeeting) {
+      console.log('[ChatView] Found stored meeting from previous session:', storedMeeting);
+      setPendingStoredMeeting(storedMeeting);
+    }
+  }, []);
 
   // Reset chat state when user changes (e.g., logout/login)
   useEffect(() => {
@@ -1618,6 +1628,51 @@ export default function ChatView() {
             setIncomingCall(null);
           }}
         />
+      )}
+
+      {/* Pending Stored Meeting Notification (for page refresh persistence) */}
+      {pendingStoredMeeting && !activeMeeting && (
+        <div className="fixed top-4 right-4 z-50 bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 p-4 min-w-[320px] max-w-[400px] animate-in slide-in-from-top-5">
+          <div className="flex items-start gap-3">
+            <div className="w-12 h-12 rounded-full bg-orange-500 flex items-center justify-center text-white flex-shrink-0">
+              <Phone className="w-6 h-6" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
+                Interrupted Call
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                {pendingStoredMeeting.title
+                  ? `Your previous call in "${pendingStoredMeeting.title}" was interrupted`
+                  : 'Your previous call was interrupted. Would you like to rejoin?'
+                }
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setActiveMeeting(pendingStoredMeeting.config);
+                    setPendingStoredMeeting(null);
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors text-sm font-medium"
+                >
+                  <Phone className="w-4 h-4" />
+                  Rejoin
+                </button>
+                <button
+                  onClick={() => {
+                    // Clear the stored meeting and dismiss
+                    sessionStorage.removeItem('activeMeeting');
+                    setPendingStoredMeeting(null);
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg transition-colors text-sm font-medium"
+                >
+                  <X className="w-4 h-4" />
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

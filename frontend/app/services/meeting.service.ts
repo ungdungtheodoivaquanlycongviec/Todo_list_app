@@ -23,6 +23,21 @@ export interface PeerConnection {
   stream?: MediaStream;
 }
 
+export interface MediaDeviceState {
+  hasAudio: boolean;
+  hasVideo: boolean;
+  audioEnabled: boolean;
+  videoEnabled: boolean;
+}
+
+export interface StoredMeetingState {
+  config: MeetingConfig;
+  title?: string;
+  timestamp: number;
+}
+
+const MEETING_STORAGE_KEY = 'activeMeeting';
+
 class MeetingService {
   private socket: Socket | null = null;
   private localStream: MediaStream | null = null;
@@ -31,6 +46,13 @@ class MeetingService {
   private participants: Map<string, MeetingParticipant> = new Map();
   private onParticipantUpdateCallbacks: Set<(participants: MeetingParticipant[]) => void> = new Set();
   private onStreamUpdateCallbacks: Set<(userId: string, stream: MediaStream | null) => void> = new Set();
+  private mediaDeviceState: MediaDeviceState = {
+    hasAudio: false,
+    hasVideo: false,
+    audioEnabled: false,
+    videoEnabled: false
+  };
+  private meetingTitle: string = '';
 
   setSocket(socket: Socket) {
     this.socket = socket;
@@ -117,26 +139,104 @@ class MeetingService {
     });
   }
 
-  async startMeeting(config: MeetingConfig, options: { audio?: boolean; video?: boolean } = {}) {
+  async startMeeting(config: MeetingConfig, options: { audio?: boolean; video?: boolean; title?: string } = {}) {
     if (!this.socket) {
       throw new Error('Socket not connected');
     }
 
     this.meetingConfig = config;
+    this.meetingTitle = options.title || '';
 
-    // Get user media
+    const wantAudio = options.audio !== false;
+    const wantVideo = options.video !== false;
+
+    // Try to get user media with graceful fallback
     try {
-      this.localStream = await navigator.mediaDevices.getUserMedia({
-        audio: options.audio !== false,
-        video: options.video !== false
-      });
+      // First, try to get both audio and video if requested
+      if (wantAudio && wantVideo) {
+        try {
+          this.localStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: true
+          });
+          this.mediaDeviceState = {
+            hasAudio: true,
+            hasVideo: true,
+            audioEnabled: true,
+            videoEnabled: true
+          };
+          console.log('[Meeting] Got both audio and video');
+        } catch (videoError) {
+          // If video fails, try audio only
+          console.warn('[Meeting] Video not available, falling back to audio only:', videoError);
+          try {
+            this.localStream = await navigator.mediaDevices.getUserMedia({
+              audio: true,
+              video: false
+            });
+            this.mediaDeviceState = {
+              hasAudio: true,
+              hasVideo: false,
+              audioEnabled: true,
+              videoEnabled: false
+            };
+            console.log('[Meeting] Got audio only (no video device)');
+          } catch (audioError) {
+            console.error('[Meeting] No audio device available:', audioError);
+            throw new Error('No microphone available. Please connect a microphone and try again.');
+          }
+        }
+      } else if (wantAudio && !wantVideo) {
+        // Audio only requested
+        try {
+          this.localStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: false
+          });
+          this.mediaDeviceState = {
+            hasAudio: true,
+            hasVideo: false,
+            audioEnabled: true,
+            videoEnabled: false
+          };
+          console.log('[Meeting] Got audio only (as requested)');
+        } catch (audioError) {
+          console.error('[Meeting] No audio device available:', audioError);
+          throw new Error('No microphone available. Please connect a microphone and try again.');
+        }
+      } else if (!wantAudio && wantVideo) {
+        // Video only (rare case)
+        try {
+          this.localStream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: true
+          });
+          this.mediaDeviceState = {
+            hasAudio: false,
+            hasVideo: true,
+            audioEnabled: false,
+            videoEnabled: true
+          };
+          console.log('[Meeting] Got video only (as requested)');
+        } catch (videoError) {
+          console.error('[Meeting] No video device available:', videoError);
+          throw new Error('No camera available. Please connect a camera and try again.');
+        }
+      } else {
+        // Neither audio nor video requested - shouldn't happen but handle it
+        throw new Error('At least audio or video must be enabled for a call.');
+      }
     } catch (error) {
       console.error('[Meeting] Error getting user media:', error);
-      throw new Error('Failed to access camera/microphone');
+      this.meetingConfig = null;
+      throw error;
     }
 
+    // Save meeting to sessionStorage for persistence
+    this.saveMeetingToStorage();
+
     // Join meeting room
-    return new Promise<{ success: boolean; participants: MeetingParticipant[] }>((resolve, reject) => {
+    return new Promise<{ success: boolean; participants: MeetingParticipant[]; mediaState: MediaDeviceState }>((resolve, reject) => {
       if (!this.socket) {
         reject(new Error('Socket not connected'));
         return;
@@ -170,9 +270,11 @@ class MeetingService {
 
           resolve({
             success: true,
-            participants: Array.from(this.participants.values())
+            participants: Array.from(this.participants.values()),
+            mediaState: { ...this.mediaDeviceState }
           });
         } else {
+          this.clearMeetingFromStorage();
           reject(new Error(response.error || 'Failed to join meeting'));
         }
       });
@@ -183,6 +285,9 @@ class MeetingService {
     if (!this.socket || !this.meetingConfig) {
       return;
     }
+
+    // Clear storage first
+    this.clearMeetingFromStorage();
 
     // Stop local stream
     if (this.localStream) {
@@ -199,6 +304,14 @@ class MeetingService {
     });
     this.peerConnections.clear();
 
+    // Reset media device state
+    this.mediaDeviceState = {
+      hasAudio: false,
+      hasVideo: false,
+      audioEnabled: false,
+      videoEnabled: false
+    };
+
     // Leave meeting room
     return new Promise<void>((resolve) => {
       if (!this.socket || !this.meetingConfig) {
@@ -208,6 +321,7 @@ class MeetingService {
 
       this.socket.emit('meeting:leave', this.meetingConfig, () => {
         this.meetingConfig = null;
+        this.meetingTitle = '';
         this.participants.clear();
         this.notifyParticipantUpdate();
         resolve();
@@ -450,6 +564,65 @@ class MeetingService {
 
   private getCurrentUserId(): string {
     return this.currentUserId;
+  }
+
+  // Storage methods for meeting persistence
+  private saveMeetingToStorage() {
+    if (!this.meetingConfig) return;
+
+    try {
+      const state: StoredMeetingState = {
+        config: this.meetingConfig,
+        title: this.meetingTitle,
+        timestamp: Date.now()
+      };
+      sessionStorage.setItem(MEETING_STORAGE_KEY, JSON.stringify(state));
+      console.log('[Meeting] Saved meeting to storage');
+    } catch (error) {
+      console.error('[Meeting] Error saving meeting to storage:', error);
+    }
+  }
+
+  private clearMeetingFromStorage() {
+    try {
+      sessionStorage.removeItem(MEETING_STORAGE_KEY);
+      console.log('[Meeting] Cleared meeting from storage');
+    } catch (error) {
+      console.error('[Meeting] Error clearing meeting from storage:', error);
+    }
+  }
+
+  getStoredMeeting(): StoredMeetingState | null {
+    try {
+      const stored = sessionStorage.getItem(MEETING_STORAGE_KEY);
+      if (!stored) return null;
+
+      const state = JSON.parse(stored) as StoredMeetingState;
+
+      // Check if meeting is too old (more than 1 hour)
+      const MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
+      if (Date.now() - state.timestamp > MAX_AGE_MS) {
+        this.clearMeetingFromStorage();
+        return null;
+      }
+
+      return state;
+    } catch (error) {
+      console.error('[Meeting] Error getting stored meeting:', error);
+      return null;
+    }
+  }
+
+  getMediaDeviceState(): MediaDeviceState {
+    return { ...this.mediaDeviceState };
+  }
+
+  isInMeeting(): boolean {
+    return this.meetingConfig !== null;
+  }
+
+  getCurrentMeetingConfig(): MeetingConfig | null {
+    return this.meetingConfig;
   }
 }
 
