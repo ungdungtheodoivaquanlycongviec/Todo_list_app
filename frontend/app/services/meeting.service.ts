@@ -63,14 +63,24 @@ class MeetingService {
   private setupSocketListeners() {
     if (!this.socket) return;
 
+    // Remove existing listeners to prevent duplicates on reconnection
+    this.socket.off('meeting:user-joined');
+    this.socket.off('meeting:user-left');
+    this.socket.off('meeting:offer');
+    this.socket.off('meeting:answer');
+    this.socket.off('meeting:ice-candidate');
+    this.socket.off('meeting:media-state');
+
     // User joined meeting
-    this.socket.on('meeting:user-joined', (data: { userId: string; socketId: string; meetingId: string }) => {
+    this.socket.on('meeting:user-joined', (data: { userId: string; socketId: string; meetingId: string; userName?: string; userAvatar?: string }) => {
       console.log('[Meeting] User joined:', data);
       if (this.meetingConfig && this.meetingConfig.meetingId === data.meetingId) {
         // Add to participants list
         this.participants.set(data.userId, {
           userId: data.userId,
           socketId: data.socketId,
+          name: data.userName,
+          avatar: data.userAvatar,
           audioEnabled: true,
           videoEnabled: true
         });
@@ -157,6 +167,18 @@ class MeetingService {
 
     this.meetingConfig = config;
     this.meetingTitle = options.title || '';
+
+    // Clear stale state from previous meetings
+    this.peerConnections.forEach(pc => {
+      try {
+        pc.peerConnection.close();
+      } catch (e) {
+        // Ignore errors when closing stale connections
+      }
+    });
+    this.peerConnections.clear();
+    this.participants.clear();
+    this.pendingIceCandidates.clear();
 
     const wantAudio = options.audio !== false;
     const wantVideo = options.video !== false;
@@ -262,6 +284,8 @@ class MeetingService {
                 this.participants.set(p.userId, {
                   userId: p.userId,
                   socketId: p.socketId,
+                  name: p.userName,
+                  avatar: p.userAvatar,
                   audioEnabled: true,
                   videoEnabled: true
                 });
@@ -314,6 +338,9 @@ class MeetingService {
       }
     });
     this.peerConnections.clear();
+
+    // Clear pending ICE candidates
+    this.pendingIceCandidates.clear();
 
     // Reset media device state
     this.mediaDeviceState = {

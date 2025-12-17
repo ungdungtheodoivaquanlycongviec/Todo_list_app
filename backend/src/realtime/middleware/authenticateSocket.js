@@ -50,13 +50,15 @@ const authenticateSocket = async (socket, next) => {
     socket.data.userEmail = decoded.email || null;
     socket.data.tokenIssuedAt = decoded.iat || null;
 
-    // Get user name for notifications
+    // Get user name and avatar for notifications and meetings
     try {
-      const user = await User.findById(decoded.id).select('name').lean();
+      const user = await User.findById(decoded.id).select('name avatar').lean();
       socket.data.userName = user?.name || decoded.email || 'User';
+      socket.data.userAvatar = user?.avatar || null;
     } catch (error) {
-      console.error('[Socket] Error fetching user name:', error);
+      console.error('[Socket] Error fetching user info:', error);
       socket.data.userName = decoded.email || 'User';
+      socket.data.userAvatar = null;
     }
 
     return next();

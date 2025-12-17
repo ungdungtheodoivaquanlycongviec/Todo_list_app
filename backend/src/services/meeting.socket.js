@@ -64,7 +64,9 @@ const setupMeetingHandlers = (namespace) => {
         const socketsInRoom = await namespace.in(roomName).fetchSockets();
         const participants = socketsInRoom.map(s => ({
           userId: s.data.userId,
-          socketId: s.id
+          socketId: s.id,
+          userName: s.data.userName || 'Unknown',
+          userAvatar: s.data.userAvatar || null
         }));
 
         // Check if this is the first person joining (meeting just started)
@@ -74,7 +76,9 @@ const setupMeetingHandlers = (namespace) => {
         socket.to(roomName).emit('meeting:user-joined', {
           userId,
           meetingId,
-          socketId: socket.id
+          socketId: socket.id,
+          userName: socket.data.userName || 'Unknown',
+          userAvatar: socket.data.userAvatar || null
         });
 
         // If this is the first participant, notify all potential participants about the incoming call

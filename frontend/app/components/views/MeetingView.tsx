@@ -38,7 +38,15 @@ export default function MeetingView({ config, onClose, title }: MeetingViewProps
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideosRef = useRef<Map<string, HTMLVideoElement>>(new Map());
-  const streamsRef = useRef<Map<string, MediaStream>>(new Map());
+  const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
+
+  // Helper function to check if a stream has active video tracks
+  const hasActiveVideoTrack = (userId: string): boolean => {
+    const stream = remoteStreams.get(userId);
+    if (!stream) return false;
+    const videoTracks = stream.getVideoTracks();
+    return videoTracks.length > 0 && videoTracks.some(track => track.enabled && track.readyState === 'live');
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -84,18 +92,21 @@ export default function MeetingView({ config, onClose, title }: MeetingViewProps
     const unsubscribeStreams = meetingService.onStreamUpdate((userId, stream) => {
       if (!isMounted) return;
 
-      if (stream) {
-        streamsRef.current.set(userId, stream);
-        const videoElement = remoteVideosRef.current.get(userId);
-        if (videoElement) {
-          videoElement.srcObject = stream;
+      // Update state to trigger re-render
+      setRemoteStreams(prev => {
+        const next = new Map(prev);
+        if (stream) {
+          next.set(userId, stream);
+        } else {
+          next.delete(userId);
         }
-      } else {
-        streamsRef.current.delete(userId);
-        const videoElement = remoteVideosRef.current.get(userId);
-        if (videoElement) {
-          videoElement.srcObject = null;
-        }
+        return next;
+      });
+
+      // Also update video element srcObject directly
+      const videoElement = remoteVideosRef.current.get(userId);
+      if (videoElement) {
+        videoElement.srcObject = stream;
       }
     });
 
@@ -187,7 +198,7 @@ export default function MeetingView({ config, onClose, title }: MeetingViewProps
   const setRemoteVideoRef = (userId: string, element: HTMLVideoElement | null) => {
     if (element) {
       remoteVideosRef.current.set(userId, element);
-      const stream = streamsRef.current.get(userId);
+      const stream = remoteStreams.get(userId);
       if (stream) {
         element.srcObject = stream;
       }
@@ -325,10 +336,18 @@ export default function MeetingView({ config, onClose, title }: MeetingViewProps
             {!videoEnabled && (
               <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
                 <div className="text-center">
-                  <div className="w-20 h-20 rounded-full bg-gray-700 flex items-center justify-center mx-auto mb-2">
-                    <span className="text-2xl text-white">
-                      {user?.name?.charAt(0).toUpperCase() || 'U'}
-                    </span>
+                  <div className="w-20 h-20 rounded-full bg-gray-700 flex items-center justify-center mx-auto mb-2 overflow-hidden">
+                    {user?.avatar ? (
+                      <img
+                        src={user.avatar}
+                        alt={user?.name || 'You'}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-2xl text-white">
+                        {user?.name?.charAt(0).toUpperCase() || 'U'}
+                      </span>
+                    )}
                   </div>
                   <p className="text-white text-sm">{user?.name || 'You'}</p>
                 </div>
@@ -348,13 +367,21 @@ export default function MeetingView({ config, onClose, title }: MeetingViewProps
                 playsInline
                 className="w-full h-full object-cover"
               />
-              {(!participant.videoEnabled || !streamsRef.current.has(participant.userId)) && (
+              {(!participant.videoEnabled || !hasActiveVideoTrack(participant.userId)) && (
                 <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
                   <div className="text-center">
-                    <div className="w-20 h-20 rounded-full bg-gray-700 flex items-center justify-center mx-auto mb-2">
-                      <span className="text-2xl text-white">
-                        {participant.name?.charAt(0).toUpperCase() || 'U'}
-                      </span>
+                    <div className="w-20 h-20 rounded-full bg-gray-700 flex items-center justify-center mx-auto mb-2 overflow-hidden">
+                      {participant.avatar ? (
+                        <img
+                          src={participant.avatar}
+                          alt={participant.name || 'Participant'}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-2xl text-white">
+                          {participant.name?.charAt(0).toUpperCase() || 'U'}
+                        </span>
+                      )}
                     </div>
                     <p className="text-white text-sm">{participant.name || 'Participant'}</p>
                   </div>
