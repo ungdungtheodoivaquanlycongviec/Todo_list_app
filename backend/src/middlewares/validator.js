@@ -505,13 +505,11 @@ const sanitizeMemberAssignments = (members = []) => {
   members.forEach(entry => {
     if (!entry) return;
     const userId = typeof entry === 'string' ? entry : entry.userId;
-    const role = entry.role || entry?.role;
     if (!userId) return;
     const normalized = typeof userId === 'string' ? userId.trim() : String(userId);
     if (!normalized) return;
     unique.set(normalized, {
-      userId: normalized,
-      role
+      userId: normalized
     });
   });
   return Array.from(unique.values());
@@ -543,11 +541,11 @@ const validateCreateGroup = (req, res, next) => {
     } else {
       const sanitized = sanitizeMemberAssignments(members);
 
-      const invalidEntries = sanitized.filter(entry => !isValidObjectId(entry.userId) || !entry.role || !GROUP_ROLES.includes(entry.role));
+      const invalidEntries = sanitized.filter(entry => !isValidObjectId(entry.userId));
       if (invalidEntries.length > 0) {
         errors.push({
           field: 'members',
-          message: 'Each member requires a valid userId and role',
+          message: 'Each member requires a valid userId',
           invalidEntries
         });
       }
@@ -635,7 +633,7 @@ const validateManageGroupMembers = (req, res, next) => {
       errors.push({ field: 'members', message: 'members must contain at least one valid assignment' });
     }
 
-    const invalidEntries = sanitized.filter(entry => !isValidObjectId(entry.userId) || !entry.role || !GROUP_ROLES.includes(entry.role));
+    const invalidEntries = sanitized.filter(entry => !isValidObjectId(entry.userId));
     if (invalidEntries.length > 0) {
       errors.push({ field: 'members', message: 'members contains invalid assignment(s)', invalidEntries });
     }
@@ -668,38 +666,19 @@ const validateGroupMemberParam = (req, res, next) => {
 };
 
 const validateMemberRoleUpdate = (req, res, next) => {
-  const { role } = req.body;
-  const errors = [];
-
-  if (!role || !GROUP_ROLES.includes(role)) {
-    errors.push({ field: 'role', message: 'role is invalid' });
-  } else if (role === GROUP_ROLE_KEYS.PRODUCT_OWNER) {
-    errors.push({ field: 'role', message: 'Product Owner role cannot be assigned via this action' });
-  }
-
-  if (errors.length > 0) {
-    return res.status(400).json({
-      success: false,
-      message: ERROR_MESSAGES.VALIDATION_ERROR,
-      errors
-    });
-  }
-
-  next();
+  return res.status(410).json({
+    success: false,
+    message: 'Group member roles are deprecated. Roles are assigned by admin at account level.',
+    errors: [{ field: 'role', message: 'deprecated' }]
+  });
 };
 
 const validateGroupInvitation = (req, res, next) => {
-  const { email, role } = req.body || {};
+  const { email } = req.body || {};
   const errors = [];
 
   if (!email || typeof email !== 'string' || !validator.isEmail(email.trim())) {
     errors.push({ field: 'email', message: 'A valid email is required' });
-  }
-
-  if (!role || !GROUP_ROLES.includes(role)) {
-    errors.push({ field: 'role', message: 'A valid role is required' });
-  } else if (role === GROUP_ROLE_KEYS.PRODUCT_OWNER) {
-    errors.push({ field: 'role', message: 'Product Owner role cannot be assigned' });
   }
 
   if (errors.length > 0) {
@@ -711,7 +690,6 @@ const validateGroupInvitation = (req, res, next) => {
   }
 
   req.body.email = email.trim().toLowerCase();
-  req.body.role = role;
 
   next();
 };

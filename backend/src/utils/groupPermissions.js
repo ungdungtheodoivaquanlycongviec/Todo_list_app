@@ -35,29 +35,38 @@ const isReadOnlyRole = role => READ_ONLY_ROLES.includes(role);
 
 const requiresFolderAssignment = role => FOLDER_SCOPED_ROLES.includes(role);
 
+const isProductOwner = role => role === GROUP_ROLE_KEYS.PRODUCT_OWNER;
+const isPM = role => role === GROUP_ROLE_KEYS.PM;
+
+const isPrivilegedForGroup = ({ role, isLeader = false } = {}) =>
+  Boolean(isProductOwner(role) || isLeader);
+
 const canViewAllFolders = role =>
   Boolean(role) &&
   (requiresFolderAssignment(role) === false ||
     isReadOnlyRole(role) ||
-    role === GROUP_ROLE_KEYS.PRODUCT_OWNER ||
-    role === GROUP_ROLE_KEYS.PM);
+    isProductOwner(role) ||
+    isPM(role));
 
-const canManageFolders = role =>
-  role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM;
+// PO + Leaders can CRUD group + folders. PM can CRUD folders in groups they belong to.
+const canManageFolders = ({ role, isLeader = false } = {}) =>
+  Boolean(isPM(role) || isPrivilegedForGroup({ role, isLeader }));
 
-const canAssignFolderMembers = role =>
-  role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM;
+// PM + PO + Leaders can add members to group, assign folders, CRUD+assign tasks.
+const canAssignFolderMembers = ({ role, isLeader = false } = {}) =>
+  Boolean(isPM(role) || isPrivilegedForGroup({ role, isLeader }));
 
-const canManageRoles = role => role === GROUP_ROLE_KEYS.PRODUCT_OWNER;
+// Roles are assigned by system admin only (not by group roles)
+const canManageRoles = () => false;
 
-const canManageGroupSettings = role =>
-  role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM;
+const canManageGroupSettings = ({ role, isLeader = false } = {}) =>
+  Boolean(isPrivilegedForGroup({ role, isLeader }));
 
-const canWriteInFolder = (role, { isAssigned = false } = {}) => {
+const canWriteInFolder = (role, { isAssigned = false, isLeader = false } = {}) => {
   if (!role) {
     return false;
   }
-  if (role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM) {
+  if (isProductOwner(role) || isPM(role) || isLeader) {
     return true;
   }
   if (isReadOnlyRole(role)) {
@@ -69,7 +78,10 @@ const canWriteInFolder = (role, { isAssigned = false } = {}) => {
   return false;
 };
 
-const canCreateTasks = role => !isReadOnlyRole(role) && Boolean(role);
+// Everyone with a non-null role can create tasks,
+// except read-only roles – but leaders are always allowed regardless of business role
+const canCreateTasks = ({ role, isLeader = false } = {}) =>
+  Boolean(role) && (!isReadOnlyRole(role) || isLeader);
 
 const canViewFolder = (role, { isAssigned = false } = {}) => {
   if (!role) {
@@ -89,8 +101,8 @@ const canViewFolder = (role, { isAssigned = false } = {}) => {
  * @param {String} role - User's role in the group
  * @returns {Boolean}
  */
-const isAdminRole = role =>
-  role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM;
+const isAdminRole = ({ role, isLeader = false } = {}) =>
+  Boolean(isPM(role) || isPrivilegedForGroup({ role, isLeader }));
 
 /**
  * Check if user can edit a task (update, timer, repeat, attachments)
@@ -101,8 +113,8 @@ const isAdminRole = role =>
  * @param {Boolean} params.isAssignee - Is user assigned to the task
  * @returns {Boolean}
  */
-const canEditTask = ({ role, isCreator = false, isAssignee = false }) => {
-  if (isAdminRole(role)) {
+const canEditTask = ({ role, isCreator = false, isAssignee = false, isLeader = false } = {}) => {
+  if (isAdminRole({ role, isLeader })) {
     return true;
   }
   if (isCreator) {
@@ -122,11 +134,12 @@ const canEditTask = ({ role, isCreator = false, isAssignee = false }) => {
  * @param {Boolean} params.isCreator - Is user the task creator
  * @returns {Boolean}
  */
-const canDeleteTask = ({ role, isCreator = false }) => {
-  if (isAdminRole(role)) {
+const canDeleteTask = ({ role, isCreator = false, isLeader = false } = {}) => {
+  // Admin roles (PO/PM/Leader) can delete any task; otherwise only creator can delete
+  if (isCreator) {
     return true;
   }
-  if (isCreator) {
+  if (isAdminRole({ role, isLeader })) {
     return true;
   }
   return false;
@@ -149,6 +162,7 @@ module.exports = {
   canViewFolder,
   isAdminRole,
   canEditTask,
-  canDeleteTask
+  canDeleteTask,
+  isPrivilegedForGroup
 };
 

@@ -5,7 +5,6 @@ export const GROUP_ROLE_KEYS = {
   DEV_MANAGER: 'developer_manager',
   PM: 'pm',
   BA: 'ba',
-  TECH_LEAD: 'tech',
   BOT_BUILDER: 'bot_builder',
   QC: 'qc',
   DEVOPS: 'devops',
@@ -26,7 +25,6 @@ export const ROLE_LABEL_KEYS: Record<GroupRoleKey, string> = {
   [GROUP_ROLE_KEYS.DEV_MANAGER]: 'roles.devManager',
   [GROUP_ROLE_KEYS.PM]: 'roles.pm',
   [GROUP_ROLE_KEYS.BA]: 'roles.ba',
-  [GROUP_ROLE_KEYS.TECH_LEAD]: 'roles.techLead',
   [GROUP_ROLE_KEYS.BOT_BUILDER]: 'roles.botBuilder',
   [GROUP_ROLE_KEYS.QC]: 'roles.qc',
   [GROUP_ROLE_KEYS.DEVOPS]: 'roles.devops',
@@ -45,7 +43,6 @@ export const ROLE_LABELS: Record<GroupRoleKey, string> = {
   [GROUP_ROLE_KEYS.DEV_MANAGER]: 'Developer Manager',
   [GROUP_ROLE_KEYS.PM]: 'Project Manager (PM)',
   [GROUP_ROLE_KEYS.BA]: 'Business Analyst (BA)',
-  [GROUP_ROLE_KEYS.TECH_LEAD]: 'Tech Lead',
   [GROUP_ROLE_KEYS.BOT_BUILDER]: 'Bot Builder',
   [GROUP_ROLE_KEYS.QC]: 'Quality Control (QC)',
   [GROUP_ROLE_KEYS.DEVOPS]: 'DevOps',
@@ -64,7 +61,6 @@ export const READ_ONLY_ROLES: GroupRoleKey[] = [
 
 export const FOLDER_SCOPED_ROLES: GroupRoleKey[] = [
   GROUP_ROLE_KEYS.BA,
-  GROUP_ROLE_KEYS.TECH_LEAD,
   GROUP_ROLE_KEYS.BOT_BUILDER,
   GROUP_ROLE_KEYS.QC,
   GROUP_ROLE_KEYS.DEVOPS,
@@ -83,7 +79,6 @@ export const ROLE_SUMMARY_KEYS: Record<GroupRoleKey, { summaryKey: string; capab
   [GROUP_ROLE_KEYS.QA]: { summaryKey: 'roles.summary.qa', capabilitiesKey: 'roles.capabilities.qa' },
   [GROUP_ROLE_KEYS.DEV_MANAGER]: { summaryKey: 'roles.summary.devManager', capabilitiesKey: 'roles.capabilities.devManager' },
   [GROUP_ROLE_KEYS.BA]: { summaryKey: 'roles.summary.ba', capabilitiesKey: 'roles.capabilities.ba' },
-  [GROUP_ROLE_KEYS.TECH_LEAD]: { summaryKey: 'roles.summary.techLead', capabilitiesKey: 'roles.capabilities.techLead' },
   [GROUP_ROLE_KEYS.BOT_BUILDER]: { summaryKey: 'roles.summary.botBuilder', capabilitiesKey: 'roles.capabilities.botBuilder' },
   [GROUP_ROLE_KEYS.QC]: { summaryKey: 'roles.summary.qc', capabilitiesKey: 'roles.capabilities.qc' },
   [GROUP_ROLE_KEYS.DEVOPS]: { summaryKey: 'roles.summary.devops', capabilitiesKey: 'roles.capabilities.devops' },
@@ -102,7 +97,6 @@ export const ROLE_BADGE_COLORS: Record<GroupRoleKey, string> = {
   [GROUP_ROLE_KEYS.QA]: 'from-slate-500 to-slate-600',
   [GROUP_ROLE_KEYS.DEV_MANAGER]: 'from-slate-500 to-slate-600',
   [GROUP_ROLE_KEYS.BA]: 'from-emerald-500 to-emerald-600',
-  [GROUP_ROLE_KEYS.TECH_LEAD]: 'from-emerald-500 to-emerald-600',
   [GROUP_ROLE_KEYS.BOT_BUILDER]: 'from-emerald-500 to-emerald-600',
   [GROUP_ROLE_KEYS.QC]: 'from-emerald-500 to-emerald-600',
   [GROUP_ROLE_KEYS.DEVOPS]: 'from-purple-500 to-purple-600',
@@ -121,7 +115,6 @@ export const ROLE_SCOPES: Record<GroupRoleKey, 'full' | 'read_only' | 'folder_sc
   [GROUP_ROLE_KEYS.QA]: 'read_only',
   [GROUP_ROLE_KEYS.DEV_MANAGER]: 'read_only',
   [GROUP_ROLE_KEYS.BA]: 'folder_scoped',
-  [GROUP_ROLE_KEYS.TECH_LEAD]: 'folder_scoped',
   [GROUP_ROLE_KEYS.BOT_BUILDER]: 'folder_scoped',
   [GROUP_ROLE_KEYS.QC]: 'folder_scoped',
   [GROUP_ROLE_KEYS.DEVOPS]: 'folder_scoped',
@@ -197,12 +190,6 @@ export const ROLE_SUMMARIES: Record<
     capabilities: 'Tạo/chỉnh sửa task/note trong folder được PM gán',
     badgeColor: 'from-emerald-500 to-emerald-600'
   },
-  [GROUP_ROLE_KEYS.TECH_LEAD]: {
-    scope: 'folder_scoped',
-    summary: 'Dẫn dắt kỹ thuật trong folder được giao',
-    capabilities: 'Quyền CRUD trong folder đã được gán',
-    badgeColor: 'from-emerald-500 to-emerald-600'
-  },
   [GROUP_ROLE_KEYS.BOT_BUILDER]: {
     scope: 'folder_scoped',
     summary: 'Thực hiện bot theo folder được gán',
@@ -256,7 +243,7 @@ export const ROLE_SUMMARIES: Record<
 // Section keys for translation
 export const ROLE_SECTION_KEYS = [
   { titleKey: 'roles.sections.monitoring', roles: [GROUP_ROLE_KEYS.SALE, GROUP_ROLE_KEYS.QA, GROUP_ROLE_KEYS.DEV_MANAGER] },
-  { titleKey: 'roles.sections.management', roles: [GROUP_ROLE_KEYS.PM, GROUP_ROLE_KEYS.BA, GROUP_ROLE_KEYS.TECH_LEAD, GROUP_ROLE_KEYS.BOT_BUILDER, GROUP_ROLE_KEYS.QC] },
+  { titleKey: 'roles.sections.management', roles: [GROUP_ROLE_KEYS.PM, GROUP_ROLE_KEYS.BA, GROUP_ROLE_KEYS.BOT_BUILDER, GROUP_ROLE_KEYS.QC] },
   { titleKey: 'roles.sections.infrastructure', roles: [GROUP_ROLE_KEYS.DEVOPS, GROUP_ROLE_KEYS.CLOUD_INFRA, GROUP_ROLE_KEYS.SECURITY] },
   { titleKey: 'roles.sections.productTeam', roles: [GROUP_ROLE_KEYS.CHATBOT, GROUP_ROLE_KEYS.VOICEBOT, GROUP_ROLE_KEYS.DEVELOPER] }
 ];
@@ -287,7 +274,6 @@ export const ROLE_SECTIONS = [
     roles: [
       { value: GROUP_ROLE_KEYS.PM, label: ROLE_LABELS[GROUP_ROLE_KEYS.PM] },
       { value: GROUP_ROLE_KEYS.BA, label: ROLE_LABELS[GROUP_ROLE_KEYS.BA] },
-      { value: GROUP_ROLE_KEYS.TECH_LEAD, label: ROLE_LABELS[GROUP_ROLE_KEYS.TECH_LEAD] },
       { value: GROUP_ROLE_KEYS.BOT_BUILDER, label: ROLE_LABELS[GROUP_ROLE_KEYS.BOT_BUILDER] },
       { value: GROUP_ROLE_KEYS.QC, label: ROLE_LABELS[GROUP_ROLE_KEYS.QC] }
     ]
@@ -311,8 +297,6 @@ export const ROLE_SECTIONS = [
 ];
 
 export const INVITABLE_ROLES = ROLE_SECTIONS.flatMap(section => section.roles as Array<{ value: GroupRoleKey; label: string }>);
-export const DEFAULT_INVITE_ROLE = GROUP_ROLE_KEYS.PM;
-
 // Function to get translated role label
 export const getRoleLabel = (role?: string | null, t?: TranslateFunction) => {
   if (!role) return t ? t('roles.unknown' as any) : 'Unknown role';

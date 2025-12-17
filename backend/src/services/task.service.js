@@ -3,7 +3,15 @@ const Group = require('../models/Group.model');
 const Folder = require('../models/Folder.model');
 const User = require('../models/User.model');
 const mongoose = require('mongoose');
-const { ERROR_MESSAGES, TASK_STATUS, LIMITS, SUCCESS_MESSAGES, HTTP_STATUS, PRIORITY_LEVELS } = require('../config/constants');
+const {
+  ERROR_MESSAGES,
+  TASK_STATUS,
+  LIMITS,
+  SUCCESS_MESSAGES,
+  HTTP_STATUS,
+  PRIORITY_LEVELS,
+  GROUP_ROLE_KEYS
+} = require('../config/constants');
 const {
   isValidObjectId,
   validateTaskDates,
@@ -166,9 +174,14 @@ const ensureGroupAccess = async (groupId, requesterId) => {
     raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
   }
 
-  const role = group.getMemberRole(requesterId);
+  // Group member roles are deprecated; use account-level role from User
+  return { group, role: null };
+};
 
-  return { group, role };
+const getRequesterContext = async (requesterId) => {
+  if (!requesterId) return { role: null, isLeader: false };
+  const user = await User.findById(requesterId).select('_id groupRole isLeader').lean();
+  return { role: user?.groupRole || null, isLeader: Boolean(user?.isLeader) };
 };
 
 const enforceFolderAccess = async ({
@@ -177,6 +190,7 @@ const enforceFolderAccess = async ({
   folderId,
   requesterId,
   role,
+  isLeader = false,
   requireWrite = false,
   allowFallback = true
 }) => {
@@ -192,6 +206,7 @@ const enforceFolderAccess = async ({
     allowFallback,
     access: {
       role,
+      isLeader,
       enforceAssignment: true,
       requireWrite
     }
@@ -300,7 +315,14 @@ const ensureTaskWriteAccess = async (taskDoc, requesterId) => {
     raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
   }
 
-  const { group, role } = await ensureGroupAccess(groupId, requesterId);
+  const { group } = await ensureGroupAccess(groupId, requesterId);
+  const requester = await getRequesterContext(requesterId);
+
+  const isPersonalOwner =
+    Boolean(group.isPersonalWorkspace) &&
+    normalizeId(group.createdBy) === normalizeId(requesterId);
+
+  const role = isPersonalOwner ? (requester.role || 'personal_owner') : requester.role;
 
   await enforceFolderAccess({
     group,
@@ -308,10 +330,11 @@ const ensureTaskWriteAccess = async (taskDoc, requesterId) => {
     folderId: taskDoc.folderId,
     requesterId,
     role,
+    isLeader: requester.isLeader,
     requireWrite: true
   });
 
-  return { group, role };
+  return { group, role, requester };
 };
 
 /**
@@ -328,7 +351,14 @@ const ensureTaskEditAccess = async (taskDoc, requesterId) => {
     raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
   }
 
-  const { group, role } = await ensureGroupAccess(groupId, requesterId);
+  const { group } = await ensureGroupAccess(groupId, requesterId);
+  const requester = await getRequesterContext(requesterId);
+
+  const isPersonalOwner =
+    Boolean(group.isPersonalWorkspace) &&
+    normalizeId(group.createdBy) === normalizeId(requesterId);
+
+  const role = isPersonalOwner ? (requester.role || 'personal_owner') : requester.role;
   const normalizedRequesterId = normalizeId(requesterId);
   const creatorId = normalizeId(taskDoc.createdBy);
 
@@ -337,11 +367,11 @@ const ensureTaskEditAccess = async (taskDoc, requesterId) => {
     assignee => normalizeId(assignee.userId) === normalizedRequesterId
   );
 
-  if (!canEditTask({ role, isCreator, isAssignee })) {
+  if (!isPersonalOwner && !canEditTask({ role, isCreator, isAssignee, isLeader: requester.isLeader })) {
     raiseError('Bạn không có quyền chỉnh sửa task này. Chỉ PM, Product Owner, người tạo task hoặc người được gán mới có thể chỉnh sửa.', HTTP_STATUS.FORBIDDEN);
   }
 
-  return { group, role, isCreator, isAssignee };
+  return { group, role, isCreator, isAssignee, requester };
 };
 
 /**
@@ -358,17 +388,24 @@ const ensureTaskDeleteAccess = async (taskDoc, requesterId) => {
     raiseError(ERROR_MESSAGES.GROUP_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
   }
 
-  const { group, role } = await ensureGroupAccess(groupId, requesterId);
+  const { group } = await ensureGroupAccess(groupId, requesterId);
+  const requester = await getRequesterContext(requesterId);
+
+  const isPersonalOwner =
+    Boolean(group.isPersonalWorkspace) &&
+    normalizeId(group.createdBy) === normalizeId(requesterId);
+
+  const role = isPersonalOwner ? (requester.role || 'personal_owner') : requester.role;
   const normalizedRequesterId = normalizeId(requesterId);
   const creatorId = normalizeId(taskDoc.createdBy);
 
   const isCreator = normalizedRequesterId === creatorId;
 
-  if (!canDeleteTask({ role, isCreator })) {
-    raiseError('Bạn không có quyền xóa task này. Chỉ PM, Product Owner hoặc người tạo task mới có thể xóa.', HTTP_STATUS.FORBIDDEN);
+  if (!isPersonalOwner && !canDeleteTask({ role, isCreator, isLeader: requester.isLeader })) {
+    raiseError('Bạn không có quyền xóa task này. Chỉ người tạo task mới có thể xóa.', HTTP_STATUS.FORBIDDEN);
   }
 
-  return { group, role, isCreator };
+  return { group, role, isCreator, requester };
 };
 
 /**
@@ -399,11 +436,18 @@ class TaskService {
         raiseError('Invalid groupId format');
       }
 
-      const { group, role } = await ensureGroupAccess(groupId, creatorId);
+      const { group } = await ensureGroupAccess(groupId, creatorId);
+      const requester = await getRequesterContext(creatorId);
+
+      const isPersonalOwner =
+        Boolean(group.isPersonalWorkspace) &&
+        normalizeId(group.createdBy) === normalizeId(creatorId);
+
+      const role = isPersonalOwner ? (requester.role || 'personal_owner') : requester.role;
       targetGroup = group;
       requesterRole = role;
 
-      if (!canCreateTasks(requesterRole)) {
+      if (!isPersonalOwner && !canCreateTasks({ role: requesterRole, isLeader: requester.isLeader })) {
         raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
       }
 
@@ -418,6 +462,7 @@ class TaskService {
         folderId: taskData.folderId,
         requesterId: creatorId,
         role: requesterRole,
+        isLeader: requester.isLeader,
         requireWrite: true
       });
 
@@ -432,7 +477,8 @@ class TaskService {
     }
 
     // Check if user can assign to others (only PM and Product Owner)
-    const canAssignToOthers = targetGroup ? canAssignFolderMembers(requesterRole) : false;
+    const requesterContext = await getRequesterContext(creatorId);
+    const canAssignToOthers = targetGroup ? canAssignFolderMembers(requesterContext) : false;
 
     // If user cannot assign to others, they can only assign to themselves
     if (!canAssignToOthers && assignedIds.length > 0) {
@@ -646,7 +692,8 @@ class TaskService {
         raiseError('Invalid groupId format');
       }
 
-      const { group, role } = await ensureGroupAccess(groupId, requesterId);
+      const { group } = await ensureGroupAccess(groupId, requesterId);
+      const requester = await getRequesterContext(requesterId);
 
       queryFilters.push({ groupId });
 
@@ -655,7 +702,7 @@ class TaskService {
         groupId,
         folderId,
         requesterId,
-        role
+        role: requester.role
       });
 
       if (folderClauses.length === 1) {
@@ -736,7 +783,7 @@ class TaskService {
       }
     }
 
-    const { group: currentGroup, role: initialRole } = await ensureTaskEditAccess(taskDoc, requesterId);
+    const { group: currentGroup, role: initialRole, requester } = await ensureTaskEditAccess(taskDoc, requesterId);
 
     const requesterIdStr = normalizeId(requesterId);
     const creatorIdStr = normalizeId(taskDoc.createdBy);
@@ -775,8 +822,9 @@ class TaskService {
         }
 
         finalGroupId = requestedGroupId;
-        requesterRole = targetGroup.getMemberRole(requesterIdStr);
-        if (!requesterRole) {
+        const requesterCtx = await getRequesterContext(requesterIdStr);
+        requesterRole = requesterCtx.role;
+        if (!requesterRole && !(targetGroup.isPersonalWorkspace && requesterIdStr && normalizeId(targetGroup.createdBy) === requesterIdStr)) {
           raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
         }
       }
@@ -792,6 +840,7 @@ class TaskService {
         folderId: updateData.folderId,
         requesterId,
         role: requesterRole,
+        isLeader: requester?.isLeader,
         requireWrite: true
       });
     } else if (updateData.folderId !== undefined && !finalGroupId) {
@@ -1018,13 +1067,14 @@ class TaskService {
     const startDate = getFirstDayOfMonth(yearNum, monthNum);
     const endDate = getLastDayOfMonth(yearNum, monthNum);
 
-    const { group, role } = await ensureGroupAccess(groupId, requesterId);
+    const { group } = await ensureGroupAccess(groupId, requesterId);
+    const requester = await getRequesterContext(requesterId);
     const folderClauses = await buildScopedFolderFilter({
       group,
       groupId,
       folderId,
       requesterId,
-      role
+      role: requester.role
     });
 
     const filters = [
@@ -1107,16 +1157,17 @@ class TaskService {
         raiseError('Invalid groupId format');
       }
 
-      const { group, role } = await ensureGroupAccess(groupId, requesterId);
+    const { group } = await ensureGroupAccess(groupId, requesterId);
+    const requester = await getRequesterContext(requesterId);
 
       queryFilters.push({ groupId });
 
-      const folderClauses = await buildScopedFolderFilter({
+    const folderClauses = await buildScopedFolderFilter({
         group,
         groupId,
         folderId,
         requesterId,
-        role
+      role: requester.role
       });
 
       if (folderClauses.length === 1) {
@@ -1243,9 +1294,9 @@ class TaskService {
       groupMemberIds = new Set(group.members.map(member => normalizeId(member.userId)).filter(Boolean));
     }
 
-    // Check permissions: only PM and Product Owner can assign tasks to others
-    const assignerRole = group ? group.getMemberRole(normalizedAssignerId) : null;
-    const canAssignToOthers = canAssignFolderMembers(assignerRole);
+    // Check permissions: only PM, Product Owner, or Leaders can assign tasks to others
+    const assignerContext = await getRequesterContext(normalizedAssignerId);
+    const canAssignToOthers = canAssignFolderMembers(assignerContext);
 
     if (!normalizedAssignerId) {
       return {
@@ -1255,6 +1306,10 @@ class TaskService {
       };
     }
 
+    const sanitizedIds = Array.isArray(userIds)
+      ? [...new Set(userIds.map(id => (id ? id.toString().trim() : '')).filter(Boolean))]
+      : [];
+
     // If user cannot assign to others, they can only assign themselves
     if (!canAssignToOthers) {
       // Check if trying to assign to someone other than self
@@ -1263,7 +1318,7 @@ class TaskService {
         return {
           success: false,
           statusCode: HTTP_STATUS.FORBIDDEN,
-          message: 'Bạn chỉ có thể gán task cho chính mình. Chỉ PM và Product Owner mới có thể gán task cho người khác.'
+          message: 'Bạn chỉ có thể gán task cho chính mình. Chỉ PM, Product Owner và Leader mới có thể gán task cho người khác.'
         };
       }
       // If no userIds provided or only self, allow self-assignment
@@ -1286,10 +1341,6 @@ class TaskService {
     const alreadyAssigned = [];
     const invalidIds = [];
 
-    const sanitizedIds = Array.isArray(userIds)
-      ? [...new Set(userIds.map(id => (id ? id.toString().trim() : '')).filter(Boolean))]
-      : [];
-
     const filteredIds = [];
 
     sanitizedIds.forEach(id => {
@@ -1298,20 +1349,13 @@ class TaskService {
         return;
       }
 
-      // Allow self-assignment for regular users
-      if (id === normalizedAssignerId && !canAssignToOthers) {
-        // Regular users can assign themselves
+      // Allow self-assignment cho mọi user (kể cả PM/PO/Leader)
+      if (id === normalizedAssignerId) {
         if (existingAssigneeIds.has(id)) {
           alreadyAssigned.push(id);
           return;
         }
         filteredIds.push(id);
-        return;
-      }
-
-      // For admins, ignore self-assignment attempts (they can assign others)
-      if (id === normalizedAssignerId && canAssignToOthers) {
-        ignoredSelf.push(id);
         return;
       }
 
@@ -1377,6 +1421,29 @@ class TaskService {
     }
 
     if (filteredIds.length === 0) {
+      // Nếu tất cả user được chọn đều đã được gán sẵn, coi như thao tác idempotent (không có gì để thay đổi)
+      if (alreadyAssigned.length > 0 && ignoredSelf.length === 0 && invalidIds.length === 0) {
+        const populatedTask = await Task.findById(task._id)
+          .populate('createdBy', 'name email avatar')
+          .populate('assignedTo.userId', 'name email avatar')
+          .populate('comments.user', 'name email avatar')
+          .populate('timeEntries.user', 'name email avatar')
+          .populate('scheduledWork.user', 'name email avatar')
+          .populate('groupId', 'name description');
+
+        return {
+          success: true,
+          statusCode: HTTP_STATUS.OK,
+          message: 'Không có user mới để gán',
+          task: populatedTask,
+          assignedUserIds: [],
+          meta: {
+            alreadyAssigned,
+            ignoredSelf
+          }
+        };
+      }
+
       return {
         success: false,
         statusCode: HTTP_STATUS.BAD_REQUEST,
@@ -1389,7 +1456,7 @@ class TaskService {
     }
 
     const users = await User.find({ _id: { $in: filteredIds }, isActive: true })
-      .select('_id')
+      .select('_id groupRole isLeader')
       .lean();
 
     const activeIds = new Set(users.map(user => user._id.toString()));
@@ -1418,8 +1485,55 @@ class TaskService {
     }
 
     const assignableIds = filteredIds.filter(id => activeIds.has(id));
-    let finalAssignableIds = assignableIds.slice(0, availableSlots);
-    const skippedDueToLimit = assignableIds.slice(availableSlots);
+
+    // If assigner là Leader nhưng không phải PM/PO thì KHÔNG được gán task cho PM, PO hoặc các Leader khác
+    const isAssignerPM = assignerContext.role === GROUP_ROLE_KEYS.PM;
+    const isAssignerPO = assignerContext.role === GROUP_ROLE_KEYS.PRODUCT_OWNER;
+    const isLeaderOnly = assignerContext.isLeader && !isAssignerPM && !isAssignerPO;
+
+    let leaderRestrictedIds = [];
+
+    let effectiveAssignableIds = assignableIds;
+    if (isLeaderOnly) {
+      const userMap = users.reduce((acc, user) => {
+        acc[user._id.toString()] = user;
+        return acc;
+      }, {});
+
+      effectiveAssignableIds = assignableIds.filter(id => {
+        // Luôn cho phép leader gán chính mình (self-assign), dù là leader
+        if (id === normalizedAssignerId) {
+          return true;
+        }
+
+        const user = userMap[id];
+        if (!user) return false;
+        const isTargetLeader = Boolean(user.isLeader);
+        const isTargetPMorPO =
+          user.groupRole === GROUP_ROLE_KEYS.PM ||
+          user.groupRole === GROUP_ROLE_KEYS.PRODUCT_OWNER;
+
+        if (isTargetLeader || isTargetPMorPO) {
+          leaderRestrictedIds.push(id);
+          return false;
+        }
+        return true;
+      });
+
+      if (effectiveAssignableIds.length === 0) {
+        return {
+          success: false,
+          statusCode: HTTP_STATUS.FORBIDDEN,
+          message: 'Leader chỉ được gán task cho các thành viên không phải PM, Product Owner hoặc Leader khác.',
+          errors: {
+            leaderRestrictedIds
+          }
+        };
+      }
+    }
+
+    let finalAssignableIds = effectiveAssignableIds.slice(0, availableSlots);
+    const skippedDueToLimit = effectiveAssignableIds.slice(availableSlots);
 
     if (finalAssignableIds.length === 0) {
       return {
@@ -1537,7 +1651,8 @@ class TaskService {
 
     // Check permissions: user must be either creator, admin of the group, or the user being unassigned themselves
     const isCreator = normalizeId(task.createdBy) === requesterIdStr;
-    const isGroupAdmin = group && group.isAdmin(requesterIdStr);
+    const requesterContext = await getRequesterContext(requesterIdStr);
+    const isGroupAdmin = group && canAssignFolderMembers(requesterContext);
     const isUnassigningSelf = requesterIdStr === userId.toString();
 
     if (!requesterIdStr || (!isCreator && !isGroupAdmin && !isUnassigningSelf)) {

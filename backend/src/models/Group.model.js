@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { GROUP_ROLES, GROUP_ROLE_KEYS, LIMITS } = require('../config/constants');
+const { GROUP_ROLES, LIMITS } = require('../config/constants');
 
 const normalizeId = value => {
   if (!value) return null;
@@ -20,7 +20,7 @@ const memberSchema = new mongoose.Schema(
     role: {
       type: String,
       enum: GROUP_ROLES,
-      required: true
+      default: null
     },
     joinedAt: {
       type: Date,
@@ -37,6 +37,10 @@ const groupSchema = new mongoose.Schema(
       required: [true, 'Group name is required'],
       trim: true,
       maxlength: [LIMITS.MAX_GROUP_NAME_LENGTH, `Group name must not exceed ${LIMITS.MAX_GROUP_NAME_LENGTH} characters`]
+    },
+    isPersonalWorkspace: {
+      type: Boolean,
+      default: false
     },
     description: {
       type: String,
@@ -72,7 +76,7 @@ const groupSchema = new mongoose.Schema(
   }
 );
 
-// Ensure creator is always present as product owner
+// Ensure creator is always present as a member
 groupSchema.pre('validate', function(next) {
   if (!this.createdBy) {
     return next();
@@ -85,15 +89,7 @@ groupSchema.pre('validate', function(next) {
   });
 
   if (!hasCreator) {
-    this.members.push({ userId: this.createdBy, role: GROUP_ROLE_KEYS.PRODUCT_OWNER });
-  } else {
-    this.members = this.members.map(member => {
-      const normalized = member?.toObject ? member.toObject() : member;
-      if (normalized.userId && normalizeId(normalized.userId) === creatorId) {
-        return { ...normalized, role: GROUP_ROLE_KEYS.PRODUCT_OWNER };
-      }
-      return normalized;
-    });
+    this.members.push({ userId: this.createdBy, role: null });
   }
 
   next();
@@ -150,11 +146,11 @@ groupSchema.methods.hasRole = function(userId, roles = []) {
 };
 
 groupSchema.methods.isProductOwner = function(userId) {
-  return this.hasRole(userId, [GROUP_ROLE_KEYS.PRODUCT_OWNER]);
+  return false;
 };
 
 groupSchema.methods.isAdmin = function(userId) {
-  return this.isProductOwner(userId);
+  return false;
 };
 
 // Indexes

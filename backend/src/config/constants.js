@@ -19,7 +19,6 @@ const GROUP_ROLE_KEYS = {
   DEV_MANAGER: 'developer_manager',
   PM: 'pm',
   BA: 'ba',
-  TECH_LEAD: 'tech',
   BOT_BUILDER: 'bot_builder',
   QC: 'qc',
   DEVOPS: 'devops',
@@ -42,7 +41,6 @@ const GROUP_ROLE_GROUPS = {
   DELIVERY: [
     GROUP_ROLE_KEYS.PM,
     GROUP_ROLE_KEYS.BA,
-    GROUP_ROLE_KEYS.TECH_LEAD,
     GROUP_ROLE_KEYS.BOT_BUILDER,
     GROUP_ROLE_KEYS.QC
   ],
@@ -65,7 +63,6 @@ const GROUP_ROLE_LABELS = {
   [GROUP_ROLE_KEYS.DEV_MANAGER]: 'Developer Manager',
   [GROUP_ROLE_KEYS.PM]: 'Project Manager',
   [GROUP_ROLE_KEYS.BA]: 'Business Analyst',
-  [GROUP_ROLE_KEYS.TECH_LEAD]: 'Tech Lead',
   [GROUP_ROLE_KEYS.BOT_BUILDER]: 'Bot Builder',
   [GROUP_ROLE_KEYS.QC]: 'Quality Control',
   [GROUP_ROLE_KEYS.DEVOPS]: 'DevOps',

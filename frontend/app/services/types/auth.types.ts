@@ -13,6 +13,8 @@ export interface User {
   name: string;
   avatar: string | null;
   role: 'user' | 'admin' | 'super_admin';
+  groupRole?: string | null;
+  isLeader?: boolean;
   theme: 'light' | 'dark' | 'auto';
   language: Language;
   regionalPreferences: RegionalPreferences;
