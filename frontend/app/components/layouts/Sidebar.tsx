@@ -20,9 +20,10 @@ import { Group } from '../../services/types/group.types';
 import { useFolder } from '../../contexts/FolderContext';
 import { folderService } from '../../services/folder.service';
 import { Folder } from '../../services/types/folder.types';
-import { DEFAULT_INVITE_ROLE, ROLE_SECTIONS, GROUP_ROLE_KEYS, getRoleSections } from '../../constants/groupRoles';
+import { GROUP_ROLE_KEYS } from '../../constants/groupRoles';
 import { getMemberRole, canManageFolders, canAssignFolderMembers, canAddMembers } from '../../utils/groupRoleUtils';
 import FolderContextMenu from '../folders/FolderContextMenu';
+import GroupContextMenu from '../groups/GroupContextMenu';
 import { FolderAccessModal } from '../folders/FolderAccessModal';
 import { useSocket } from '../../hooks/useSocket';
 import { useGroupChange } from '../../hooks/useGroupChange';
@@ -139,13 +140,12 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSubmit }
 interface InviteUserModalProps {
   groupName: string;
   onClose: () => void;
-  onSubmit: (email: string, role: string) => Promise<void>;
+  onSubmit: (email: string) => Promise<void>;
 }
 
 const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, onSubmit }) => {
   const { t } = useLanguage();
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<string>(DEFAULT_INVITE_ROLE);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -156,7 +156,7 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, o
     setLoading(true);
     setError('');
     try {
-      await onSubmit(email.trim(), role);
+      await onSubmit(email.trim());
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to invite user');
     } finally {
@@ -207,32 +207,7 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, o
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              {t('sidebar.assignRole')} *
-            </label>
-            <div className="relative">
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                className="w-full bg-white dark:bg-[#2E2E2E] text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 appearance-none"
-                disabled={loading}
-              >
-                {getRoleSections(t as any).map(section => (
-                  <optgroup key={section.title} label={section.title}>
-                    {section.roles.map(option => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-gray-400">
-                <ChevronDown className="w-4 h-4" />
-              </div>
-            </div>
-          </div>
+          {/* Role selection removed: roles are assigned by admin at account level */}
 
           {error && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3">
@@ -254,7 +229,7 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, o
             </button>
             <button
               type="submit"
-              disabled={!email.trim() || !role || loading}
+              disabled={!email.trim() || loading}
               className="flex-1 bg-gradient-to-r from-green-600 to-green-700 text-white py-3 px-4 rounded-xl hover:from-green-700 hover:to-green-800 transition-all duration-200 font-medium shadow-lg hover:shadow-xl disabled:opacity-50 disabled:shadow-none"
             >
               {loading ? (
@@ -278,10 +253,13 @@ export default function Sidebar() {
   const { user, currentGroup, setCurrentGroup } = useAuth();
   const { socket, isConnected } = useSocket();
   const confirmDialog = useConfirm();
-  const userRole = currentGroup && user ? getMemberRole(currentGroup, user._id) : null;
-  const canDeleteFolders = canManageFolders(userRole);
-  const canEditFolders = canManageFolders(userRole);
-  const canAssignFolders = canAssignFolderMembers(userRole);
+  const userRoleInCurrentGroup = currentGroup && user ? getMemberRole(currentGroup, user._id) : null;
+  const isLeader = Boolean((user as any)?.isLeader);
+  const businessRole = (user as any)?.groupRole as string | undefined | null;
+  const canManageGroups = Boolean(businessRole === GROUP_ROLE_KEYS.PRODUCT_OWNER || isLeader);
+  const canDeleteFolders = canManageFolders(userRoleInCurrentGroup, isLeader);
+  const canEditFolders = canManageFolders(userRoleInCurrentGroup, isLeader);
+  const canAssignFolders = canAssignFolderMembers(userRoleInCurrentGroup, isLeader);
   const {
     folders,
     currentFolder,
@@ -294,6 +272,7 @@ export default function Sidebar() {
   } = useFolder();
   const [projectsExpanded, setProjectsExpanded] = useState(true);
   const [sharedExpanded, setSharedExpanded] = useState(true);
+  const [personalWorkspace, setPersonalWorkspace] = useState<Group | null>(null);
   const [myGroups, setMyGroups] = useState<Group[]>([]);
   const [sharedGroups, setSharedGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
@@ -335,6 +314,11 @@ export default function Sidebar() {
     y: number;
     folder: Folder;
     groupId: string;
+  } | null>(null);
+  const [groupContextMenu, setGroupContextMenu] = useState<{
+    x: number;
+    y: number;
+    group: Group;
   } | null>(null);
   const [showFolderAccessModal, setShowFolderAccessModal] = useState(false);
   const [selectedFolderForAccess, setSelectedFolderForAccess] = useState<{
@@ -494,7 +478,15 @@ export default function Sidebar() {
     try {
       setLoading(true);
       const response = await groupService.getAllGroups();
-      setMyGroups(response.myGroups);
+      const personal = (response.myGroups || []).find(
+        (g: any) => g && (g as any).isPersonalWorkspace
+      ) || null;
+      const regularMyGroups = (response.myGroups || []).filter(
+        (g: any) => !g || !(g as any).isPersonalWorkspace
+      );
+
+      setPersonalWorkspace(personal);
+      setMyGroups(regularMyGroups);
       setSharedGroups(response.sharedGroups);
 
       // Cache members for all groups
@@ -552,11 +544,11 @@ export default function Sidebar() {
     setShowInviteModal(true);
   };
 
-  const handleInviteSubmit = async (email: string, role: string) => {
+  const handleInviteSubmit = async (email: string) => {
     if (!selectedGroup) return;
 
     try {
-      await groupService.inviteUserToGroup(selectedGroup._id, email, role);
+      await groupService.inviteUserToGroup(selectedGroup._id, email);
       setShowInviteModal(false);
       setSelectedGroup(null);
       // Reload groups to show updated member list
@@ -767,6 +759,26 @@ export default function Sidebar() {
       y: e.clientY,
       folder,
       groupId
+    });
+  };
+
+  const handleGroupRightClick = (e: React.MouseEvent, group: Group) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // No group actions for personal workspace
+    if ((group as any).isPersonalWorkspace) {
+      return;
+    }
+
+    if (!canManageGroups) {
+      return;
+    }
+
+    setGroupContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      group
     });
   };
 
@@ -1034,6 +1046,7 @@ export default function Sidebar() {
             ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
             : 'bg-white dark:bg-[#1F1F1F] border-transparent hover:bg-gray-50 dark:hover:bg-[#2E2E2E]'
             }`}
+          onContextMenu={(e) => handleGroupRightClick(e, group)}
         >
           <div className="flex items-center gap-3 p-3">
             <button
@@ -1091,6 +1104,7 @@ export default function Sidebar() {
                   <Users className="w-4 h-4" />
                 </button>
               )}
+              {/* Group-level actions are available via right-click context menu */}
             </div>
           </div>
         </div>
@@ -1120,7 +1134,11 @@ export default function Sidebar() {
             {loading ? (
               <option value="">Loading workspaces...</option>
             ) : (
-              [...myGroups, ...sharedGroups].map(group => (
+              [
+                ...(personalWorkspace ? [personalWorkspace] : []),
+                ...myGroups,
+                ...sharedGroups
+              ].map(group => (
                 <option key={group._id} value={group._id}>
                   {group.name}
                 </option>
@@ -1143,6 +1161,21 @@ export default function Sidebar() {
           />
         </div>
       </div>
+
+      {/* Personal Workspace */}
+      {personalWorkspace && (
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center space-x-2">
+              <FolderIcon className="w-4 h-4 text-blue-500" />
+              <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
+                {t('sidebar.personalWorkspace') || 'Personal Workspace'}
+              </span>
+            </div>
+          </div>
+          {renderGroupCard(personalWorkspace)}
+        </div>
+      )}
 
       {/* My Projects */}
       <div className="flex-1 overflow-y-auto">
@@ -1190,7 +1223,8 @@ export default function Sidebar() {
               ) : (
                 myGroups.map(group => {
                   const groupUserRole = user ? getMemberRole(group, user._id) : null;
-                  return renderGroupCard(group, { canInvite: canAddMembers(groupUserRole) });
+                  const canInvite = canAddMembers(groupUserRole, isLeader);
+                  return renderGroupCard(group, { canInvite });
                 })
               )}
             </div>
@@ -1260,6 +1294,46 @@ export default function Sidebar() {
           canEdit={canEditFolders}
           canDelete={canDeleteFolders}
           canAssign={canAssignFolders}
+        />
+      )}
+
+      {/* Group Context Menu */}
+      {groupContextMenu && (
+        <GroupContextMenu
+          x={groupContextMenu.x}
+          y={groupContextMenu.y}
+          onClose={() => setGroupContextMenu(null)}
+          canRename={canManageGroups}
+          canDelete={canManageGroups}
+          onRename={async () => {
+            const group = groupContextMenu.group;
+            const newName = window.prompt('Đổi tên group', group.name);
+            if (!newName || newName.trim() === '' || newName === group.name) return;
+            try {
+              await groupService.updateGroup(group._id, { name: newName.trim() });
+              await loadGroups();
+            } catch (error) {
+              console.error('Failed to rename group:', error);
+            }
+          }}
+          onDelete={async () => {
+            const group = groupContextMenu.group;
+            const confirmed = await confirmDialog.confirm({
+              title: 'Xóa group',
+              message: 'Bạn có chắc chắn muốn xóa group này không? Tất cả folder, task và note bên trong sẽ bị xóa.',
+              confirmText: 'Xóa',
+              cancelText: 'Hủy',
+              variant: 'danger',
+              icon: 'delete'
+            });
+            if (!confirmed) return;
+            try {
+              await groupService.deleteGroup(group._id);
+              await loadGroups();
+            } catch (error) {
+              console.error('Failed to delete group:', error);
+            }
+          }}
         />
       )}
 

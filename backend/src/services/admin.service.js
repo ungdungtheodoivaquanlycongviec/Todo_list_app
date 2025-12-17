@@ -6,6 +6,7 @@ const Group = require('../models/Group.model');
 const { publishNotification } = require('./notification.producer');
 const { isValidObjectId } = require('../utils/validationHelper');
 const validator = require('validator');
+const { GROUP_ROLES } = require('../config/constants');
 
 class AdminService {
   /**
@@ -120,7 +121,7 @@ class AdminService {
    * Create new user
    */
   async createUser(userData, adminId, adminEmail, req = null) {
-    const { email, password, name, role = 'user' } = userData;
+    const { email, password, name, role = 'user', groupRole = null, isLeader = false } = userData;
 
     // Validate data
     if (!email || !validator.isEmail(email)) {
@@ -139,6 +140,14 @@ class AdminService {
       throw new Error('Invalid role. Only "user" and "admin" are allowed');
     }
 
+    if (groupRole !== null && !GROUP_ROLES.includes(groupRole)) {
+      throw new Error('Invalid groupRole');
+    }
+
+    if (typeof isLeader !== 'boolean') {
+      throw new Error('isLeader must be a boolean');
+    }
+
     // Check if user already exists
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
@@ -151,6 +160,8 @@ class AdminService {
       password,
       name: name.trim(),
       role,
+      groupRole,
+      isLeader,
       isActive: true,
       isEmailVerified: false
     });
@@ -162,7 +173,7 @@ class AdminService {
       'user_create',
       'user',
       `Created new user: ${email}`,
-      { userId: newUser._id, email, name, role },
+      { userId: newUser._id, email, name, role, groupRole, isLeader },
       {},
       req
     );
@@ -178,7 +189,7 @@ class AdminService {
       throw new Error('Invalid user ID');
     }
 
-    const allowedFields = ['name', 'email', 'avatar', 'role', 'isActive', 'isEmailVerified'];
+    const allowedFields = ['name', 'email', 'avatar', 'role', 'isActive', 'isEmailVerified', 'groupRole', 'isLeader'];
     const updates = {};
     const changes = {};
 
@@ -237,6 +248,26 @@ class AdminService {
       updates.role = updateData.role;
       if (originalUser.role !== updates.role) {
         changes.role = { from: originalUser.role, to: updates.role };
+      }
+    }
+
+    if (updateData.groupRole !== undefined) {
+      if (updateData.groupRole !== null && !GROUP_ROLES.includes(updateData.groupRole)) {
+        throw new Error('Invalid groupRole');
+      }
+      updates.groupRole = updateData.groupRole;
+      if (originalUser.groupRole !== updates.groupRole) {
+        changes.groupRole = { from: originalUser.groupRole, to: updates.groupRole };
+      }
+    }
+
+    if (updateData.isLeader !== undefined) {
+      if (typeof updateData.isLeader !== 'boolean') {
+        throw new Error('isLeader must be a boolean');
+      }
+      updates.isLeader = updateData.isLeader;
+      if (originalUser.isLeader !== updates.isLeader) {
+        changes.isLeader = { from: originalUser.isLeader, to: updates.isLeader };
       }
     }
 

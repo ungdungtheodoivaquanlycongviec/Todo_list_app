@@ -5,11 +5,14 @@ export interface GroupMemberUser {
   name: string;
   email: string;
   avatar?: string;
+  groupRole?: string | null;
+  isLeader?: boolean;
 }
 
 export interface GroupMember {
   userId: string | GroupMemberUser;
-  role: GroupRoleKey;
+  // Group member roles are deprecated; keep for backward compatibility only.
+  role?: GroupRoleKey | null;
   joinedAt: string;
   name?: string;
   email?: string;
@@ -25,6 +28,8 @@ export interface Group {
   _id: string;
   name: string;
   description: string;
+  // Personal workspace flag (true for each user's private workspace group)
+  isPersonalWorkspace?: boolean;
   createdBy: string | {
     _id: string;
     name: string;

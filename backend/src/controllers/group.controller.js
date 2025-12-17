@@ -180,9 +180,9 @@ const switchToGroup = asyncHandler(async (req, res) => {
 
 const inviteUserToGroup = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { email, role } = req.body;
+  const { email } = req.body;
   
-  const result = await groupService.inviteUserToGroup(id, email, role, req.user._id);
+  const result = await groupService.inviteUserToGroup(id, email, null, req.user._id);
 
   if (!result.success) {
     return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);

@@ -2,6 +2,7 @@ const Group = require('../models/Group.model');
 const Task = require('../models/Task.model');
 const User = require('../models/User.model');
 const Folder = require('../models/Folder.model');
+const Note = require('../models/Note.model');
 const notificationService = require('./notification.service');
 const {
   LIMITS,
@@ -16,6 +17,7 @@ const {
   canManageRoles,
   canManageFolders,
   canAssignFolderMembers,
+  canManageGroupSettings,
   isReadOnlyRole,
   canViewAllFolders
 } = require('../utils/groupPermissions');
@@ -36,22 +38,31 @@ const normalizeId = value => {
 };
 
 class GroupService {
+  async getRequesterContext(requesterId) {
+    const user = await User.findById(requesterId).select('_id groupRole isLeader').lean();
+    return {
+      role: user?.groupRole || null,
+      isLeader: Boolean(user?.isLeader)
+    };
+  }
+
   async createGroup({ name, description, creatorId, members = [], memberIds = [] }) {
     const sanitizedName = name.trim();
     const sanitizedDescription = description ? description.trim() : '';
 
     const creatorIdStr = normalizeId(creatorId);
-    const normalizedMembersInput = Array.isArray(members) && members.length > 0
-      ? members
-      : (Array.isArray(memberIds) ? memberIds.map(userId => ({ userId, role: GROUP_ROLE_KEYS.BA })) : []);
 
-    if (normalizedMembersInput.some(entry => entry && !entry.role)) {
+    const creatorContext = await this.getRequesterContext(creatorIdStr);
+    if (!canManageGroupSettings(creatorContext)) {
       return {
         success: false,
-        statusCode: HTTP_STATUS.BAD_REQUEST,
-        message: 'Each member must include a role'
+        statusCode: HTTP_STATUS.FORBIDDEN,
+        message: 'You do not have permission to create groups'
       };
     }
+    const normalizedMembersInput = Array.isArray(members) && members.length > 0
+      ? members
+      : (Array.isArray(memberIds) ? memberIds.map(userId => ({ userId })) : []);
 
     const uniqueMemberIds = new Map();
     normalizedMembersInput
@@ -61,13 +72,7 @@ class GroupService {
         if (!userId || userId === creatorIdStr) {
           return;
         }
-        if (!entry.role || !GROUP_ROLES.includes(entry.role)) {
-          return;
-        }
-        if (entry.role === GROUP_ROLE_KEYS.PRODUCT_OWNER) {
-          return;
-        }
-        uniqueMemberIds.set(userId, { userId, role: entry.role });
+        uniqueMemberIds.set(userId, { userId });
       });
 
     if (!creatorIdStr) {
@@ -106,12 +111,12 @@ class GroupService {
       description: sanitizedDescription,
       createdBy: creatorId,
       members: [
-        { userId: creatorId, role: GROUP_ROLE_KEYS.PRODUCT_OWNER, joinedAt: new Date() },
+        { userId: creatorId, role: null, joinedAt: new Date() },
         ...membersArray
           .filter(([id]) => validMemberIds.has(id))
           .map(([id, payload]) => ({
             userId: id,
-            role: payload.role,
+            role: null,
             joinedAt: new Date()
           }))
       ]
@@ -141,6 +146,13 @@ class GroupService {
   }
 
   async updateMemberRole(groupId, requesterId, { memberId, role }) {
+    return {
+      success: false,
+      statusCode: HTTP_STATUS.FORBIDDEN,
+      message: 'Group member roles are no longer editable. Roles are assigned by admin at account level.'
+    };
+
+    /* legacy code retained for reference
     if (!isValidObjectId(memberId) || !GROUP_ROLES.includes(role)) {
       return {
         success: false,
@@ -204,7 +216,7 @@ class GroupService {
     );
 
     const updatedGroup = await Group.findById(groupId)
-      .populate('members.userId', 'name email avatar')
+      .populate('members.userId', 'name email avatar groupRole isLeader')
       .populate('createdBy', 'name email avatar');
 
     try {
@@ -234,6 +246,7 @@ class GroupService {
       message: 'Role updated successfully',
       data: updatedGroup
     };
+    */
   }
 
   async getGroupsForUser(userId, options = {}) {
@@ -266,7 +279,7 @@ class GroupService {
 
     const [allGroups, total] = await Promise.all([
       Group.find(query)
-        .populate('members.userId', 'name email avatar')
+        .populate('members.userId', 'name email avatar groupRole isLeader')
         .populate('createdBy', 'name email avatar')
         .sort(sortOption)
         .skip(skip)
@@ -312,7 +325,7 @@ class GroupService {
     }
 
     const group = await Group.findById(groupId)
-      .populate('members.userId', 'name email avatar')
+      .populate('members.userId', 'name email avatar groupRole isLeader')
       .populate('createdBy', 'name email avatar');
 
     if (!group) {
@@ -348,7 +361,20 @@ class GroupService {
     const group = access.data;
     const previousName = group.name;
 
-    if (!group.isAdmin(requesterId)) {
+    const isPersonalOwner =
+      Boolean(group.isPersonalWorkspace) &&
+      normalizeId(group.createdBy?._id || group.createdBy) === normalizeId(requesterId);
+
+    if (group.isPersonalWorkspace && !isPersonalOwner) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.FORBIDDEN,
+        message: ERROR_MESSAGES.GROUP_ACCESS_DENIED
+      };
+    }
+
+    const { role, isLeader } = await this.getRequesterContext(requesterId);
+    if (!isPersonalOwner && !canManageGroupSettings({ role, isLeader })) {
       return {
         success: false,
         statusCode: HTTP_STATUS.FORBIDDEN,
@@ -379,7 +405,7 @@ class GroupService {
       { $set: payload },
       { new: true, runValidators: true }
     )
-      .populate('members.userId', 'name email avatar')
+      .populate('members.userId', 'name email avatar groupRole isLeader')
       .populate('createdBy', 'name email avatar');
 
     if (updateData.name && previousName && updatedGroup && updateData.name.trim() !== previousName) {
@@ -422,7 +448,17 @@ class GroupService {
     }
 
     const group = access.data;
-    if (normalizeId(group.createdBy?._id || group.createdBy) !== normalizeId(requesterId)) {
+
+    if (group.isPersonalWorkspace) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.FORBIDDEN,
+        message: 'Personal workspace cannot be deleted'
+      };
+    }
+
+    const { role, isLeader } = await this.getRequesterContext(requesterId);
+    if (!canManageGroupSettings({ role, isLeader })) {
       return {
         success: false,
         statusCode: HTTP_STATUS.FORBIDDEN,
@@ -433,8 +469,14 @@ class GroupService {
     const groupData = group.toObject ? group.toObject() : group;
     const recipients = group.members.map(member => normalizeId(member.userId)).filter(Boolean);
 
+    // Cascade delete group content
+    await Promise.all([
+      Folder.deleteMany({ groupId }),
+      Task.deleteMany({ groupId }),
+      Note.deleteMany({ groupId })
+    ]);
+
     await Group.findByIdAndDelete(groupId);
-    await Task.updateMany({ groupId }, { $set: { groupId: null } });
 
     // Emit realtime event
     emitGroupEvent(GROUP_EVENTS.deleted, {
@@ -467,7 +509,16 @@ class GroupService {
 
     const group = access.data;
 
-    if (!group.hasRole(requesterId, [GROUP_ROLE_KEYS.PRODUCT_OWNER, GROUP_ROLE_KEYS.PM])) {
+    if (group.isPersonalWorkspace) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.FORBIDDEN,
+        message: 'Cannot add members to a personal workspace'
+      };
+    }
+
+    const { role, isLeader } = await this.getRequesterContext(requesterId);
+    if (!canAssignFolderMembers({ role, isLeader })) {
       return {
         success: false,
         statusCode: HTTP_STATUS.FORBIDDEN,
@@ -477,28 +528,15 @@ class GroupService {
 
     const sanitizedEntries = members
       .map(entry => ({
-        userId: normalizeId(entry?.userId || entry),
-        role: entry?.role
+        userId: normalizeId(entry?.userId || entry)
       }))
-      .filter(entry => entry.userId && entry.role);
+      .filter(entry => entry.userId);
 
     if (sanitizedEntries.length === 0) {
       return {
         success: false,
         statusCode: HTTP_STATUS.BAD_REQUEST,
         message: ERROR_MESSAGES.VALIDATION_ERROR
-      };
-    }
-
-    const invalidRole = sanitizedEntries.find(
-      entry => !GROUP_ROLES.includes(entry.role) || entry.role === GROUP_ROLE_KEYS.PRODUCT_OWNER
-    );
-
-    if (invalidRole) {
-      return {
-        success: false,
-        statusCode: HTTP_STATUS.BAD_REQUEST,
-        message: 'Invalid role supplied for new member'
       };
     }
 
@@ -543,7 +581,7 @@ class GroupService {
           members: {
             $each: validEntries.map(entry => ({
               userId: entry.userId,
-              role: entry.role,
+              role: null,
               joinedAt: new Date()
             }))
           }
@@ -551,7 +589,7 @@ class GroupService {
       },
       { new: true }
     )
-      .populate('members.userId', 'name email avatar')
+      .populate('members.userId', 'name email avatar groupRole isLeader')
       .populate('createdBy', 'name email avatar');
 
     // Emit realtime event
@@ -590,7 +628,16 @@ class GroupService {
 
     const group = access.data;
 
-    if (!group.isAdmin(requesterId)) {
+    if (group.isPersonalWorkspace) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.FORBIDDEN,
+        message: 'Cannot remove members from a personal workspace'
+      };
+    }
+
+    const { role, isLeader } = await this.getRequesterContext(requesterId);
+    if (!canAssignFolderMembers({ role, isLeader })) {
       return {
         success: false,
         statusCode: HTTP_STATUS.FORBIDDEN,
@@ -620,23 +667,12 @@ class GroupService {
       };
     }
 
-    if (targetMember.role === GROUP_ROLE_KEYS.PRODUCT_OWNER) {
-      const adminCount = group.members.filter(member => member.role === GROUP_ROLE_KEYS.PRODUCT_OWNER).length;
-      if (adminCount <= 1) {
-        return {
-          success: false,
-          statusCode: HTTP_STATUS.BAD_REQUEST,
-          message: 'Group must maintain at least one product owner'
-        };
-      }
-    }
-
     const updatedGroup = await Group.findByIdAndUpdate(
       groupId,
       { $pull: { members: { userId: memberId } } },
       { new: true }
     )
-      .populate('members.userId', 'name email avatar')
+      .populate('members.userId', 'name email avatar groupRole isLeader')
       .populate('createdBy', 'name email avatar');
 
     await Task.updateMany(
@@ -679,7 +715,9 @@ class GroupService {
       return {
         success: false,
         statusCode: HTTP_STATUS.BAD_REQUEST,
-        message: 'Group owner cannot leave the group. Transfer ownership first.'
+        message: group.isPersonalWorkspace
+          ? 'Personal workspace owner cannot leave'
+          : 'Group owner cannot leave the group. Transfer ownership first.'
       };
     }
 
@@ -692,17 +730,6 @@ class GroupService {
         statusCode: HTTP_STATUS.NOT_FOUND,
         message: ERROR_MESSAGES.GROUP_MEMBER_NOT_FOUND
       };
-    }
-
-    if (memberRecord.role === GROUP_ROLE_KEYS.PRODUCT_OWNER) {
-      const adminCount = group.members.filter(member => member.role === GROUP_ROLE_KEYS.PRODUCT_OWNER).length;
-      if (adminCount <= 1) {
-        return {
-          success: false,
-          statusCode: HTTP_STATUS.BAD_REQUEST,
-          message: 'Group must have at least one product owner'
-        };
-      }
     }
 
     await Group.findByIdAndUpdate(
@@ -836,20 +863,28 @@ class GroupService {
     }
 
     // Add user to group
+    if (group.isPersonalWorkspace) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.FORBIDDEN,
+        message: 'Cannot join a personal workspace'
+      };
+    }
+
     const updatedGroup = await Group.findByIdAndUpdate(
       groupId,
       {
         $push: {
           members: {
             userId: userId,
-            role: GROUP_ROLE_KEYS.BA,
+            role: null,
             joinedAt: new Date()
           }
         }
       },
       { new: true }
     )
-      .populate('members.userId', 'name email avatar')
+      .populate('members.userId', 'name email avatar groupRole isLeader')
       .populate('createdBy', 'name email avatar');
 
     return {
@@ -914,13 +949,7 @@ class GroupService {
       };
     }
 
-    if (!role || !GROUP_ROLES.includes(role) || role === GROUP_ROLE_KEYS.PRODUCT_OWNER) {
-      return {
-        success: false,
-        statusCode: HTTP_STATUS.BAD_REQUEST,
-        message: 'Invalid role supplied for invitation'
-      };
-    }
+    // Role is now assigned by admins at account level, not per-invitation
 
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -941,16 +970,25 @@ class GroupService {
       };
     }
 
+    if (group.isPersonalWorkspace) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.FORBIDDEN,
+        message: 'Cannot invite users to a personal workspace'
+      };
+    }
+
     // Check if inviter is admin of the group
     const inviterMember = group.members.find(member =>
       member.userId.toString() === inviterId.toString()
     );
 
-    if (!inviterMember || inviterMember.role !== GROUP_ROLE_KEYS.PRODUCT_OWNER) {
+    const { role: inviterRole, isLeader } = await this.getRequesterContext(inviterId);
+    if (!inviterMember || !canAssignFolderMembers({ role: inviterRole, isLeader })) {
       return {
         success: false,
         statusCode: HTTP_STATUS.FORBIDDEN,
-        message: 'Only the product owner can invite users'
+        message: 'Only PM/PO/Leader can invite users'
       };
     }
 
@@ -996,7 +1034,7 @@ class GroupService {
         groupId,
         group.name,
         inviterProfile?.name || null,
-        role
+        null
       );
 
       if (!notificationResult.success) {

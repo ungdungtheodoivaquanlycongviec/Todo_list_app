@@ -52,6 +52,15 @@ const fetchGroupOrThrow = async (groupId, requesterId) => {
   return group;
 };
 
+const getRequesterContext = async (requesterId) => {
+  if (!requesterId) return { role: null, isLeader: false };
+  const user = await require('../models/User.model')
+    .findById(requesterId)
+    .select('_id groupRole isLeader')
+    .lean();
+  return { role: user?.groupRole || null, isLeader: Boolean(user?.isLeader) };
+};
+
 const ensureDefaultFolder = async (groupDoc, actorId = null) => {
   if (!groupDoc) {
     return null;
@@ -105,7 +114,8 @@ const resolveFolderContext = async ({
         folderDoc: defaultFolder,
         requesterId,
         role,
-        requireWrite: Boolean(access?.requireWrite)
+        requireWrite: Boolean(access?.requireWrite),
+        isLeader: Boolean(access?.isLeader)
       });
     }
     return { group, folder: defaultFolder, defaultFolder, permission: accessResult };
@@ -128,7 +138,8 @@ const resolveFolderContext = async ({
         folderDoc: targetFolder,
         requesterId,
         role,
-        requireWrite: Boolean(access?.requireWrite)
+        requireWrite: Boolean(access?.requireWrite),
+        isLeader: Boolean(access?.isLeader)
       });
     }
   }
@@ -144,10 +155,8 @@ const mapCounts = (docs = []) =>
   }, {});
 
 const getRequesterRole = (groupDoc, requesterId) => {
-  if (!groupDoc || typeof groupDoc.getMemberRole !== 'function') {
-    return null;
-  }
-  return groupDoc.getMemberRole(requesterId);
+  // Group member roles are deprecated; use account-level role from User
+  return null;
 };
 
 const hasFolderAssignment = (folderDoc, requesterId) => {
@@ -168,13 +177,13 @@ const serializeMemberAccess = entries =>
     addedAt: entry.addedAt || null
   }));
 
-const assertFolderPermission = ({ groupDoc, folderDoc, requesterId, role, requireWrite = false }) => {
+const assertFolderPermission = ({ groupDoc, folderDoc, requesterId, role, requireWrite = false, isLeader = false }) => {
   const effectiveRole = role || getRequesterRole(groupDoc, requesterId);
   const assigned = hasFolderAssignment(folderDoc, requesterId);
   if (!canViewFolder(effectiveRole, { isAssigned: assigned })) {
     throw buildError(ERROR_MESSAGES.FOLDER_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
   }
-  if (requireWrite && !canWriteInFolder(effectiveRole, { isAssigned: assigned })) {
+  if (requireWrite && !canWriteInFolder(effectiveRole, { isAssigned: assigned, isLeader })) {
     throw buildError(ERROR_MESSAGES.FOLDER_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
   }
   return { effectiveRole, assigned };
@@ -184,9 +193,14 @@ class FolderService {
   async getFolders(groupId, requesterId) {
     const group = await fetchGroupOrThrow(groupId, requesterId);
     const defaultFolder = await ensureDefaultFolder(group, requesterId);
-    const requesterRole = getRequesterRole(group, requesterId);
-    const canViewAll = canViewAllFolders(requesterRole);
-    const exposeMemberAccess = canAssignFolderMembers(requesterRole);
+    const requester = await getRequesterContext(requesterId);
+
+    const isPersonalOwner =
+      Boolean(group.isPersonalWorkspace) &&
+      normalizeId(group.createdBy) === normalizeId(requesterId);
+
+    const canViewAll = isPersonalOwner ? true : canViewAllFolders(requester.role);
+    const exposeMemberAccess = isPersonalOwner ? true : canAssignFolderMembers(requester);
     const query = { groupId };
     if (!canViewAll) {
       const requesterObjectId = new mongoose.Types.ObjectId(normalizeId(requesterId));
@@ -229,11 +243,12 @@ class FolderService {
         isDefault: defaultFolderId ? folderId === defaultFolderId : false
       };
 
-      if (!canManageFolders(requesterRole)) {
+      if (!isPersonalOwner && !canManageFolders(requester)) {
         base.permissions = {
-          canManage: canManageFolders(requesterRole),
-          canWrite: canWriteInFolder(requesterRole, {
-            isAssigned: hasFolderAssignment(folder, requesterId)
+          canManage: isPersonalOwner ? true : canManageFolders(requester),
+          canWrite: isPersonalOwner ? true : canWriteInFolder(requester.role, {
+            isAssigned: hasFolderAssignment(folder, requesterId),
+            isLeader: requester.isLeader
           })
         };
       }
@@ -276,9 +291,12 @@ class FolderService {
 
   async createFolder(groupId, requesterId, payload = {}) {
     const group = await fetchGroupOrThrow(groupId, requesterId);
-    const requesterRole = getRequesterRole(group, requesterId);
+    const requester = await getRequesterContext(requesterId);
+    const isPersonalOwner =
+      Boolean(group.isPersonalWorkspace) &&
+      normalizeId(group.createdBy) === normalizeId(requesterId);
 
-    if (!canManageFolders(requesterRole)) {
+    if (!isPersonalOwner && !canManageFolders(requester)) {
       throw buildError(ERROR_MESSAGES.FOLDER_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
     }
 
@@ -356,9 +374,12 @@ class FolderService {
 
   async updateFolder(groupId, folderId, requesterId, payload = {}) {
     const group = await fetchGroupOrThrow(groupId, requesterId);
-    const requesterRole = getRequesterRole(group, requesterId);
+    const requester = await getRequesterContext(requesterId);
+    const isPersonalOwner =
+      Boolean(group.isPersonalWorkspace) &&
+      normalizeId(group.createdBy) === normalizeId(requesterId);
 
-    if (!canManageFolders(requesterRole)) {
+    if (!isPersonalOwner && !canManageFolders(requester)) {
       throw buildError(ERROR_MESSAGES.FOLDER_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
     }
 
@@ -419,7 +440,7 @@ class FolderService {
 
     // Emit realtime event - only to users assigned to this folder (or admins)
     const folderData = updatedFolder.toObject ? updatedFolder.toObject() : updatedFolder;
-    const canViewAll = canViewAllFolders(requesterRole);
+    const canViewAll = isPersonalOwner ? true : canViewAllFolders(requester.role);
     
     // Determine recipients: assigned users + admins
     let recipients = [];
@@ -436,8 +457,8 @@ class FolderService {
       // Also include admins
       group.members.forEach(member => {
         const memberId = normalizeId(member.userId);
-        const memberRole = group.getMemberRole(memberId);
-        if (memberId && canViewAllFolders(memberRole)) {
+        // group member roles deprecated; only notify all members for non-personal groups if requester can view all
+        if (memberId && canViewAll) {
           if (!recipients.includes(memberId)) {
             recipients.push(memberId);
           }
@@ -461,9 +482,12 @@ class FolderService {
 
   async deleteFolder(groupId, folderId, requesterId) {
     const group = await fetchGroupOrThrow(groupId, requesterId);
-    const requesterRole = getRequesterRole(group, requesterId);
+    const requester = await getRequesterContext(requesterId);
+    const isPersonalOwner =
+      Boolean(group.isPersonalWorkspace) &&
+      normalizeId(group.createdBy) === normalizeId(requesterId);
 
-    if (!canManageFolders(requesterRole)) {
+    if (!isPersonalOwner && !canManageFolders(requester)) {
       throw buildError(ERROR_MESSAGES.FOLDER_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
     }
     const { folder } = await resolveFolderContext({
@@ -479,7 +503,7 @@ class FolderService {
 
     // Product Owner can delete any folder, including folders with tasks/notes
     // For other roles with folder management, check if folder is empty
-    const isProductOwner = group.isProductOwner(requesterId);
+    const isProductOwner = requester.role === require('../config/constants').GROUP_ROLE_KEYS.PRODUCT_OWNER;
     
     if (!isProductOwner) {
       const [taskCount, noteCount] = await Promise.all([
@@ -520,9 +544,13 @@ class FolderService {
 
   async setFolderMembers(groupId, folderId, requesterId, memberIds = []) {
     const group = await fetchGroupOrThrow(groupId, requesterId);
-    const requesterRole = getRequesterRole(group, requesterId);
+    if (group.isPersonalWorkspace) {
+      throw buildError('Cannot assign folder members in a personal workspace', HTTP_STATUS.FORBIDDEN);
+    }
 
-    if (!canAssignFolderMembers(requesterRole)) {
+    const requester = await getRequesterContext(requesterId);
+
+    if (!canAssignFolderMembers(requester)) {
       throw buildError(ERROR_MESSAGES.FOLDER_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
     }
 
@@ -622,7 +650,7 @@ class FolderService {
     plainFolder.memberAccess = serializeMemberAccess(plainFolder.memberAccess);
 
     // Emit realtime event - only to users assigned to this folder (or admins)
-    const canViewAll = canViewAllFolders(requesterRole);
+    const canViewAll = canViewAllFolders(requester.role);
     
     // Determine recipients: newly assigned users + admins
     let recipients = [];
@@ -639,8 +667,7 @@ class FolderService {
       // Also include admins
       group.members.forEach(member => {
         const memberId = normalizeId(member.userId);
-        const memberRole = group.getMemberRole(memberId);
-        if (memberId && canViewAllFolders(memberRole)) {
+        if (memberId && canViewAll) {
           if (!recipients.includes(memberId)) {
             recipients.push(memberId);
           }

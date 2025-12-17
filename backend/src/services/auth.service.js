@@ -7,6 +7,50 @@ const { JWT_SECRET, JWT_REFRESH_SECRET } = require('../config/environment');
 const admin = require('../config/firebaseAdmin');
 
 class AuthService {
+  async ensurePersonalWorkspace(user) {
+    if (!user?._id) return null;
+
+    // Prefer the new flag
+    let workspace = await Group.findOne({
+      createdBy: user._id,
+      isPersonalWorkspace: true
+    });
+
+    // Backfill legacy personal workspace (created before isPersonalWorkspace existed)
+    if (!workspace) {
+      workspace = await Group.findOne({
+        createdBy: user._id,
+        name: 'Personal Workspace'
+      });
+
+      if (workspace) {
+        workspace.isPersonalWorkspace = true;
+        if (!Array.isArray(workspace.members) || workspace.members.length === 0) {
+          workspace.members = [{ userId: user._id, role: null, joinedAt: new Date() }];
+        }
+        await workspace.save();
+      }
+    }
+
+    // If still missing, create it
+    if (!workspace) {
+      workspace = await Group.create({
+        name: 'Personal Workspace',
+        description: 'Your personal workspace for tasks and projects',
+        createdBy: user._id,
+        isPersonalWorkspace: true,
+        members: [{ userId: user._id, role: null, joinedAt: new Date() }]
+      });
+    }
+
+    // Ensure user's currentGroupId points somewhere valid
+    if (!user.currentGroupId) {
+      user.currentGroupId = workspace._id;
+      await user.save();
+    }
+
+    return workspace;
+  }
   /**
    * Register new user
    * @param {Object} userData - { email, password, name }
@@ -34,12 +78,13 @@ class AuthService {
       name
     });
     
-    // 4. Create Personal Workspace group
+    // 4. Create Personal Workspace group (single-user group)
     const personalWorkspace = await Group.create({
       name: 'Personal Workspace',
       description: 'Your personal workspace for tasks and projects',
       createdBy: user._id,
-      members: [{ userId: user._id, role: GROUP_ROLE_KEYS.PRODUCT_OWNER, joinedAt: new Date() }]
+      isPersonalWorkspace: true,
+      members: [{ userId: user._id, role: null, joinedAt: new Date() }]
     });
     
     // 5. Set Personal Workspace as user's current group and save
@@ -131,6 +176,9 @@ class AuthService {
     
     // 5. Update lastLogin
     user.lastLogin = new Date();
+
+    // Ensure personal workspace exists for legacy users
+    await this.ensurePersonalWorkspace(user);
     
     // 6. Generate new tokens
     const accessToken = user.generateAccessToken();
@@ -219,18 +267,22 @@ class AuthService {
         isEmailVerified: true
       });
       
-      // Create Personal Workspace for new Google user
+      // Create Personal Workspace for new Google user (single-user group)
       const personalWorkspace = await Group.create({
         name: 'Personal Workspace',
         description: 'Your personal workspace for tasks and projects',
         createdBy: user._id,
-        members: [{ userId: user._id, role: GROUP_ROLE_KEYS.PRODUCT_OWNER, joinedAt: new Date() }]
+        isPersonalWorkspace: true,
+        members: [{ userId: user._id, role: null, joinedAt: new Date() }]
       });
       
       // Set Personal Workspace as user's current group
       user.currentGroupId = personalWorkspace._id;
       await user.save();
     }
+
+    // Ensure personal workspace exists for legacy users
+    await this.ensurePersonalWorkspace(user);
 
     if (!user.isActive) {
       // Log blocked login attempt

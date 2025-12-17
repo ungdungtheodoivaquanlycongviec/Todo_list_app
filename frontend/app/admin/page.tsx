@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { adminService, AdminUser, LoginHistory, DashboardStats } from '../services/admin.service';
 import { useAuth } from '../contexts/AuthContext';
 import ChatbotWidget from '../components/common/ChatbotWidget';
+import { GROUP_ROLE_KEYS, ROLE_LABELS } from '../constants/groupRoles';
 import { groupService } from '../services/group.service';
 import { Group } from '../services/types/group.types';
 import TopBar from '../components/layouts/TopBar';
@@ -232,6 +233,7 @@ function UsersTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState<any>(null);
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
+  const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
 
   useEffect(() => {
     loadUsers();
@@ -281,6 +283,23 @@ function UsersTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       setError(err.message || 'Failed to update user role');
     }
   };
+
+  const handleBusinessRoleChange = async (
+    user: AdminUser,
+    updates: { groupRole?: string | null; isLeader?: boolean }
+  ) => {
+    try {
+      setUpdatingUserId(user._id);
+      await adminService.updateUser(user._id, updates);
+      await loadUsers();
+    } catch (err: any) {
+      setError(err.message || 'Failed to update user business role');
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
+
+  const BUSINESS_ROLE_OPTIONS = Object.values(GROUP_ROLE_KEYS);
 
   return (
     <div>
@@ -349,6 +368,12 @@ function UsersTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                     Role
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Business Role
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Lead
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -373,6 +398,39 @@ function UsersTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                       }`}>
                         {user.role}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <select
+                        value={user.groupRole || ''}
+                        onChange={(e) =>
+                          handleBusinessRoleChange(user, {
+                            groupRole: e.target.value || null,
+                          })
+                        }
+                        disabled={updatingUserId === user._id}
+                        className="border border-gray-300 rounded px-2 py-1 text-xs bg-white"
+                      >
+                        <option value="">(No role)</option>
+                        {BUSINESS_ROLE_OPTIONS.map((roleKey) => (
+                          <option key={roleKey} value={roleKey}>
+                            {ROLE_LABELS[roleKey] || roleKey}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <label className="inline-flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(user.isLeader)}
+                          onChange={(e) =>
+                            handleBusinessRoleChange(user, { isLeader: e.target.checked })
+                          }
+                          disabled={updatingUserId === user._id}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-xs">Lead</span>
+                      </label>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       <span className={`px-2 py-1 rounded text-xs ${

@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const validator = require('validator');
 const { JWT_SECRET, JWT_EXPIRES_IN, JWT_REFRESH_SECRET, JWT_REFRESH_EXPIRES_IN } = require('../config/environment');
-const { NOTIFICATION_CHANNELS, NOTIFICATION_CATEGORIES } = require('../config/constants');
+const { NOTIFICATION_CHANNELS, NOTIFICATION_CATEGORIES, GROUP_ROLES } = require('../config/constants');
 
 const channelPreferenceSchema = new mongoose.Schema(
   {
@@ -63,6 +63,19 @@ const userSchema = new mongoose.Schema({
     type: String,
     enum: ['user', 'admin', 'super_admin'],
     default: 'user'
+  },
+
+  // Fixed business role for the account (assigned by admin). null means "no role yet"
+  groupRole: {
+    type: String,
+    enum: GROUP_ROLES,
+    default: null
+  },
+
+  // Lead flag (assigned by admin)
+  isLeader: {
+    type: Boolean,
+    default: false
   },
 
   theme: {
@@ -195,7 +208,7 @@ userSchema.methods.generateAccessToken = function() {
     { 
       id: this._id, 
       email: this.email, 
-      role: this.role 
+      role: this.role
     },
     JWT_SECRET,
     { expiresIn: JWT_EXPIRES_IN }

@@ -13,13 +13,10 @@ import { useFolder } from '../../contexts/FolderContext';
 import { folderService } from '../../services/folder.service';
 import { Folder } from '../../services/types/folder.types';
 import {
-  DEFAULT_INVITE_ROLE,
-  ROLE_SECTIONS,
   getRoleLabel,
   ROLE_SUMMARIES,
   GROUP_ROLE_KEYS,
   GroupRoleKey,
-  getRoleSections,
   getRoleSummaries,
   ROLE_BADGE_COLORS
 } from '../../constants/groupRoles';
@@ -60,7 +57,6 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   const [showEditButton, setShowEditButton] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [roleUpdatingMemberId, setRoleUpdatingMemberId] = useState<string | null>(null);
   const [roleUpdateError, setRoleUpdateError] = useState<string | null>(null);
   const [folderModalOpen, setFolderModalOpen] = useState(false);
   const [activeFolderForAssignment, setActiveFolderForAssignment] = useState<Folder | null>(null);
@@ -74,12 +70,11 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   }>>([]);
 
   const targetGroupId = groupId || currentGroup?._id;
-  const currentUserRole = useMemo(
-    () => getMemberRole(group, user?._id),
-    [group, user?._id]
-  );
-  const canEditRoles = canManageRolesFor(currentUserRole);
-  const canAddMembersCheck = canAddMembers(currentUserRole);
+  // Use account-level business role (assigned by admin)
+  const currentUserRole = ((user as any)?.groupRole || null) as GroupRoleKey | null;
+  const isLeader = Boolean((user as any)?.isLeader);
+  const canEditRoles = canManageRolesFor();
+  const canAddMembersCheck = canAddMembers(currentUserRole, isLeader);
   const showFolderAssignments = Boolean(group?._id && currentGroup?._id && group?._id === currentGroup?._id);
   const folderAssignments = useMemo(() => {
     if (!showFolderAssignments || !Array.isArray(folders)) {
@@ -88,7 +83,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
 
     const assignmentMap = new Map<string, string[]>();
     const currentUserId = user?._id;
-    const canAssignFolders = canAssignFolderMembers(currentUserRole);
+    const canAssignFolders = canAssignFolderMembers(currentUserRole, isLeader);
 
     folders.forEach(folder => {
       if (!folder.memberAccess) return;
@@ -211,11 +206,11 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
     }
   };
 
-  const handleInviteUser = async (email: string, role: string) => {
+  const handleInviteUser = async (email: string) => {
     if (!targetGroupId) return;
 
     try {
-      await groupService.inviteUserToGroup(targetGroupId, email, role);
+      await groupService.inviteUserToGroup(targetGroupId, email);
       // Reload group details to get updated member list
       await loadGroupDetails();
       setShowInviteModal(false);
@@ -229,24 +224,21 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
     const memberId = getMemberId(member);
     if (!memberId) return;
 
-    setRoleUpdatingMemberId(memberId);
     setRoleUpdateError(null);
 
     try {
-      await groupService.updateMemberRole(group._id, memberId, role);
+      throw new Error('Group member role editing has been removed. Roles are assigned by admin at account level.');
       await loadGroupDetails();
       if (showFolderAssignments) {
         await refreshFolders();
       }
     } catch (err) {
       setRoleUpdateError(err instanceof Error ? err.message : 'Failed to update member role');
-    } finally {
-      setRoleUpdatingMemberId(null);
     }
   };
 
   const handleOpenFolderModal = (folder: Folder) => {
-    if (!canAssignFolderMembers(currentUserRole)) return;
+    if (!canAssignFolderMembers(currentUserRole, isLeader)) return;
     setFolderModalError(null);
     setFolderBlockedUsers([]);
     setActiveFolderForAssignment(folder);
@@ -447,21 +439,27 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
 
   const renderAccessSummary = (member: GroupMember) => {
     const roleSummaries = getRoleSummaries(t as any);
-    const summary = roleSummaries[member.role];
+    const memberUser = member.userId && typeof member.userId === 'object' ? (member.userId as any) : null;
+    const memberBusinessRole = (memberUser?.groupRole || null) as GroupRoleKey | null;
+    const memberIsLeader = Boolean(memberUser?.isLeader);
+    const summary = memberBusinessRole ? roleSummaries[memberBusinessRole] : null;
     const memberId = getMemberId(member);
     const assignedFolders = showFolderAssignments ? getAssignedFolderNames(memberId) : [];
     const needsFolderAssignment =
-      showFolderAssignments && requiresFolderAssignmentHelper(member.role) && assignedFolders.length === 0;
+      showFolderAssignments && requiresFolderAssignmentHelper(memberBusinessRole) && assignedFolders.length === 0;
 
     return (
       <div className="text-sm">
         <p className="font-semibold text-gray-800 dark:text-gray-100">
           {summary?.summary || '---'}
+          {memberIsLeader && (
+            <span className="ml-2 text-xs font-semibold text-blue-600 dark:text-blue-300">(Lead)</span>
+          )}
         </p>
         <p className="text-xs text-gray-500 dark:text-gray-400">
           {summary?.capabilities}
         </p>
-        {requiresFolderAssignmentHelper(member.role) && showFolderAssignments && (
+        {requiresFolderAssignmentHelper(memberBusinessRole) && showFolderAssignments && (
           <div className="mt-1 text-xs">
             {needsFolderAssignment ? (
               <span className="inline-flex items-center text-amber-600 dark:text-amber-400">
@@ -492,38 +490,18 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   };
 
   const renderRoleCell = (member: GroupMember) => {
-    const memberId = getMemberId(member);
-    const isSelf = memberId === user?._id;
-    const isProductOwner = member.role === GROUP_ROLE_KEYS.PRODUCT_OWNER;
-    const allowEdit = canEditRoles && !isProductOwner && !isSelf && Boolean(memberId);
+    const memberUser = member.userId && typeof member.userId === 'object' ? (member.userId as any) : null;
+    const memberBusinessRole = (memberUser?.groupRole || null) as GroupRoleKey | null;
 
-    if (!allowEdit) {
-      return renderRoleBadge(member.role);
+    if (!memberBusinessRole) {
+      return (
+        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700">
+          No role
+        </span>
+      );
     }
 
-    return (
-      <div className="space-y-2">
-        <select
-          value={member.role}
-          onChange={e => handleRoleChange(member, e.target.value as GroupRoleKey)}
-          disabled={roleUpdatingMemberId === memberId}
-          className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-[#2E2E2E] text-sm rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
-        >
-          {getRoleSections(t as any).map(section => (
-            <optgroup label={section.title} key={section.title}>
-              {section.roles.map(role => (
-                <option value={role.value} key={role.value}>
-                  {role.label}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-        {roleUpdatingMemberId === memberId && (
-          <p className="text-xs text-blue-600">{t('groupMembers.updatingRole')}</p>
-        )}
-      </div>
-    );
+    return renderRoleBadge(memberBusinessRole);
   };
 
   const isCurrentUser = (member: GroupMember) => getMemberId(member) === user?._id;
@@ -531,7 +509,9 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   const canRemoveMember = (member: GroupMember) => {
     if (!canEditRoles) return false;
     if (isCurrentUser(member)) return false;
-    if (member.role === GROUP_ROLE_KEYS.PRODUCT_OWNER) return false;
+    const memberUser = member.userId && typeof member.userId === 'object' ? (member.userId as any) : null;
+    const memberBusinessRole = memberUser?.groupRole as GroupRoleKey | null | undefined;
+    if (memberBusinessRole === GROUP_ROLE_KEYS.PRODUCT_OWNER) return false;
     return true;
   };
 
@@ -711,7 +691,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
         </div>
       </div>
 
-      {canAssignFolderMembers(currentUserRole) && showFolderAssignments && (
+      {canAssignFolderMembers(currentUserRole, isLeader) && showFolderAssignments && (
         <div className="p-6 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -731,7 +711,9 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
                 const assigned = (folder.memberAccess || []).map(access => {
                   const member = memberLookup.get(access.userId);
                   const name = member ? getMemberName(member) : t('groupMembers.memberLeft');
-                  const roleLabel = member ? getRoleLabel(member.role, t as any) : '';
+                  const memberUser = member && member.userId && typeof member.userId === 'object' ? (member.userId as any) : null;
+                  const memberBusinessRole = memberUser?.groupRole || null;
+                  const roleLabel = memberBusinessRole ? getRoleLabel(memberBusinessRole, t as any) : '';
                   return { userId: access.userId, name, roleLabel };
                 });
 
@@ -847,7 +829,11 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
                           >
                             {memberName ? memberName.charAt(0).toUpperCase() : '?'}
                           </div>
-                          {member.role === GROUP_ROLE_KEYS.PRODUCT_OWNER && (
+                          {(() => {
+                            const memberUser =
+                              member.userId && typeof member.userId === 'object' ? (member.userId as any) : null;
+                            return memberUser?.groupRole === GROUP_ROLE_KEYS.PRODUCT_OWNER;
+                          })() && (
                             <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-400 rounded-full flex items-center justify-center border border-white dark:border-gray-800">
                               <svg className="w-2.5 h-2.5 text-yellow-800" fill="currentColor" viewBox="0 0 20 20">
                                 <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
@@ -962,13 +948,12 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
 
 interface InviteUserModalProps {
   onClose: () => void;
-  onInvite: (email: string, role: string) => void;
+  onInvite: (email: string) => void;
   t: (key: TranslationKey, params?: Record<string, string | number>) => string;
 }
 
 function InviteUserModal({ onClose, onInvite, t }: InviteUserModalProps) {
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<string>(DEFAULT_INVITE_ROLE);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -979,7 +964,7 @@ function InviteUserModal({ onClose, onInvite, t }: InviteUserModalProps) {
     setLoading(true);
     setError(null);
     try {
-      await onInvite(email.trim(), role);
+      await onInvite(email.trim());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to invite user');
     } finally {
@@ -1028,33 +1013,7 @@ function InviteUserModal({ onClose, onInvite, t }: InviteUserModalProps) {
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 text-center">
-              {t('groupMembers.selectRole')}
-            </label>
-            <div className="relative">
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                className="w-full border-2 border-gray-200 dark:border-gray-600 rounded-xl px-4 py-4 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-[#2E2E2E] text-gray-900 dark:text-white text-lg transition-all duration-200 appearance-none"
-                required
-                disabled={loading}
-              >
-                {getRoleSections(t as any).map(section => (
-                  <optgroup key={section.title} label={section.title}>
-                    {section.roles.map(option => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-              <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-gray-400">
-                <ChevronDown className="w-5 h-5" />
-              </div>
-            </div>
-          </div>
+          {/* Role selection removed: roles are assigned by admin at account level */}
 
           {error && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4">
@@ -1078,7 +1037,7 @@ function InviteUserModal({ onClose, onInvite, t }: InviteUserModalProps) {
             </button>
             <button
               type="submit"
-              disabled={loading || !email.trim() || !role}
+              disabled={loading || !email.trim()}
               className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 text-white py-4 px-6 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none disabled:shadow-none"
             >
               {loading ? (

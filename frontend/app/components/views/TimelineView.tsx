@@ -205,6 +205,61 @@ export default function TimelineView() {
     return dates;
   }, [getDateRange]);
   const dates = useMemo(() => getDatesInRange(), [getDatesInRange]);
+  const zoomLevels: ZoomLevel[] = ['days', 'weeks', 'months', 'quarters'];
+  const zoomLabels: Record<ZoomLevel, string> = {
+    days: (t as any)?.('timeline.zoomDays') || 'Days',
+    weeks: (t as any)?.('timeline.zoomWeeks') || 'Weeks',
+    months: (t as any)?.('timeline.zoomMonths') || 'Months',
+    quarters: (t as any)?.('timeline.zoomQuarters') || 'Quarters'
+  };
+
+  const changeZoom = (direction: 'in' | 'out') => {
+    const currentIdx = zoomLevels.indexOf(zoomLevel);
+    if (direction === 'in' && currentIdx > 0) {
+      setZoomLevel(zoomLevels[currentIdx - 1]);
+    } else if (direction === 'out' && currentIdx < zoomLevels.length - 1) {
+      setZoomLevel(zoomLevels[currentIdx + 1]);
+    }
+  };
+
+  const getStatusStyle = (status?: string) => {
+    switch (status) {
+      case 'todo':
+        return { bgClass: 'bg-gray-200 text-gray-700', dotClass: 'bg-gray-500', label: t('status.todo') || 'To do' };
+      case 'in_progress':
+        return { bgClass: 'bg-blue-100 text-blue-700', dotClass: 'bg-blue-500', label: (t as any)?.('status.in_progress') || 'In progress' };
+      case 'completed':
+        return { bgClass: 'bg-green-100 text-green-700', dotClass: 'bg-green-500', label: t('status.completed') || 'Completed' };
+      case 'incomplete':
+        return { bgClass: 'bg-amber-100 text-amber-700', dotClass: 'bg-amber-500', label: t('status.incomplete') || 'Incomplete' };
+      case 'archived':
+        return { bgClass: 'bg-slate-200 text-slate-700', dotClass: 'bg-slate-500', label: (t as any)?.('status.archived') || 'Archived' };
+      default:
+        return { bgClass: 'bg-gray-200 text-gray-700', dotClass: 'bg-gray-500', label: status || t('status.todo') || 'To do' };
+    }
+  };
+
+  const getRemainingDaysLabel = (task: TimelineTask) => {
+    if (!task.endDate) return null;
+
+    const end = new Date(task.endDate);
+    const today = new Date();
+
+    const endMidnight = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+    const diffMs = endMidnight.getTime() - todayMidnight.getTime();
+    const diffDays = Math.round(diffMs / (24 * 60 * 60 * 1000));
+
+    if (diffDays === 0) {
+      return 'Due today';
+    }
+    if (diffDays > 0) {
+      return `${diffDays} days remaining`;
+    }
+    const overdueDays = Math.abs(diffDays);
+    return `${overdueDays} days overdue`;
+  };
 
   // Fetch tasks
   const fetchTasks = useCallback(async () => {
@@ -929,6 +984,32 @@ export default function TimelineView() {
               <option value="status">{t('timeline.groupByStatus')}</option>
             </select>
           </div>
+
+          {/* Zoom controls */}
+          <div className="flex items-center gap-2 w-full lg:w-auto">
+            <div className="hidden lg:flex items-center text-sm text-gray-500 px-2">
+              {zoomLabels[zoomLevel]}
+            </div>
+            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1">
+              <button
+                className="p-2 hover:bg-white rounded-md transition-colors disabled:opacity-50"
+                onClick={() => changeZoom('in')}
+                disabled={zoomLevel === 'days'}
+                title={t('timeline.zoomIn') || 'Zoom in'}
+              >
+                <ZoomIn className="w-4 h-4" />
+              </button>
+              <div className="w-px h-6 bg-gray-200" />
+              <button
+                className="p-2 hover:bg-white rounded-md transition-colors disabled:opacity-50"
+                onClick={() => changeZoom('out')}
+                disabled={zoomLevel === 'quarters'}
+                title={t('timeline.zoomOut') || 'Zoom out'}
+              >
+                <ZoomOut className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -962,6 +1043,22 @@ export default function TimelineView() {
           >
             {t('timeline.today')}
           </button>
+
+          {/* Legend */}
+          <div className="flex flex-wrap gap-2 text-xs text-gray-600">
+            {['todo', 'in_progress', 'completed', 'incomplete', 'archived'].map((status) => {
+              const style = getStatusStyle(status);
+              return (
+                <span
+                  key={status}
+                  className={`px-2 py-1 rounded-full flex items-center gap-1 ${style.bgClass}`}
+                >
+                  <span className={`w-2 h-2 rounded-full opacity-80 ${style.dotClass}`} />
+                  {style.label}
+                </span>
+              );
+            })}
+          </div>
         </div>
 
         {/* Timeline Grid */}
@@ -1016,11 +1113,12 @@ export default function TimelineView() {
                 <div className="flex h-10 bg-white">
                   {dates.map((date, index) => {
                     const isToday = date.toDateString() === today.toDateString();
+                    const isWeekend = [0, 6].includes(date.getDay());
                     const dayLabel = getDayCellLabel(date, index);
                     return (
                       <div
                         key={index}
-                        className={`border-r border-gray-100 flex-shrink-0 flex flex-col items-center justify-end pb-1 ${isToday ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-500'
+                        className={`border-r border-gray-100 flex-shrink-0 flex flex-col items-center justify-end pb-1 ${isToday ? 'bg-blue-50 text-blue-700 font-semibold' : isWeekend ? 'bg-gray-50 text-gray-600' : 'text-gray-500'
                           }`}
                         style={{ width: `${pixelsPerDay}px` }}
                       >
@@ -1036,6 +1134,24 @@ export default function TimelineView() {
             </div>
             <div style={{ height: `${headerHeight}px` }} />
 
+            {/* Weekend Background Shading (under task rows) */}
+            {dates.map((date, index) => {
+              const isWeekend = [0, 6].includes(date.getDay());
+              if (!isWeekend) return null;
+              return (
+                <div
+                  key={`weekend-bg-${index}`}
+                  className="absolute top-0 bottom-0 bg-gray-50 pointer-events-none"
+                  style={{
+                    left: `${200 + index * pixelsPerDay}px`,
+                    width: `${pixelsPerDay}px`,
+                    top: `${headerHeight}px`,
+                    zIndex: 1
+                  }}
+                />
+              );
+            })}
+
             {/* Today Indicator */}
             {todayIndex >= 0 && todayIndex < dates.length && (
               <div
@@ -1049,7 +1165,7 @@ export default function TimelineView() {
             )}
 
             {/* Task Rows */}
-            {Object.entries(groups).map(([groupName, groupTasks]) => {
+            {Object.entries(groups).map(([groupName, groupTasks], groupIndex) => {
               const groupTimelineTasks = tasksWithPositions.filter(t =>
                 groupTasks.some(gt => gt._id === t._id)
               );
@@ -1071,7 +1187,10 @@ export default function TimelineView() {
               const containerHeight = Math.max(60, groupRowCount * (rowHeight + rowGap) + groupPadding);
 
               return (
-                <div key={groupName} className="border-b border-gray-100">
+                <div
+                  key={groupName}
+                  className={`border-b border-gray-100 ${groupBy !== 'none' && groupIndex % 2 === 1 ? 'bg-gray-50/40' : ''}`}
+                >
                   {/* Group Header */}
                   {groupBy !== 'none' && (
                     <div
@@ -1093,6 +1212,8 @@ export default function TimelineView() {
                   <div className="relative" style={{ minHeight: `${containerHeight}px` }}>
                     {tasksForRender.map((task) => {
                       const top = task.rowWithinGroup * (rowHeight + rowGap) + groupPadding;
+                      const statusStyle = getStatusStyle(task.status);
+                      const remainingLabel = getRemainingDaysLabel(task);
 
                       return (
                         <div
@@ -1105,6 +1226,7 @@ export default function TimelineView() {
                             height: `${rowHeight}px`,
                             zIndex: draggedTask === task._id ? 30 : (resizingTask === task._id ? 25 : 5)
                           }}
+                          title={`${formatDate(task.startDate)} → ${formatDate(task.endDate)}`}
                           onMouseDown={(e) => {
                             // Don't start drag if clicking on resize handle
                             if ((e.target as HTMLElement).closest('.resize-handle')) {
@@ -1131,11 +1253,18 @@ export default function TimelineView() {
                             }}
                           >
                             <div className="flex items-center gap-2 flex-1 min-w-0">
+                              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusStyle.dotClass}`} />
                               <GripVertical className="w-4 h-4 text-white opacity-50 flex-shrink-0" />
                               <span className="text-white text-sm font-medium truncate">
                                 {task.title}
                               </span>
                             </div>
+
+                            {remainingLabel && (
+                              <span className="ml-3 text-sm font-medium text-white whitespace-nowrap">
+                                {remainingLabel}
+                              </span>
+                            )}
 
                             {/* Resize Handle - Only for end date (right side) */}
                             {/* Left resize handle removed to prevent changing start/createdAt date */}

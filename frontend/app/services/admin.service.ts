@@ -8,6 +8,10 @@ export interface AdminUser {
   role: 'user' | 'admin' | 'super_admin';
   isActive: boolean;
   isEmailVerified: boolean;
+  // Business role inside project (assigned by admin, not per-group)
+  groupRole?: string | null;
+  // Leader flag (assigned by admin)
+  isLeader?: boolean;
   createdAt: string;
   lastLogin?: string;
 }

@@ -31,16 +31,17 @@ export const isReadOnlyRole = (role?: GroupRoleKey | null) =>
 export const requiresFolderAssignment = (role?: GroupRoleKey | null) =>
   role ? FOLDER_SCOPED_ROLES.includes(role) : false;
 
-export const canManageRoles = (role?: GroupRoleKey | null) =>
-  role === GROUP_ROLE_KEYS.PRODUCT_OWNER;
+// Roles are assigned by system admin only (account-level), not editable inside group UI
+export const canManageRoles = () => false;
 
-export const canAddMembers = (role?: GroupRoleKey | null) =>
-  role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM;
+export const canAddMembers = (role?: GroupRoleKey | null, isLeader?: boolean) =>
+  role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM || Boolean(isLeader);
 
-export const canManageFolders = (role?: GroupRoleKey | null) =>
-  role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM;
+export const canManageFolders = (role?: GroupRoleKey | null, isLeader?: boolean) =>
+  role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM || Boolean(isLeader);
 
-export const canAssignFolderMembers = canManageFolders;
+export const canAssignFolderMembers = (role?: GroupRoleKey | null, isLeader?: boolean) =>
+  role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM || Boolean(isLeader);
 
 export const getRoleSummary = (role?: GroupRoleKey | null) =>
   (role && ROLE_SUMMARIES[role]) || null;
