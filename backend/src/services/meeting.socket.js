@@ -15,6 +15,9 @@ const USER_ROOM_PREFIX = 'user:';
 // Import models
 const Group = require('../models/Group.model');
 const DirectConversation = require('../models/DirectConversation.model');
+const GroupMessage = require('../models/GroupMessage.model');
+const DirectMessage = require('../models/DirectMessage.model');
+const User = require('../models/User.model');
 
 /**
  * Setup meeting socket handlers
@@ -56,12 +59,14 @@ const setupMeetingHandlers = (namespace) => {
         }
 
         await socket.join(roomName);
-        
+
         // Get all users in the meeting
         const socketsInRoom = await namespace.in(roomName).fetchSockets();
         const participants = socketsInRoom.map(s => ({
           userId: s.data.userId,
-          socketId: s.id
+          socketId: s.id,
+          userName: s.data.userName || 'Unknown',
+          userAvatar: s.data.userAvatar || null
         }));
 
         // Check if this is the first person joining (meeting just started)
@@ -71,7 +76,9 @@ const setupMeetingHandlers = (namespace) => {
         socket.to(roomName).emit('meeting:user-joined', {
           userId,
           meetingId,
-          socketId: socket.id
+          socketId: socket.id,
+          userName: socket.data.userName || 'Unknown',
+          userAvatar: socket.data.userAvatar || null
         });
 
         // If this is the first participant, notify all potential participants about the incoming call
@@ -111,6 +118,39 @@ const setupMeetingHandlers = (namespace) => {
                   callerName: socket.data.userName || 'Someone',
                   groupName: group.name
                 });
+
+                // Create a call message in the group chat
+                try {
+                  const sender = await User.findById(userId).select('name avatar').lean();
+                  const callMessage = await GroupMessage.create({
+                    groupId: groupId,
+                    senderId: userId,
+                    content: `${sender?.name || 'Someone'} started a call`,
+                    messageType: 'call',
+                    callData: {
+                      meetingId: meetingId,
+                      callType: 'group',
+                      status: 'active',
+                      startedAt: new Date(),
+                      participants: [userId]
+                    }
+                  });
+
+                  // Populate sender info
+                  const populatedMessage = await GroupMessage.findById(callMessage._id)
+                    .populate('senderId', 'name email avatar')
+                    .lean();
+
+                  // Broadcast call message to group chat
+                  namespace.to(groupChatRoom).emit('chat:message', {
+                    type: 'new',
+                    message: populatedMessage
+                  });
+
+                  console.log(`[Meeting] Created call message for group ${groupId}, messageId: ${callMessage._id}`);
+                } catch (msgError) {
+                  console.error('[Meeting] Error creating call message:', msgError);
+                }
               }
             } catch (error) {
               console.error('[Meeting] Error notifying group members:', error);
@@ -145,6 +185,40 @@ const setupMeetingHandlers = (namespace) => {
                       callerId: userId,
                       callerName: socket.data.userName || 'Someone'
                     });
+
+                    // Create a call message in the direct chat
+                    try {
+                      const sender = await User.findById(userId).select('name avatar').lean();
+                      const callMessage = await DirectMessage.create({
+                        conversationId: conversationId,
+                        senderId: userId,
+                        content: `${sender?.name || 'Someone'} started a call`,
+                        messageType: 'call',
+                        callData: {
+                          meetingId: meetingId,
+                          callType: 'direct',
+                          status: 'active',
+                          startedAt: new Date(),
+                          participants: [userId]
+                        }
+                      });
+
+                      // Populate sender info
+                      const populatedMessage = await DirectMessage.findById(callMessage._id)
+                        .populate('senderId', 'name email avatar')
+                        .lean();
+
+                      // Broadcast call message to direct chat
+                      namespace.to(directChatRoom).emit('direct:message', {
+                        type: 'new',
+                        conversationId: normalizeId(conversationId),
+                        message: populatedMessage
+                      });
+
+                      console.log(`[Meeting] Created call message for direct conversation ${conversationId}, messageId: ${callMessage._id}`);
+                    } catch (msgError) {
+                      console.error('[Meeting] Error creating call message for direct:', msgError);
+                    }
                   }
                 }
               }
@@ -193,6 +267,56 @@ const setupMeetingHandlers = (namespace) => {
           meetingId,
           socketId: socket.id
         });
+
+        // Check if meeting room is now empty (call ended)
+        const socketsInRoom = await namespace.in(roomName).fetchSockets();
+        if (socketsInRoom.length === 0) {
+          console.log(`[Meeting] Room ${roomName} is now empty, ending call ${meetingId}`);
+
+          // Update call message to 'ended'
+          try {
+            if (type === 'group' && groupId) {
+              const callMessage = await GroupMessage.findOneAndUpdate(
+                { 'callData.meetingId': meetingId, messageType: 'call' },
+                {
+                  'callData.status': 'ended',
+                  'callData.endedAt': new Date()
+                },
+                { new: true }
+              ).populate('senderId', 'name email avatar').lean();
+
+              if (callMessage) {
+                const groupChatRoom = `${GROUP_ROOM_PREFIX}${normalizeId(groupId)}`;
+                namespace.to(groupChatRoom).emit('chat:message', {
+                  type: 'updated',
+                  message: callMessage
+                });
+                console.log(`[Meeting] Updated call message to ended for group ${groupId}`);
+              }
+            } else if (type === 'direct' && conversationId) {
+              const callMessage = await DirectMessage.findOneAndUpdate(
+                { 'callData.meetingId': meetingId, messageType: 'call' },
+                {
+                  'callData.status': 'ended',
+                  'callData.endedAt': new Date()
+                },
+                { new: true }
+              ).populate('senderId', 'name email avatar').lean();
+
+              if (callMessage) {
+                const directChatRoom = `${DIRECT_ROOM_PREFIX}${normalizeId(conversationId)}`;
+                namespace.to(directChatRoom).emit('direct:message', {
+                  type: 'updated',
+                  conversationId: normalizeId(conversationId),
+                  message: callMessage
+                });
+                console.log(`[Meeting] Updated call message to ended for direct ${conversationId}`);
+              }
+            }
+          } catch (updateError) {
+            console.error('[Meeting] Error updating call message to ended:', updateError);
+          }
+        }
 
         if (callback) {
           callback({ success: true });
@@ -334,7 +458,7 @@ const setupMeetingHandlers = (namespace) => {
     socket.on('disconnect', async () => {
       try {
         const rooms = Array.from(socket.rooms);
-        const meetingRooms = rooms.filter(room => 
+        const meetingRooms = rooms.filter(room =>
           room.startsWith(GROUP_MEETING_PREFIX) || room.startsWith(DIRECT_MEETING_PREFIX)
         );
 

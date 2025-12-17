@@ -6,7 +6,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useRegional } from '../../contexts/RegionalContext';
 import { chatService, ChatMessage, DirectConversationSummary } from '../../services/chat.service';
 import { useSocket } from '../../hooks/useSocket';
-import { MeetingConfig } from '../../services/meeting.service';
+import { MeetingConfig, meetingService, StoredMeetingState } from '../../services/meeting.service';
 import MeetingView from './MeetingView';
 import IncomingCallNotification from './IncomingCallNotification';
 import {
@@ -70,18 +70,26 @@ export default function ChatView() {
     groupId?: string;
     conversationId?: string;
   } | null>(null);
+  const [pendingStoredMeeting, setPendingStoredMeeting] = useState<StoredMeetingState | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Pagination state for lazy loading messages
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [loadingMoreMessages, setLoadingMoreMessages] = useState(false);
+  const isInitialLoadRef = useRef(true);
+  const isLoadingOlderRef = useRef(false);  // Track when loading older messages to skip auto-scroll
 
   // Scroll to bottom
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
-  const loadGroupMessages = useCallback(async () => {
+  const loadGroupMessages = useCallback(async (reset: boolean = true) => {
     if (!currentGroup?._id) {
       setMessages([]);
       setMessagesLoading(false);
@@ -89,9 +97,20 @@ export default function ChatView() {
     }
 
     try {
-      setMessagesLoading(true);
-      const result = await chatService.getMessages(currentGroup._id, { limit: 50 });
+      if (reset) {
+        setMessagesLoading(true);
+        isInitialLoadRef.current = true;
+      }
+      const result = await chatService.getMessages(currentGroup._id, { limit: 15 });
       setMessages(result.messages);
+      setHasMoreMessages(result.pagination?.hasMore ?? result.messages.length >= 15);
+
+      // Scroll to bottom on initial load so user sees newest messages first
+      if (reset) {
+        requestAnimationFrame(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+        });
+      }
     } catch (error) {
       console.error('Error loading messages:', error);
       toast.showError((error as Error).message, 'Lỗi tải tin nhắn');
@@ -100,7 +119,7 @@ export default function ChatView() {
     }
   }, [currentGroup?._id]);
 
-  const loadDirectMessages = useCallback(async (conversationId: string) => {
+  const loadDirectMessages = useCallback(async (conversationId: string, reset: boolean = true) => {
     if (!conversationId) {
       setMessages([]);
       setMessagesLoading(false);
@@ -108,9 +127,13 @@ export default function ChatView() {
     }
 
     try {
-      setMessagesLoading(true);
-      const result = await chatService.getDirectMessages(conversationId, { limit: 50 });
+      if (reset) {
+        setMessagesLoading(true);
+        isInitialLoadRef.current = true;
+      }
+      const result = await chatService.getDirectMessages(conversationId, { limit: 15 });
       setMessages(result.messages);
+      setHasMoreMessages(result.pagination?.hasMore ?? result.messages.length >= 15);
       if (result.conversation) {
         setDirectConversations(prev => {
           const next = [...prev];
@@ -131,6 +154,13 @@ export default function ChatView() {
           return next;
         });
       }
+
+      // Scroll to bottom on initial load so user sees newest messages first
+      if (reset) {
+        requestAnimationFrame(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+        });
+      }
     } catch (error) {
       console.error('Error loading direct messages:', error);
       toast.showError((error as Error).message, 'Lỗi tải tin nhắn');
@@ -138,6 +168,66 @@ export default function ChatView() {
       setMessagesLoading(false);
     }
   }, []);
+
+  // Load more (older) messages when scrolling up
+  const loadMoreMessages = useCallback(async () => {
+    if (loadingMoreMessages || !hasMoreMessages || messages.length === 0) return;
+
+    const oldestMessage = messages[0];
+    if (!oldestMessage?.createdAt) return;
+
+    // Mark that we're loading older messages to skip auto-scroll
+    isLoadingOlderRef.current = true;
+
+    try {
+      setLoadingMoreMessages(true);
+      const container = messagesContainerRef.current;
+      const previousScrollHeight = container?.scrollHeight ?? 0;
+
+      let result;
+      if (activeContext === 'group' && currentGroup?._id) {
+        result = await chatService.getMessages(currentGroup._id, {
+          limit: 15,
+          before: oldestMessage.createdAt
+        });
+      } else if (activeContext === 'direct' && activeDirectConversation?._id) {
+        result = await chatService.getDirectMessages(activeDirectConversation._id, {
+          limit: 15,
+          before: oldestMessage.createdAt
+        });
+      } else {
+        return;
+      }
+
+      if (result.messages.length > 0) {
+        setMessages(prev => [...result.messages, ...prev]);
+        setHasMoreMessages(result.pagination?.hasMore ?? result.messages.length >= 15);
+
+        // Preserve scroll position after prepending
+        requestAnimationFrame(() => {
+          if (container) {
+            const newScrollHeight = container.scrollHeight;
+            container.scrollTop = newScrollHeight - previousScrollHeight;
+          }
+        });
+      } else {
+        setHasMoreMessages(false);
+      }
+    } catch (error) {
+      console.error('Error loading more messages:', error);
+    } finally {
+      setLoadingMoreMessages(false);
+    }
+  }, [loadingMoreMessages, hasMoreMessages, messages, activeContext, currentGroup?._id, activeDirectConversation?._id]);
+
+  // Handle scroll to detect when user scrolls near top
+  const handleMessagesScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLDivElement;
+    // Load more when scrolled within 100px of top
+    if (target.scrollTop < 100 && hasMoreMessages && !loadingMoreMessages) {
+      loadMoreMessages();
+    }
+  }, [hasMoreMessages, loadingMoreMessages, loadMoreMessages]);
 
   const loadDirectConversations = useCallback(async () => {
     try {
@@ -154,6 +244,15 @@ export default function ChatView() {
   useEffect(() => {
     loadDirectConversations();
   }, [loadDirectConversations]);
+
+  // Check for stored meeting on mount (for page refresh persistence)
+  useEffect(() => {
+    const storedMeeting = meetingService.getStoredMeeting();
+    if (storedMeeting) {
+      console.log('[ChatView] Found stored meeting from previous session:', storedMeeting);
+      setPendingStoredMeeting(storedMeeting);
+    }
+  }, []);
 
   // Reset chat state when user changes (e.g., logout/login)
   useEffect(() => {
@@ -702,10 +801,23 @@ export default function ChatView() {
     }
   }, [activeContext, activeDirectConversation?._id, resetDirectUnread]);
 
-  // Auto-scroll on new messages
+  // Auto-scroll on new messages (skip initial load and skip when loading older messages)
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    // Skip scroll when loading older messages (user scrolled up to load history)
+    if (isLoadingOlderRef.current) {
+      isLoadingOlderRef.current = false;
+      return;
+    }
+
+    if (isInitialLoadRef.current) {
+      // On initial load, scroll to bottom immediately without animation
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+      isInitialLoadRef.current = false;
+    } else {
+      // For new incoming messages, smooth scroll to bottom
+      scrollToBottom();
+    }
+  }, [messages, scrollToBottom]);
 
   // Handle attachment selection (preview before sending)
   const handleAttachmentSelect = (file: File) => {
@@ -1275,7 +1387,24 @@ export default function ChatView() {
 
         {conversationReady ? (
           <>
-            <div className="chat-scroll flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4">
+            <div
+              ref={messagesContainerRef}
+              onScroll={handleMessagesScroll}
+              className="chat-scroll flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4"
+            >
+              {/* Loading indicator for loading more messages */}
+              {loadingMoreMessages && (
+                <div className="flex items-center justify-center py-2">
+                  <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                  <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">{t('chat.loadingMore') || 'Loading more...'}</span>
+                </div>
+              )}
+              {/* Show "no more messages" indicator when at the beginning */}
+              {!hasMoreMessages && messages.length > 0 && !messagesLoading && (
+                <div className="text-center text-xs text-gray-400 dark:text-gray-500 py-2">
+                  {t('chat.noMoreMessages') || 'No more messages'}
+                </div>
+              )}
               {messagesLoading ? (
                 <div className="flex items-center justify-center py-10">
                   <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
@@ -1294,6 +1423,14 @@ export default function ChatView() {
                     onDelete={() => handleDelete(msg._id)}
                     onReaction={handleReaction}
                     onEditMessage={handleEditMessage}
+                    onJoinCall={(meetingId, callType, groupId, conversationId) => {
+                      setActiveMeeting({
+                        meetingId,
+                        type: callType,
+                        ...(callType === 'group' && groupId ? { groupId } : {}),
+                        ...(callType === 'direct' && conversationId ? { conversationId } : {})
+                      });
+                    }}
                   />
                 ))
               )}
@@ -1500,6 +1637,51 @@ export default function ChatView() {
           }}
         />
       )}
+
+      {/* Pending Stored Meeting Notification (for page refresh persistence) */}
+      {pendingStoredMeeting && !activeMeeting && (
+        <div className="fixed top-4 right-4 z-50 bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 p-4 min-w-[320px] max-w-[400px] animate-in slide-in-from-top-5">
+          <div className="flex items-start gap-3">
+            <div className="w-12 h-12 rounded-full bg-orange-500 flex items-center justify-center text-white flex-shrink-0">
+              <Phone className="w-6 h-6" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
+                Interrupted Call
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                {pendingStoredMeeting.title
+                  ? `Your previous call in "${pendingStoredMeeting.title}" was interrupted`
+                  : 'Your previous call was interrupted. Would you like to rejoin?'
+                }
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setActiveMeeting(pendingStoredMeeting.config);
+                    setPendingStoredMeeting(null);
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors text-sm font-medium"
+                >
+                  <Phone className="w-4 h-4" />
+                  Rejoin
+                </button>
+                <button
+                  onClick={() => {
+                    // Clear the stored meeting and dismiss
+                    sessionStorage.removeItem('activeMeeting');
+                    setPendingStoredMeeting(null);
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg transition-colors text-sm font-medium"
+                >
+                  <X className="w-4 h-4" />
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1511,7 +1693,8 @@ function MessageItem({
   onReply,
   onDelete,
   onReaction,
-  onEditMessage
+  onEditMessage,
+  onJoinCall
 }: {
   message: ChatMessage;
   currentUserId: string;
@@ -1519,6 +1702,7 @@ function MessageItem({
   onDelete: () => void;
   onReaction: (messageId: string, emoji: string) => void;
   onEditMessage: (messageId: string, newContent: string) => void;
+  onJoinCall?: (meetingId: string, callType: 'group' | 'direct', groupId?: string, conversationId?: string) => void;
 }) {
   const { t } = useLanguage();
   const { formatTime } = useRegional();
@@ -1562,6 +1746,77 @@ function MessageItem({
   }, {} as Record<string, typeof message.reactions>) || {};
 
   const commonEmojis = ['👍', '❤️', '😄', '😂', '😮', '😢', '🙏', '🔥', '👏', '💯'];
+
+  // Check if this is a call message
+  if (message.messageType === 'call' && message.callData) {
+    const isActive = message.callData.status === 'active';
+    const duration = message.callData.endedAt && message.callData.startedAt
+      ? Math.round((new Date(message.callData.endedAt).getTime() - new Date(message.callData.startedAt).getTime()) / 1000)
+      : null;
+
+    const formatDuration = (seconds: number) => {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+    };
+
+    return (
+      <div className="flex justify-center my-4">
+        <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 dark:from-blue-500/20 dark:to-purple-500/20 border border-blue-200 dark:border-blue-800 rounded-xl px-6 py-4 max-w-md w-full">
+          <div className="flex items-center gap-4">
+            {/* Call Icon */}
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${isActive
+              ? 'bg-green-500 text-white animate-pulse'
+              : 'bg-gray-400 dark:bg-gray-600 text-white'
+              }`}>
+              <Phone className="w-6 h-6" />
+            </div>
+
+            {/* Call Info */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-gray-900 dark:text-gray-100">
+                  {message.senderId.name}
+                </span>
+                <span className={`text-xs px-2 py-0.5 rounded-full ${isActive
+                  ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                  }`}>
+                  {isActive ? 'Ongoing' : 'Ended'}
+                </span>
+              </div>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                {isActive ? 'started a call' : (
+                  duration ? `Call ended • ${formatDuration(duration)}` : 'Call ended'
+                )}
+              </p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                {formatTime(message.createdAt)}
+              </p>
+            </div>
+
+            {/* Join Button (only for active calls) */}
+            {isActive && onJoinCall && (
+              <button
+                onClick={() => {
+                  onJoinCall(
+                    message.callData!.meetingId,
+                    message.callData!.callType,
+                    message.groupId,
+                    message.conversationId
+                  );
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors font-medium text-sm flex-shrink-0"
+              >
+                <Phone className="w-4 h-4" />
+                Join
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : ''} group`}>

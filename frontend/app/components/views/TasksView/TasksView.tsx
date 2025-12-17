@@ -208,7 +208,7 @@ export default function TasksView() {
               const memberId = typeof m.userId === 'object' ? m.userId?._id : m.userId;
               return memberId === assignment.userId;
             });
-            
+
             if (member) {
               const userObj = typeof member.userId === 'object' ? member.userId : null;
               const userName = userObj?.name || member.name;
@@ -1115,23 +1115,80 @@ export default function TasksView() {
     console.log("Updated task:", updatedTask);
 
     if (viewMode === "list") {
-      // Remove task from all sections
-      setTodoTasks((prev) =>
-        prev.filter((task) => task._id !== updatedTask._id)
-      );
-      setInProgressTasks((prev) =>
-        prev.filter((task) => task._id !== updatedTask._id)
-      );
-      setIncompleteTasks((prev) =>
-        prev.filter((task) => task._id !== updatedTask._id)
-      );
-      setCompletedTasks((prev) =>
-        prev.filter((task) => task._id !== updatedTask._id)
-      );
+      // Helper to update task in-place if it exists in the array
+      const updateInPlace = (
+        prevTasks: Task[],
+        setTasks: React.Dispatch<React.SetStateAction<Task[]>>
+      ): boolean => {
+        const index = prevTasks.findIndex((t) => t._id === updatedTask._id);
+        if (index >= 0) {
+          setTasks((prev) =>
+            prev.map((t) => (t._id === updatedTask._id ? updatedTask : t))
+          );
+          return true;
+        }
+        return false;
+      };
 
+      // Check which section the task is currently in
+      const todoIndex = todoTasks.findIndex((t) => t._id === updatedTask._id);
+      const inProgressIndex = inProgressTasks.findIndex((t) => t._id === updatedTask._id);
+      const incompleteIndex = incompleteTasks.findIndex((t) => t._id === updatedTask._id);
+      const completedIndex = completedTasks.findIndex((t) => t._id === updatedTask._id);
+
+      // Determine which section the task should be in based on status
+      const getTargetSection = (status: string) => {
+        switch (status) {
+          case "completed": return "completed";
+          case "incomplete": return "incomplete";
+          case "in_progress": return "inProgress";
+          case "todo":
+          default: return "todo";
+        }
+      };
+
+      const currentSection =
+        todoIndex >= 0 ? "todo" :
+          inProgressIndex >= 0 ? "inProgress" :
+            incompleteIndex >= 0 ? "incomplete" :
+              completedIndex >= 0 ? "completed" : null;
+
+      const targetSection = getTargetSection(updatedTask.status);
+
+      // Check if task should be in current folder
       if (!isTaskInCurrentFolder(updatedTask)) {
+        // Remove from all sections if task moved out of folder
+        setTodoTasks((prev) => prev.filter((task) => task._id !== updatedTask._id));
+        setInProgressTasks((prev) => prev.filter((task) => task._id !== updatedTask._id));
+        setIncompleteTasks((prev) => prev.filter((task) => task._id !== updatedTask._id));
+        setCompletedTasks((prev) => prev.filter((task) => task._id !== updatedTask._id));
         return;
       }
+
+      // If task is already in the correct section, update in-place to preserve position
+      if (currentSection === targetSection) {
+        switch (currentSection) {
+          case "todo":
+            setTodoTasks((prev) => prev.map((t) => (t._id === updatedTask._id ? updatedTask : t)));
+            break;
+          case "inProgress":
+            setInProgressTasks((prev) => prev.map((t) => (t._id === updatedTask._id ? updatedTask : t)));
+            break;
+          case "incomplete":
+            setIncompleteTasks((prev) => prev.map((t) => (t._id === updatedTask._id ? updatedTask : t)));
+            break;
+          case "completed":
+            setCompletedTasks((prev) => prev.map((t) => (t._id === updatedTask._id ? updatedTask : t)));
+            break;
+        }
+        return;
+      }
+
+      // Status changed - remove from old section and add to new section
+      setTodoTasks((prev) => prev.filter((task) => task._id !== updatedTask._id));
+      setInProgressTasks((prev) => prev.filter((task) => task._id !== updatedTask._id));
+      setIncompleteTasks((prev) => prev.filter((task) => task._id !== updatedTask._id));
+      setCompletedTasks((prev) => prev.filter((task) => task._id !== updatedTask._id));
 
       // Add task to appropriate section based on status
       switch (updatedTask.status) {

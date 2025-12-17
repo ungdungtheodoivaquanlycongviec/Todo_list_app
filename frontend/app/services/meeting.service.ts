@@ -23,6 +23,21 @@ export interface PeerConnection {
   stream?: MediaStream;
 }
 
+export interface MediaDeviceState {
+  hasAudio: boolean;
+  hasVideo: boolean;
+  audioEnabled: boolean;
+  videoEnabled: boolean;
+}
+
+export interface StoredMeetingState {
+  config: MeetingConfig;
+  title?: string;
+  timestamp: number;
+}
+
+const MEETING_STORAGE_KEY = 'activeMeeting';
+
 class MeetingService {
   private socket: Socket | null = null;
   private localStream: MediaStream | null = null;
@@ -31,6 +46,14 @@ class MeetingService {
   private participants: Map<string, MeetingParticipant> = new Map();
   private onParticipantUpdateCallbacks: Set<(participants: MeetingParticipant[]) => void> = new Set();
   private onStreamUpdateCallbacks: Set<(userId: string, stream: MediaStream | null) => void> = new Set();
+  private mediaDeviceState: MediaDeviceState = {
+    hasAudio: false,
+    hasVideo: false,
+    audioEnabled: false,
+    videoEnabled: false
+  };
+  private meetingTitle: string = '';
+  private pendingIceCandidates: Map<string, RTCIceCandidateInit[]> = new Map();
 
   setSocket(socket: Socket) {
     this.socket = socket;
@@ -40,10 +63,30 @@ class MeetingService {
   private setupSocketListeners() {
     if (!this.socket) return;
 
+    // Remove existing listeners to prevent duplicates on reconnection
+    this.socket.off('meeting:user-joined');
+    this.socket.off('meeting:user-left');
+    this.socket.off('meeting:offer');
+    this.socket.off('meeting:answer');
+    this.socket.off('meeting:ice-candidate');
+    this.socket.off('meeting:media-state');
+
     // User joined meeting
-    this.socket.on('meeting:user-joined', (data: { userId: string; socketId: string; meetingId: string }) => {
+    this.socket.on('meeting:user-joined', (data: { userId: string; socketId: string; meetingId: string; userName?: string; userAvatar?: string }) => {
       console.log('[Meeting] User joined:', data);
       if (this.meetingConfig && this.meetingConfig.meetingId === data.meetingId) {
+        // Add to participants list
+        this.participants.set(data.userId, {
+          userId: data.userId,
+          socketId: data.socketId,
+          name: data.userName,
+          avatar: data.userAvatar,
+          audioEnabled: true,
+          videoEnabled: true
+        });
+        this.notifyParticipantUpdate();
+
+        // Create peer connection for WebRTC
         this.createPeerConnection(data.userId, data.socketId);
       }
     });
@@ -117,26 +160,116 @@ class MeetingService {
     });
   }
 
-  async startMeeting(config: MeetingConfig, options: { audio?: boolean; video?: boolean } = {}) {
+  async startMeeting(config: MeetingConfig, options: { audio?: boolean; video?: boolean; title?: string } = {}) {
     if (!this.socket) {
       throw new Error('Socket not connected');
     }
 
     this.meetingConfig = config;
+    this.meetingTitle = options.title || '';
 
-    // Get user media
+    // Clear stale state from previous meetings
+    this.peerConnections.forEach(pc => {
+      try {
+        pc.peerConnection.close();
+      } catch (e) {
+        // Ignore errors when closing stale connections
+      }
+    });
+    this.peerConnections.clear();
+    this.participants.clear();
+    this.pendingIceCandidates.clear();
+
+    const wantAudio = options.audio !== false;
+    const wantVideo = options.video !== false;
+
+    // Try to get user media with graceful fallback
     try {
-      this.localStream = await navigator.mediaDevices.getUserMedia({
-        audio: options.audio !== false,
-        video: options.video !== false
-      });
+      // First, try to get both audio and video if requested
+      if (wantAudio && wantVideo) {
+        try {
+          this.localStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: true
+          });
+          this.mediaDeviceState = {
+            hasAudio: true,
+            hasVideo: true,
+            audioEnabled: true,
+            videoEnabled: true
+          };
+          console.log('[Meeting] Got both audio and video');
+        } catch (videoError) {
+          // If video fails, try audio only
+          console.warn('[Meeting] Video not available, falling back to audio only:', videoError);
+          try {
+            this.localStream = await navigator.mediaDevices.getUserMedia({
+              audio: true,
+              video: false
+            });
+            this.mediaDeviceState = {
+              hasAudio: true,
+              hasVideo: false,
+              audioEnabled: true,
+              videoEnabled: false
+            };
+            console.log('[Meeting] Got audio only (no video device)');
+          } catch (audioError) {
+            console.error('[Meeting] No audio device available:', audioError);
+            throw new Error('No microphone available. Please connect a microphone and try again.');
+          }
+        }
+      } else if (wantAudio && !wantVideo) {
+        // Audio only requested
+        try {
+          this.localStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: false
+          });
+          this.mediaDeviceState = {
+            hasAudio: true,
+            hasVideo: false,
+            audioEnabled: true,
+            videoEnabled: false
+          };
+          console.log('[Meeting] Got audio only (as requested)');
+        } catch (audioError) {
+          console.error('[Meeting] No audio device available:', audioError);
+          throw new Error('No microphone available. Please connect a microphone and try again.');
+        }
+      } else if (!wantAudio && wantVideo) {
+        // Video only (rare case)
+        try {
+          this.localStream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: true
+          });
+          this.mediaDeviceState = {
+            hasAudio: false,
+            hasVideo: true,
+            audioEnabled: false,
+            videoEnabled: true
+          };
+          console.log('[Meeting] Got video only (as requested)');
+        } catch (videoError) {
+          console.error('[Meeting] No video device available:', videoError);
+          throw new Error('No camera available. Please connect a camera and try again.');
+        }
+      } else {
+        // Neither audio nor video requested - shouldn't happen but handle it
+        throw new Error('At least audio or video must be enabled for a call.');
+      }
     } catch (error) {
       console.error('[Meeting] Error getting user media:', error);
-      throw new Error('Failed to access camera/microphone');
+      this.meetingConfig = null;
+      throw error;
     }
 
+    // Save meeting to sessionStorage for persistence
+    this.saveMeetingToStorage();
+
     // Join meeting room
-    return new Promise<{ success: boolean; participants: MeetingParticipant[] }>((resolve, reject) => {
+    return new Promise<{ success: boolean; participants: MeetingParticipant[]; mediaState: MediaDeviceState }>((resolve, reject) => {
       if (!this.socket) {
         reject(new Error('Socket not connected'));
         return;
@@ -151,6 +284,8 @@ class MeetingService {
                 this.participants.set(p.userId, {
                   userId: p.userId,
                   socketId: p.socketId,
+                  name: p.userName,
+                  avatar: p.userAvatar,
                   audioEnabled: true,
                   videoEnabled: true
                 });
@@ -170,9 +305,11 @@ class MeetingService {
 
           resolve({
             success: true,
-            participants: Array.from(this.participants.values())
+            participants: Array.from(this.participants.values()),
+            mediaState: { ...this.mediaDeviceState }
           });
         } else {
+          this.clearMeetingFromStorage();
           reject(new Error(response.error || 'Failed to join meeting'));
         }
       });
@@ -183,6 +320,9 @@ class MeetingService {
     if (!this.socket || !this.meetingConfig) {
       return;
     }
+
+    // Clear storage first
+    this.clearMeetingFromStorage();
 
     // Stop local stream
     if (this.localStream) {
@@ -199,6 +339,17 @@ class MeetingService {
     });
     this.peerConnections.clear();
 
+    // Clear pending ICE candidates
+    this.pendingIceCandidates.clear();
+
+    // Reset media device state
+    this.mediaDeviceState = {
+      hasAudio: false,
+      hasVideo: false,
+      audioEnabled: false,
+      videoEnabled: false
+    };
+
     // Leave meeting room
     return new Promise<void>((resolve) => {
       if (!this.socket || !this.meetingConfig) {
@@ -208,6 +359,7 @@ class MeetingService {
 
       this.socket.emit('meeting:leave', this.meetingConfig, () => {
         this.meetingConfig = null;
+        this.meetingTitle = '';
         this.participants.clear();
         this.notifyParticipantUpdate();
         resolve();
@@ -281,6 +433,64 @@ class MeetingService {
     await this.createOffer(userId, socketId);
   }
 
+  // Create peer connection without sending offer (for when we receive an offer)
+  private async createPeerConnectionForAnswer(userId: string, socketId: string) {
+    if (this.peerConnections.has(userId)) {
+      return;
+    }
+
+    const configuration: RTCConfiguration = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ]
+    };
+
+    const peerConnection = new RTCPeerConnection(configuration);
+
+    // Add local stream tracks
+    if (this.localStream) {
+      this.localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, this.localStream!);
+      });
+    }
+
+    // Handle remote stream
+    peerConnection.ontrack = (event) => {
+      console.log('[Meeting] Received remote track from:', userId);
+      const stream = event.streams[0];
+      const pc = this.peerConnections.get(userId);
+      if (pc) {
+        pc.stream = stream;
+        this.notifyStreamUpdate(userId, stream);
+      }
+    };
+
+    // Handle ICE candidates
+    peerConnection.onicecandidate = (event) => {
+      if (event.candidate && this.socket && this.meetingConfig) {
+        this.socket.emit('meeting:ice-candidate', {
+          ...this.meetingConfig,
+          candidate: event.candidate,
+          targetSocketId: socketId
+        });
+      }
+    };
+
+    // Handle connection state
+    peerConnection.onconnectionstatechange = () => {
+      console.log(`[Meeting] Connection state with ${userId}:`, peerConnection.connectionState);
+    };
+
+    this.peerConnections.set(userId, {
+      peerConnection,
+      userId,
+      socketId
+    });
+
+    // Note: We don't create an offer here - we're waiting for one
+  }
+
   private async createOffer(userId: string, socketId: string) {
     const pc = this.peerConnections.get(userId);
     if (!pc) return;
@@ -303,9 +513,26 @@ class MeetingService {
 
   private async handleOffer(fromUserId: string, fromSocketId: string, offer: RTCSessionDescriptionInit) {
     let pc = this.peerConnections.get(fromUserId);
+    const currentUserId = this.getCurrentUserId();
+
+    // Perfect negotiation pattern: resolve offer collision
+    // If we already have a peer connection with a pending local offer, we need to decide who wins
+    if (pc && pc.peerConnection.signalingState !== 'stable') {
+      // Use userId comparison to determine who should be polite (yield)
+      // The "impolite" peer (higher userId) ignores incoming offers when in wrong state
+      const isPolite = currentUserId < fromUserId;
+      if (!isPolite) {
+        console.log('[Meeting] Ignoring offer from', fromUserId, '- we are impolite and in state:', pc.peerConnection.signalingState);
+        return;
+      }
+      // Polite peer rolls back and accepts the offer
+      console.log('[Meeting] Rolling back offer for', fromUserId, '- we are polite');
+      await pc.peerConnection.setLocalDescription({ type: 'rollback' });
+    }
 
     if (!pc) {
-      await this.createPeerConnection(fromUserId, fromSocketId);
+      // Create peer connection without auto-offer (we'll respond with answer instead)
+      await this.createPeerConnectionForAnswer(fromUserId, fromSocketId);
       pc = this.peerConnections.get(fromUserId);
     }
 
@@ -313,6 +540,10 @@ class MeetingService {
 
     try {
       await pc.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+
+      // Process any queued ICE candidates
+      await this.processPendingIceCandidates(fromUserId);
+
       const answer = await pc.peerConnection.createAnswer();
       await pc.peerConnection.setLocalDescription(answer);
 
@@ -332,8 +563,17 @@ class MeetingService {
     const pc = this.peerConnections.get(fromUserId);
     if (!pc) return;
 
+    // Only set remote description if we're waiting for an answer
+    if (pc.peerConnection.signalingState !== 'have-local-offer') {
+      console.log('[Meeting] Ignoring answer from', fromUserId, '- signaling state is:', pc.peerConnection.signalingState);
+      return;
+    }
+
     try {
       await pc.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+
+      // Process any queued ICE candidates
+      await this.processPendingIceCandidates(fromUserId);
     } catch (error) {
       console.error('[Meeting] Error handling answer:', error);
     }
@@ -341,13 +581,53 @@ class MeetingService {
 
   private async handleIceCandidate(fromUserId: string, fromSocketId: string, candidate: RTCIceCandidateInit) {
     const pc = this.peerConnections.get(fromUserId);
-    if (!pc) return;
+    if (!pc) {
+      // Queue ICE candidate if peer connection doesn't exist yet
+      if (!this.pendingIceCandidates.has(fromUserId)) {
+        this.pendingIceCandidates.set(fromUserId, []);
+      }
+      this.pendingIceCandidates.get(fromUserId)!.push(candidate);
+      console.log('[Meeting] Queued ICE candidate for', fromUserId);
+      return;
+    }
+
+    // Check if remote description is set
+    if (!pc.peerConnection.remoteDescription) {
+      // Queue the candidate
+      if (!this.pendingIceCandidates.has(fromUserId)) {
+        this.pendingIceCandidates.set(fromUserId, []);
+      }
+      this.pendingIceCandidates.get(fromUserId)!.push(candidate);
+      console.log('[Meeting] Queued ICE candidate for', fromUserId, '- remote description not set');
+      return;
+    }
 
     try {
       await pc.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
     } catch (error) {
       console.error('[Meeting] Error handling ICE candidate:', error);
     }
+  }
+
+  private async processPendingIceCandidates(userId: string) {
+    const pending = this.pendingIceCandidates.get(userId);
+    if (!pending || pending.length === 0) return;
+
+    const pc = this.peerConnections.get(userId);
+    if (!pc || !pc.peerConnection.remoteDescription) return;
+
+    console.log('[Meeting] Processing', pending.length, 'queued ICE candidates for', userId);
+
+    for (const candidate of pending) {
+      try {
+        await pc.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (error) {
+        console.error('[Meeting] Error adding queued ICE candidate:', error);
+      }
+    }
+
+    // Clear the queue
+    this.pendingIceCandidates.delete(userId);
   }
 
   private removePeerConnection(userId: string, socketId: string) {
@@ -450,6 +730,65 @@ class MeetingService {
 
   private getCurrentUserId(): string {
     return this.currentUserId;
+  }
+
+  // Storage methods for meeting persistence
+  private saveMeetingToStorage() {
+    if (!this.meetingConfig) return;
+
+    try {
+      const state: StoredMeetingState = {
+        config: this.meetingConfig,
+        title: this.meetingTitle,
+        timestamp: Date.now()
+      };
+      sessionStorage.setItem(MEETING_STORAGE_KEY, JSON.stringify(state));
+      console.log('[Meeting] Saved meeting to storage');
+    } catch (error) {
+      console.error('[Meeting] Error saving meeting to storage:', error);
+    }
+  }
+
+  private clearMeetingFromStorage() {
+    try {
+      sessionStorage.removeItem(MEETING_STORAGE_KEY);
+      console.log('[Meeting] Cleared meeting from storage');
+    } catch (error) {
+      console.error('[Meeting] Error clearing meeting from storage:', error);
+    }
+  }
+
+  getStoredMeeting(): StoredMeetingState | null {
+    try {
+      const stored = sessionStorage.getItem(MEETING_STORAGE_KEY);
+      if (!stored) return null;
+
+      const state = JSON.parse(stored) as StoredMeetingState;
+
+      // Check if meeting is too old (more than 1 hour)
+      const MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
+      if (Date.now() - state.timestamp > MAX_AGE_MS) {
+        this.clearMeetingFromStorage();
+        return null;
+      }
+
+      return state;
+    } catch (error) {
+      console.error('[Meeting] Error getting stored meeting:', error);
+      return null;
+    }
+  }
+
+  getMediaDeviceState(): MediaDeviceState {
+    return { ...this.mediaDeviceState };
+  }
+
+  isInMeeting(): boolean {
+    return this.meetingConfig !== null;
+  }
+
+  getCurrentMeetingConfig(): MeetingConfig | null {
+    return this.meetingConfig;
   }
 }
 

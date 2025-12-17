@@ -109,6 +109,24 @@ const groupMessageSchema = new mongoose.Schema(
     deletedAt: {
       type: Date,
       default: null
+    },
+    // Message type: 'text' for regular messages, 'call' for call messages
+    messageType: {
+      type: String,
+      enum: ['text', 'call'],
+      default: 'text'
+    },
+    // Call data for messageType === 'call'
+    callData: {
+      meetingId: { type: String },
+      callType: { type: String, enum: ['group', 'direct'] },
+      status: { type: String, enum: ['active', 'ended'], default: 'active' },
+      startedAt: { type: Date },
+      endedAt: { type: Date },
+      participants: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      }]
     }
   },
   {
