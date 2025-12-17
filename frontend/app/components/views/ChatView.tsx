@@ -72,16 +72,23 @@ export default function ChatView() {
   } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Pagination state for lazy loading messages
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [loadingMoreMessages, setLoadingMoreMessages] = useState(false);
+  const isInitialLoadRef = useRef(true);
+  const isLoadingOlderRef = useRef(false);  // Track when loading older messages to skip auto-scroll
 
   // Scroll to bottom
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
-  const loadGroupMessages = useCallback(async () => {
+  const loadGroupMessages = useCallback(async (reset: boolean = true) => {
     if (!currentGroup?._id) {
       setMessages([]);
       setMessagesLoading(false);
@@ -89,9 +96,20 @@ export default function ChatView() {
     }
 
     try {
-      setMessagesLoading(true);
-      const result = await chatService.getMessages(currentGroup._id, { limit: 50 });
+      if (reset) {
+        setMessagesLoading(true);
+        isInitialLoadRef.current = true;
+      }
+      const result = await chatService.getMessages(currentGroup._id, { limit: 15 });
       setMessages(result.messages);
+      setHasMoreMessages(result.pagination?.hasMore ?? result.messages.length >= 15);
+
+      // Scroll to bottom on initial load so user sees newest messages first
+      if (reset) {
+        requestAnimationFrame(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+        });
+      }
     } catch (error) {
       console.error('Error loading messages:', error);
       toast.showError((error as Error).message, 'Lỗi tải tin nhắn');
@@ -100,7 +118,7 @@ export default function ChatView() {
     }
   }, [currentGroup?._id]);
 
-  const loadDirectMessages = useCallback(async (conversationId: string) => {
+  const loadDirectMessages = useCallback(async (conversationId: string, reset: boolean = true) => {
     if (!conversationId) {
       setMessages([]);
       setMessagesLoading(false);
@@ -108,9 +126,13 @@ export default function ChatView() {
     }
 
     try {
-      setMessagesLoading(true);
-      const result = await chatService.getDirectMessages(conversationId, { limit: 50 });
+      if (reset) {
+        setMessagesLoading(true);
+        isInitialLoadRef.current = true;
+      }
+      const result = await chatService.getDirectMessages(conversationId, { limit: 15 });
       setMessages(result.messages);
+      setHasMoreMessages(result.pagination?.hasMore ?? result.messages.length >= 15);
       if (result.conversation) {
         setDirectConversations(prev => {
           const next = [...prev];
@@ -131,6 +153,13 @@ export default function ChatView() {
           return next;
         });
       }
+
+      // Scroll to bottom on initial load so user sees newest messages first
+      if (reset) {
+        requestAnimationFrame(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+        });
+      }
     } catch (error) {
       console.error('Error loading direct messages:', error);
       toast.showError((error as Error).message, 'Lỗi tải tin nhắn');
@@ -138,6 +167,66 @@ export default function ChatView() {
       setMessagesLoading(false);
     }
   }, []);
+
+  // Load more (older) messages when scrolling up
+  const loadMoreMessages = useCallback(async () => {
+    if (loadingMoreMessages || !hasMoreMessages || messages.length === 0) return;
+
+    const oldestMessage = messages[0];
+    if (!oldestMessage?.createdAt) return;
+
+    // Mark that we're loading older messages to skip auto-scroll
+    isLoadingOlderRef.current = true;
+
+    try {
+      setLoadingMoreMessages(true);
+      const container = messagesContainerRef.current;
+      const previousScrollHeight = container?.scrollHeight ?? 0;
+
+      let result;
+      if (activeContext === 'group' && currentGroup?._id) {
+        result = await chatService.getMessages(currentGroup._id, {
+          limit: 15,
+          before: oldestMessage.createdAt
+        });
+      } else if (activeContext === 'direct' && activeDirectConversation?._id) {
+        result = await chatService.getDirectMessages(activeDirectConversation._id, {
+          limit: 15,
+          before: oldestMessage.createdAt
+        });
+      } else {
+        return;
+      }
+
+      if (result.messages.length > 0) {
+        setMessages(prev => [...result.messages, ...prev]);
+        setHasMoreMessages(result.pagination?.hasMore ?? result.messages.length >= 15);
+
+        // Preserve scroll position after prepending
+        requestAnimationFrame(() => {
+          if (container) {
+            const newScrollHeight = container.scrollHeight;
+            container.scrollTop = newScrollHeight - previousScrollHeight;
+          }
+        });
+      } else {
+        setHasMoreMessages(false);
+      }
+    } catch (error) {
+      console.error('Error loading more messages:', error);
+    } finally {
+      setLoadingMoreMessages(false);
+    }
+  }, [loadingMoreMessages, hasMoreMessages, messages, activeContext, currentGroup?._id, activeDirectConversation?._id]);
+
+  // Handle scroll to detect when user scrolls near top
+  const handleMessagesScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLDivElement;
+    // Load more when scrolled within 100px of top
+    if (target.scrollTop < 100 && hasMoreMessages && !loadingMoreMessages) {
+      loadMoreMessages();
+    }
+  }, [hasMoreMessages, loadingMoreMessages, loadMoreMessages]);
 
   const loadDirectConversations = useCallback(async () => {
     try {
@@ -702,10 +791,23 @@ export default function ChatView() {
     }
   }, [activeContext, activeDirectConversation?._id, resetDirectUnread]);
 
-  // Auto-scroll on new messages
+  // Auto-scroll on new messages (skip initial load and skip when loading older messages)
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    // Skip scroll when loading older messages (user scrolled up to load history)
+    if (isLoadingOlderRef.current) {
+      isLoadingOlderRef.current = false;
+      return;
+    }
+
+    if (isInitialLoadRef.current) {
+      // On initial load, scroll to bottom immediately without animation
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+      isInitialLoadRef.current = false;
+    } else {
+      // For new incoming messages, smooth scroll to bottom
+      scrollToBottom();
+    }
+  }, [messages, scrollToBottom]);
 
   // Handle attachment selection (preview before sending)
   const handleAttachmentSelect = (file: File) => {
@@ -1275,7 +1377,24 @@ export default function ChatView() {
 
         {conversationReady ? (
           <>
-            <div className="chat-scroll flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4">
+            <div
+              ref={messagesContainerRef}
+              onScroll={handleMessagesScroll}
+              className="chat-scroll flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4"
+            >
+              {/* Loading indicator for loading more messages */}
+              {loadingMoreMessages && (
+                <div className="flex items-center justify-center py-2">
+                  <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                  <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">{t('chat.loadingMore') || 'Loading more...'}</span>
+                </div>
+              )}
+              {/* Show "no more messages" indicator when at the beginning */}
+              {!hasMoreMessages && messages.length > 0 && !messagesLoading && (
+                <div className="text-center text-xs text-gray-400 dark:text-gray-500 py-2">
+                  {t('chat.noMoreMessages') || 'No more messages'}
+                </div>
+              )}
               {messagesLoading ? (
                 <div className="flex items-center justify-center py-10">
                   <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />

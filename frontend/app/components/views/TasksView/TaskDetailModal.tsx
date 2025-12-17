@@ -163,12 +163,20 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const [editingCommentContent, setEditingCommentContent] = useState("")
   const [showCommentMenu, setShowCommentMenu] = useState<string | null>(null)
   const commentsScrollRef = useRef<HTMLDivElement>(null)
+  const commentsEndRef = useRef<HTMLDivElement>(null)
   const scrollPositionRef = useRef<number>(0)
   const [uploadingFiles, setUploadingFiles] = useState(false)
   const [pendingAttachment, setPendingAttachment] = useState<File | null>(null)
   const [pendingAttachmentPreview, setPendingAttachmentPreview] = useState<string | null>(null)
   const [lightboxImage, setLightboxImage] = useState<string | null>(null)
   const [showEstimatedTimePicker, setShowEstimatedTimePicker] = useState(false)
+
+  // Pagination state for lazy loading comments
+  const [commentsPage, setCommentsPage] = useState(1)
+  const [hasMoreComments, setHasMoreComments] = useState(true)
+  const [loadingMoreComments, setLoadingMoreComments] = useState(false)
+  const isInitialCommentsLoadRef = useRef(true)
+  const [totalComments, setTotalComments] = useState(0)
 
   const { user: currentUser, currentGroup } = useAuth()
   const { currentFolder } = useFolder()
@@ -227,7 +235,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
               const memberId = typeof m.userId === 'object' ? m.userId?._id : m.userId;
               return memberId === assignment.userId;
             });
-            
+
             if (member) {
               const userObj = typeof member.userId === 'object' ? member.userId : null;
               const userName = userObj?.name || member.name;
@@ -471,8 +479,27 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       setScheduledWork([])
     }
 
-    if (taskData.comments && Array.isArray(taskData.comments)) {
-      const formattedComments: Comment[] = taskData.comments.map((comment: any) => ({
+    // Comments are now loaded separately via loadComments() to support pagination
+    // We do NOT sync comments from task data here to avoid duplicates
+
+    // Sync all active timers from task data
+    syncTimersFromTask(taskData)
+
+    // Note: Comments are now loaded separately via loadComments()
+    // We only sync non-comments data here, comments use the paginated API
+  }, [convertToUserTimezone, syncTimersFromTask])
+
+  // Load comments with pagination (newest first from API, reversed for display oldest-first)
+  const loadComments = useCallback(async (page: number = 1, reset: boolean = true) => {
+    if (!taskId) return
+
+    try {
+      if (reset) {
+        isInitialCommentsLoadRef.current = true
+      }
+      const result = await taskService.getComments(taskId, { page, limit: 15 })
+
+      const formattedComments: Comment[] = result.comments.map((comment: any) => ({
         _id: comment._id || comment.userId,
         userId: comment.userId || comment.user?._id || comment.user,
         user: comment.user,
@@ -481,15 +508,90 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
         updatedAt: comment.updatedAt,
         isEdited: comment.isEdited || false,
         attachment: comment.attachment,
+        mentions: comment.mentions,
       }))
-      setComments(formattedComments)
-    } else {
-      setComments([])
-    }
 
-    // Sync all active timers from task data
-    syncTimersFromTask(taskData)
-  }, [convertToUserTimezone, syncTimersFromTask])
+      // Reverse to show oldest first at top, newest at bottom (like chat)
+      const reversedComments = formattedComments.reverse()
+
+      if (reset) {
+        setComments(reversedComments)
+        setCommentsPage(1)
+      } else {
+        setComments(prev => [...reversedComments, ...prev])
+      }
+
+      setHasMoreComments(result.pagination.hasNextPage)
+      setTotalComments(result.pagination.totalComments)
+
+      // Scroll to bottom on initial load so user sees newest comments first
+      if (reset) {
+        requestAnimationFrame(() => {
+          commentsEndRef.current?.scrollIntoView({ behavior: 'auto' })
+        })
+      }
+    } catch (error) {
+      console.error('Error loading comments:', error)
+      // Fallback: try to use comments from task object if available
+    }
+  }, [taskId])
+
+  // Load more (older) comments when scrolling up
+  const loadMoreComments = useCallback(async () => {
+    if (loadingMoreComments || !hasMoreComments) return
+
+    try {
+      setLoadingMoreComments(true)
+      const container = commentsScrollRef.current
+      const previousScrollHeight = container?.scrollHeight ?? 0
+
+      const nextPage = commentsPage + 1
+      const result = await taskService.getComments(taskId, { page: nextPage, limit: 15 })
+
+      if (result.comments.length > 0) {
+        const formattedComments: Comment[] = result.comments.map((comment: any) => ({
+          _id: comment._id || comment.userId,
+          userId: comment.userId || comment.user?._id || comment.user,
+          user: comment.user,
+          content: comment.content || "",
+          createdAt: comment.createdAt,
+          updatedAt: comment.updatedAt,
+          isEdited: comment.isEdited || false,
+          attachment: comment.attachment,
+          mentions: comment.mentions,
+        }))
+
+        // Reverse to get oldest first, then prepend to top (older comments go above)
+        const reversedComments = formattedComments.reverse()
+        setComments(prev => [...reversedComments, ...prev])
+        setCommentsPage(nextPage)
+        setHasMoreComments(result.pagination.hasNextPage)
+
+        // Preserve scroll position after prepending
+        requestAnimationFrame(() => {
+          if (container) {
+            const newScrollHeight = container.scrollHeight
+            container.scrollTop = newScrollHeight - previousScrollHeight
+          }
+        })
+      } else {
+        setHasMoreComments(false)
+      }
+    } catch (error) {
+      console.error('Error loading more comments:', error)
+    } finally {
+      setLoadingMoreComments(false)
+    }
+  }, [loadingMoreComments, hasMoreComments, commentsPage, taskId])
+
+  // Handle scroll to detect when user scrolls near top of comments
+  const handleCommentsScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLDivElement
+    // Load more when scrolled within 100px of top
+    if (target.scrollTop < 100 && hasMoreComments && !loadingMoreComments) {
+      loadMoreComments()
+    }
+  }, [hasMoreComments, loadingMoreComments, loadMoreComments])
 
   const fetchTaskDetails = useCallback(async () => {
     if (!isOpen || !taskId) return
@@ -499,13 +601,16 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
       const taskData = await taskService.getTaskById(taskId)
 
       syncTaskState(taskData)
+
+      // Load comments separately with pagination
+      await loadComments(1, true)
     } catch (error) {
       console.error("Error fetching task details:", error)
       toast.showError((error as Error).message, "Lỗi tải task")
     } finally {
       setLoading(false)
     }
-  }, [isOpen, taskId, syncTaskState])
+  }, [isOpen, taskId, syncTaskState, loadComments])
 
   useEffect(() => {
     fetchTaskDetails()
@@ -982,26 +1087,16 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
         setPendingAttachmentPreview(null)
       }
 
-      if (updatedTask.comments && Array.isArray(updatedTask.comments)) {
-        const formattedComments: Comment[] = updatedTask.comments.map((comment: any) => ({
-          _id: comment._id || comment.userId,
-          userId: comment.userId || comment.user?._id || comment.user,
-          user: comment.user,
-          content: comment.content || "",
-          createdAt: comment.createdAt,
-          updatedAt: comment.updatedAt,
-          isEdited: comment.isEdited || false,
-          attachment: comment.attachment,
-        }))
-        setComments(formattedComments)
-      }
+      // Reload comments via paginated API to avoid mixing with full task comments array
+      // This ensures consistency with the lazy-loading implementation
+      await loadComments(1, true)
     } catch (error) {
       console.error("Error adding comment:", error)
       toast.showError((error as Error).message, "Lỗi thêm bình luận")
     } finally {
       setUploadingFiles(false)
     }
-  }, [comment, task, taskId, pendingAttachment, pendingAttachmentPreview])
+  }, [comment, task, taskId, pendingAttachment, pendingAttachmentPreview, loadComments])
 
   const handleUpdateComment = useCallback(async (commentId: string) => {
     if (!editingCommentContent.trim() || !currentUser) {
@@ -2284,11 +2379,28 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
             {/* Comments - Full width on mobile, 40% on larger screens - FIXED: Always show comment form for all task statuses regardless of due date */}
             <div className="flex-1 md:w-2/5 md:flex-none flex flex-col h-full min-h-[300px] md:min-h-0 overflow-hidden">
-              <div ref={commentsScrollRef} className="flex-1 overflow-y-auto overflow-x-hidden p-6 scrollbar-minimal">
+              <div
+                ref={commentsScrollRef}
+                onScroll={handleCommentsScroll}
+                className="flex-1 overflow-y-auto overflow-x-hidden p-6 scrollbar-minimal"
+              >
                 <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
                   <MessageSquare className="w-4 h-4" />
-                  {t('taskDetail.comments')} ({comments.length})
+                  {t('taskDetail.comments')} ({totalComments || comments.length})
                 </h3>
+                {/* Loading indicator for loading more comments */}
+                {loadingMoreComments && (
+                  <div className="flex items-center justify-center py-2 mb-4">
+                    <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                    <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">Loading more...</span>
+                  </div>
+                )}
+                {/* Show "no more comments" indicator when at the beginning */}
+                {!hasMoreComments && comments.length > 0 && (
+                  <div className="text-center text-xs text-gray-400 dark:text-gray-500 py-2 mb-4">
+                    No more comments
+                  </div>
+                )}
                 <div className="space-y-4">
                   {comments.length > 0 ? (
                     comments.map((comment, index) => (
@@ -2297,6 +2409,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
                   ) : (
                     <div className="text-center py-8 text-gray-400 dark:text-gray-500 text-sm">{t('taskDetail.noCommentsYet')}</div>
                   )}
+                  <div ref={commentsEndRef} />
                 </div>
               </div>
 
@@ -2573,7 +2686,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
                   let userName = 'Unknown';
                   let userEmail = '';
                   let userAvatar: string | undefined;
-                  
+
                   if (typeof member.userId === 'object' && member.userId) {
                     userName = member.userId.name || member.name || 'Unknown';
                     userEmail = member.userId.email || member.email || '';

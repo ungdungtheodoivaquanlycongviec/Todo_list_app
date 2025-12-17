@@ -342,6 +342,8 @@ export const translations = {
     'chat.copy': 'Copy',
     'chat.copied': 'Copied!',
     'chat.openInNewTab': 'Open in new tab',
+    'chat.loadingMore': 'Loading more...',
+    'chat.noMoreMessages': 'No more messages',
 
     // Mentions
     'mention.typeToMention': 'Type @ to mention someone',
@@ -1098,6 +1100,8 @@ export const translations = {
     'chat.copy': 'Sao chép',
     'chat.copied': 'Đã sao chép!',
     'chat.openInNewTab': 'Mở trong tab mới',
+    'chat.loadingMore': 'Đang tải thêm...',
+    'chat.noMoreMessages': 'Không còn tin nhắn nào',
 
     // Mentions
     'mention.typeToMention': 'Gõ @ để đề cập ai đó',

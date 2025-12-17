@@ -916,5 +916,70 @@ export const taskService = {
 
     const data = await response.json();
     return normalizeTaskResponse(data);
+  },
+
+  // NEW: Get paginated comments for a task (newest first)
+  getComments: async (
+    taskId: string,
+    options?: { page?: number; limit?: number }
+  ): Promise<{
+    comments: any[];
+    pagination: {
+      page: number;
+      limit: number;
+      totalComments: number;
+      totalPages: number;
+      hasNextPage: boolean;
+      hasPrevPage: boolean;
+    };
+  }> => {
+    const token = authService.getAuthToken();
+    const headers: HeadersInit = {};
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const params = new URLSearchParams();
+    if (options?.page) params.append('page', options.page.toString());
+    if (options?.limit) params.append('limit', options.limit.toString());
+
+    const url = `${API_BASE_URL}/tasks/${taskId}/comments${params.toString() ? `?${params.toString()}` : ''}`;
+    console.log('Fetching comments from:', url);
+
+    const response = await fetch(url, {
+      headers,
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        if (typeof window !== 'undefined') {
+          localStorage.clear();
+          sessionStorage.clear();
+        }
+        throw new Error('Authentication failed. Please login again.');
+      }
+
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      throw new Error(`Failed to fetch comments: ${response.status}`);
+    }
+
+    const responseData = await response.json();
+    console.log('Comments response:', responseData);
+
+    // Normalize the response
+    return {
+      comments: responseData.data?.comments || responseData.comments || [],
+      pagination: responseData.data?.pagination || responseData.pagination || {
+        page: options?.page || 1,
+        limit: options?.limit || 15,
+        totalComments: 0,
+        totalPages: 1,
+        hasNextPage: false,
+        hasPrevPage: false
+      }
+    };
   }
 };
