@@ -53,6 +53,7 @@ class MeetingService {
     videoEnabled: false
   };
   private meetingTitle: string = '';
+  private pendingIceCandidates: Map<string, RTCIceCandidateInit[]> = new Map();
 
   setSocket(socket: Socket) {
     this.socket = socket;
@@ -66,6 +67,16 @@ class MeetingService {
     this.socket.on('meeting:user-joined', (data: { userId: string; socketId: string; meetingId: string }) => {
       console.log('[Meeting] User joined:', data);
       if (this.meetingConfig && this.meetingConfig.meetingId === data.meetingId) {
+        // Add to participants list
+        this.participants.set(data.userId, {
+          userId: data.userId,
+          socketId: data.socketId,
+          audioEnabled: true,
+          videoEnabled: true
+        });
+        this.notifyParticipantUpdate();
+
+        // Create peer connection for WebRTC
         this.createPeerConnection(data.userId, data.socketId);
       }
     });
@@ -395,6 +406,64 @@ class MeetingService {
     await this.createOffer(userId, socketId);
   }
 
+  // Create peer connection without sending offer (for when we receive an offer)
+  private async createPeerConnectionForAnswer(userId: string, socketId: string) {
+    if (this.peerConnections.has(userId)) {
+      return;
+    }
+
+    const configuration: RTCConfiguration = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ]
+    };
+
+    const peerConnection = new RTCPeerConnection(configuration);
+
+    // Add local stream tracks
+    if (this.localStream) {
+      this.localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, this.localStream!);
+      });
+    }
+
+    // Handle remote stream
+    peerConnection.ontrack = (event) => {
+      console.log('[Meeting] Received remote track from:', userId);
+      const stream = event.streams[0];
+      const pc = this.peerConnections.get(userId);
+      if (pc) {
+        pc.stream = stream;
+        this.notifyStreamUpdate(userId, stream);
+      }
+    };
+
+    // Handle ICE candidates
+    peerConnection.onicecandidate = (event) => {
+      if (event.candidate && this.socket && this.meetingConfig) {
+        this.socket.emit('meeting:ice-candidate', {
+          ...this.meetingConfig,
+          candidate: event.candidate,
+          targetSocketId: socketId
+        });
+      }
+    };
+
+    // Handle connection state
+    peerConnection.onconnectionstatechange = () => {
+      console.log(`[Meeting] Connection state with ${userId}:`, peerConnection.connectionState);
+    };
+
+    this.peerConnections.set(userId, {
+      peerConnection,
+      userId,
+      socketId
+    });
+
+    // Note: We don't create an offer here - we're waiting for one
+  }
+
   private async createOffer(userId: string, socketId: string) {
     const pc = this.peerConnections.get(userId);
     if (!pc) return;
@@ -417,9 +486,26 @@ class MeetingService {
 
   private async handleOffer(fromUserId: string, fromSocketId: string, offer: RTCSessionDescriptionInit) {
     let pc = this.peerConnections.get(fromUserId);
+    const currentUserId = this.getCurrentUserId();
+
+    // Perfect negotiation pattern: resolve offer collision
+    // If we already have a peer connection with a pending local offer, we need to decide who wins
+    if (pc && pc.peerConnection.signalingState !== 'stable') {
+      // Use userId comparison to determine who should be polite (yield)
+      // The "impolite" peer (higher userId) ignores incoming offers when in wrong state
+      const isPolite = currentUserId < fromUserId;
+      if (!isPolite) {
+        console.log('[Meeting] Ignoring offer from', fromUserId, '- we are impolite and in state:', pc.peerConnection.signalingState);
+        return;
+      }
+      // Polite peer rolls back and accepts the offer
+      console.log('[Meeting] Rolling back offer for', fromUserId, '- we are polite');
+      await pc.peerConnection.setLocalDescription({ type: 'rollback' });
+    }
 
     if (!pc) {
-      await this.createPeerConnection(fromUserId, fromSocketId);
+      // Create peer connection without auto-offer (we'll respond with answer instead)
+      await this.createPeerConnectionForAnswer(fromUserId, fromSocketId);
       pc = this.peerConnections.get(fromUserId);
     }
 
@@ -427,6 +513,10 @@ class MeetingService {
 
     try {
       await pc.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+
+      // Process any queued ICE candidates
+      await this.processPendingIceCandidates(fromUserId);
+
       const answer = await pc.peerConnection.createAnswer();
       await pc.peerConnection.setLocalDescription(answer);
 
@@ -446,8 +536,17 @@ class MeetingService {
     const pc = this.peerConnections.get(fromUserId);
     if (!pc) return;
 
+    // Only set remote description if we're waiting for an answer
+    if (pc.peerConnection.signalingState !== 'have-local-offer') {
+      console.log('[Meeting] Ignoring answer from', fromUserId, '- signaling state is:', pc.peerConnection.signalingState);
+      return;
+    }
+
     try {
       await pc.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+
+      // Process any queued ICE candidates
+      await this.processPendingIceCandidates(fromUserId);
     } catch (error) {
       console.error('[Meeting] Error handling answer:', error);
     }
@@ -455,13 +554,53 @@ class MeetingService {
 
   private async handleIceCandidate(fromUserId: string, fromSocketId: string, candidate: RTCIceCandidateInit) {
     const pc = this.peerConnections.get(fromUserId);
-    if (!pc) return;
+    if (!pc) {
+      // Queue ICE candidate if peer connection doesn't exist yet
+      if (!this.pendingIceCandidates.has(fromUserId)) {
+        this.pendingIceCandidates.set(fromUserId, []);
+      }
+      this.pendingIceCandidates.get(fromUserId)!.push(candidate);
+      console.log('[Meeting] Queued ICE candidate for', fromUserId);
+      return;
+    }
+
+    // Check if remote description is set
+    if (!pc.peerConnection.remoteDescription) {
+      // Queue the candidate
+      if (!this.pendingIceCandidates.has(fromUserId)) {
+        this.pendingIceCandidates.set(fromUserId, []);
+      }
+      this.pendingIceCandidates.get(fromUserId)!.push(candidate);
+      console.log('[Meeting] Queued ICE candidate for', fromUserId, '- remote description not set');
+      return;
+    }
 
     try {
       await pc.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
     } catch (error) {
       console.error('[Meeting] Error handling ICE candidate:', error);
     }
+  }
+
+  private async processPendingIceCandidates(userId: string) {
+    const pending = this.pendingIceCandidates.get(userId);
+    if (!pending || pending.length === 0) return;
+
+    const pc = this.peerConnections.get(userId);
+    if (!pc || !pc.peerConnection.remoteDescription) return;
+
+    console.log('[Meeting] Processing', pending.length, 'queued ICE candidates for', userId);
+
+    for (const candidate of pending) {
+      try {
+        await pc.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (error) {
+        console.error('[Meeting] Error adding queued ICE candidate:', error);
+      }
+    }
+
+    // Clear the queue
+    this.pendingIceCandidates.delete(userId);
   }
 
   private removePeerConnection(userId: string, socketId: string) {

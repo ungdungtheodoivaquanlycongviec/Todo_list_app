@@ -72,6 +72,33 @@ export default function MeetingView({ config, onClose, title }: MeetingViewProps
       (meetingService as any).setCurrentUserId(user._id);
     }
 
+    // Subscribe to participant updates FIRST (before starting meeting)
+    const unsubscribeParticipants = meetingService.onParticipantUpdate((updatedParticipants) => {
+      if (isMounted) {
+        console.log('[MeetingView] Participants updated:', updatedParticipants.length);
+        setParticipants(updatedParticipants);
+      }
+    });
+
+    // Subscribe to stream updates
+    const unsubscribeStreams = meetingService.onStreamUpdate((userId, stream) => {
+      if (!isMounted) return;
+
+      if (stream) {
+        streamsRef.current.set(userId, stream);
+        const videoElement = remoteVideosRef.current.get(userId);
+        if (videoElement) {
+          videoElement.srcObject = stream;
+        }
+      } else {
+        streamsRef.current.delete(userId);
+        const videoElement = remoteVideosRef.current.get(userId);
+        if (videoElement) {
+          videoElement.srcObject = null;
+        }
+      }
+    });
+
     // Start meeting
     const startMeeting = async () => {
       try {
@@ -91,37 +118,14 @@ export default function MeetingView({ config, onClose, title }: MeetingViewProps
           setAudioEnabled(result.mediaState.audioEnabled);
         }
 
+        // Get initial participants (in case we missed any notifications)
+        setParticipants(result.participants || []);
+
         // Set local stream
         const localStream = meetingService.getLocalStream();
         if (localStream && localVideoRef.current) {
           localVideoRef.current.srcObject = localStream;
         }
-
-        // Subscribe to participant updates
-        const unsubscribeParticipants = meetingService.onParticipantUpdate((updatedParticipants) => {
-          if (isMounted) {
-            setParticipants(updatedParticipants);
-          }
-        });
-
-        // Subscribe to stream updates
-        const unsubscribeStreams = meetingService.onStreamUpdate((userId, stream) => {
-          if (!isMounted) return;
-
-          if (stream) {
-            streamsRef.current.set(userId, stream);
-            const videoElement = remoteVideosRef.current.get(userId);
-            if (videoElement) {
-              videoElement.srcObject = stream;
-            }
-          } else {
-            streamsRef.current.delete(userId);
-            const videoElement = remoteVideosRef.current.get(userId);
-            if (videoElement) {
-              videoElement.srcObject = null;
-            }
-          }
-        });
 
         if (isMounted) {
           setIsConnecting(false);

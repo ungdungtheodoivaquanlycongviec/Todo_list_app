@@ -1423,6 +1423,14 @@ export default function ChatView() {
                     onDelete={() => handleDelete(msg._id)}
                     onReaction={handleReaction}
                     onEditMessage={handleEditMessage}
+                    onJoinCall={(meetingId, callType, groupId, conversationId) => {
+                      setActiveMeeting({
+                        meetingId,
+                        type: callType,
+                        ...(callType === 'group' && groupId ? { groupId } : {}),
+                        ...(callType === 'direct' && conversationId ? { conversationId } : {})
+                      });
+                    }}
                   />
                 ))
               )}
@@ -1685,7 +1693,8 @@ function MessageItem({
   onReply,
   onDelete,
   onReaction,
-  onEditMessage
+  onEditMessage,
+  onJoinCall
 }: {
   message: ChatMessage;
   currentUserId: string;
@@ -1693,6 +1702,7 @@ function MessageItem({
   onDelete: () => void;
   onReaction: (messageId: string, emoji: string) => void;
   onEditMessage: (messageId: string, newContent: string) => void;
+  onJoinCall?: (meetingId: string, callType: 'group' | 'direct', groupId?: string, conversationId?: string) => void;
 }) {
   const { t } = useLanguage();
   const { formatTime } = useRegional();
@@ -1736,6 +1746,77 @@ function MessageItem({
   }, {} as Record<string, typeof message.reactions>) || {};
 
   const commonEmojis = ['👍', '❤️', '😄', '😂', '😮', '😢', '🙏', '🔥', '👏', '💯'];
+
+  // Check if this is a call message
+  if (message.messageType === 'call' && message.callData) {
+    const isActive = message.callData.status === 'active';
+    const duration = message.callData.endedAt && message.callData.startedAt
+      ? Math.round((new Date(message.callData.endedAt).getTime() - new Date(message.callData.startedAt).getTime()) / 1000)
+      : null;
+
+    const formatDuration = (seconds: number) => {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+    };
+
+    return (
+      <div className="flex justify-center my-4">
+        <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 dark:from-blue-500/20 dark:to-purple-500/20 border border-blue-200 dark:border-blue-800 rounded-xl px-6 py-4 max-w-md w-full">
+          <div className="flex items-center gap-4">
+            {/* Call Icon */}
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${isActive
+              ? 'bg-green-500 text-white animate-pulse'
+              : 'bg-gray-400 dark:bg-gray-600 text-white'
+              }`}>
+              <Phone className="w-6 h-6" />
+            </div>
+
+            {/* Call Info */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-gray-900 dark:text-gray-100">
+                  {message.senderId.name}
+                </span>
+                <span className={`text-xs px-2 py-0.5 rounded-full ${isActive
+                  ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                  }`}>
+                  {isActive ? 'Ongoing' : 'Ended'}
+                </span>
+              </div>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                {isActive ? 'started a call' : (
+                  duration ? `Call ended • ${formatDuration(duration)}` : 'Call ended'
+                )}
+              </p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                {formatTime(message.createdAt)}
+              </p>
+            </div>
+
+            {/* Join Button (only for active calls) */}
+            {isActive && onJoinCall && (
+              <button
+                onClick={() => {
+                  onJoinCall(
+                    message.callData!.meetingId,
+                    message.callData!.callType,
+                    message.groupId,
+                    message.conversationId
+                  );
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors font-medium text-sm flex-shrink-0"
+              >
+                <Phone className="w-4 h-4" />
+                Join
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : ''} group`}>

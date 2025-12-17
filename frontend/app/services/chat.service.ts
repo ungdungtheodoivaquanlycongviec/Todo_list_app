@@ -44,6 +44,16 @@ export interface ChatMessage {
   deletedAt?: string;
   createdAt: string;
   updatedAt: string;
+  // Call message fields
+  messageType?: 'text' | 'call';
+  callData?: {
+    meetingId: string;
+    callType: 'group' | 'direct';
+    status: 'active' | 'ended';
+    startedAt?: string;
+    endedAt?: string;
+    participants?: string[];
+  };
 }
 
 export interface MessagesResponse {
