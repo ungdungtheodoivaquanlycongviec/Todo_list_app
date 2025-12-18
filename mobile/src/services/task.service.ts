@@ -1,814 +1,411 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import { Task } from '../types/task.types';
 import { authService } from './auth.service';
-import { notificationService } from './notification.service';
-// 💡 ĐÃ SỬA: Thay thế API_BASE_URL bằng API_URL
-import { API_URL } from '../config/api.config'; 
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// import { notificationService } from './notification.service'; 
+import { API_URL } from '../config/api.config';
 
-// Helper để normalize response từ backend
+// ----------------------------------------------------------------------
+// 1. HELPERS
+// ----------------------------------------------------------------------
+
 const normalizeTaskResponse = (data: any): Task => {
-  // Backend có thể trả về nhiều dạng:
-  // 1. { data: { task: {...} } }
-  // 2. { task: {...} }
-  // 3. Trực tiếp object task
-
-  if (data.data?.task) {
-    return data.data.task;
-  }
-  if (data.task) {
-    return data.task;
-  }
-  if (data.data && !data.task) {
-    return data.data;
-  }
-  return data;
+  if (!data) return data;
+  if (data.data?.task) return data.data.task;
+  if (data.task) return data.task;
+  if (data.data && !data.task) return data.data;
+  return data;
 };
 
-// Định nghĩa interface cho API response
+const getHeaders = async (isMultipart = false) => {
+  const token = await authService.getAuthToken();
+  const headers: any = {};
+  
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  
+  if (!isMultipart) {
+    headers['Content-Type'] = 'application/json';
+  }
+  
+  return headers;
+};
+
+const handleResponse = async (response: Response, actionName: string) => {
+  if (!response.ok) {
+    if (response.status === 401) {
+      await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
+      throw new Error('Authentication failed. Please login again.');
+    }
+
+    if (response.status === 403) {
+       throw new Error('You must join or create a group to manage tasks');
+    }
+
+    const errorText = await response.text();
+    console.error(`[TaskService] ${actionName} Error (${response.status}):`, errorText);
+    
+    let errorMessage = `Failed to ${actionName}: ${response.status}`;
+    try {
+      const errorData = JSON.parse(errorText);
+      errorMessage = errorData.message || errorMessage;
+    } catch {
+      errorMessage = errorText || errorMessage;
+    }
+    throw new Error(errorMessage);
+  }
+  
+  if (response.status === 204) return null;
+
+  return response.json();
+};
+
+// ----------------------------------------------------------------------
+// 2. MAIN SERVICE
+// ----------------------------------------------------------------------
+
 interface TasksResponse {
-  tasks: Task[];
-  pagination: any;
+  tasks: Task[];
+  pagination: any;
 }
 
 export const taskService = {
-  // Tạo task mới
-  createTask: async (taskData: any): Promise<Task> => {
-    const token = await authService.getAuthToken(); // 💡 ĐÃ SỬA
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
+  
+  // --- CREATE ---
+  createTask: async (taskData: any): Promise<Task> => {
+    let currentGroupId = null;
+    try {
+      const userStr = await AsyncStorage.getItem('user');
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        currentGroupId = user.currentGroupId;
+      }
+    } catch (e) {
+      console.warn('Error reading user from storage', e);
+    }
 
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    } else {
-      console.warn('No authentication token found');
-    }
+    if (currentGroupId && !taskData.groupId) {
+      taskData.groupId = currentGroupId;
+    }
 
-    // Get current group from AsyncStorage if available
-    let currentGroupId = null;
-    try {
-      const userStr = await AsyncStorage.getItem('user');
-      if (userStr) {
-        try {
-          const user = JSON.parse(userStr);
-          currentGroupId = user.currentGroupId;
-        } catch (error) {
-          console.error('Failed to parse user from AsyncStorage:', error);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to get user from AsyncStorage:', error);
-    }
+    const headers = await getHeaders();
+    console.log('[API] Creating task:', taskData);
 
-    // Add groupId to taskData if not already present
-    if (currentGroupId && !taskData.groupId) {
-      taskData.groupId = currentGroupId;
-    }
+    const response = await fetch(`${API_URL}/tasks`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(taskData),
+    });
 
-    console.log('Creating task with data:', taskData);
+    const data = await handleResponse(response, 'create task');
+    const task = normalizeTaskResponse(data);
 
-    // 💡 ĐÃ SỬA URL
-    const response = await fetch(`${API_URL}/tasks`, {
-      method: 'POST',
-      headers,
-      credentials: 'include',
-      body: JSON.stringify(taskData),
-    });
+    // if (task.groupId) notificationService.createNewTaskNotification(...)
 
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
+    return task;
+  },
 
-      const errorText = await response.text();
-      console.error('Error response:', errorText);
-      let errorMessage = `Failed to create task: ${response.status}`;
+  // --- READ ---
+  getAllTasks: async (filters?: any, options?: any): Promise<TasksResponse> => {
+    const headers = await getHeaders();
+    const queryParams = new URLSearchParams();
 
-      try {
-        const errorData = JSON.parse(errorText);
-        errorMessage = errorData.message || errorMessage;
-      } catch {
-        errorMessage = errorText || errorMessage;
-      }
+    if (filters) {
+      Object.keys(filters).forEach(key => {
+        if (filters[key] != null && filters[key] !== '') {
+          queryParams.append(key, filters[key]);
+        }
+      });
+    }
 
-      throw new Error(errorMessage);
-    }
+    if (options) {
+      Object.keys(options).forEach(key => {
+        if (options[key] != null && options[key] !== '') {
+          queryParams.append(key, options[key]);
+        }
+      });
+    }
 
-    const data = await response.json();
-    const task = normalizeTaskResponse(data);
-    
-    // Send notification to group members about new task
-    if (task.groupId) {
-      try {
-        await notificationService.createNewTaskNotification(task.groupId, task.title);
-      } catch (notifErr) {
-        console.warn('Failed to send task notification:', notifErr);
-      }
-    }
-    
-    return task;
-  },
+    const url = `${API_URL}/tasks${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    console.log('[API] Fetching tasks:', url);
 
-  // Lấy tất cả tasks
-  getAllTasks: async (filters?: any, options?: any): Promise<TasksResponse> => {
-    const token = await authService.getAuthToken(); // 💡 ĐÃ SỬA
-    const headers: HeadersInit = {};
+    const response = await fetch(url, { headers });
+    const responseData = await handleResponse(response, 'fetch tasks');
 
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    } else {
-      console.warn('No authentication token found for fetching tasks');
-    }
+    let tasks: Task[] = [];
+    let pagination = {};
 
-    const queryParams = new URLSearchParams();
+    if (Array.isArray(responseData.tasks)) {
+      tasks = responseData.tasks;
+      pagination = responseData.pagination || {};
+    } else if (Array.isArray(responseData.data?.tasks)) {
+      tasks = responseData.data.tasks;
+      pagination = responseData.data.pagination || {};
+    } else if (Array.isArray(responseData.data)) {
+      tasks = responseData.data;
+      pagination = responseData.pagination || {};
+    } else if (Array.isArray(responseData)) {
+      tasks = responseData;
+      pagination = { total: responseData.length, page: 1, limit: responseData.length, totalPages: 1 };
+    }
 
-    if (filters) {
-      Object.keys(filters).forEach(key => {
-        if (filters[key] !== undefined && filters[key] !== null && filters[key] !== '') {
-          queryParams.append(key, filters[key]);
-        }
-      });
-    }
+    return { tasks: tasks || [], pagination };
+  },
 
-    if (options) {
-      Object.keys(options).forEach(key => {
-        if (options[key] !== undefined && options[key] !== null && options[key] !== '') {
-          queryParams.append(key, options[key]);
-        }
-      });
-    }
+  getTaskById: async (id: string): Promise<Task> => {
+    const headers = await getHeaders();
+    const response = await fetch(`${API_URL}/tasks/${id}`, { headers });
+    const data = await handleResponse(response, 'fetch task by id');
+    return normalizeTaskResponse(data);
+  },
 
-    // 💡 ĐÃ SỬA URL
-    const url = `${API_URL}/tasks${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+  // --- UPDATE ---
+  updateTask: async (id: string, updateData: any): Promise<Task> => {
+    const headers = await getHeaders();
+    const { _id, __v, createdAt, updatedAt, createdBy, ...cleanData } = updateData;
 
-    console.log('Fetching tasks from:', url);
+    console.log(`[API] Updating task ${id}:`, cleanData);
 
-    const response = await fetch(url, {
-      headers,
-      credentials: 'include',
-    });
+    const response = await fetch(`${API_URL}/tasks/${id}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(cleanData),
+    });
 
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
+    if (response.status === 304) {
+      return taskService.getTaskById(id);
+    }
 
-      if (response.status === 403) {
-        const errorText = await response.text();
-        let errorMessage = 'You must join or create a group to manage tasks';
-        try {
-          const errorData = JSON.parse(errorText);
-          errorMessage = errorData.message || errorMessage;
-        } catch {
-          // Use default message if parsing fails
-        }
-        throw new Error(errorMessage);
-      }
+    const data = await handleResponse(response, 'update task');
+    return normalizeTaskResponse(data);
+  },
 
-      const errorText = await response.text();
-      console.error('Error response:', errorText);
-      throw new Error(`Failed to fetch tasks: ${response.status}`);
-    }
+  // --- DELETE ---
+  deleteTask: async (id: string): Promise<void> => {
+    const headers = await getHeaders();
+    const response = await fetch(`${API_URL}/tasks/${id}`, {
+      method: 'DELETE',
+      headers,
+    });
+    await handleResponse(response, 'delete task');
+  },
 
-    const responseData = await response.json();
-    console.log('Raw API response for getAllTasks:', responseData);
+  // --- ACTIONS (SỬA LỖI 404: Tự xử lý logic ở Client) ---
+  
+  // 1. Duplicate (Tự lấy data cũ -> Tạo mới)
+  duplicateTask: async (taskId: string): Promise<Task> => {
+    try {
+      console.log('[Service] Duplicating task manually:', taskId);
+      
+      // B1: Lấy chi tiết task gốc
+      const originalTask = await taskService.getTaskById(taskId);
+      
+      // B2: Chuẩn bị dữ liệu cho task mới
+      const newTaskData = {
+        title: `${originalTask.title} (Copy)`,
+        description: originalTask.description,
+        category: originalTask.category,
+        priority: originalTask.priority,
+        estimatedTime: originalTask.estimatedTime,
+        tags: originalTask.tags || [],
+        dueDate: originalTask.dueDate,
+        folderId: originalTask.folderId, 
+        status: 'todo', // Reset về todo
+        
+        // Copy mảng người được giao (chỉ lấy ID)
+        assignedTo: originalTask.assignedTo?.map((a: any) => ({
+          userId: typeof a.userId === 'object' ? a.userId._id : a.userId
+        })) || []
+      };
 
-    // Normalize response structure
-    let tasks: Task[] = [];
-    let pagination = {};
+      // B3: Gọi hàm tạo mới
+      return await taskService.createTask(newTaskData);
 
-    if (Array.isArray(responseData.tasks)) {
-      tasks = responseData.tasks;
-      pagination = responseData.pagination || {};
-    } else if (Array.isArray(responseData.data?.tasks)) {
-      tasks = responseData.data.tasks;
-      pagination = responseData.data.pagination || {};
-    } else if (Array.isArray(responseData.data)) {
-      tasks = responseData.data;
-      pagination = responseData.pagination || {};
-    } else if (Array.isArray(responseData)) {
-      tasks = responseData;
-      pagination = { total: responseData.length, page: 1, limit: responseData.length, totalPages: 1 };
-    }
+    } catch (error) {
+      console.error('Manual duplicate failed:', error);
+      throw error;
+    }
+  },
 
-    return {
-      tasks: tasks || [],
-      pagination
-    };
-  },
+  // 2. Move Task (Dùng updateTask thay vì gọi API /move)
+  moveTaskToFolder: async (taskId: string, folderId: string): Promise<Task> => {
+    console.log('[Service] Moving task via update:', taskId, 'to folder:', folderId);
+    return await taskService.updateTask(taskId, { folderId: folderId });
+  },
 
-  // Lấy task theo ID
-  getTaskById: async (id: string): Promise<Task> => {
-    const token = await authService.getAuthToken(); // 💡 ĐÃ SỬA
-    const headers: HeadersInit = {};
+  // --- COMMENTS ---
+  addComment: async (taskId: string, content: string): Promise<Task> => {
+    const headers = await getHeaders();
+    const response = await fetch(`${API_URL}/tasks/${taskId}/comments`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ content }),
+    });
+    const data = await handleResponse(response, 'add comment');
+    return normalizeTaskResponse(data);
+  },
 
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
+  updateComment: async (taskId: string, commentId: string, userId: string, content: string): Promise<any> => {
+    const headers = await getHeaders();
+    const response = await fetch(`${API_URL}/tasks/${taskId}/comments/${commentId}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ content }),
+    });
+    return await handleResponse(response, 'update comment');
+  },
 
-    console.log('Fetching task by ID:', id);
+  deleteComment: async (taskId: string, commentId: string, userId: string): Promise<any> => {
+    const headers = await getHeaders();
+    const response = await fetch(`${API_URL}/tasks/${taskId}/comments/${commentId}`, {
+      method: 'DELETE',
+      headers,
+    });
+    return await handleResponse(response, 'delete comment');
+  },
 
-    // 💡 ĐÃ SỬA URL
-    const response = await fetch(`${API_URL}/tasks/${id}`, {
-      headers,
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
-
-      const errorText = await response.text();
-      console.error('Error response:', errorText);
-      throw new Error(`Failed to fetch task: ${response.status}`);
-    }
-
-    const data = await response.json();
-    console.log('Raw task data from API:', data);
-
-    // Normalize response
-    const task = normalizeTaskResponse(data);
-    console.log('Normalized task:', task);
-
-    return task;
-  },
-
-  // Update task
-  updateTask: async (id: string, updateData: any): Promise<Task> => {
-    const token = await authService.getAuthToken(); // 💡 ĐÃ SỬA
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`
-    }
-
-    // QUAN TRỌNG: Đảm bảo không gửi _id trong body
-    const { _id, __v, createdAt, updatedAt, createdBy, ...cleanData } = updateData;
-
-    console.log('=== UPDATE TASK DEBUG ===');
-    console.log('Task ID:', id);
-    console.log('Original data:', updateData);
-    console.log('Clean data to send:', cleanData);
-
-    // 💡 ĐÃ SỬA URL
-    const response = await fetch(`${API_URL}/tasks/${id}`, {
-      method: 'PUT',
-      headers,
-      credentials: 'include',
-      body: JSON.stringify(cleanData),
-    });
-
-    console.log('Update response status:', response.status);
-
-    if (!response.ok) {
-      if (response.status === 304) {
-        console.log('No changes detected (304)');
-        return taskService.getTaskById(id);
-      }
-
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
-
-      const errorText = await response.text();
-      console.error('Error response:', errorText);
-      throw new Error(`Failed to update task: ${response.status}`);
-    }
-
-    const data = await response.json();
-    console.log('Update response data:', data);
-
-    const task = normalizeTaskResponse(data);
-    console.log('Normalized updated task:', task);
-
-    return task;
-  },
-
-  // Delete task
-  deleteTask: async (id: string): Promise<void> => {
-    const token = await authService.getAuthToken(); // 💡 ĐÃ SỬA
-    const headers: HeadersInit = {};
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    // 💡 ĐÃ SỬA URL
-    const response = await fetch(`${API_URL}/tasks/${id}`, {
-      method: 'DELETE',
-      headers,
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
-
-      const errorText = await response.text();
-      console.error('Error response:', errorText);
-      throw new Error(`Failed to delete task: ${response.status}`);
-    }
-  },
-
-  // Add comment
-  addComment: async (taskId: string, content: string): Promise<Task> => {
-    const token = await authService.getAuthToken(); // 💡 ĐÃ SỬA
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    // 💡 ĐÃ SỬA URL
-    const response = await fetch(`${API_URL}/tasks/${taskId}/comments`, {
-      method: 'POST',
-      headers,
-      credentials: 'include',
-      body: JSON.stringify({ content }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to add comment: ${errorText}`);
-    }
-
-    const data = await response.json();
-    return normalizeTaskResponse(data);
-  },
-
-  // Upload attachment
-  uploadAttachment: async (taskId: string, file: File): Promise<Task> => {
-    // ⚠️ LƯU Ý: Kiểu dữ liệu 'File' là của Web API. Cần sửa cho RN nếu bạn upload file từ thiết bị di động.
-    // Nếu sử dụng thư viện như 'react-native-image-picker', 'file' sẽ là { uri: string, name: string, type: string }
+  // --- FILE UPLOAD ---
+  
+  addCommentWithFile: async (taskId: string, content: string, file: any): Promise<Task> => {
+    const headers = await getHeaders(true); // true = Multipart header
+    const formData = new FormData();
     
-    const token = await authService.getAuthToken(); // 💡 ĐÃ SỬA
-    const formData = new FormData();
-    // formData.append('file', file); // Dòng này có thể sai trong RN, cần được thay thế
-
-    // Thay thế file Web API bằng định dạng RN (DỰ KIẾN - Cần kiểm tra lại kiểu RNFile)
-    // formData.append('file', {
-    //   uri: file.uri,
-    //   name: file.name,
-    //   type: file.type,
-    // } as any); 
+    formData.append('content', content);
     
-    // Giữ nguyên theo code gốc nhưng sửa URL
-    formData.append('file', file as any); // Giữ 'as any' để tránh lỗi TS
-
-    const headers: HeadersInit = {};
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
+    // Cấu trúc file bắt buộc cho React Native
+    const fileToUpload = {
+      uri: Platform.OS === 'ios' ? file.uri.replace('file://', '') : file.uri,
+      type: file.type || 'image/jpeg',
+      name: file.name || 'upload.jpg',
+    };
     
-    // KHÔNG cần set Content-Type cho FormData, fetch/axios tự set với boundary
-
-    // 💡 ĐÃ SỬA URL
-    const response = await fetch(`${API_URL}/tasks/${taskId}/attachments`, {
-      method: 'POST',
-      headers,
-      credentials: 'include',
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to upload attachment: ${errorText}`);
-    }
-
-    const data = await response.json();
-    return normalizeTaskResponse(data);
-  },
-
-  getKanbanView: async (filters?: any): Promise<any> => {
-    const token = await authService.getAuthToken(); // 💡 ĐÃ SỬA
-    const headers: HeadersInit = {};
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    const queryParams = new URLSearchParams();
-
-    if (filters) {
-      Object.keys(filters).forEach(key => {
-        if (filters[key] !== undefined && filters[key] !== null && filters[key] !== '') {
-          queryParams.append(key, filters[key]);
-        }
-      });
-    }
-
-    // 💡 ĐÃ SỬA URL
-    const url = `${API_URL}/tasks/kanban${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-
-    console.log('Fetching kanban view from:', url);
-
-    const response = await fetch(url, {
-      headers,
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
-
-      if (response.status === 403) {
-        const errorText = await response.text();
-        let errorMessage = 'You must join or create a group to manage tasks';
-        try {
-          const errorData = JSON.parse(errorText);
-          errorMessage = errorData.message || errorMessage;
-        } catch {
-          // Use default message if parsing fails
-        }
-        throw new Error(errorMessage);
-      }
-
-      const errorText = await response.text();
-      console.error('Error response:', errorText);
-      throw new Error(`Failed to fetch kanban view: ${response.status}`);
-    }
-
-    const responseData = await response.json();
-    console.log('Raw kanban API response:', responseData);
-
-    return responseData.data || responseData;
-  },
-
-  // Get calendar view
-  getCalendarView: async (year: number, month: number): Promise<any> => {
-    const token = await authService.getAuthToken(); // 💡 ĐÃ SỬA
-    const headers: HeadersInit = {};
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    // 💡 ĐÃ SỬA URL
-    const url = `${API_URL}/tasks/calendar?year=${year}&month=${month}`;
-
-    console.log('Fetching calendar view from:', url);
-
-    const response = await fetch(url, {
-      headers,
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
-
-      if (response.status === 403) {
-        const errorText = await response.text();
-        let errorMessage = 'You must join or create a group to manage tasks';
-        try {
-          const errorData = JSON.parse(errorText);
-          errorMessage = errorData.message || errorMessage;
-        } catch {
-          // Use default message if parsing fails
-        }
-        throw new Error(errorMessage);
-      }
-
-      const errorText = await response.text();
-      console.error('Error response:', errorText);
-      throw new Error(`Failed to fetch calendar view: ${response.status}`);
-    }
-
-    const responseData = await response.json();
-    console.log('Raw calendar API response:', responseData);
-
-    return responseData.data || responseData;
-  },
-
-  // Update comment
-  updateComment: async (taskId: string, commentId: string, userId: string, content: string): Promise<any> => {
-    const token = await authService.getAuthToken(); // 💡 ĐÃ SỬA
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    console.log('Updating comment:', { taskId, commentId, content });
-
-    // 💡 ĐÃ SỬA URL
-    const response = await fetch(`${API_URL}/tasks/${taskId}/comments/${commentId}`, {
-      method: 'PUT',
-      headers,
-      credentials: 'include',
-      body: JSON.stringify({ content }),
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
-
-      const errorText = await response.text();
-      console.error('Error response:', errorText);
-      throw new Error(`Failed to update comment: ${response.status}`);
-    }
-
-    const data = await response.json();
-    console.log('Update comment response:', data);
-    return data;
-  },
-
-  // Delete comment
-  deleteComment: async (taskId: string, commentId: string, userId: string): Promise<any> => {
-    const token = await authService.getAuthToken(); // 💡 ĐÃ SỬA
-    const headers: HeadersInit = {};
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    console.log('Deleting comment:', { taskId, commentId });
-
-    // 💡 ĐÃ SỬA URL
-    const response = await fetch(`${API_URL}/tasks/${taskId}/comments/${commentId}`, {
-      method: 'DELETE',
-      headers,
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
-
-      const errorText = await response.text();
-      console.error('Error response:', errorText);
-      throw new Error(`Failed to delete comment: ${response.status}`);
-    }
-
-    const data = await response.json();
-    console.log('Delete comment response:', data);
-    return data;
-  },
-
-  // NEW: Assign users to task
-  assignUsersToTask: async (taskId: string, userIds: string[]): Promise<any> => {
-    const token = await authService.getAuthToken(); // 💡 ĐÃ SỬA
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    console.log('Assigning users to task:', { taskId, userIds });
-
-    // 💡 ĐÃ SỬA URL
-    const response = await fetch(`${API_URL}/tasks/${taskId}/assign`, {
-      method: 'POST',
-      headers,
-      credentials: 'include',
-      body: JSON.stringify({ userIds }),
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
-
-      const errorText = await response.text();
-      console.error('Error response:', errorText);
-      throw new Error(`Failed to assign users: ${response.status}`);
-    }
-
-    const data = await response.json();
-    console.log('Assign users response:', data);
-    return data;
-  },
-
-  // NEW: Unassign user from task
-  unassignUserFromTask: async (taskId: string, userId: string): Promise<any> => {
-    const token = await authService.getAuthToken(); // 💡 ĐÃ SỬA
-    const headers: HeadersInit = {};
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    console.log('Unassigning user from task:', { taskId, userId });
-
-    // 💡 ĐÃ SỬA URL
-    const response = await fetch(`${API_URL}/tasks/${taskId}/unassign/${userId}`, {
-      method: 'DELETE',
-      headers,
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
-
-      const errorText = await response.text();
-      console.error('Error response:', errorText);
-      throw new Error(`Failed to unassign user: ${response.status}`);
-    }
-
-    const data = await response.json();
-    console.log('Unassign user response:', data);
-    return data;
-  },
-
-  // NEW: Get task assignees
-  getTaskAssignees: async (taskId: string): Promise<any> => {
-    const token = await authService.getAuthToken(); // 💡 ĐÃ SỬA
-    const headers: HeadersInit = {};
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    console.log('Getting task assignees:', taskId);
-
-    // 💡 ĐÃ SỬA URL
-    const response = await fetch(`${API_URL}/tasks/${taskId}/assignees`, {
-      headers,
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
-
-      const errorText = await response.text();
-      console.error('Error response:', errorText);
-      throw new Error(`Failed to get task assignees: ${response.status}`);
-    }
-
-    const data = await response.json();
-    console.log('Task assignees response:', data);
-    return data;
-  },
-
-  // NEW: Start timer for task
-  startTimer: async (taskId: string): Promise<Task> => {
-    const token = await authService.getAuthToken(); // 💡 ĐÃ SỬA
-
-    const headers: HeadersInit = {};
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    console.log('Starting timer for task:', taskId);
-
-    // 💡 ĐÃ SỬA URL
-    const response = await fetch(`${API_URL}/tasks/${taskId}/start-timer`, {
-      method: 'POST',
-      headers,
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
-
-      const errorText = await response.text();
-      console.error('Error response:', errorText);
-      throw new Error(`Failed to start timer: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return normalizeTaskResponse(data);
-  },
-
-  // NEW: Stop timer for task
-  stopTimer: async (taskId: string): Promise<Task> => {
-    const token = await authService.getAuthToken(); // 💡 ĐÃ SỬA
-
-    const headers: HeadersInit = {};
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    console.log('Stopping timer for task:', taskId);
-
-    // 💡 ĐÃ SỬA URL
-    const response = await fetch(`${API_URL}/tasks/${taskId}/stop-timer`, {
-      method: 'POST',
-      headers,
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
-
-      const errorText = await response.text();
-      console.error('Error response:', errorText);
-      throw new Error(`Failed to stop timer: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return normalizeTaskResponse(data);
-  },
-
-  // NEW: Set custom status for task
-  setCustomStatus: async (taskId: string, name: string, color: string): Promise<Task> => {
-    const token = await authService.getAuthToken(); // 💡 ĐÃ SỬA
-
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    console.log('Setting custom status for task:', { taskId, name, color });
-
-    // 💡 ĐÃ SỬA URL
-    const response = await fetch(`${API_URL}/tasks/${taskId}/custom-status`, {
-      method: 'POST',
-      headers,
-      credentials: 'include',
-      body: JSON.stringify({ name, color }),
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
-
-      const errorText = await response.text();
-      console.error('Error response:', errorText);
-      throw new Error(`Failed to set custom status: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return normalizeTaskResponse(data);
-  },
-
-  // NEW: Set task repetition settings
-  setTaskRepetition: async (taskId: string, repetitionSettings: any): Promise<Task> => {
-    const token = await authService.getAuthToken(); // 💡 ĐÃ SỬA
-
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    console.log('Setting task repetition for task:', { taskId, repetitionSettings });
-
-    // 💡 ĐÃ SỬA URL
-    const response = await fetch(`${API_URL}/tasks/${taskId}/repeat`, {
-      method: 'POST',
-      headers,
-      credentials: 'include',
-      body: JSON.stringify(repetitionSettings),
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
-
-      const errorText = await response.text();
-      console.error('Error response:', errorText);
-      throw new Error(`Failed to set task repetition: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return normalizeTaskResponse(data);
-  }
+    formData.append('file', fileToUpload as any);
+
+    const response = await fetch(`${API_URL}/tasks/${taskId}/comments/with-file`, {
+      method: 'POST',
+      headers, 
+      body: formData,
+    });
+
+    const data = await handleResponse(response, 'add comment with file');
+    return normalizeTaskResponse(data);
+  },
+
+  uploadAttachment: async (taskId: string, file: any): Promise<Task> => {
+    const headers = await getHeaders(true);
+    const formData = new FormData();
+
+    const fileToUpload = {
+      uri: Platform.OS === 'ios' ? file.uri.replace('file://', '') : file.uri,
+      type: file.type || 'image/jpeg',
+      name: file.name || 'upload.jpg',
+    };
+
+    formData.append('file', fileToUpload as any);
+
+    const response = await fetch(`${API_URL}/tasks/${taskId}/attachments`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    const data = await handleResponse(response, 'upload attachment');
+    return normalizeTaskResponse(data);
+  },
+
+  // --- VIEWS ---
+  getKanbanView: async (filters?: any): Promise<any> => {
+    const headers = await getHeaders();
+    const queryParams = new URLSearchParams();
+    if (filters) {
+      Object.keys(filters).forEach(key => {
+        if (filters[key]) queryParams.append(key, filters[key]);
+      });
+    }
+    
+    const response = await fetch(`${API_URL}/tasks/kanban?${queryParams.toString()}`, { headers });
+    const data = await handleResponse(response, 'fetch kanban');
+    return data.data || data;
+  },
+
+  getCalendarView: async (year: number, month: number, folderId?: string): Promise<any> => {
+    const headers = await getHeaders();
+    const params = new URLSearchParams({ year: String(year), month: String(month) });
+    if (folderId) params.append('folderId', folderId);
+
+    const response = await fetch(`${API_URL}/tasks/calendar?${params.toString()}`, { headers });
+    const data = await handleResponse(response, 'fetch calendar');
+    return data.data || data;
+  },
+
+  // --- ASSIGNMENT ---
+  assignUsersToTask: async (taskId: string, userIds: string[]): Promise<any> => {
+    const headers = await getHeaders();
+    const response = await fetch(`${API_URL}/tasks/${taskId}/assign`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ userIds }),
+    });
+    return await handleResponse(response, 'assign users');
+  },
+
+  unassignUserFromTask: async (taskId: string, userId: string): Promise<any> => {
+    const headers = await getHeaders();
+    const response = await fetch(`${API_URL}/tasks/${taskId}/unassign/${userId}`, {
+      method: 'DELETE',
+      headers,
+    });
+    return await handleResponse(response, 'unassign user');
+  },
+
+  getTaskAssignees: async (taskId: string): Promise<any> => {
+    const headers = await getHeaders();
+    const response = await fetch(`${API_URL}/tasks/${taskId}/assignees`, { headers });
+    return await handleResponse(response, 'get assignees');
+  },
+
+  // --- TIMER ---
+  startTimer: async (taskId: string): Promise<Task> => {
+    const headers = await getHeaders();
+    const response = await fetch(`${API_URL}/tasks/${taskId}/start-timer`, {
+      method: 'POST',
+      headers,
+    });
+    const data = await handleResponse(response, 'start timer');
+    return normalizeTaskResponse(data);
+  },
+
+  stopTimer: async (taskId: string): Promise<Task> => {
+    const headers = await getHeaders();
+    const response = await fetch(`${API_URL}/tasks/${taskId}/stop-timer`, {
+      method: 'POST',
+      headers,
+    });
+    const data = await handleResponse(response, 'stop timer');
+    return normalizeTaskResponse(data);
+  },
+
+  // --- SETTINGS ---
+  setCustomStatus: async (taskId: string, name: string, color: string): Promise<Task> => {
+    const headers = await getHeaders();
+    const response = await fetch(`${API_URL}/tasks/${taskId}/custom-status`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ name, color }),
+    });
+    const data = await handleResponse(response, 'set custom status');
+    return normalizeTaskResponse(data);
+  },
+
+  setTaskRepetition: async (taskId: string, repetitionSettings: any): Promise<Task> => {
+    const headers = await getHeaders();
+    const response = await fetch(`${API_URL}/tasks/${taskId}/repeat`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(repetitionSettings),
+    });
+    const data = await handleResponse(response, 'set task repetition');
+    return normalizeTaskResponse(data);
+  }
 };

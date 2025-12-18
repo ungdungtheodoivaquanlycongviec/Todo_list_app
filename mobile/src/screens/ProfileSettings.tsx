@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,15 +13,22 @@ import {
   Modal,
   ActivityIndicator,
   Switch,
-  TouchableWithoutFeedback,
+  Platform,
+  Dimensions,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import Feather from 'react-native-vector-icons/Feather';
+import { launchImageLibrary, Asset } from 'react-native-image-picker';
 
+// Import Contexts & Services
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import { userService } from '../services/user.service';
-import { User } from '../types/auth.types';
+import { User, Language } from '../types/auth.types';
 import { useTheme } from '../context/ThemeContext';
+import apiClient from '../api/apiClient';
+
+// Nếu bạn chưa có notification.service cho mobile, hãy tạo tạm hoặc comment lại logic gọi nó
+// import { notificationService } from '../services/notification.service';
 
 interface ProfileSettingsProps {
   visible: boolean;
@@ -30,169 +37,228 @@ interface ProfileSettingsProps {
 
 type ThemeType = 'light' | 'dark' | 'auto';
 
+// --- MAIN COMPONENT ---
 export default function ProfileSettings({ visible, onClose }: ProfileSettingsProps) {
   const { user, updateUserTheme } = useAuth();
   const { isDark } = useTheme();
+  const { t } = useLanguage();
+  
+  // State quản lý Tab
   const [activeTab, setActiveTab] = useState<'profile' | 'preferences' | 'security'>('profile');
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
 
   if (!user) return null;
 
+  // Danh sách Tabs (Khớp Web)
   const tabs = [
-    { id: 'profile', label: 'My Profile', icon: 'person' },
-    { id: 'preferences', label: 'Preferences', icon: 'settings' },
-    { id: 'security', label: 'Security', icon: 'shield-checkmark' },
+    { id: 'profile', label: t('settings.profile') || 'My Profile', icon: 'person' },
+    { id: 'preferences', label: t('settings.preferences') || 'Preferences', icon: 'settings' },
+    { id: 'security', label: t('settings.security') || 'Security', icon: 'shield-checkmark' },
   ];
 
   return (
     <Modal
       visible={visible}
       animationType="slide"
-      presentationStyle="pageSheet"
+      presentationStyle="pageSheet" // Style kéo lên giống iOS chuẩn
       onRequestClose={onClose}
     >
       <SafeAreaView style={[styles.container, isDark && styles.darkContainer]}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
         
-        {/* Header */}
+        {/* HEADER: Nút Back + Title + Description */}
         <View style={[styles.header, isDark && styles.darkHeader]}>
-          <View style={styles.headerContent}>
+          <View style={styles.headerTopRow}>
             <TouchableOpacity onPress={onClose} style={styles.backButton}>
               <Ionicons name="arrow-back" size={24} color={isDark ? '#d1d5db' : '#374151'} />
             </TouchableOpacity>
-            <View style={styles.headerText}>
+            <View style={styles.headerTitles}>
               <Text style={[styles.headerTitle, isDark && styles.darkText]}>
-                Account Settings
+                {t('accountSettings.title') || 'Account Settings'}
               </Text>
               <Text style={[styles.headerSubtitle, isDark && styles.darkSubtext]}>
-                Manage your profile, preferences, and security
+                {t('accountSettings.description') || 'Manage your profile, preferences, and security'}
               </Text>
             </View>
           </View>
 
-          {/* Tab Navigation */}
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            style={styles.tabContainer}
-          >
-            <View style={[styles.tabs, isDark && styles.darkTabs]}>
-              {tabs.map((tab) => (
-                <TouchableOpacity
-                  key={tab.id}
-                  onPress={() => setActiveTab(tab.id as any)}
-                  style={[
-                    styles.tab,
-                    activeTab === tab.id && styles.activeTab,
-                    isDark && styles.darkTab,
-                    activeTab === tab.id && isDark && styles.activeDarkTab,
-                  ]}
-                >
-                  <Ionicons 
-                    name={tab.icon as any} 
-                    size={16} 
-                    color={
-                      activeTab === tab.id 
-                        ? (isDark ? '#ffffff' : '#111827')
-                        : (isDark ? '#9ca3af' : '#6b7280')
-                    } 
-                  />
-                  <Text style={[
-                    styles.tabText,
-                    activeTab === tab.id && styles.activeTabText,
-                    isDark && styles.darkTabText,
-                    activeTab === tab.id && isDark && styles.activeDarkTabText,
-                  ]}>
-                    {tab.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
+          {/* TAB NAVIGATION: Scroll ngang nếu màn hình nhỏ */}
+          <View style={styles.tabContainer}>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tabContentContainer}
+            >
+              <View style={[styles.tabsWrapper, isDark && styles.darkTabsWrapper]}>
+                {tabs.map((tab) => {
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <TouchableOpacity
+                      key={tab.id}
+                      onPress={() => setActiveTab(tab.id as any)}
+                      style={[
+                        styles.tabItem,
+                        isActive && styles.activeTabItem,
+                        isActive && isDark && styles.activeDarkTabItem
+                      ]}
+                    >
+                      <Ionicons 
+                        name={tab.icon as any} 
+                        size={16} 
+                        color={
+                          isActive 
+                            ? (isDark ? '#ffffff' : '#111827') // Active Text Color
+                            : (isDark ? '#9ca3af' : '#6b7280') // Inactive Text Color
+                        } 
+                      />
+                      <Text style={[
+                        styles.tabText,
+                        isActive && styles.activeTabText,
+                        isDark && styles.darkTabText,
+                        isActive && isDark && styles.activeDarkTabText,
+                      ]}>
+                        {tab.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          </View>
         </View>
 
-        {/* Main Content */}
-        <ScrollView style={styles.content}>
-          <View style={styles.contentInner}>
+        {/* CONTENT AREA: Render Tab tương ứng */}
+        <View style={[styles.contentArea, isDark && styles.darkContentArea]}>
+          <ScrollView contentContainerStyle={styles.scrollContent}>
             {activeTab === 'profile' && (
-              <MyProfileTab 
-                user={user}
-                loading={loading}
-                setLoading={setLoading}
-                message={message}
-                setMessage={setMessage}
-                isDark={isDark}
-              />
+              <MyProfileTab user={user} isDark={isDark} t={t} />
             )}
             {activeTab === 'preferences' && (
               <PreferencesTab 
-                user={user}
-                updateUserTheme={updateUserTheme}
-                loading={loading}
-                setLoading={setLoading}
-                message={message}
-                setMessage={setMessage}
-                isDark={isDark}
+                user={user} 
+                updateUserTheme={updateUserTheme} 
+                isDark={isDark} 
+                t={t} 
               />
             )}
             {activeTab === 'security' && (
-              <SecurityTab 
-                loading={loading}
-                setLoading={setLoading}
-                message={message}
-                setMessage={setMessage}
-                isDark={isDark}
-              />
+              <SecurityTab isDark={isDark} t={t} />
             )}
-          </View>
-        </ScrollView>
+          </ScrollView>
+        </View>
       </SafeAreaView>
     </Modal>
   );
 }
 
-// MyProfileTab Component
-function MyProfileTab({ user, loading, setLoading, message, setMessage, isDark }: any) {
+// ============================================================================
+// 1. TAB PROFILE: Avatar Upload, Edit Info, Delete Account
+// ============================================================================
+function MyProfileTab({ user, isDark, t }: any) {
   const { updateUser } = useAuth();
+  
+  // States
   const [name, setName] = useState(user.name);
-  const [email, setEmail] = useState(user.email);
+  const [email] = useState(user.email); // Email thường không cho sửa trực tiếp
   const [avatar, setAvatar] = useState(user.avatar || '');
   const [isEditing, setIsEditing] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [messageType, setMessageType] = useState<'success' | 'error'>('success');
 
-  const handleSave = async () => {
-    setLoading(true);
-    setMessage('');
+  // Helper hiển thị thông báo tự tắt
+  const showMsg = (msg: string, type: 'success' | 'error' = 'success') => {
+    setMessage(msg);
+    setMessageType(type);
+    setTimeout(() => setMessage(''), 3000); // Tự tắt sau 3s giống Web
+  };
+
+  // --- LOGIC CHỌN & UPLOAD ẢNH (react-native-image-picker) ---
+  const pickImage = async () => {
     try {
-      const updatedUser = await userService.updateProfile({ name, avatar });
-      setMessage('Profile updated successfully');
-      setIsEditing(false);
-      await updateUser({ name, avatar: updatedUser.avatar });
+      const result = await launchImageLibrary({
+        mediaType: 'photo',
+        quality: 0.8, // Chất lượng tốt hơn chút
+        selectionLimit: 1,
+      });
+
+      if (result.didCancel || result.errorCode) return;
+
+      if (result.assets && result.assets.length > 0) {
+        handleUploadAvatar(result.assets[0]);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Cannot access gallery');
+    }
+  };
+
+  const handleUploadAvatar = async (asset: Asset) => {
+    setLoading(true);
+    try {
+      const formData = new FormData();
+      const filePayload = {
+        uri: Platform.OS === 'android' ? asset.uri : asset.uri?.replace('file://', ''),
+        type: asset.type || 'image/jpeg',
+        name: asset.fileName || `avatar_${Date.now()}.jpg`,
+      };
+      
+      // @ts-ignore
+      formData.append('file', filePayload);
+
+      // Gọi API Upload
+      const response = await apiClient.post('/users/me/avatar/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      
+      // Lấy URL từ response (cần khớp với backend thực tế)
+      const newAvatarUrl = response.data?.data?.user?.avatar || response.data?.user?.avatar;
+      
+      if (newAvatarUrl) {
+        setAvatar(newAvatarUrl);
+        // Cập nhật cả DB và Context
+        await userService.updateAvatar(newAvatarUrl);
+        await updateUser({ avatar: newAvatarUrl });
+        showMsg(t('profile.updated') || 'Profile picture updated successfully', 'success');
+      }
     } catch (error: any) {
-      setMessage(error.message || 'Error updating profile');
+      console.error("Upload error:", error);
+      showMsg(error.message || 'Failed to upload avatar', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDeleteAccount = async () => {
+  // --- LOGIC LƯU THÔNG TIN ---
+  const handleSave = async () => {
+    setLoading(true);
+    try {
+      await userService.updateProfile({ name });
+      await updateUser({ name }); // Sync Context
+      setIsEditing(false);
+      showMsg(t('profile.updated') || 'Profile updated successfully', 'success');
+    } catch (error: any) {
+      showMsg(error.message || 'Error updating profile', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- LOGIC XÓA TÀI KHOẢN ---
+  const handleDeleteAccount = () => {
     Alert.alert(
-      'Delete Account',
-      'Are you sure you want to delete your account? This action cannot be undone and all your data will be permanently lost.',
+      t('profile.deleteAccount') || 'Delete Account',
+      t('profile.deleteConfirmMessage') || 'Are you sure you want to delete your account? This action cannot be undone.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel') || 'Cancel', style: 'cancel' },
         { 
-          text: 'Delete Account', 
+          text: t('profile.deleteConfirmButton') || 'Delete Account', 
           style: 'destructive',
           onPress: async () => {
             setLoading(true);
             try {
               await userService.deactivateAccount();
-              // Handle logout and redirect
+              // AuthContext sẽ tự lo việc logout/redirect
             } catch (error: any) {
-              setMessage(error.message || 'Error deleting account');
-            } finally {
+              showMsg(error.message || 'Error deleting account', 'error');
               setLoading(false);
             }
           }
@@ -201,170 +267,141 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage, isDark }
     );
   };
 
-  const getInitials = (name: string) => {
-    return name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-  };
+  const getInitials = (str: string) => str.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
 
   return (
     <View style={styles.tabContent}>
-      {/* Header */}
+      {/* SECTION HEADER */}
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, isDark && styles.darkText]}>
-          Personal Information
+          {t('profile.personalInfo') || 'Personal Information'}
         </Text>
-        <Text style={[styles.sectionSubtitle, isDark && styles.darkSubtext]}>
-          Update your personal details
+        <Text style={[styles.sectionDesc, isDark && styles.darkSubtext]}>
+          {t('profile.personalInfoDesc') || 'Update your photo and personal details here.'}
         </Text>
       </View>
 
-      {/* Avatar Section */}
-      <View style={[styles.avatarSection, isDark && styles.darkSection]}>
-        <Text style={[styles.avatarTitle, isDark && styles.darkText]}>
-          Profile Picture
+      {/* AVATAR SECTION */}
+      <View style={[styles.card, isDark && styles.darkCard]}>
+        <Text style={[styles.cardTitle, isDark && styles.darkText]}>
+          {t('profile.profilePicture') || 'Profile Picture'}
         </Text>
-        <View style={styles.avatarContainer}>
-          {avatar ? (
-            <Image source={{ uri: avatar }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-              <Text style={styles.avatarInitials}>
-                {getInitials(user.name)}
-              </Text>
-            </View>
-          )}
+        
+        <View style={styles.avatarRow}>
+          <View style={styles.avatarWrapper}>
+            {avatar ? (
+              <Image source={{ uri: avatar }} style={styles.avatarImage} />
+            ) : (
+              <View style={styles.avatarPlaceholder}>
+                <Text style={styles.avatarInitials}>{getInitials(user.name)}</Text>
+              </View>
+            )}
+            {/* Camera Button Badge */}
+            {isEditing && (
+              <TouchableOpacity style={styles.cameraBadge} onPress={pickImage}>
+                <Ionicons name="camera" size={14} color="#FFF" />
+              </TouchableOpacity>
+            )}
+          </View>
+          
           {isEditing && (
-            <TouchableOpacity style={styles.cameraButton}>
-              <Ionicons name="camera" size={16} color="#ffffff" />
-            </TouchableOpacity>
+             <View style={styles.avatarActions}>
+               <TouchableOpacity onPress={pickImage} style={styles.uploadBtn}>
+                 <Ionicons name="cloud-upload-outline" size={16} color="#3b82f6" />
+                 <Text style={styles.uploadBtnText}>{t('profile.uploadPhoto') || 'Upload Photo'}</Text>
+               </TouchableOpacity>
+               <Text style={[styles.helperText, isDark && styles.darkSubtext]}>
+                 {t('profile.photoRequirements') || 'JPG, GIF or PNG. Max size of 800K'}
+               </Text>
+             </View>
           )}
         </View>
       </View>
 
-      {/* Form Section */}
-      <View style={styles.formSection}>
-        {/* Name Field */}
-        <View style={styles.inputGroup}>
-          <Text style={[styles.label, isDark && styles.darkText]}>Full Name</Text>
+      {/* FORM SECTION */}
+      <View style={[styles.card, isDark && styles.darkCard]}>
+        {/* Name Input */}
+        <View style={styles.inputContainer}>
+          <Text style={[styles.label, isDark && styles.darkText]}>{t('profile.fullName') || 'Full Name'}</Text>
           <TextInput
             style={[
-              styles.input,
-              isDark && styles.darkInput,
+              styles.input, 
+              isDark && styles.darkInput, 
               !isEditing && styles.disabledInput
             ]}
             value={name}
             onChangeText={setName}
             editable={isEditing}
-            placeholder="Enter your full name"
             placeholderTextColor={isDark ? '#6b7280' : '#9ca3af'}
           />
         </View>
 
-        {/* Email Field */}
-        <View style={styles.inputGroup}>
-          <Text style={[styles.label, isDark && styles.darkText]}>Email Address</Text>
+        {/* Email Input (Read-only) */}
+        <View style={styles.inputContainer}>
+          <Text style={[styles.label, isDark && styles.darkText]}>{t('profile.email') || 'Email Address'}</Text>
           <TextInput
-            style={[
-              styles.input,
-              isDark && styles.darkInput,
-              styles.disabledInput
-            ]}
+            style={[styles.input, isDark && styles.darkInput, styles.disabledInput]}
             value={email}
             editable={false}
-            placeholderTextColor={isDark ? '#6b7280' : '#9ca3af'}
           />
-          <Text style={[styles.helperText, isDark && styles.darkSubtext]}>
-            Contact support to change your email
+          <Text style={[styles.helperText, isDark && styles.darkSubtext, {marginTop: 4}]}>
+            {t('profile.emailChangeNote') || 'Contact support to change email.'}
           </Text>
         </View>
 
         {/* Action Buttons */}
-        <View style={styles.actionButtons}>
+        <View style={styles.buttonRow}>
           {!isEditing ? (
-            <TouchableOpacity
-              onPress={() => setIsEditing(true)}
-              style={styles.primaryButton}
-            >
-              <Text style={styles.primaryButtonText}>Edit Profile</Text>
+            <TouchableOpacity onPress={() => setIsEditing(true)} style={styles.primaryBtn}>
+              <Text style={styles.primaryBtnText}>{t('profile.editProfile') || 'Edit Profile'}</Text>
             </TouchableOpacity>
           ) : (
-            <View style={styles.editButtons}>
-              <TouchableOpacity
-                onPress={handleSave}
-                disabled={loading}
-                style={[styles.primaryButton, loading && styles.disabledButton]}
+            <View style={styles.editBtnGroup}>
+              <TouchableOpacity 
+                onPress={handleSave} 
+                disabled={loading} 
+                style={[styles.primaryBtn, styles.flexBtn, loading && styles.disabledBtn]}
               >
                 {loading ? (
-                  <ActivityIndicator size="small" color="#ffffff" />
+                  <ActivityIndicator color="#FFF" size="small" />
                 ) : (
-                  <Text style={styles.primaryButtonText}>Save Changes</Text>
+                  <>
+                    <Ionicons name="checkmark" size={16} color="#FFF" style={{marginRight: 4}} />
+                    <Text style={styles.primaryBtnText}>{t('profile.saveChanges') || 'Save Changes'}</Text>
+                  </>
                 )}
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => {
-                  setIsEditing(false);
-                  setName(user.name);
-                  setAvatar(user.avatar || '');
-                }}
-                style={styles.secondaryButton}
+              
+              <TouchableOpacity 
+                onPress={() => { setIsEditing(false); setName(user.name); }} 
+                style={[styles.secondaryBtn, styles.flexBtn]}
               >
-                <Text style={[styles.secondaryButtonText, isDark && styles.darkText]}>
-                  Cancel
+                <Text style={[styles.secondaryBtnText, isDark && styles.darkText]}>
+                  {t('common.cancel') || 'Cancel'}
                 </Text>
               </TouchableOpacity>
             </View>
           )}
-
-          <TouchableOpacity
-            onPress={() => setIsDeleting(true)}
-            style={styles.deleteButton}
-          >
-            <Ionicons name="trash-outline" size={16} color="#ef4444" />
-            <Text style={styles.deleteButtonText}>Delete Account</Text>
-          </TouchableOpacity>
         </View>
 
-        {/* Delete Confirmation */}
-        {isDeleting && (
-          <View style={[styles.deleteConfirmation, isDark && styles.darkDeleteConfirmation]}>
-            <Ionicons name="warning" size={20} color="#ef4444" />
-            <View style={styles.deleteText}>
-              <Text style={styles.deleteTitle}>Delete Account</Text>
-              <Text style={[styles.deleteDescription, isDark && styles.darkSubtext]}>
-                This action cannot be undone. All your data will be permanently lost.
-              </Text>
-            </View>
-            <View style={styles.deleteActions}>
-              <TouchableOpacity
-                onPress={handleDeleteAccount}
-                disabled={loading}
-                style={[styles.confirmDeleteButton, loading && styles.disabledButton]}
-              >
-                <Text style={styles.confirmDeleteText}>
-                  {loading ? 'Deleting...' : 'Delete Account'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setIsDeleting(false)}
-                style={styles.cancelDeleteButton}
-              >
-                <Text style={[styles.cancelDeleteText, isDark && styles.darkText]}>
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
+        {/* Delete Account */}
+        <View style={styles.deleteSection}>
+           <TouchableOpacity onPress={handleDeleteAccount} style={styles.deleteBtn}>
+             <Ionicons name="trash-outline" size={16} color="#ef4444" />
+             <Text style={styles.deleteBtnText}>{t('profile.deleteAccount') || 'Delete Account'}</Text>
+           </TouchableOpacity>
+        </View>
 
-        {/* Message */}
-        {message && (
+        {/* Message Alert */}
+        {message !== '' && (
           <View style={[
-            styles.message,
-            message.includes('Error') ? styles.errorMessage : styles.successMessage,
-            isDark && (message.includes('Error') ? styles.darkErrorMessage : styles.darkSuccessMessage)
+            styles.alertBox, 
+            messageType === 'error' ? styles.errorBox : styles.successBox,
+            isDark && (messageType === 'error' ? styles.darkErrorBox : styles.darkSuccessBox)
           ]}>
             <Text style={[
-              styles.messageText,
-              message.includes('Error') ? styles.errorMessageText : styles.successMessageText
+              styles.alertText, 
+              messageType === 'error' ? styles.errorText : styles.successText
             ]}>
               {message}
             </Text>
@@ -375,80 +412,209 @@ function MyProfileTab({ user, loading, setLoading, message, setMessage, isDark }
   );
 }
 
-// PreferencesTab Component
-interface PreferencesTabProps {
-  user: User;
-  updateUserTheme: (theme: string) => Promise<void>;
-  loading: boolean;
-  setLoading: (loading: boolean) => void;
-  message: string;
-  setMessage: (message: string) => void;
-  isDark: boolean;
-}
-
-function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, setMessage, isDark }: PreferencesTabProps) {
+// ============================================================================
+// 2. TAB PREFERENCES: Full Options (Language, Theme, Regional, Notifications)
+// ============================================================================
+function PreferencesTab({ user, updateUserTheme, isDark, t }: any) {
+  const { language, setLanguage } = useLanguage();
+  const { updateUser } = useAuth();
+  
+  // Local States for UI
   const [theme, setTheme] = useState<ThemeType>((user.theme as ThemeType) || 'light');
+  
+  // Regional Prefs (Defaults khớp với Web)
+  const [timeZone, setTimeZone] = useState((user as any).regionalPreferences?.timeZone || 'UTC+00:00');
+  const [dateFormat, setDateFormat] = useState((user as any).regionalPreferences?.dateFormat || 'DD/MM/YYYY');
+  const [timeFormat, setTimeFormat] = useState((user as any).regionalPreferences?.timeFormat || '24h');
+  const [weekStart, setWeekStart] = useState((user as any).regionalPreferences?.weekStart || 'monday');
+
+  // Notifications
   const [notifications, setNotifications] = useState({
-    email: true,
-    push: true,
-    desktop: false
+    email: (user as any).notificationSettings?.email ?? true,
+    push: (user as any).notificationSettings?.push ?? true,
+    // Desktop bỏ qua trên mobile
   });
 
-  // Sửa lỗi TypeScript bằng cách kiểm tra type
-  const handleThemeChange = async (newTheme: string) => {
-    // Kiểm tra xem newTheme có phải là ThemeType hợp lệ không
-    if (newTheme === 'light' || newTheme === 'dark' || newTheme === 'auto') {
-      setLoading(true);
-      setMessage('');
-      try {
-        await updateUserTheme(newTheme);
-        setTheme(newTheme as ThemeType);
-        setMessage('Theme updated successfully');
-      } catch (error: any) {
-        setMessage(error.message || 'Error updating theme');
-      } finally {
-        setLoading(false);
-      }
-    }
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const showMsg = (msg: string) => {
+    setMessage(msg);
+    setTimeout(() => setMessage(''), 3000);
   };
 
-  const preferenceSections = [
+  // --- HANDLERS ---
+  const handleThemeChange = async (val: string) => {
+    setLoading(true);
+    try {
+      await updateUserTheme(val);
+      setTheme(val as ThemeType);
+      showMsg(t('theme.updated') || 'Theme updated');
+    } catch(e) { showMsg('Error updating theme'); } 
+    finally { setLoading(false); }
+  };
+
+  const handleLanguageChange = async (val: string) => {
+    setLoading(true);
+    try {
+      await setLanguage(val as Language);
+      showMsg(t('language.updated') || 'Language updated');
+    } catch(e) { showMsg('Error updating language'); }
+    finally { setLoading(false); }
+  };
+
+  const handleRegionalChange = async (key: string, val: string) => {
+    // Optimistic Update
+    if(key === 'timeZone') setTimeZone(val);
+    if(key === 'dateFormat') setDateFormat(val);
+    if(key === 'timeFormat') setTimeFormat(val);
+    if(key === 'weekStart') setWeekStart(val);
+
+    setLoading(true);
+    try {
+      const updatedUser = await userService.updateRegionalPreferences({ [key]: val });
+      await updateUser(updatedUser);
+      showMsg(t('regional.updated') || 'Settings updated');
+    } catch(e) { showMsg('Error updating regional settings'); }
+    finally { setLoading(false); }
+  };
+
+  const handleNotificationChange = async (key: 'email' | 'push', val: boolean) => {
+    setNotifications(prev => ({ ...prev, [key]: val }));
+    setLoading(true);
+    try {
+      // Nếu có service notification thì gọi, không thì gọi user service cập nhật preferences
+      // Giả sử dùng import dynamic hoặc mock
+      const { notificationService } = await import('../services/notification.service').catch(() => ({ notificationService: null }));
+      
+      if (notificationService) {
+        await notificationService.updatePreferences({ [key]: val });
+      } else {
+        // Fallback: update vào user meta nếu backend hỗ trợ
+        // await userService.updateProfile({ notificationSettings: { ...notifications, [key]: val } });
+      }
+      showMsg(t('notifications.updated') || 'Notifications updated');
+    } catch(e) { showMsg('Error updating notifications'); }
+    finally { setLoading(false); }
+  };
+
+  // --- DATA SECTIONS (Đầy đủ như Web) ---
+  const sections = [
     {
-      title: "Appearance",
+      title: t('settings.language') || "Language",
+      icon: "language" as const,
+      fields: [
+        {
+          label: t('settings.language') || "Display Language",
+          desc: t('language.description') || "Select your preferred language",
+          type: "radio",
+          val: language,
+          options: [
+            { value: 'en', label: 'English' },
+            { value: 'vi', label: 'Tiếng Việt' }
+          ],
+          onChange: handleLanguageChange
+        }
+      ]
+    },
+    {
+      title: t('settings.appearance') || "Appearance",
       icon: "color-palette" as const,
       fields: [
         {
-          label: "Theme",
-          description: "Choose how the app looks",
-          type: "radio" as const,
+          label: t('settings.appearance') || "Theme",
+          desc: t('theme.description') || "Choose how the app looks",
+          type: "radio",
+          val: theme,
           options: [
-            { value: 'light', label: 'Light' },
-            { value: 'dark', label: 'Dark' },
-            { value: 'auto', label: 'Auto (System)' }
+            { value: 'light', label: t('theme.light') || 'Light' },
+            { value: 'dark', label: t('theme.dark') || 'Dark' },
+            { value: 'auto', label: t('theme.auto') || 'Auto (System)' }
           ],
-          value: theme,
           onChange: handleThemeChange
         }
       ]
     },
     {
-      title: "Notifications",
+      title: t('settings.regional') || "Regional",
+      icon: "globe" as const,
+      fields: [
+        {
+          label: t('regional.timezone') || "Time Zone",
+          desc: t('regional.timezoneDesc') || "Your local time zone",
+          type: "radio", // Mobile dùng Radio/Modal list thay vì Select box dropdown
+          val: timeZone,
+          // FULL LIST TỪ BẢN WEB
+          options: [
+            { value: 'UTC-12:00', label: 'UTC-12:00' },
+            { value: 'UTC-07:00', label: 'UTC-07:00 (Pacific Time)' },
+            { value: 'UTC-06:00', label: 'UTC-06:00 (Central Time)' },
+            { value: 'UTC-05:00', label: 'UTC-05:00 (Eastern Time)' },
+            { value: 'UTC+00:00', label: 'UTC+00:00 (GMT)' },
+            { value: 'UTC+01:00', label: 'UTC+01:00 (Central European)' },
+            { value: 'UTC+07:00', label: 'UTC+07:00 (Vietnam)' },
+            { value: 'UTC+08:00', label: 'UTC+08:00 (China Standard)' },
+            { value: 'UTC+09:00', label: 'UTC+09:00 (Japan Standard)' }
+          ],
+          onChange: (v: string) => handleRegionalChange('timeZone', v)
+        },
+        {
+          label: t('regional.dateFormat') || "Date Format",
+          desc: t('regional.dateFormatDesc') || "How dates are displayed",
+          type: "radio",
+          val: dateFormat,
+          // FULL LIST TỪ BẢN WEB
+          options: [
+            { value: 'DD MMM YYYY', label: '31 Dec 2025' },
+            { value: 'MMM DD, YYYY', label: 'Dec 31, 2025' },
+            { value: 'DD/MM/YYYY', label: '31/12/2025' },
+            { value: 'MM/DD/YYYY', label: '12/31/2025' },
+            { value: 'YYYY-MM-DD', label: '2025-12-31' }
+          ],
+          onChange: (v: string) => handleRegionalChange('dateFormat', v)
+        },
+        {
+          label: t('regional.timeFormat') || "Time Format",
+          desc: t('regional.timeFormatDesc') || "12h or 24h clock",
+          type: "radio",
+          val: timeFormat,
+          options: [
+            { value: '12h', label: t('regional.12hour') + ' (8:00 PM)' },
+            { value: '24h', label: t('regional.24hour') + ' (20:00)' }
+          ],
+          onChange: (v: string) => handleRegionalChange('timeFormat', v)
+        },
+        {
+          label: t('regional.weekStart') || "Week Start",
+          desc: t('regional.weekStartDesc') || "First day of the week",
+          type: "radio",
+          val: weekStart,
+          options: [
+            { value: 'monday', label: t('regional.monday') || 'Monday' },
+            { value: 'sunday', label: t('regional.sunday') || 'Sunday' }
+          ],
+          onChange: (v: string) => handleRegionalChange('weekStart', v)
+        }
+      ]
+    },
+    {
+      title: t('notifications.title') || "Notifications",
       icon: "notifications" as const,
       fields: [
         {
-          label: "Email Notifications",
-          description: "Receive updates via email",
-          type: "toggle" as const,
-          value: notifications.email,
-          onChange: (value: boolean) => setNotifications(prev => ({ ...prev, email: value }))
+          label: t('notifications.email') || "Email Notifications",
+          desc: t('notifications.emailDesc') || "Receive updates via email",
+          type: "toggle",
+          val: notifications.email,
+          onChange: (v: boolean) => handleNotificationChange('email', v)
         },
         {
-          label: "Push Notifications",
-          description: "Receive app notifications",
-          type: "toggle" as const,
-          value: notifications.push,
-          onChange: (value: boolean) => setNotifications(prev => ({ ...prev, push: value }))
-        },
+          label: t('notifications.push') || "Push Notifications",
+          desc: t('notifications.pushDesc') || "Receive app notifications",
+          type: "toggle",
+          val: notifications.push,
+          onChange: (v: boolean) => handleNotificationChange('push', v)
+        }
       ]
     }
   ];
@@ -456,697 +622,361 @@ function PreferencesTab({ user, updateUserTheme, loading, setLoading, message, s
   return (
     <View style={styles.tabContent}>
       <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, isDark && styles.darkText]}>Preferences</Text>
-        <Text style={[styles.sectionSubtitle, isDark && styles.darkSubtext]}>
-          Customize your app experience
+        <Text style={[styles.sectionTitle, isDark && styles.darkText]}>
+          {t('preferences.title') || 'Preferences'}
+        </Text>
+        <Text style={[styles.sectionDesc, isDark && styles.darkSubtext]}>
+          {t('preferences.description') || 'Customize your app experience.'}
         </Text>
       </View>
 
-      <View style={styles.preferencesList}>
-        {preferenceSections.map((section) => (
-          <View key={section.title} style={[styles.preferenceSection, isDark && styles.darkSection]}>
-            <View style={styles.sectionHeaderRow}>
-              <Ionicons name={section.icon} size={20} color="#6b7280" />
-              <Text style={[styles.preferenceSectionTitle, isDark && styles.darkText]}>
-                {section.title}
-              </Text>
-            </View>
+      {/* Render Sections */}
+      {sections.map((section, sIndex) => (
+        <View key={sIndex} style={[styles.card, isDark && styles.darkCard]}>
+          <View style={styles.cardHeader}>
+             <View style={styles.iconBox}>
+                <Ionicons name={section.icon} size={18} color="#3b82f6" />
+             </View>
+             <Text style={[styles.cardTitle, isDark && styles.darkText]}>{section.title}</Text>
+          </View>
 
-            {section.fields.map((field, index) => (
-              <View key={index} style={styles.preferenceField}>
-                <View style={styles.preferenceInfo}>
-                  <Text style={[styles.preferenceLabel, isDark && styles.darkText]}>
-                    {field.label}
-                  </Text>
-                  <Text style={[styles.preferenceDescription, isDark && styles.darkSubtext]}>
-                    {field.description}
-                  </Text>
-                </View>
+          {section.fields.map((field: any, fIndex) => (
+            <View key={fIndex} style={[
+              styles.fieldRow, 
+              fIndex !== 0 && styles.borderTop,
+              isDark && styles.darkBorderTop
+            ]}>
+              {/* Label & Desc */}
+              <View style={styles.fieldInfo}>
+                <Text style={[styles.fieldLabel, isDark && styles.darkText]}>{field.label}</Text>
+                <Text style={[styles.fieldDesc, isDark && styles.darkSubtext]}>{field.desc}</Text>
+              </View>
 
-                {field.type === 'radio' && (
-                  <View style={styles.radioOptions}>
-                    {field.options.map((option) => (
-                      <TouchableOpacity
-                        key={option.value}
-                        onPress={() => field.onChange(option.value)}
-                        style={styles.radioOption}
-                      >
-                        <View style={[
-                          styles.radioCircle,
-                          field.value === option.value && styles.radioCircleSelected
-                        ]}>
-                          {field.value === option.value && <View style={styles.radioDot} />}
-                        </View>
-                        <Text style={[
-                          styles.radioLabel,
-                          isDark && styles.darkText,
-                          field.value === option.value && styles.radioLabelSelected
-                        ]}>
-                          {option.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-
+              {/* Controls */}
+              <View style={styles.fieldControl}>
                 {field.type === 'toggle' && (
-                  <Switch
-                    value={field.value}
+                  <Switch 
+                    value={field.val} 
                     onValueChange={field.onChange}
                     trackColor={{ false: '#d1d5db', true: '#3b82f6' }}
-                    thumbColor="#ffffff"
+                    thumbColor="#FFF"
                   />
                 )}
+                
+                {field.type === 'radio' && (
+                   <View style={styles.radioGroup}>
+                      {field.options.map((opt: any) => {
+                         const isSelected = field.val === opt.value;
+                         return (
+                           <TouchableOpacity 
+                              key={opt.value} 
+                              style={styles.radioItem} 
+                              onPress={() => field.onChange(opt.value)}
+                           >
+                              <View style={[styles.radioCircle, isSelected && styles.radioCircleActive]}>
+                                 {isSelected && <View style={styles.radioDot} />}
+                              </View>
+                              <Text style={[
+                                styles.radioText, 
+                                isDark && styles.darkText,
+                                isSelected && styles.radioTextActive
+                              ]}>
+                                {opt.label}
+                              </Text>
+                           </TouchableOpacity>
+                         )
+                      })}
+                   </View>
+                )}
               </View>
-            ))}
-          </View>
-        ))}
-      </View>
+            </View>
+          ))}
+        </View>
+      ))}
 
-      {message && (
-        <View style={[
-          styles.message,
-          message.includes('Error') ? styles.errorMessage : styles.successMessage,
-          isDark && (message.includes('Error') ? styles.darkErrorMessage : styles.darkSuccessMessage)
-        ]}>
-          <Text style={[
-            styles.messageText,
-            message.includes('Error') ? styles.errorMessageText : styles.successMessageText
-          ]}>
-            {message}
-          </Text>
+      {/* Message Toast */}
+      {message !== '' && (
+        <View style={[styles.toast, styles.successBox]}>
+          <Text style={styles.successText}>{message}</Text>
         </View>
       )}
     </View>
   );
 }
 
-// SecurityTab Component
-interface SecurityTabProps {
-  loading: boolean;
-  setLoading: (loading: boolean) => void;
-  message: string;
-  setMessage: (message: string) => void;
-  isDark: boolean;
-}
-
-function SecurityTab({ loading, setLoading, message, setMessage, isDark }: SecurityTabProps) {
+// ============================================================================
+// 3. TAB SECURITY: Change Password, Validation, Tips
+// ============================================================================
+function SecurityTab({ isDark, t }: any) {
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showOldPassword, setShowOldPassword] = useState(false);
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  
+  const [showOld, setShowOld] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [msgType, setMsgType] = useState<'success' | 'error'>('success');
 
   const handleChangePassword = async () => {
-    setLoading(true);
     setMessage('');
-
+    // Validation Logic giống Web
     if (newPassword !== confirmPassword) {
-      setMessage('New passwords do not match');
-      setLoading(false);
+      setMessage(t('security.passwordMismatch') || 'Passwords do not match');
+      setMsgType('error');
       return;
     }
-
     if (newPassword.length < 8) {
-      setMessage('Password must be at least 8 characters long');
-      setLoading(false);
+      setMessage(t('security.passwordMinLength') || 'Password must be at least 8 characters');
+      setMsgType('error');
       return;
     }
 
+    setLoading(true);
     try {
       await userService.changePassword(oldPassword, newPassword);
-      setMessage('Password changed successfully');
-      setOldPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-    } catch (error: any) {
-      setMessage(error.message || 'Error changing password');
+      setMessage(t('security.passwordChanged') || 'Password changed successfully');
+      setMsgType('success');
+      // Reset form
+      setOldPassword(''); setNewPassword(''); setConfirmPassword('');
+    } catch (e: any) {
+      setMessage(e.response?.data?.message || e.message || 'Error changing password');
+      setMsgType('error');
     } finally {
       setLoading(false);
     }
   };
 
-  const PasswordInput = ({ 
-    value, 
-    onChange, 
-    placeholder, 
-    showPassword, 
-    setShowPassword 
-  }: any) => (
-    <View style={styles.passwordInput}>
-      <TextInput
-        style={[styles.input, isDark && styles.darkInput]}
-        value={value}
-        onChangeText={onChange}
-        placeholder={placeholder}
-        placeholderTextColor={isDark ? '#6b7280' : '#9ca3af'}
-        secureTextEntry={!showPassword}
-      />
-      <TouchableOpacity
-        onPress={() => setShowPassword(!showPassword)}
-        style={styles.passwordToggle}
-      >
-        <Ionicons 
-          name={showPassword ? "eye-off" : "eye"} 
-          size={20} 
-          color={isDark ? '#9ca3af' : '#6b7280'} 
+  // Reusable Password Input
+  const PasswordField = ({ label, val, setVal, show, setShow, placeholder }: any) => (
+    <View style={styles.inputContainer}>
+      <Text style={[styles.label, isDark && styles.darkText]}>{label}</Text>
+      <View style={styles.passInputWrapper}>
+        <TextInput
+          style={[styles.input, styles.passInput, isDark && styles.darkInput]}
+          value={val}
+          onChangeText={setVal}
+          placeholder={placeholder}
+          placeholderTextColor={isDark ? '#6b7280' : '#9ca3af'}
+          secureTextEntry={!show}
         />
-      </TouchableOpacity>
+        <TouchableOpacity onPress={() => setShow(!show)} style={styles.eyeBtn}>
+           <Ionicons name={show ? "eye-off" : "eye"} size={20} color={isDark ? '#9ca3af' : '#6b7280'} />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
   return (
     <View style={styles.tabContent}>
       <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, isDark && styles.darkText]}>Security</Text>
-        <Text style={[styles.sectionSubtitle, isDark && styles.darkSubtext]}>
-          Manage your password and security
+        <Text style={[styles.sectionTitle, isDark && styles.darkText]}>
+          {t('security.title') || 'Security'}
+        </Text>
+        <Text style={[styles.sectionDesc, isDark && styles.darkSubtext]}>
+          {t('security.description') || 'Manage your password and security settings.'}
         </Text>
       </View>
 
-      {/* Change Password Form */}
-      <View style={[styles.securitySection, isDark && styles.darkSection]}>
-        <Text style={[styles.securityTitle, isDark && styles.darkText]}>
-          Change Password
+      {/* FORM CARD */}
+      <View style={[styles.card, isDark && styles.darkCard]}>
+        <Text style={[styles.cardTitle, isDark && styles.darkText, {marginBottom: 16}]}>
+          {t('security.changePassword') || 'Change Password'}
         </Text>
 
-        <View style={styles.passwordForm}>
-          <View style={styles.inputGroup}>
-            <Text style={[styles.label, isDark && styles.darkText]}>Current Password</Text>
-            <PasswordInput
-              value={oldPassword}
-              onChange={setOldPassword}
-              placeholder="Enter current password"
-              showPassword={showOldPassword}
-              setShowPassword={setShowOldPassword}
-            />
-          </View>
+        <PasswordField 
+          label={t('security.currentPassword') || "Current Password"} 
+          val={oldPassword} setVal={setOldPassword} show={showOld} setShow={setShowOld}
+          placeholder={t('security.enterCurrentPassword') || "Enter current password"}
+        />
 
-          <View style={styles.inputGroup}>
-            <Text style={[styles.label, isDark && styles.darkText]}>New Password</Text>
-            <PasswordInput
-              value={newPassword}
-              onChange={setNewPassword}
-              placeholder="Enter new password"
-              showPassword={showNewPassword}
-              setShowPassword={setShowNewPassword}
-            />
-            <Text style={[styles.helperText, isDark && styles.darkSubtext]}>
-              Must be at least 8 characters long
-            </Text>
-          </View>
+        <PasswordField 
+          label={t('security.newPassword') || "New Password"} 
+          val={newPassword} setVal={setNewPassword} show={showNew} setShow={setShowNew}
+          placeholder={t('security.enterNewPassword') || "Enter new password"}
+        />
+        <Text style={[styles.helperText, isDark && styles.darkSubtext, {marginTop: -12, marginBottom: 12}]}>
+           {t('security.passwordMinLength') || 'Must be at least 8 characters long.'}
+        </Text>
 
-          <View style={styles.inputGroup}>
-            <Text style={[styles.label, isDark && styles.darkText]}>Confirm New Password</Text>
-            <PasswordInput
-              value={confirmPassword}
-              onChange={setConfirmPassword}
-              placeholder="Confirm new password"
-              showPassword={showConfirmPassword}
-              setShowPassword={setShowConfirmPassword}
-            />
-          </View>
+        <PasswordField 
+          label={t('security.confirmPassword') || "Confirm Password"} 
+          val={confirmPassword} setVal={setConfirmPassword} show={showConfirm} setShow={setShowConfirm}
+          placeholder={t('security.confirmNewPassword') || "Confirm new password"}
+        />
 
-          <TouchableOpacity
-            onPress={handleChangePassword}
-            disabled={loading}
-            style={[styles.primaryButton, loading && styles.disabledButton]}
+        <View style={{marginTop: 8}}>
+          <TouchableOpacity 
+            onPress={handleChangePassword} 
+            disabled={loading} 
+            style={[styles.primaryBtn, loading && styles.disabledBtn]}
           >
-            {loading ? (
-              <ActivityIndicator size="small" color="#ffffff" />
-            ) : (
-              <Text style={styles.primaryButtonText}>Update Password</Text>
-            )}
+             {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.primaryBtnText}>{t('security.updatePassword') || 'Update Password'}</Text>}
           </TouchableOpacity>
         </View>
+
+        {message !== '' && (
+          <View style={[styles.alertBox, msgType === 'error' ? styles.errorBox : styles.successBox, {marginTop: 16}]}>
+             <Text style={[styles.alertText, msgType === 'error' ? styles.errorText : styles.successText]}>
+               {message}
+             </Text>
+          </View>
+        )}
       </View>
 
-      {/* Security Tips */}
-      <View style={[styles.tipsSection, isDark && styles.darkSection]}>
-        <Ionicons name="shield-checkmark" size={24} color="#3b82f6" />
-        <Text style={[styles.tipsTitle, isDark && styles.darkText]}>Password Tips</Text>
-        <View style={styles.tipsList}>
-          <Text style={[styles.tip, isDark && styles.darkSubtext]}>• Use at least 8 characters</Text>
-          <Text style={[styles.tip, isDark && styles.darkSubtext]}>• Include numbers and symbols</Text>
-          <Text style={[styles.tip, isDark && styles.darkSubtext]}>• Avoid common words</Text>
-          <Text style={[styles.tip, isDark && styles.darkSubtext]}>• Don't reuse passwords</Text>
-        </View>
+      {/* SECURITY TIPS & INFO (Khớp Web) */}
+      <View style={[styles.infoCard, { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.1)' : '#eff6ff' }]}>
+         <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 8}}>
+            <Ionicons name="shield-checkmark" size={20} color="#3b82f6" />
+            <Text style={[styles.infoTitle, {color: isDark ? '#60a5fa' : '#1e40af', marginLeft: 8}]}>
+               {t('security.passwordTips') || 'Password Tips'}
+            </Text>
+         </View>
+         <View style={{paddingLeft: 4}}>
+            <Text style={[styles.infoText, {color: isDark ? '#93c5fd' : '#1d4ed8'}]}>• {t('security.tipMinChars') || 'Use at least 8 characters'}</Text>
+            <Text style={[styles.infoText, {color: isDark ? '#93c5fd' : '#1d4ed8'}]}>• {t('security.tipNumbers') || 'Include numbers and symbols'}</Text>
+            <Text style={[styles.infoText, {color: isDark ? '#93c5fd' : '#1d4ed8'}]}>• {t('security.tipCommon') || 'Avoid common words'}</Text>
+            <Text style={[styles.infoText, {color: isDark ? '#93c5fd' : '#1d4ed8'}]}>• {t('security.tipReuse') || "Don't reuse passwords"}</Text>
+         </View>
       </View>
 
-      {message && (
-        <View style={[
-          styles.message,
-          message.includes('Error') ? styles.errorMessage : styles.successMessage,
-          isDark && (message.includes('Error') ? styles.darkErrorMessage : styles.darkSuccessMessage)
-        ]}>
-          <Text style={[
-            styles.messageText,
-            message.includes('Error') ? styles.errorMessageText : styles.successMessageText
-          ]}>
-            {message}
-          </Text>
-        </View>
-      )}
+      {/* LAST CHANGED INFO */}
+      <View style={[styles.card, isDark && styles.darkCard, {marginTop: 16}]}>
+         <View style={{flexDirection: 'row', alignItems: 'center'}}>
+            <Ionicons name="time-outline" size={20} color={isDark ? '#9ca3af' : '#6b7280'} />
+            <View style={{marginLeft: 12}}>
+               <Text style={[styles.cardTitle, isDark && styles.darkText, {fontSize: 14, marginBottom: 2}]}>
+                 {t('security.lastChanged') || 'Last Changed'}
+               </Text>
+               <Text style={[styles.helperText, isDark && styles.darkSubtext]}>
+                 {t('security.lastChangedInfo', { time: '2 months' }) || '2 months ago'}
+               </Text>
+            </View>
+         </View>
+      </View>
     </View>
   );
 }
 
+// ============================================================================
+// STYLES (Chi tiết, hỗ trợ Dark Mode đầy đủ)
+// ============================================================================
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f9fafb',
-  },
-  darkContainer: {
-    backgroundColor: '#1a1a1a',
-  },
-  header: {
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-    paddingTop: 8,
-  },
-  darkHeader: {
-    backgroundColor: '#1f1f1f',
-    borderBottomColor: '#374151',
-  },
-  headerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  backButton: {
-    padding: 8,
-    marginRight: 12,
-  },
-  headerText: {
-    flex: 1,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#111827',
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginTop: 2,
-  },
-  tabContainer: {
-    paddingHorizontal: 16,
-  },
-  tabs: {
-    flexDirection: 'row',
-    backgroundColor: '#f3f4f6',
-    borderRadius: 12,
-    padding: 4,
-  },
-  darkTabs: {
-    backgroundColor: '#2e2e2e',
-  },
-  tab: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginHorizontal: 2,
-  },
-  activeTab: {
-    backgroundColor: '#ffffff',
-  },
-  darkTab: {
-    // Additional dark mode styles
-  },
-  activeDarkTab: {
-    backgroundColor: '#1a1a1a',
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#6b7280',
-    marginLeft: 8,
-  },
-  activeTabText: {
-    color: '#111827',
-  },
-  darkTabText: {
-    color: '#9ca3af',
-  },
-  activeDarkTabText: {
-    color: '#ffffff',
-  },
-  content: {
-    flex: 1,
-  },
-  contentInner: {
-    padding: 16,
-  },
-  tabContent: {
-    flex: 1,
-  },
-  sectionHeader: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  sectionSubtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  avatarSection: {
-    backgroundColor: '#f9fafb',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-  },
-  darkSection: {
-    backgroundColor: '#2e2e2e',
-  },
-  avatarTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 16,
-  },
-  avatarContainer: {
-    alignItems: 'center',
-  },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-  },
-  avatarPlaceholder: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#3b82f6',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarInitials: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#ffffff',
-  },
-  cameraButton: {
-    position: 'absolute',
-    bottom: 0,
-    right: '35%',
-    backgroundColor: '#3b82f6',
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  formSection: {
-    // Form section styles
-  },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: '#111827',
-  },
-  darkInput: {
-    backgroundColor: '#2e2e2e',
-    borderColor: '#4b5563',
-    color: '#ffffff',
-  },
-  disabledInput: {
-    backgroundColor: '#f3f4f6',
-    color: '#6b7280',
-  },
-  helperText: {
-    fontSize: 12,
-    color: '#6b7280',
-    marginTop: 4,
-  },
-  actionButtons: {
-    marginTop: 24,
-  },
-  primaryButton: {
-    backgroundColor: '#3b82f6',
-    padding: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  primaryButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  disabledButton: {
-    opacity: 0.5,
-  },
-  editButtons: {
-    gap: 12,
-  },
-  secondaryButton: {
-    padding: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    marginBottom: 12,
-  },
-  secondaryButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  deleteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    gap: 8,
-  },
-  deleteButtonText: {
-    color: '#ef4444',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  deleteConfirmation: {
-    backgroundColor: '#fef2f2',
-    borderWidth: 1,
-    borderColor: '#fecaca',
-    borderRadius: 8,
-    padding: 16,
-    marginTop: 16,
-  },
-  darkDeleteConfirmation: {
-    backgroundColor: '#450a0a',
-    borderColor: '#7f1d1d',
-  },
-  deleteText: {
-    marginLeft: 32,
-  },
-  deleteTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#dc2626',
-    marginBottom: 4,
-  },
-  deleteDescription: {
-    fontSize: 14,
-    color: '#b91c1c',
-  },
-  deleteActions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 16,
-  },
-  confirmDeleteButton: {
-    flex: 1,
-    backgroundColor: '#dc2626',
-    padding: 12,
-    borderRadius: 6,
-    alignItems: 'center',
-  },
-  confirmDeleteText: {
-    color: '#ffffff',
-    fontWeight: '600',
-  },
-  cancelDeleteButton: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 6,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-  },
-  cancelDeleteText: {
-    fontWeight: '600',
-    color: '#374151',
-  },
-  message: {
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 16,
-  },
-  successMessage: {
-    backgroundColor: '#d1fae5',
-  },
-  errorMessage: {
-    backgroundColor: '#fee2e2',
-  },
-  darkSuccessMessage: {
-    backgroundColor: '#064e3b',
-  },
-  darkErrorMessage: {
-    backgroundColor: '#7f1d1d',
-  },
-  messageText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  successMessageText: {
-    color: '#065f46',
-  },
-  errorMessageText: {
-    color: '#b91c1c',
-  },
-  // Preferences styles
-  preferencesList: {
-    gap: 16,
-  },
-  preferenceSection: {
-    backgroundColor: '#f9fafb',
-    borderRadius: 12,
-    padding: 16,
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-    gap: 8,
-  },
-  preferenceSectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  preferenceField: {
-    marginBottom: 20,
-  },
-  preferenceInfo: {
-    marginBottom: 12,
-  },
-  preferenceLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  preferenceDescription: {
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  radioOptions: {
-    gap: 12,
-  },
-  radioOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  radioCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#d1d5db',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  radioCircleSelected: {
-    borderColor: '#3b82f6',
-    backgroundColor: '#3b82f6',
-  },
-  radioDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#ffffff',
-  },
-  radioLabel: {
-    fontSize: 16,
-    color: '#374151',
-  },
-  radioLabelSelected: {
-    color: '#3b82f6',
-    fontWeight: '500',
-  },
-  // Security styles
-  securitySection: {
-    backgroundColor: '#f9fafb',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  securityTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 16,
-  },
-  passwordForm: {
-    gap: 16,
-  },
-  passwordInput: {
-    position: 'relative',
-  },
-  passwordToggle: {
-    position: 'absolute',
-    right: 12,
-    top: 12,
-  },
-  tipsSection: {
-    backgroundColor: '#f9fafb',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-  },
-  tipsTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    marginTop: 8,
-    marginBottom: 12,
-  },
-  tipsList: {
-    width: '100%',
-  },
-  tip: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 4,
-  },
-  darkText: {
-    color: '#f9fafb',
-  },
-  darkSubtext: {
-    color: '#d1d5db',
-  },
+  // LAYOUT
+  container: { flex: 1, backgroundColor: '#f3f4f6' },
+  darkContainer: { backgroundColor: '#111827' },
+  contentArea: { flex: 1 },
+  darkContentArea: { backgroundColor: '#111827' },
+  scrollContent: { paddingBottom: 40 },
+  tabContent: { padding: 16 },
+
+  // HEADER
+  header: { backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
+  darkHeader: { backgroundColor: '#1f2937', borderBottomColor: '#374151' },
+  headerTopRow: { flexDirection: 'row', alignItems: 'center', padding: 16 },
+  backButton: { padding: 8, marginRight: 8, borderRadius: 8 },
+  headerTitles: { flex: 1 },
+  headerTitle: { fontSize: 20, fontWeight: '700', color: '#111827' },
+  headerSubtitle: { fontSize: 13, color: '#6b7280', marginTop: 2 },
+
+  // TABS
+  tabContainer: { paddingHorizontal: 16, paddingBottom: 12 },
+  tabContentContainer: { flexGrow: 1 },
+  tabsWrapper: { flexDirection: 'row', backgroundColor: '#f9fafb', padding: 4, borderRadius: 12, width: '100%' },
+  darkTabsWrapper: { backgroundColor: '#374151' },
+  tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 8, marginHorizontal: 2 },
+  activeTabItem: { backgroundColor: '#FFF', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 },
+  activeDarkTabItem: { backgroundColor: '#111827' },
+  tabText: { fontSize: 13, fontWeight: '600', color: '#6b7280', marginLeft: 6 },
+  activeTabText: { color: '#111827' },
+  darkTabText: { color: '#9ca3af' },
+  activeDarkTabText: { color: '#FFF' },
+
+  // SECTIONS
+  sectionHeader: { marginBottom: 20 },
+  sectionTitle: { fontSize: 18, fontWeight: '700', color: '#111827' },
+  sectionDesc: { fontSize: 14, color: '#6b7280', marginTop: 4 },
+
+  // CARDS
+  card: { backgroundColor: '#FFF', borderRadius: 16, padding: 16, marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 4, elevation: 1 },
+  darkCard: { backgroundColor: '#1f2937' },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  iconBox: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#eff6ff', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  cardTitle: { fontSize: 16, fontWeight: '600', color: '#111827' },
+
+  // AVATAR
+  avatarRow: { flexDirection: 'row', alignItems: 'center' },
+  avatarWrapper: { position: 'relative' },
+  avatarImage: { width: 80, height: 80, borderRadius: 40, borderWidth: 3, borderColor: '#FFF' },
+  avatarPlaceholder: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#3b82f6', justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: '#FFF' },
+  avatarInitials: { fontSize: 28, fontWeight: 'bold', color: '#FFF' },
+  cameraBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#3b82f6', width: 26, height: 26, borderRadius: 13, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#FFF' },
+  avatarActions: { marginLeft: 20, flex: 1 },
+  uploadBtn: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  uploadBtnText: { color: '#3b82f6', fontWeight: '600', marginLeft: 6 },
+
+  // FORMS & INPUTS
+  inputContainer: { marginBottom: 16 },
+  label: { fontSize: 14, fontWeight: '500', color: '#374151', marginBottom: 6 },
+  input: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 10, padding: 12, fontSize: 15, color: '#111827' },
+  darkInput: { backgroundColor: '#374151', borderColor: '#4b5563', color: '#FFF' },
+  passInputWrapper: { position: 'relative' },
+  passInput: { paddingRight: 40 },
+  eyeBtn: { position: 'absolute', right: 12, top: 12 },
+  disabledInput: { backgroundColor: '#f9fafb', color: '#9ca3af' },
+  helperText: { fontSize: 12, color: '#6b7280', marginTop: 4 },
+
+  // BUTTONS
+  buttonRow: { marginTop: 8, marginBottom: 24 },
+  primaryBtn: { backgroundColor: '#3b82f6', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
+  primaryBtnText: { color: '#FFF', fontWeight: '600', fontSize: 15 },
+  secondaryBtn: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#d1d5db', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 10, alignItems: 'center' },
+  secondaryBtnText: { color: '#374151', fontWeight: '600', fontSize: 15 },
+  flexBtn: { flex: 1, marginHorizontal: 4 },
+  editBtnGroup: { flexDirection: 'row' },
+  disabledBtn: { opacity: 0.6 },
+  
+  deleteSection: { borderTopWidth: 1, borderTopColor: '#e5e7eb', paddingTop: 16 },
+  deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  deleteBtnText: { color: '#ef4444', fontWeight: '600', marginLeft: 6 },
+
+  // ALERTS & TOASTS
+  alertBox: { padding: 12, borderRadius: 8, flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+  successBox: { backgroundColor: '#ecfdf5' },
+  errorBox: { backgroundColor: '#fef2f2' },
+  darkSuccessBox: { backgroundColor: 'rgba(6, 78, 59, 0.5)' },
+  darkErrorBox: { backgroundColor: 'rgba(127, 29, 29, 0.5)' },
+  alertText: { fontSize: 14, fontWeight: '500' },
+  successText: { color: '#047857' },
+  errorText: { color: '#b91c1c' },
+  toast: { position: 'absolute', bottom: 20, left: 16, right: 16, padding: 12, borderRadius: 8, alignItems: 'center', zIndex: 100 },
+
+  // PREFERENCE FIELDS
+  fieldRow: { flexDirection: 'row', paddingVertical: 16 },
+  borderTop: { borderTopWidth: 1, borderTopColor: '#f3f4f6' },
+  darkBorderTop: { borderTopColor: '#374151' },
+  fieldInfo: { flex: 1, paddingRight: 12 },
+  fieldLabel: { fontSize: 15, fontWeight: '500', color: '#111827' },
+  fieldDesc: { fontSize: 13, color: '#6b7280', marginTop: 2 },
+  fieldControl: { justifyContent: 'center', alignItems: 'flex-end', minWidth: 60 },
+  
+  // RADIO LIST
+  radioGroup: { width: '100%', alignItems: 'flex-end' },
+  radioItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  radioText: { fontSize: 14, color: '#4b5563', marginRight: 10 },
+  radioTextActive: { color: '#3b82f6', fontWeight: '600' },
+  radioCircle: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: '#d1d5db', alignItems: 'center', justifyContent: 'center' },
+  radioCircleActive: { borderColor: '#3b82f6', backgroundColor: '#3b82f6' },
+  radioDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFF' },
+
+  // INFO CARD
+  infoCard: { borderRadius: 12, padding: 16 },
+  infoTitle: { fontSize: 14, fontWeight: '600' },
+  infoText: { fontSize: 13, marginTop: 4, lineHeight: 18 },
+  
+  // DARK MODE TEXT UTILS
+  darkText: { color: '#f3f4f6' },
+  darkSubtext: { color: '#9ca3af' },
 });
