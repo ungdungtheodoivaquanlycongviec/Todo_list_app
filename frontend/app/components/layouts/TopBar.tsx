@@ -13,9 +13,17 @@ interface TopBarProps {
   theme: string;
   onThemeChange: (theme: string) => void;
   onProfileClick?: () => void;
+  onViewChange: (view: string) => void;
 }
 
-export default function TopBar({ user, onLogout, theme, onThemeChange, onProfileClick }: TopBarProps) {
+export default function TopBar({
+  user,
+  onLogout,
+  theme,
+  onThemeChange,
+  onProfileClick,
+  onViewChange
+}: TopBarProps) {
   const businessRole = (user as any)?.groupRole as string | null | undefined;
   const isLeader = Boolean((user as any)?.isLeader);
 
@@ -47,7 +55,9 @@ export default function TopBar({ user, onLogout, theme, onThemeChange, onProfile
           {/* Right: controls */}
           <div className="w-full max-w-full md:max-w-[15vw] lg:max-w-[320px] flex items-center justify-end gap-2 sm:gap-3">
             <LanguageSwitcher />
-            <NotificationDropdown />
+            <NotificationDropdown
+              onNavigate={onViewChange}
+            />
             <UserMenu 
               currentUser={user} 
               onLogout={onLogout}

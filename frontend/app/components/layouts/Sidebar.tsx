@@ -531,7 +531,7 @@ export default function Sidebar() {
     if (!canManageGroups) {
       setPermissionDialog({
         message:
-          t('groups.permissionDeniedCreateProject') ||
+          t('groups.permissionDeniedCreateProject' as any) ||
           'Bạn không có quyền tạo project mới. Chỉ PM, Product Owner hoặc Leader mới được phép.'
       });
       return;
@@ -553,7 +553,7 @@ export default function Sidebar() {
       console.error('Failed to create group:', error);
       toast.showError(
         error instanceof Error ? error.message : 'Không thể tạo project mới.',
-        t('common.error') || 'Lỗi'
+        t('common.error' as any) || 'Lỗi'
       );
     }
   };
@@ -581,7 +581,7 @@ export default function Sidebar() {
           : 'Không thể mời thành viên. Vui lòng thử lại hoặc kiểm tra quyền của bạn.';
       toast.showError(
         message,
-        t('common.permissionDenied') || 'Không có quyền'
+        t('common.permissionDenied' as any) || 'Không có quyền'
       );
       throw error; // Re-throw to let modal handle the error
     }
@@ -617,7 +617,7 @@ export default function Sidebar() {
       if (!canManageThisGroupFolders) {
         setPermissionDialog({
           message:
-            t('folders.permissionDeniedCreate') ||
+            t('folders.permissionDeniedCreate' as any) ||
             'Bạn không có quyền tạo folder trong group này. Chỉ PM, Product Owner hoặc Leader mới được phép.'
         });
         return;
@@ -772,7 +772,7 @@ export default function Sidebar() {
       if (!canManageThisGroupFolders) {
         setPermissionDialog({
           message:
-            t('folders.permissionDeniedDelete') ||
+            t('folders.permissionDeniedDelete' as any) ||
             'Bạn không có quyền xóa folder trong group này. Chỉ PM, Product Owner hoặc Leader mới được phép.'
         });
         return;
@@ -878,7 +878,7 @@ export default function Sidebar() {
       if (!canAssignThisGroupFolders) {
         setPermissionDialog({
           message:
-            t('folders.permissionDeniedAssign') ||
+            t('folders.permissionDeniedAssign' as any) ||
             'Bạn không có quyền gán thành viên cho folder này. Chỉ PM, Product Owner hoặc Leader mới được phép.'
         });
         return;
@@ -1211,7 +1211,7 @@ export default function Sidebar() {
         <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="bg-white dark:bg-[#1F1F1F] rounded-2xl shadow-xl px-6 py-5 w-full max-w-sm mx-4 border border-gray-200 dark:border-gray-700">
             <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-              {t('common.permissionDenied') || 'Bạn không có quyền thực hiện thao tác này'}
+              {t('common.permissionDenied' as any) || 'Bạn không có quyền thực hiện thao tác này'}
             </h3>
             <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
               {permissionDialog.message}
@@ -1222,7 +1222,7 @@ export default function Sidebar() {
                 onClick={() => setPermissionDialog(null)}
                 className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
               >
-                {t('common.ok') || 'Đã hiểu'}
+                {t('common.ok' as any) || 'Đã hiểu'}
               </button>
             </div>
           </div>

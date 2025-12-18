@@ -34,6 +34,7 @@ import MentionInput, { MentionableUser, parseMentions } from '../common/MentionI
 import MentionHighlight from '../common/MentionHighlight';
 import { useToast } from '../../contexts/ToastContext';
 import { useConfirm } from '../../contexts/ConfirmContext';
+import { useUIState } from '../../contexts/UIStateContext';
 
 export default function ChatView() {
   const { user, currentGroup } = useAuth();
@@ -42,6 +43,7 @@ export default function ChatView() {
   const { socket, isConnected } = useSocket();
   const toast = useToast();
   const confirmDialog = useConfirm();
+  const { pendingConversationIdFromNotification, setPendingConversationIdFromNotification } = useUIState();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [message, setMessage] = useState('');
@@ -244,6 +246,20 @@ export default function ChatView() {
   useEffect(() => {
     loadDirectConversations();
   }, [loadDirectConversations]);
+
+  // Handle navigation to conversation from notification
+  useEffect(() => {
+    if (pendingConversationIdFromNotification && directConversations.length > 0) {
+      const targetConversation = directConversations.find(
+        conv => conv._id === pendingConversationIdFromNotification
+      );
+      if (targetConversation) {
+        setActiveContext('direct');
+        setActiveDirectConversation(targetConversation);
+        setPendingConversationIdFromNotification(null);
+      }
+    }
+  }, [pendingConversationIdFromNotification, directConversations, setPendingConversationIdFromNotification]);
 
   // Check for stored meeting on mount (for page refresh persistence)
   useEffect(() => {
@@ -1296,7 +1312,11 @@ export default function ChatView() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
+                        <p className={`text-sm truncate ${
+                          hasUnread 
+                            ? 'font-bold text-gray-900 dark:text-gray-100' 
+                            : 'font-medium text-gray-800 dark:text-gray-100'
+                        }`}>
                           {conversation.targetUser?.name || t('chat.member')}
                         </p>
                         <span className="text-xs text-gray-400">

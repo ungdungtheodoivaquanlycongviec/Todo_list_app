@@ -21,12 +21,15 @@ export interface Notification {
   title: string;
   message: string;
   data: {
+    taskId?: string;
     groupId?: string;
     groupName?: string;
     action?: string;
     contextType?: 'group' | 'direct';
     conversationId?: string | null;
     messageId?: string | null;
+    // For chat/task events we store extra info here
+    [key: string]: any;
   };
   isRead: boolean;
   status?: 'pending' | 'accepted' | 'declined' | 'expired';

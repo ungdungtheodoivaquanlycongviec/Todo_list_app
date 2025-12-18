@@ -352,6 +352,97 @@ class GroupService {
     };
   }
 
+  /**
+   * Dùng cho admin/super_admin: lấy toàn bộ groups trong hệ thống
+   * không giới hạn theo membership. Vẫn tách ra myGroups/sharedGroups để
+   * frontend có thể tái sử dụng cấu trúc cũ, đồng thời cung cấp allGroups.
+   */
+  async getAllGroups(options = {}, requesterId = null) {
+    const { page, limit, sortBy = 'updatedAt', order = 'desc', search } = options;
+    const pagination = validatePagination(page, limit);
+
+    const allowedSortFields = ['createdAt', 'updatedAt', 'name'];
+    const sortValidation = validateSort(sortBy, order, allowedSortFields);
+    if (!sortValidation.isValid) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: sortValidation.error
+      };
+    }
+
+    const sortOption = {
+      [sortValidation.sanitizedSortBy]: sortValidation.sanitizedOrder === 'asc' ? 1 : -1
+    };
+
+    const query = {};
+
+    if (search && search.trim()) {
+      query.name = { $regex: search.trim(), $options: 'i' };
+    }
+
+    // Ẩn Personal Workspace của user khác:
+    // - Nếu có requesterId: chỉ cho phép thấy personal workspace của chính requester
+    // - Personal workspace của user khác sẽ bị loại bỏ
+    if (requesterId) {
+      query.$or = [
+        { isPersonalWorkspace: { $ne: true } },
+        {
+          isPersonalWorkspace: true,
+          createdBy: normalizeId(requesterId)
+        }
+      ];
+    } else {
+      // Nếu không có requesterId, an toàn hơn là ẩn hết personal workspace
+      query.isPersonalWorkspace = { $ne: true };
+    }
+
+    const skip = (pagination.sanitizedPage - 1) * pagination.sanitizedLimit;
+
+    const [allGroups, total] = await Promise.all([
+      Group.find(query)
+        .populate('members.userId', 'name email avatar groupRole isLeader')
+        .populate('createdBy', 'name email avatar')
+        .sort(sortOption)
+        .skip(skip)
+        .limit(pagination.sanitizedLimit)
+        .lean(),
+      Group.countDocuments(query)
+    ]);
+
+    let myGroups = [];
+    let sharedGroups = [];
+
+    if (requesterId) {
+      myGroups = allGroups.filter(group =>
+        normalizeId(group.createdBy?._id || group.createdBy) === normalizeId(requesterId)
+      );
+
+      sharedGroups = allGroups.filter(group =>
+        normalizeId(group.createdBy?._id || group.createdBy) !== normalizeId(requesterId)
+      );
+    } else {
+      sharedGroups = allGroups;
+    }
+
+    return {
+      success: true,
+      statusCode: HTTP_STATUS.OK,
+      message: SUCCESS_MESSAGES.GROUPS_FETCHED,
+      data: {
+        myGroups,
+        sharedGroups,
+        allGroups,
+        pagination: {
+          total,
+          page: pagination.sanitizedPage,
+          limit: pagination.sanitizedLimit,
+          totalPages: Math.ceil(total / pagination.sanitizedLimit)
+        }
+      }
+    };
+  }
+
   async updateGroup(groupId, requesterId, updateData = {}) {
     const access = await this.getGroupById(groupId, requesterId);
     if (!access.success) {

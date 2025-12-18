@@ -8,16 +8,20 @@ import { triggerGroupChange } from '../hooks/useGroupChange';
 import { useSocket } from '../hooks/useSocket';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useRegional } from '../contexts/RegionalContext';
+import { groupService } from '../services/group.service';
+import { useUIState } from '../contexts/UIStateContext';
 
 interface NotificationDropdownProps {
   className?: string;
+  onNavigate?: (view: string) => void;
 }
 
-export default function NotificationDropdown({ className = '' }: NotificationDropdownProps) {
+export default function NotificationDropdown({ className = '', onNavigate }: NotificationDropdownProps) {
   const { setCurrentGroup, setUser } = useAuth();
   const { socket } = useSocket();
   const { t } = useLanguage();
   const { convertToUserTimezone } = useRegional();
+  const { setPendingTaskIdFromNotification, setPendingConversationIdFromNotification } = useUIState();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
@@ -190,6 +194,56 @@ export default function NotificationDropdown({ className = '' }: NotificationDro
     }
   };
 
+  const handleNotificationClick = async (notification: Notification) => {
+    // Mark as read if needed
+    try {
+      if (!notification.isRead) {
+        await notificationService.markAsRead(notification._id);
+        setNotifications(prev =>
+          prev.map(n => (n._id === notification._id ? { ...n, isRead: true } : n))
+        );
+        setUnreadCount(prev => (prev > 0 ? prev - 1 : 0));
+      }
+    } catch (error) {
+      console.error('Failed to mark notification as read on click:', error);
+    }
+
+    const { type, data } = notification;
+
+    // If this is a task-related notification and we have taskId, store it for TasksView
+    if ((type === 'task_assignment' || type === 'new_task' || type === 'task') && data?.taskId) {
+      setPendingTaskIdFromNotification(String(data.taskId));
+    }
+
+    // Switch group if notification is tied to a specific group
+    if (data?.groupId) {
+      try {
+        const result = await groupService.switchToGroup(data.groupId);
+        if (result?.group) {
+          setCurrentGroup(result.group);
+        }
+      } catch (error) {
+        console.error('Failed to switch group from notification:', error);
+      }
+    }
+
+    // Navigate to appropriate view in app
+    if (onNavigate) {
+      if (type === 'chat_message') {
+        // If it's a direct message notification, set conversationId for navigation
+        if (data?.contextType === 'direct' && data?.conversationId) {
+          setPendingConversationIdFromNotification(data.conversationId);
+        }
+        onNavigate('chat');
+      } else if (type === 'task_assignment' || type === 'new_task') {
+        onNavigate('tasks');
+      }
+    }
+
+    // Close dropdown after navigation
+    setIsOpen(false);
+  };
+
   return (
     <div className={`relative ${className}`} ref={dropdownRef}>
       {/* Notification Bell */}
@@ -241,9 +295,10 @@ export default function NotificationDropdown({ className = '' }: NotificationDro
               notifications.map((notification) => (
                 <div
                   key={notification._id}
-                  className={`p-4 border-b border-gray-100 hover:bg-gray-50 ${
+                  className={`p-4 border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${
                     !notification.isRead ? 'bg-blue-50' : ''
                   }`}
+                  onClick={() => handleNotificationClick(notification)}
                 >
                   <div className="flex items-start space-x-3">
                     {getNotificationIcon(notification.type)}
@@ -257,7 +312,10 @@ export default function NotificationDropdown({ className = '' }: NotificationDro
                             {formatTimeAgo(notification.createdAt)}
                           </span>
                           <button
-                            onClick={() => handleDeleteNotification(notification)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteNotification(notification);
+                            }}
                             className="text-gray-400 hover:text-red-500"
                           >
                             <Trash2 className="w-3 h-3" />
@@ -272,14 +330,20 @@ export default function NotificationDropdown({ className = '' }: NotificationDro
                       {notification.type === 'group_invitation' && notification.status === 'pending' && (
                         <div className="flex items-center space-x-2 mt-3">
                           <button
-                            onClick={() => handleAcceptInvitation(notification)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAcceptInvitation(notification);
+                            }}
                             className="flex items-center space-x-1 px-3 py-1 bg-green-500 text-white text-xs rounded-full hover:bg-green-600 transition-colors"
                           >
                             <Check className="w-3 h-3" />
                             <span>{t('notifications.accept')}</span>
                           </button>
                           <button
-                            onClick={() => handleDeclineInvitation(notification)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeclineInvitation(notification);
+                            }}
                             className="flex items-center space-x-1 px-3 py-1 bg-red-500 text-white text-xs rounded-full hover:bg-red-600 transition-colors"
                           >
                             <X className="w-3 h-3" />
@@ -291,7 +355,10 @@ export default function NotificationDropdown({ className = '' }: NotificationDro
                       {/* Mark as read for other notifications */}
                       {notification.type !== 'group_invitation' && !notification.isRead && (
                         <button
-                          onClick={() => handleMarkAsRead(notification)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMarkAsRead(notification);
+                          }}
                           className="mt-2 text-xs text-blue-600 hover:text-blue-800"
                         >
                           {t('notifications.markAsRead')}

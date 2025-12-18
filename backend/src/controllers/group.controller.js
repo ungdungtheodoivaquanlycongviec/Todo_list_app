@@ -38,7 +38,15 @@ const getGroups = asyncHandler(async (req, res) => {
     search: req.query.search
   };
 
-  const result = await groupService.getGroupsForUser(req.user._id, options);
+  // Nếu là admin/super_admin thì cho phép xem toàn bộ groups trong hệ thống,
+  // không giới hạn theo membership
+  const isAdmin =
+    req.user &&
+    (req.user.role === 'admin' || req.user.role === 'super_admin');
+
+  const result = isAdmin
+    ? await groupService.getAllGroups(options, req.user._id)
+    : await groupService.getGroupsForUser(req.user._id, options);
 
   if (!result.success) {
     return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);

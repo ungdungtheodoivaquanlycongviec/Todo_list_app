@@ -29,6 +29,7 @@ import { useAuth } from "../../../contexts/AuthContext"
 import { useTaskRealtime } from "../../../hooks/useTaskRealtime"
 import { useFolder } from "../../../contexts/FolderContext"
 import { getMemberRole, canAssignFolderMembers } from "../../../utils/groupRoleUtils"
+import { GroupRoleKey } from "../../../constants/groupRoles"
 import { useLanguage } from "../../../contexts/LanguageContext"
 import { useRegional } from "../../../contexts/RegionalContext"
 import { useTimer, useTimerElapsed } from "../../../contexts/TimerContext"
@@ -2657,7 +2658,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
 
       {/* Assign Members Modal */}
       {showAssignModal && currentGroup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-96 max-w-md mx-4 max-h-[80vh] overflow-y-auto">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
               {t('assignee.addAssignees')}

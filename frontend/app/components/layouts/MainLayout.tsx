@@ -176,6 +176,7 @@ export default function MainLayout({
             theme={theme}
             onThemeChange={onThemeChange}
             onProfileClick={() => setShowProfileSettings(true)}
+            onViewChange={handleViewChange}
           />
           <div className="flex-1 min-h-0 overflow-hidden">
             {showProfileSettings ? (

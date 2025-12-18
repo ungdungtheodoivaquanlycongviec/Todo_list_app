@@ -89,12 +89,13 @@ export default function AdminPage() {
     <div className="relative h-screen bg-gray-50 dark:bg-gray-900 flex flex-col overflow-hidden">
       {/* TopBar */}
       <TopBar 
-        user={user} 
+        user={user}
         onLogout={logout}
         theme={user.theme || 'auto'}
         onThemeChange={handleThemeChange}
-        onProfileClick={() => setShowProfileSettings(true)}
-      />
+        onProfileClick={() => setShowProfileSettings(true)} onViewChange={function (view: string): void {
+          throw new Error('Function not implemented.');
+        } }      />
 
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {showProfileSettings ? (
@@ -232,7 +233,6 @@ function UsersTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState<any>(null);
-  const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -441,12 +441,6 @@ function UsersTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                       <button
-                        onClick={() => setEditingUser(user)}
-                        className="text-blue-600 hover:text-blue-900"
-                      >
-                        Edit
-                      </button>
-                      <button
                         onClick={() => handleLockUnlock(user._id, !user.isActive)}
                         className={`${
                           user.isActive ? 'text-red-600 hover:text-red-900' : 'text-green-600 hover:text-green-900'
@@ -504,32 +498,13 @@ function UsersTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
           )}
         </>
       )}
-
-      {/* Edit Modal - Simplified version */}
-      {editingUser && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold mb-4">Edit User</h3>
-            <p className="text-gray-600 mb-4">
-              Editing user details requires full form implementation.
-            </p>
-            <button
-              onClick={() => {
-                setEditingUser(null);
-              }}
-              className="bg-gray-200 text-gray-800 px-4 py-2 rounded hover:bg-gray-300"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
 // Notifications Tab Component
 function NotificationsTab() {
+  const { user } = useAuth();
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [recipientType, setRecipientType] = useState<'all' | 'users' | 'group'>('all');
@@ -559,7 +534,12 @@ function NotificationsTab() {
       try {
         setGroupsLoading(true);
         const res = await groupService.getAllGroups();
-        const allGroups = [...(res.myGroups || []), ...(res.sharedGroups || [])];
+        // Nếu backend có trả về allGroups (cho admin/super_admin) thì ưu tiên dùng toàn bộ danh sách này
+        // Ngược lại fallback về myGroups + sharedGroups như cũ
+        const allGroups =
+          (res.allGroups && res.allGroups.length > 0
+            ? res.allGroups
+            : [...(res.myGroups || []), ...(res.sharedGroups || [])]);
         setGroups(allGroups);
       } catch (err) {
         console.error('Failed to load groups', err);

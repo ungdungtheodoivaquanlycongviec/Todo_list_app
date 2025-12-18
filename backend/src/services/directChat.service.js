@@ -340,10 +340,19 @@ class DirectChatService {
       });
     }
 
-    // Exclude mentioned users from regular notification (they get mention notification)
-    const mentionedUserIds = Array.isArray(mentions) ? mentions : [];
-    const notificationRecipients = otherParticipantId && !mentionedUserIds.includes(otherParticipantId)
-      ? [otherParticipantId]
+    // Normalize mentioned user IDs for comparison
+    const mentionedUserIds = Array.isArray(mentions) 
+      ? mentions.map(id => normalizeId(id)).filter(Boolean)
+      : [];
+    
+    // Normalize otherParticipantId for comparison
+    const normalizedOtherParticipantId = otherParticipantId ? normalizeId(otherParticipantId) : null;
+    
+    // For direct chat: always send notification to the other participant
+    // Only exclude if they are mentioned (they will get mention notification instead)
+    const notificationRecipients = normalizedOtherParticipantId && 
+      !mentionedUserIds.some(mentionedId => normalizeId(mentionedId) === normalizedOtherParticipantId)
+      ? [normalizedOtherParticipantId]
       : [];
 
     if (notificationRecipients.length > 0) {

@@ -45,7 +45,11 @@ export default function TasksView() {
   const { currentFolder } = useFolder();
   const { t } = useLanguage();
   const { formatDate, convertFromUserTimezone, convertToUserTimezone } = useRegional();
-  const { setIsTaskDetailOpen } = useUIState();
+  const {
+    setIsTaskDetailOpen,
+    pendingTaskIdFromNotification,
+    setPendingTaskIdFromNotification
+  } = useUIState();
   const timerContext = useTimer();
   const toast = useToast();
   const confirmDialog = useConfirm();
@@ -531,6 +535,18 @@ export default function TasksView() {
     setIsTaskDetailOpen(showTaskDetail);
     return () => setIsTaskDetailOpen(false); // Clean up on unmount
   }, [showTaskDetail, setIsTaskDetailOpen]);
+
+  // Open task detail automatically when coming from a task-related notification
+  useEffect(() => {
+    if (!pendingTaskIdFromNotification) return;
+
+    // Open TaskDetailModal for the taskId from notification
+    setSelectedTask(pendingTaskIdFromNotification);
+    setShowTaskDetail(true);
+
+    // Clear pending id so it doesn't reopen on next renders
+    setPendingTaskIdFromNotification(null);
+  }, [pendingTaskIdFromNotification, setPendingTaskIdFromNotification]);
 
   // Sync timers from tasks that have active timers (for page reload persistence)
   // Note: timerContext.syncTimersFromTask is stable via useCallback, so we intentionally
