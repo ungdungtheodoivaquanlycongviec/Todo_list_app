@@ -75,6 +75,8 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   const isLeader = Boolean((user as any)?.isLeader);
   const canEditRoles = canManageRolesFor();
   const canAddMembersCheck = canAddMembers(currentUserRole, isLeader);
+  // Ai có thể xoá member: PO, PM, Leader (theo business role + cờ leader)
+  const canRemoveMembersCheck = canAssignFolderMembers(currentUserRole, isLeader);
   const showFolderAssignments = Boolean(group?._id && currentGroup?._id && group?._id === currentGroup?._id);
   const folderAssignments = useMemo(() => {
     if (!showFolderAssignments || !Array.isArray(folders)) {
@@ -507,12 +509,29 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
   const isCurrentUser = (member: GroupMember) => getMemberId(member) === user?._id;
 
   const canRemoveMember = (member: GroupMember) => {
-    if (!canEditRoles) return false;
+    if (!canRemoveMembersCheck) return false;
     if (isCurrentUser(member)) return false;
+
+    const currentUserRole = ((user as any)?.groupRole || null) as GroupRoleKey | null;
+    const currentIsLeader = Boolean((user as any)?.isLeader);
+
     const memberUser = member.userId && typeof member.userId === 'object' ? (member.userId as any) : null;
-    const memberBusinessRole = memberUser?.groupRole as GroupRoleKey | null | undefined;
-    if (memberBusinessRole === GROUP_ROLE_KEYS.PRODUCT_OWNER) return false;
-    return true;
+    const memberBusinessRole = (memberUser?.groupRole || null) as GroupRoleKey | null;
+    const memberIsLeader = Boolean(memberUser?.isLeader);
+
+    const getPowerLevel = (role: GroupRoleKey | null, isLeader: boolean) => {
+      const isPM = role === GROUP_ROLE_KEYS.PM;
+      const isPO = role === GROUP_ROLE_KEYS.PRODUCT_OWNER;
+      if (isLeader && (isPM || isPO)) return 3; // PM/PO Lead
+      if (isLeader || isPM || isPO) return 2;   // Lead các role khác + PM/PO thường
+      return 1;                                 // Các business role còn lại
+    };
+
+    const currentLevel = getPowerLevel(currentUserRole, currentIsLeader);
+    const memberLevel = getPowerLevel(memberBusinessRole, memberIsLeader);
+
+    // Chỉ cho phép xóa khi quyền của mình cao hơn quyền của member
+    return currentLevel > memberLevel;
   };
 
   if (loading) {
@@ -776,12 +795,12 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
           )}
           {/* Table Header */}
           <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-700 dark:to-gray-600 px-6 py-4 border-b border-gray-200 dark:border-gray-600">
-            <div className={`grid gap-6 items-center ${canEditRoles ? 'grid-cols-5' : 'grid-cols-4'}`}>
+            <div className={`grid gap-6 items-center ${canRemoveMembersCheck ? 'grid-cols-5' : 'grid-cols-4'}`}>
               <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{t('groupMembers.tableHeaderMember')}</div>
               <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{t('groupMembers.tableHeaderEmail')}</div>
               <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{t('groupMembers.tableHeaderRole')}</div>
               <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{t('groupMembers.tableHeaderAccess')}</div>
-              {canEditRoles && (
+              {canRemoveMembersCheck && (
                 <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{t('groupMembers.tableHeaderActions')}</div>
               )}
             </div>
@@ -806,7 +825,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
 
                 return (
                   <div key={typeof member.userId === 'string' ? member.userId : member.userId._id} className="px-6 py-5 hover:bg-gray-50 dark:hover:bg-[#2E2E2E] transition-colors">
-                    <div className={`grid gap-6 items-center ${canEditRoles ? 'grid-cols-5' : 'grid-cols-4'}`}>
+                    <div className={`grid gap-6 items-center ${canRemoveMembersCheck ? 'grid-cols-5' : 'grid-cols-4'}`}>
                       {/* Name with Real Avatar */}
                       <div className="flex items-center">
                         <div className="relative">
@@ -871,7 +890,7 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
                       </div>
 
                       {/* Actions */}
-                      {canEditRoles && (
+                      {canRemoveMembersCheck && (
                         <div className="flex items-center">
                           {canRemoveMember(member) ? (
                             <button
@@ -898,18 +917,6 @@ export default function GroupMembersView({ groupId }: GroupMembersViewProps) {
             )}
           </div>
         </div>
-
-        {/* Add People Link */}
-        {members.length > 0 && canAddMembersCheck && (
-          <div className="mt-4 text-center">
-            <button
-              onClick={() => setShowInviteModal(true)}
-              className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm underline"
-            >
-              {t('groupMembers.addPeople')}
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Invite Modal */}

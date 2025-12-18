@@ -185,9 +185,10 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   const toast = useToast()
   const confirmDialog = useConfirm()
 
-  // Check if user can assign to others
-  const currentUserRole = currentGroup ? getMemberRole(currentGroup, currentUser?._id) : null
-  const canAssignToOthers = canAssignFolderMembers(currentUserRole)
+  // Check if user can assign tasks to others (dựa trên business role + cờ leader)
+  const businessRole = ((currentUser as any)?.groupRole || null) as GroupRoleKey | null
+  const isLeader = Boolean((currentUser as any)?.isLeader)
+  const canAssignToOthers = canAssignFolderMembers(businessRole, isLeader)
 
   // Get folder member access list
   const folderMemberAccess = currentFolder && !currentFolder.isDefault

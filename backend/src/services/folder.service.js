@@ -180,7 +180,8 @@ const serializeMemberAccess = entries =>
 const assertFolderPermission = ({ groupDoc, folderDoc, requesterId, role, requireWrite = false, isLeader = false }) => {
   const effectiveRole = role || getRequesterRole(groupDoc, requesterId);
   const assigned = hasFolderAssignment(folderDoc, requesterId);
-  if (!canViewFolder(effectiveRole, { isAssigned: assigned })) {
+  // Leaders luôn có quyền xem mọi folder trong group
+  if (!canViewFolder(effectiveRole, { isAssigned: assigned, isLeader })) {
     throw buildError(ERROR_MESSAGES.FOLDER_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
   }
   if (requireWrite && !canWriteInFolder(effectiveRole, { isAssigned: assigned, isLeader })) {
@@ -199,7 +200,7 @@ class FolderService {
       Boolean(group.isPersonalWorkspace) &&
       normalizeId(group.createdBy) === normalizeId(requesterId);
 
-    const canViewAll = isPersonalOwner ? true : canViewAllFolders(requester.role);
+    const canViewAll = isPersonalOwner ? true : canViewAllFolders(requester);
     const exposeMemberAccess = isPersonalOwner ? true : canAssignFolderMembers(requester);
     const query = { groupId };
     if (!canViewAll) {
@@ -440,7 +441,7 @@ class FolderService {
 
     // Emit realtime event - only to users assigned to this folder (or admins)
     const folderData = updatedFolder.toObject ? updatedFolder.toObject() : updatedFolder;
-    const canViewAll = isPersonalOwner ? true : canViewAllFolders(requester.role);
+    const canViewAll = isPersonalOwner ? true : canViewAllFolders(requester);
     
     // Determine recipients: assigned users + admins
     let recipients = [];
@@ -649,8 +650,8 @@ class FolderService {
     const plainFolder = folder.toObject();
     plainFolder.memberAccess = serializeMemberAccess(plainFolder.memberAccess);
 
-    // Emit realtime event - only to users assigned to this folder (or admins)
-    const canViewAll = canViewAllFolders(requester.role);
+    // Emit realtime event - only to users assigned to this folder (hoặc admins)
+    const canViewAll = canViewAllFolders(requester);
     
     // Determine recipients: newly assigned users + admins
     let recipients = [];

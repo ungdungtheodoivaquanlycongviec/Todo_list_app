@@ -495,6 +495,7 @@ export const translations = {
     'sidebar.creatingFolder': 'Creating...',
     'sidebar.loadingFolders': 'Loading folders...',
     'sidebar.noFoldersYet': 'No folders yet. Create one to start organizing.',
+    'sidebar.personalWorkspace': 'My Personal Workspace',
 
     // Task Detail
     'taskDetail.addStatus': 'Add status',

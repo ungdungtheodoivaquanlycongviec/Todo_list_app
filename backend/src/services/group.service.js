@@ -1,6 +1,6 @@
 const Group = require('../models/Group.model');
-const Task = require('../models/Task.model');
 const User = require('../models/User.model');
+const Task = require('../models/Task.model');
 const Folder = require('../models/Folder.model');
 const Note = require('../models/Note.model');
 const notificationService = require('./notification.service');
@@ -664,6 +664,36 @@ class GroupService {
         success: false,
         statusCode: HTTP_STATUS.NOT_FOUND,
         message: ERROR_MESSAGES.GROUP_MEMBER_NOT_FOUND
+      };
+    }
+
+    // Hierarchical permission check: requester chỉ được xóa member "dưới quyền"
+    const requesterUser = await User.findById(requesterId).select('_id groupRole isLeader').lean();
+    const targetUser = await User.findById(memberId).select('_id groupRole isLeader').lean();
+
+    const getPowerLevel = (user) => {
+      if (!user) return 0;
+      const userRole = user.groupRole || null;
+      const userIsLeader = Boolean(user.isLeader);
+      const isPM = userRole === GROUP_ROLE_KEYS.PM;
+      const isPO = userRole === GROUP_ROLE_KEYS.PRODUCT_OWNER;
+
+      // Cao nhất: PM/PO có cờ Leader
+      if (userIsLeader && (isPM || isPO)) return 3;
+      // Tầng 2: PM/PO thường hoặc Leader của các business role khác
+      if (userIsLeader || isPM || isPO) return 2;
+      // Tầng 1: các business role còn lại
+      return 1;
+    };
+
+    const requesterLevel = getPowerLevel(requesterUser);
+    const targetLevel = getPowerLevel(targetUser);
+
+    if (requesterLevel <= targetLevel) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.FORBIDDEN,
+        message: 'Bạn không thể xóa thành viên có quyền ngang hoặc cao hơn mình.'
       };
     }
 

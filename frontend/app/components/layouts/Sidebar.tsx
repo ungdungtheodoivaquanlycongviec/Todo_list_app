@@ -20,7 +20,7 @@ import { Group } from '../../services/types/group.types';
 import { useFolder } from '../../contexts/FolderContext';
 import { folderService } from '../../services/folder.service';
 import { Folder } from '../../services/types/folder.types';
-import { GROUP_ROLE_KEYS } from '../../constants/groupRoles';
+import { GROUP_ROLE_KEYS, GroupRoleKey } from '../../constants/groupRoles';
 import { getMemberRole, canManageFolders, canAssignFolderMembers, canAddMembers } from '../../utils/groupRoleUtils';
 import FolderContextMenu from '../folders/FolderContextMenu';
 import GroupContextMenu from '../groups/GroupContextMenu';
@@ -28,6 +28,7 @@ import { FolderAccessModal } from '../folders/FolderAccessModal';
 import { useSocket } from '../../hooks/useSocket';
 import { useGroupChange } from '../../hooks/useGroupChange';
 import { useConfirm } from '../../contexts/ConfirmContext';
+import { useSafeToast } from '../../contexts/ToastContext';
 
 // Create Group Modal Component
 interface CreateGroupModalProps {
@@ -253,9 +254,11 @@ export default function Sidebar() {
   const { user, currentGroup, setCurrentGroup } = useAuth();
   const { socket, isConnected } = useSocket();
   const confirmDialog = useConfirm();
+  const toast = useSafeToast();
   const userRoleInCurrentGroup = currentGroup && user ? getMemberRole(currentGroup, user._id) : null;
   const isLeader = Boolean((user as any)?.isLeader);
-  const businessRole = (user as any)?.groupRole as string | undefined | null;
+  // Account-level business role (PM/PO/...) cấp bởi admin
+  const businessRole = ((user as any)?.groupRole || null) as GroupRoleKey | null;
   const canManageGroups = Boolean(businessRole === GROUP_ROLE_KEYS.PRODUCT_OWNER || isLeader);
   const canDeleteFolders = canManageFolders(userRoleInCurrentGroup, isLeader);
   const canEditFolders = canManageFolders(userRoleInCurrentGroup, isLeader);
@@ -334,6 +337,9 @@ export default function Sidebar() {
     tasks: Array<{ taskId: string; taskTitle: string; taskStatus: string }>;
   }>>([]);
   const [groupMembersMap, setGroupMembersMap] = useState<Record<string, Group['members']>>({});
+  const [permissionDialog, setPermissionDialog] = useState<{
+    message: string;
+  } | null>(null);
 
   const loadGroupFolders = useCallback(
     async (groupId: string) => {
@@ -521,6 +527,15 @@ export default function Sidebar() {
   };
 
   const handleAddProject = () => {
+    // Chặn tạo project nếu không có quyền (PM/PO/Leader)
+    if (!canManageGroups) {
+      setPermissionDialog({
+        message:
+          t('groups.permissionDeniedCreateProject') ||
+          'Bạn không có quyền tạo project mới. Chỉ PM, Product Owner hoặc Leader mới được phép.'
+      });
+      return;
+    }
     setShowCreateModal(true);
   };
 
@@ -536,6 +551,10 @@ export default function Sidebar() {
       setShowCreateModal(false);
     } catch (error) {
       console.error('Failed to create group:', error);
+      toast.showError(
+        error instanceof Error ? error.message : 'Không thể tạo project mới.',
+        t('common.error') || 'Lỗi'
+      );
     }
   };
 
@@ -555,6 +574,15 @@ export default function Sidebar() {
       loadGroups();
     } catch (error) {
       console.error('Failed to invite user:', error);
+      // Hiển thị pop up khi không có quyền mời thành viên hoặc lỗi khác
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Không thể mời thành viên. Vui lòng thử lại hoặc kiểm tra quyền của bạn.';
+      toast.showError(
+        message,
+        t('common.permissionDenied') || 'Không có quyền'
+      );
       throw error; // Re-throw to let modal handle the error
     }
   };
@@ -576,6 +604,26 @@ export default function Sidebar() {
   };
 
   const handleOpenFolderForm = (groupId: string) => {
+    // Nếu không có quyền manage folder cho group này thì báo lỗi
+    const group =
+      myGroups.find(g => g._id === groupId) ||
+      sharedGroups.find(g => g._id === groupId) ||
+      (personalWorkspace && personalWorkspace._id === groupId ? personalWorkspace : null);
+
+    if (group && user) {
+      const groupUserRole = getMemberRole(group, user._id);
+      const effectiveRole = (businessRole || groupUserRole) as GroupRoleKey | null;
+      const canManageThisGroupFolders = canManageFolders(effectiveRole, isLeader);
+      if (!canManageThisGroupFolders) {
+        setPermissionDialog({
+          message:
+            t('folders.permissionDeniedCreate') ||
+            'Bạn không có quyền tạo folder trong group này. Chỉ PM, Product Owner hoặc Leader mới được phép.'
+        });
+        return;
+      }
+    }
+
     setExpandedGroups(prev => ({
       ...prev,
       [groupId]: true
@@ -711,6 +759,26 @@ export default function Sidebar() {
   };
 
   const handleDeleteFolder = async (groupId: string, folderId: string) => {
+    // Kiểm tra quyền trước khi hiển thị confirm
+    const group =
+      myGroups.find(g => g._id === groupId) ||
+      sharedGroups.find(g => g._id === groupId) ||
+      (personalWorkspace && personalWorkspace._id === groupId ? personalWorkspace : null);
+
+    if (group && user) {
+      const groupUserRole = getMemberRole(group, user._id);
+      const effectiveRole = (businessRole || groupUserRole) as GroupRoleKey | null;
+      const canManageThisGroupFolders = canManageFolders(effectiveRole, isLeader);
+      if (!canManageThisGroupFolders) {
+        setPermissionDialog({
+          message:
+            t('folders.permissionDeniedDelete') ||
+            'Bạn không có quyền xóa folder trong group này. Chỉ PM, Product Owner hoặc Leader mới được phép.'
+        });
+        return;
+      }
+    }
+
     const confirmed = await confirmDialog.confirm({
       title: 'Xóa thư mục',
       message: 'Bạn có chắc chắn muốn xóa thư mục này không? Tất cả các task và ghi chú trong thư mục này cũng sẽ bị xóa.',
@@ -795,6 +863,27 @@ export default function Sidebar() {
 
   const handleContextMenuAssign = async () => {
     if (!contextMenu) return;
+
+    // Kiểm tra quyền trước khi mở màn hình gán member cho folder
+    const groupId = contextMenu.groupId;
+    const group =
+      myGroups.find(g => g._id === groupId) ||
+      sharedGroups.find(g => g._id === groupId) ||
+      (personalWorkspace && personalWorkspace._id === groupId ? personalWorkspace : null);
+
+    if (group && user) {
+      const groupUserRole = getMemberRole(group, user._id);
+      const effectiveRole = (businessRole || groupUserRole) as GroupRoleKey | null;
+      const canAssignThisGroupFolders = canAssignFolderMembers(effectiveRole, isLeader);
+      if (!canAssignThisGroupFolders) {
+        setPermissionDialog({
+          message:
+            t('folders.permissionDeniedAssign') ||
+            'Bạn không có quyền gán thành viên cho folder này. Chỉ PM, Product Owner hoặc Leader mới được phép.'
+        });
+        return;
+      }
+    }
 
     // Load members if not already loaded
     if (!groupMembersMap[contextMenu.groupId]) {
@@ -1117,6 +1206,28 @@ export default function Sidebar() {
 
   return (
     <div className="w-full h-full bg-gradient-to-b from-gray-50 to-gray-100 dark:bg-[#1F1F1F] text-gray-900 dark:text-white flex flex-col border-r border-gray-200 dark:border-gray-700">
+      {/* Permission dialog - friendly center popup */}
+      {permissionDialog && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white dark:bg-[#1F1F1F] rounded-2xl shadow-xl px-6 py-5 w-full max-w-sm mx-4 border border-gray-200 dark:border-gray-700">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+              {t('common.permissionDenied') || 'Bạn không có quyền thực hiện thao tác này'}
+            </h3>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+              {permissionDialog.message}
+            </p>
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setPermissionDialog(null)}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+              >
+                {t('common.ok') || 'Đã hiểu'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Header with User Info */}
       <div className="p-6 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center space-x-3 mb-4">
@@ -1177,7 +1288,8 @@ export default function Sidebar() {
           </div>
           {personalWorkspace && (() => {
             const personalWorkspaceRole = user ? getMemberRole(personalWorkspace, user._id) : null;
-            const canManageFoldersForPersonal = canManageFolders(personalWorkspaceRole, isLeader);
+            const effectiveRole = (businessRole || personalWorkspaceRole) as GroupRoleKey | null;
+            const canManageFoldersForPersonal = canManageFolders(effectiveRole, isLeader);
             return renderGroupCard(personalWorkspace, { canManageFolders: canManageFoldersForPersonal });
           })()}
         </div>
@@ -1229,8 +1341,10 @@ export default function Sidebar() {
               ) : (
                 myGroups.map(group => {
                   const groupUserRole = user ? getMemberRole(group, user._id) : null;
-                  const canInvite = canAddMembers(groupUserRole, isLeader);
-                  const canManageFoldersForGroup = canManageFolders(groupUserRole, isLeader);
+                  // Ưu tiên businessRole (PM/PO) nhưng vẫn fallback group role nếu có
+                  const effectiveRole = (businessRole || groupUserRole) as GroupRoleKey | null;
+                  const canInvite = canAddMembers(effectiveRole, isLeader);
+                  const canManageFoldersForGroup = canManageFolders(effectiveRole, isLeader);
                   return renderGroupCard(group, { canInvite, canManageFolders: canManageFoldersForGroup });
                 })
               )}
@@ -1263,7 +1377,8 @@ export default function Sidebar() {
               ) : (
                 sharedGroups.map(group => {
                   const groupUserRole = user ? getMemberRole(group, user._id) : null;
-                  const canManageFoldersForGroup = canManageFolders(groupUserRole, isLeader);
+                  const effectiveRole = (businessRole || groupUserRole) as GroupRoleKey | null;
+                  const canManageFoldersForGroup = canManageFolders(effectiveRole, isLeader);
                   return renderGroupCard(group, { canManageFolders: canManageFoldersForGroup });
                 })
               )}

@@ -22,7 +22,8 @@ export const getMemberRole = (group: Group | null | undefined, userId?: string |
     return null;
   }
   const member = group.members?.find(item => getMemberId(item) === userId);
-  return member ? member.role : null;
+  // member.role có type có thể bao gồm undefined → chuẩn hóa về null để khớp kiểu trả về
+  return member?.role ?? null;
 };
 
 export const isReadOnlyRole = (role?: GroupRoleKey | null) =>

@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Globe, Mail, Lock, Eye, EyeOff, LogIn, User, ArrowLeft } from 'lucide-react';
+import { Globe, Mail, Lock, Eye, EyeOff, LogIn, User } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 // Cloud SVG component for decorative background
@@ -701,15 +701,6 @@ function ForgotPasswordForm({ onSwitchToLogin, t }: { onSwitchToLogin: () => voi
 
   return (
     <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-[0_8px_32px_rgba(0,0,0,0.08)] w-full max-w-md p-8 border border-white/60">
-      {/* Back button */}
-      <button
-        onClick={onSwitchToLogin}
-        className="flex items-center gap-2 text-gray-500 hover:text-gray-700 text-sm font-medium transition-colors mb-6"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        {t.backToLogin}
-      </button>
-
       {/* Icon */}
       <div className="flex justify-center mb-4">
         <div className="w-14 h-14 bg-gray-50 rounded-2xl flex items-center justify-center shadow-sm border border-gray-100">

@@ -41,12 +41,25 @@ const isPM = role => role === GROUP_ROLE_KEYS.PM;
 const isPrivilegedForGroup = ({ role, isLeader = false } = {}) =>
   Boolean(isProductOwner(role) || isLeader);
 
-const canViewAllFolders = role =>
-  Boolean(role) &&
-  (requiresFolderAssignment(role) === false ||
-    isReadOnlyRole(role) ||
-    isProductOwner(role) ||
-    isPM(role));
+// Leaders luôn được quyền xem tất cả folder trong group,
+// ngoài ra các role đủ điều kiện (PO/PM/đọc toàn group) cũng được xem hết.
+// Hàm này chấp nhận cả role (string) hoặc context { role, isLeader } để tương thích ngược.
+const canViewAllFolders = input => {
+  if (!input) return false;
+
+  const role = typeof input === 'string' ? input : input.role;
+  const isLeader = typeof input === 'string' ? false : Boolean(input.isLeader);
+
+  if (isLeader) {
+    return true;
+  }
+
+  return Boolean(role) &&
+    (requiresFolderAssignment(role) === false ||
+      isReadOnlyRole(role) ||
+      isProductOwner(role) ||
+      isPM(role));
+};
 
 // PO + Leaders can CRUD group + folders. PM can CRUD folders in groups they belong to.
 const canManageFolders = ({ role, isLeader = false } = {}) =>
@@ -83,7 +96,11 @@ const canWriteInFolder = (role, { isAssigned = false, isLeader = false } = {}) =
 const canCreateTasks = ({ role, isLeader = false } = {}) =>
   Boolean(role) && (!isReadOnlyRole(role) || isLeader);
 
-const canViewFolder = (role, { isAssigned = false } = {}) => {
+const canViewFolder = (role, { isAssigned = false, isLeader = false } = {}) => {
+  // Leaders có quyền xem mọi folder trong group
+  if (isLeader) {
+    return true;
+  }
   if (!role) {
     return false;
   }
