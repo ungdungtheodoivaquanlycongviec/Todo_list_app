@@ -184,6 +184,108 @@ const getRequesterContext = async (requesterId) => {
   return { role: user?.groupRole || null, isLeader: Boolean(user?.isLeader) };
 };
 
+/**
+ * Kiểm tra quyền assign task cho các user dựa trên role và lead status
+ * @param {Object} assignerContext - Context của người assign (role, isLeader)
+ * @param {Array} targetUserIds - Danh sách user IDs cần kiểm tra
+ * @param {String} assignerId - ID của người assign (để cho phép self-assignment)
+ * @returns {Object} { validIds: Array, restrictedIds: Array, errorMessage: String }
+ */
+const validateAssignmentPermissions = async (assignerContext, targetUserIds, assignerId) => {
+  if (!targetUserIds || targetUserIds.length === 0) {
+    return { validIds: [], restrictedIds: [], errorMessage: null };
+  }
+
+  const normalizedAssignerId = normalizeId(assignerId);
+  const isAssignerPM = assignerContext.role === GROUP_ROLE_KEYS.PM;
+  const isAssignerPO = assignerContext.role === GROUP_ROLE_KEYS.PRODUCT_OWNER;
+  const isAssignerPMorPO = isAssignerPM || isAssignerPO;
+  const isAssignerPMLead = isAssignerPM && assignerContext.isLeader;
+  const isAssignerPOLead = isAssignerPO && assignerContext.isLeader;
+  const isAssignerPMorPOLead = isAssignerPMLead || isAssignerPOLead;
+  const isAssignerLeaderOnly = assignerContext.isLeader && !isAssignerPMorPO;
+
+  // Lấy thông tin các target users
+  const targetUsers = await User.find({ _id: { $in: targetUserIds }, isActive: true })
+    .select('_id groupRole isLeader')
+    .lean();
+
+  const userMap = targetUsers.reduce((acc, user) => {
+    acc[normalizeId(user._id)] = user;
+    return acc;
+  }, {});
+
+  const validIds = [];
+  const restrictedIds = [];
+
+  targetUserIds.forEach(userId => {
+    const normalizedUserId = normalizeId(userId);
+    
+    // Luôn cho phép gán chính mình (self-assignment)
+    if (normalizedUserId === normalizedAssignerId) {
+      validIds.push(userId);
+      return;
+    }
+
+    const targetUser = userMap[normalizedUserId];
+    if (!targetUser) {
+      restrictedIds.push(userId);
+      return;
+    }
+
+    const isTargetPM = targetUser.groupRole === GROUP_ROLE_KEYS.PM;
+    const isTargetPO = targetUser.groupRole === GROUP_ROLE_KEYS.PRODUCT_OWNER;
+    const isTargetPMorPO = isTargetPM || isTargetPO;
+    const isTargetLeader = Boolean(targetUser.isLeader);
+    const isTargetPMLead = isTargetPM && isTargetLeader;
+    const isTargetPOLead = isTargetPO && isTargetLeader;
+
+    // Rule 1: PM, PO (non-lead) có thể assign cho các role khác ngoại trừ:
+    //   - Người có thuộc tính lead có role PM, PO (PM lead, PO lead)
+    //   - PM, PO khác (non-lead)
+    if (isAssignerPMorPO && !isAssignerPMorPOLead) {
+      if (isTargetPMLead || isTargetPOLead || (isTargetPMorPO && !isTargetLeader)) {
+        restrictedIds.push(userId);
+        return;
+      }
+      validIds.push(userId);
+      return;
+    }
+
+    // Rule 2: Lead (non-PM/PO) không thể assign cho lead khác nhưng có thể assign cho chính mình và business role khác
+    if (isAssignerLeaderOnly) {
+      if (isTargetLeader) {
+        restrictedIds.push(userId);
+        return;
+      }
+      validIds.push(userId);
+      return;
+    }
+
+    // Rule 3: PM lead, PO lead có thể assign cho các lead khác (và mọi người)
+    if (isAssignerPMorPOLead) {
+      validIds.push(userId);
+      return;
+    }
+
+    // Nếu không match với bất kỳ rule nào, không cho phép
+    restrictedIds.push(userId);
+  });
+
+  let errorMessage = null;
+  if (restrictedIds.length > 0 && validIds.length === 0) {
+    if (isAssignerPMorPO && !isAssignerPMorPOLead) {
+      errorMessage = 'PM, PO chỉ có thể gán task cho các role khác, không thể gán cho PM/PO lead hoặc PM/PO khác.';
+    } else if (isAssignerLeaderOnly) {
+      errorMessage = 'Lead chỉ có thể gán task cho chính mình và các business role khác, không thể gán cho lead khác.';
+    } else {
+      errorMessage = 'Bạn không có quyền gán task cho người dùng này.';
+    }
+  }
+
+  return { validIds, restrictedIds, errorMessage };
+};
+
 const enforceFolderAccess = async ({
   group,
   groupId,
@@ -480,9 +582,22 @@ class TaskService {
     const requesterContext = await getRequesterContext(creatorId);
     const canAssignToOthers = targetGroup ? canAssignFolderMembers(requesterContext) : false;
 
-    // If user cannot assign to others, they can only assign to themselves
-    if (!canAssignToOthers && assignedIds.length > 0) {
-      // Filter to only allow self-assignment
+    // Validate assignment permissions if assigning to others
+    if (assignedIds.length > 0 && canAssignToOthers && targetGroup) {
+      const permissionCheck = await validateAssignmentPermissions(
+        requesterContext,
+        assignedIds,
+        creatorId
+      );
+
+      if (permissionCheck.errorMessage && permissionCheck.validIds.length === 0) {
+        raiseError(permissionCheck.errorMessage, HTTP_STATUS.FORBIDDEN);
+      }
+
+      // Chỉ giữ lại các IDs hợp lệ
+      assignedIds = permissionCheck.validIds;
+    } else if (!canAssignToOthers && assignedIds.length > 0) {
+      // If user cannot assign to others, they can only assign to themselves
       const selfOnly = assignedIds.filter(id => id === creatorId);
       if (selfOnly.length !== assignedIds.length) {
         raiseError('Bạn chỉ có thể gán task cho chính mình. Chỉ PM và Product Owner mới có thể gán task cho người khác.', HTTP_STATUS.FORBIDDEN);
@@ -869,6 +984,60 @@ class TaskService {
             .filter(Boolean)
         )
       );
+
+      // Validate assignment permissions if updating assignments
+      if (targetGroup) {
+        const requesterContext = await getRequesterContext(requesterId);
+        const isRequesterPM = requesterContext.role === GROUP_ROLE_KEYS.PM;
+        const isRequesterPO = requesterContext.role === GROUP_ROLE_KEYS.PRODUCT_OWNER;
+        const isRequesterPMorPO = isRequesterPM || isRequesterPO;
+        const isRequesterLeader = requesterContext.isLeader;
+        const canUnassign = isRequesterPMorPO || isRequesterLeader;
+
+        // Kiểm tra quyền xóa: tìm những user bị loại bỏ
+        const removedUserIds = currentAssignedIds.filter(id => !finalAssignedIds.includes(id));
+        
+        if (removedUserIds.length > 0) {
+          // Kiểm tra từng user bị xóa có được phép xóa không
+          const requesterIdStr = normalizeId(requesterId);
+          const unauthorizedRemovals = removedUserIds.filter(removedId => {
+            const isRemovingSelf = removedId === requesterIdStr;
+            // Cho phép xóa nếu: PM/PO/Lead có quyền xóa, hoặc tự xóa chính mình
+            return !canUnassign && !isRemovingSelf;
+          });
+
+          if (unauthorizedRemovals.length > 0) {
+            raiseError('Bạn không có quyền bỏ gán người dùng khỏi task này. Chỉ PM, PO, các roles có thuộc tính lead, hoặc chính người dùng đó mới có thể thực hiện.', HTTP_STATUS.FORBIDDEN);
+          }
+        }
+
+        // Validate assignment permissions cho các user được thêm vào
+        if (finalAssignedIds.length > 0) {
+          const canAssignToOthers = canAssignFolderMembers(requesterContext);
+
+          if (canAssignToOthers) {
+            const permissionCheck = await validateAssignmentPermissions(
+              requesterContext,
+              finalAssignedIds,
+              requesterId
+            );
+
+            if (permissionCheck.errorMessage && permissionCheck.validIds.length === 0) {
+              raiseError(permissionCheck.errorMessage, HTTP_STATUS.FORBIDDEN);
+            }
+
+            // Chỉ giữ lại các IDs hợp lệ
+            finalAssignedIds = permissionCheck.validIds;
+          } else {
+            // If user cannot assign to others, they can only assign to themselves
+            const selfOnly = finalAssignedIds.filter(id => id === normalizeId(requesterId));
+            if (selfOnly.length !== finalAssignedIds.length) {
+              raiseError('Bạn chỉ có thể gán task cho chính mình. Chỉ PM và Product Owner mới có thể gán task cho người khác.', HTTP_STATUS.FORBIDDEN);
+            }
+            finalAssignedIds = selfOnly;
+          }
+        }
+      }
     }
 
     // REMOVED: No longer automatically add creator to assignedTo when updating
@@ -1486,52 +1655,25 @@ class TaskService {
 
     const assignableIds = filteredIds.filter(id => activeIds.has(id));
 
-    // If assigner là Leader nhưng không phải PM/PO thì KHÔNG được gán task cho PM, PO hoặc các Leader khác
-    const isAssignerPM = assignerContext.role === GROUP_ROLE_KEYS.PM;
-    const isAssignerPO = assignerContext.role === GROUP_ROLE_KEYS.PRODUCT_OWNER;
-    const isLeaderOnly = assignerContext.isLeader && !isAssignerPM && !isAssignerPO;
+    // Kiểm tra quyền assign sử dụng helper function
+    const permissionCheck = await validateAssignmentPermissions(
+      assignerContext,
+      assignableIds,
+      normalizedAssignerId
+    );
 
-    let leaderRestrictedIds = [];
-
-    let effectiveAssignableIds = assignableIds;
-    if (isLeaderOnly) {
-      const userMap = users.reduce((acc, user) => {
-        acc[user._id.toString()] = user;
-        return acc;
-      }, {});
-
-      effectiveAssignableIds = assignableIds.filter(id => {
-        // Luôn cho phép leader gán chính mình (self-assign), dù là leader
-        if (id === normalizedAssignerId) {
-          return true;
+    if (permissionCheck.errorMessage && permissionCheck.validIds.length === 0) {
+      return {
+        success: false,
+        statusCode: HTTP_STATUS.FORBIDDEN,
+        message: permissionCheck.errorMessage,
+        errors: {
+          restrictedIds: permissionCheck.restrictedIds
         }
-
-        const user = userMap[id];
-        if (!user) return false;
-        const isTargetLeader = Boolean(user.isLeader);
-        const isTargetPMorPO =
-          user.groupRole === GROUP_ROLE_KEYS.PM ||
-          user.groupRole === GROUP_ROLE_KEYS.PRODUCT_OWNER;
-
-        if (isTargetLeader || isTargetPMorPO) {
-          leaderRestrictedIds.push(id);
-          return false;
-        }
-        return true;
-      });
-
-      if (effectiveAssignableIds.length === 0) {
-        return {
-          success: false,
-          statusCode: HTTP_STATUS.FORBIDDEN,
-          message: 'Leader chỉ được gán task cho các thành viên không phải PM, Product Owner hoặc Leader khác.',
-          errors: {
-            leaderRestrictedIds
-          }
-        };
-      }
+      };
     }
 
+    let effectiveAssignableIds = permissionCheck.validIds;
     let finalAssignableIds = effectiveAssignableIds.slice(0, availableSlots);
     const skippedDueToLimit = effectiveAssignableIds.slice(availableSlots);
 
@@ -1649,17 +1791,23 @@ class TaskService {
       group = await Group.findById(task.groupId);
     }
 
-    // Check permissions: user must be either creator, admin of the group, or the user being unassigned themselves
-    const isCreator = normalizeId(task.createdBy) === requesterIdStr;
+    // Check permissions: chỉ có PO, PM và các roles có thuộc tính lead mới có thể xóa assign
+    // Hoặc người dùng có thể tự bỏ gán chính mình
     const requesterContext = await getRequesterContext(requesterIdStr);
-    const isGroupAdmin = group && canAssignFolderMembers(requesterContext);
+    const isRequesterPM = requesterContext.role === GROUP_ROLE_KEYS.PM;
+    const isRequesterPO = requesterContext.role === GROUP_ROLE_KEYS.PRODUCT_OWNER;
+    const isRequesterPMorPO = isRequesterPM || isRequesterPO;
+    const isRequesterLeader = requesterContext.isLeader;
     const isUnassigningSelf = requesterIdStr === userId.toString();
 
-    if (!requesterIdStr || (!isCreator && !isGroupAdmin && !isUnassigningSelf)) {
+    // Cho phép nếu: PM/PO, hoặc có thuộc tính lead, hoặc tự bỏ gán chính mình
+    const canUnassign = isRequesterPMorPO || isRequesterLeader || isUnassigningSelf;
+
+    if (!requesterIdStr || !canUnassign) {
       return {
         success: false,
         statusCode: HTTP_STATUS.FORBIDDEN,
-        message: 'Bạn không có quyền bỏ gán người dùng khỏi task này. Chỉ người tạo task, admin của group, hoặc chính người dùng đó mới có thể thực hiện.'
+        message: 'Bạn không có quyền bỏ gán người dùng khỏi task này. Chỉ PM, PO, các roles có thuộc tính lead, hoặc chính người dùng đó mới có thể thực hiện.'
       };
     }
 

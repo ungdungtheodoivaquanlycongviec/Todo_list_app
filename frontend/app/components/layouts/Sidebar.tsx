@@ -1035,7 +1035,7 @@ export default function Sidebar() {
     );
   };
 
-  const renderGroupCard = (group: Group, options?: { canInvite?: boolean }) => {
+  const renderGroupCard = (group: Group, options?: { canInvite?: boolean; canManageFolders?: boolean }) => {
     const isActive = currentGroup?._id === group._id;
     const isExpanded = !!expandedGroups[group._id];
 
@@ -1083,14 +1083,16 @@ export default function Sidebar() {
             </div>
 
             <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => handleOpenFolderForm(group._id)}
-                className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#2E2E2E] rounded-lg transition-colors"
-                title="Add folder"
-              >
-                <FolderPlus className="w-4 h-4" />
-              </button>
+              {options?.canManageFolders && (
+                <button
+                  type="button"
+                  onClick={() => handleOpenFolderForm(group._id)}
+                  className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#2E2E2E] rounded-lg transition-colors"
+                  title="Add folder"
+                >
+                  <FolderPlus className="w-4 h-4" />
+                </button>
+              )}
               {options?.canInvite && (
                 <button
                   type="button"
@@ -1173,7 +1175,11 @@ export default function Sidebar() {
               </span>
             </div>
           </div>
-          {renderGroupCard(personalWorkspace)}
+          {personalWorkspace && (() => {
+            const personalWorkspaceRole = user ? getMemberRole(personalWorkspace, user._id) : null;
+            const canManageFoldersForPersonal = canManageFolders(personalWorkspaceRole, isLeader);
+            return renderGroupCard(personalWorkspace, { canManageFolders: canManageFoldersForPersonal });
+          })()}
         </div>
       )}
 
@@ -1224,7 +1230,8 @@ export default function Sidebar() {
                 myGroups.map(group => {
                   const groupUserRole = user ? getMemberRole(group, user._id) : null;
                   const canInvite = canAddMembers(groupUserRole, isLeader);
-                  return renderGroupCard(group, { canInvite });
+                  const canManageFoldersForGroup = canManageFolders(groupUserRole, isLeader);
+                  return renderGroupCard(group, { canInvite, canManageFolders: canManageFoldersForGroup });
                 })
               )}
             </div>
@@ -1254,7 +1261,11 @@ export default function Sidebar() {
               ) : sharedGroups.length === 0 ? (
                 <div className="text-sm py-2 px-3 text-gray-500 dark:text-gray-400">{t('sidebar.noSharedProjects')}</div>
               ) : (
-                sharedGroups.map(group => renderGroupCard(group))
+                sharedGroups.map(group => {
+                  const groupUserRole = user ? getMemberRole(group, user._id) : null;
+                  const canManageFoldersForGroup = canManageFolders(groupUserRole, isLeader);
+                  return renderGroupCard(group, { canManageFolders: canManageFoldersForGroup });
+                })
               )}
             </div>
           )}
