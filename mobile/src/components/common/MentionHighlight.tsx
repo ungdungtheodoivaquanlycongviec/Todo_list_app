@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, StyleSheet, StyleProp, TextStyle, View } from 'react-native';
+import { Text, StyleSheet, StyleProp, TextStyle, View, useColorScheme } from 'react-native';
 
 interface MentionHighlightProps {
   content: string;
@@ -21,9 +21,10 @@ export default function MentionHighlight({
   isOwnMessage = false,
   style,
 }: MentionHighlightProps) {
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
   
   // --- Style Logic Helper ---
-  // Chuyển đổi logic Tailwind sang StyleSheet object
   const getMentionStyle = (
     isEveryone: boolean,
     isCurrentUser: boolean,
@@ -35,13 +36,19 @@ export default function MentionHighlight({
       return styles.ownMessageMention;
     }
 
-    // 2. Tin nhắn nhận được (nền xám/trắng)
-    if (isEveryone) return styles.receivedEveryone;
-    if (isCurrentUser) return styles.receivedCurrentUser;
-    if (isRole) return styles.receivedRole;
+    // 2. Tin nhắn nhận được với Light/Dark mode
+    if (isEveryone) {
+      return isDark ? styles.receivedEveryoneDark : styles.receivedEveryoneLight;
+    }
+    if (isCurrentUser) {
+      return isDark ? styles.receivedCurrentUserDark : styles.receivedCurrentUserLight;
+    }
+    if (isRole) {
+      return isDark ? styles.receivedRoleDark : styles.receivedRoleLight;
+    }
     
     // Mặc định cho mention người khác
-    return styles.receivedUser;
+    return isDark ? styles.receivedUserDark : styles.receivedUserLight;
   };
 
   // --- Render Logic ---
@@ -123,8 +130,6 @@ export default function MentionHighlight({
       const mentionText = match[1];
       const isEveryone = mentionText.toLowerCase() === 'everyone';
       
-      // Simple format doesn't have IDs, so we can't strictly check isCurrentUser/isRole easily 
-      // without extra lookup logic, defaulting to generic user styling unless everyone.
       const mentionStyle = getMentionStyle(isEveryone, false, false);
 
       parts.push(
@@ -196,53 +201,51 @@ export default function MentionHighlight({
   );
 }
 
-// --- Helper Functions (Giữ nguyên logic nhưng export chuẩn TS) ---
+// --- Helper Functions (Giống hệt bản Web) ---
 
 export const getMentionDisplayText = (content: string): string => {
   return content.replace(/@\[([^\]]+)\]\([^)]+\)/g, '@$1');
 };
 
 export const extractMentionedUserIds = (content: string): string[] => {
-  const ids: string[] = []
-  let match
+  const ids: string[] = [];
+  let match;
 
-  const regex = /@\[([^\]]+)\]\(([^)]+)\)/g
+  const regex = /@\[([^\]]+)\]\(([^)]+)\)/g;
   while ((match = regex.exec(content)) !== null) {
-      const id = match[2]
+      const id = match[2];
       if (!id.startsWith('role:')) {
-          ids.push(id)
+          ids.push(id);
       }
   }
 
-  return ids
-}
+  return ids;
+};
 
 export const extractMentionedRoles = (content: string): string[] => {
-  const roles: string[] = []
-  let match
+  const roles: string[] = [];
+  let match;
 
-  const regex = /@\[([^\]]+)\]\(([^)]+)\)/g
+  const regex = /@\[([^\]]+)\]\(([^)]+)\)/g;
   while ((match = regex.exec(content)) !== null) {
-      const id = match[2]
+      const id = match[2];
       if (id.startsWith('role:')) {
-          roles.push(id.replace('role:', ''))
+          roles.push(id.replace('role:', ''));
       }
   }
 
-  return roles
-}
+  return roles;
+};
 
-// --- Styles ---
+// --- Styles với Dark Mode Support ---
 const styles = StyleSheet.create({
   textContainer: {
-    // Tương đương whitespace-pre-wrap break-words
-    // React Native mặc định wrap text
+    flexWrap: 'wrap',
   },
   baseMention: {
-    fontWeight: '600', // font-medium/semibold
-    // px-1 rounded: Trong RN Text không hỗ trợ padding/borderRadius tốt nếu không lồng View,
-    // nhưng background color vẫn hoạt động trên Text (trên iOS/Android mới).
-    // Nếu muốn padding chuẩn, cần backgroundColor phủ lên.
+    fontWeight: '600',
+    borderRadius: 4,
+    overflow: 'hidden', // Để borderRadius hoạt động với background
   },
   
   // -- OWN MESSAGE STYLES (Trên nền xanh) --
@@ -255,22 +258,39 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 
-  // -- RECEIVED MESSAGE STYLES (Trên nền trắng/xám) --
-  // Colors mapped from Tailwind approximations
-  receivedEveryone: {
+  // -- RECEIVED MESSAGE STYLES - LIGHT MODE --
+  receivedEveryoneLight: {
     backgroundColor: '#FEE2E2', // bg-red-100
     color: '#B91C1C', // text-red-700
   },
-  receivedCurrentUser: {
+  receivedCurrentUserLight: {
     backgroundColor: '#DCFCE7', // bg-green-100
     color: '#15803D', // text-green-700
   },
-  receivedRole: {
+  receivedRoleLight: {
     backgroundColor: '#F3E8FF', // bg-purple-100
     color: '#7E22CE', // text-purple-700
   },
-  receivedUser: {
+  receivedUserLight: {
     backgroundColor: '#DBEAFE', // bg-blue-100
     color: '#1D4ED8', // text-blue-700
+  },
+
+  // -- RECEIVED MESSAGE STYLES - DARK MODE --
+  receivedEveryoneDark: {
+    backgroundColor: 'rgba(153, 27, 27, 0.3)', // dark:bg-red-900/30
+    color: '#FCA5A5', // dark:text-red-400
+  },
+  receivedCurrentUserDark: {
+    backgroundColor: 'rgba(6, 78, 59, 0.3)', // dark:bg-green-900/30
+    color: '#34D399', // dark:text-green-400
+  },
+  receivedRoleDark: {
+    backgroundColor: 'rgba(76, 29, 149, 0.3)', // dark:bg-purple-900/30
+    color: '#C084FC', // dark:text-purple-400
+  },
+  receivedUserDark: {
+    backgroundColor: 'rgba(30, 58, 138, 0.3)', // dark:bg-blue-900/30
+    color: '#93C5FD', // dark:text-blue-400
   },
 });

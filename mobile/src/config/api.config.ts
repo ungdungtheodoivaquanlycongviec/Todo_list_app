@@ -2,7 +2,7 @@
 import { Platform } from 'react-native';
 
 // 🚨 Cần thay thế bằng IP nội bộ THỰC TẾ của máy tính đang chạy Backend
-const YOUR_LAN_IP: string = '192.168.1.8'; 
+const YOUR_LAN_IP: string = '192.168.1.11'; 
 const API_PORT: string = '8080';
 
 // Hàm tính toán URL gốc (ví dụ: http://192.168.1.15:8080), không có /api

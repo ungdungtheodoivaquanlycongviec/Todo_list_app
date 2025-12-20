@@ -1,194 +1,258 @@
 import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableWithoutFeedback,
+  Keyboard
 } from 'react-native';
-import Ionicons from 'react-native-vector-icons/Ionicons';
+import { FolderPlus, Loader2 } from 'lucide-react-native';
 import { useFolder } from '../../context/FolderContext';
 import { useAuth } from '../../context/AuthContext';
-import { useTheme } from '../../context/ThemeContext'; // Giả định có ThemeContext
+import { useLanguage } from '../../context/LanguageContext';
+import { useTheme } from '../../context/ThemeContext'; // Cần thêm ThemeContext
 
-// Component này chỉ nên hiển thị khi chưa có folder (tương đương với Web)
 export default function NoFolderState() {
-  const { createFolder } = useFolder();
-  const { currentGroup } = useAuth();
-  const { isDark } = useTheme(); // Lấy trạng thái dark mode
-  const [folderName, setFolderName] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { createFolder } = useFolder();
+  const { currentGroup } = useAuth();
+  const { t } = useLanguage();
+  const { isDark } = useTheme(); // Lấy theme từ context
 
-  const handleSubmit = async () => {
-    if (!folderName.trim() || loading) return;
+  const [folderName, setFolderName] = useState('');
+  const [folderDescription, setFolderDescription] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-    setLoading(true);
-    setError(null);
+  const handleSubmit = async () => {
+    if (!folderName.trim() || loading) return;
 
-    try {
-      // Giả định createFolder không cần tham số group id, nó tự lấy từ AuthContext
-      await createFolder(folderName.trim());
-      setFolderName('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create folder');
-    } finally {
-      setLoading(false);
-    }
-  };
+    setLoading(true);
+    setError(null);
+    Keyboard.dismiss(); // Ẩn bàn phím khi submit
 
-  const styles = getStyles(isDark);
+    try {
+      await createFolder(folderName.trim(), folderDescription.trim() || undefined);
+      setFolderName('');
+      setFolderDescription('');
+    } catch (err: any) {
+      setError(err instanceof Error ? err.message : t('error.generic'));
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  return (
-    <View style={styles.container}>
-      <View style={styles.contentWrapper}>
-        {/* Icon Area */}
-        <View style={styles.iconContainer}>
-          <Ionicons name="folder-open-outline" size={40} color={isDark ? '#93c5fd' : '#2563eb'} />
-        </View>
+  return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={[styles.container, isDark && styles.darkContainer]}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <View style={styles.inner}>
+          
+          {/* Icon Circle */}
+          <View style={[styles.iconCircle, isDark && styles.darkIconCircle]}>
+            <FolderPlus size={40} color={isDark ? '#60A5FA' : '#2563EB'} />
+          </View>
 
-        {/* Title */}
-        <Text style={styles.title}>
-          No Folders Yet
-        </Text>
+          {/* Title & Description */}
+          <Text style={[styles.title, isDark && styles.darkText]}>
+            {t('folders.noFolders')}
+          </Text>
 
-        {/* Description */}
-        <Text style={styles.description}>
-          {currentGroup
-            ? `Create your first folder in "${currentGroup.name}" to start organizing your tasks and notes.`
-            : 'Create a folder to start organizing your tasks and notes.'}
-        </Text>
+          <Text style={[styles.subtitle, isDark && styles.darkSubtitle]}>
+            {currentGroup
+              ? t('folders.createFirstFolder', { groupName: currentGroup.name })
+              : t('folders.createFirstFolderNoGroup')}
+          </Text>
 
-        {/* Form */}
-        <View style={styles.formContainer}>
-          {/* Input */}
-          <TextInput
-            value={folderName}
-            onChangeText={setFolderName}
-            placeholder="Enter folder name"
-            placeholderTextColor={isDark ? '#9ca3af' : '#6b7280'}
-            style={styles.input}
-            editable={!loading}
-          />
-          
-          {/* Error Message */}
-          {error && (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          )}
+          {/* Form */}
+          <View style={styles.form}>
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={[styles.input, isDark && styles.darkInput]}
+                value={folderName}
+                onChangeText={setFolderName}
+                placeholder={t('folders.enterFolderName')}
+                placeholderTextColor={isDark ? '#9CA3AF' : '#6B7280'}
+                autoCapitalize="words"
+              />
+            </View>
 
-          {/* Submit Button */}
-          <TouchableOpacity
-            onPress={handleSubmit}
-            disabled={!folderName.trim() || loading}
-            style={[
-              styles.button, 
-              (!folderName.trim() || loading) && styles.buttonDisabled
-            ]}
-          >
-            {loading ? (
-              <View style={styles.buttonContent}>
-                <ActivityIndicator color="#ffffff" size="small" />
-                <Text style={styles.buttonText}>Creating...</Text>
-              </View>
-            ) : (
-              <View style={styles.buttonContent}>
-                <Ionicons name="folder-open" size={16} color="#ffffff" />
-                <Text style={styles.buttonText}>Create Folder</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
-    </View>
-  );
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={[styles.input, styles.textArea, isDark && styles.darkInput]}
+                value={folderDescription}
+                onChangeText={setFolderDescription}
+                placeholder={t('folders.enterFolderDescription') || 'Enter folder description (optional)'}
+                placeholderTextColor={isDark ? '#9CA3AF' : '#6B7280'}
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top" // Android fix
+              />
+            </View>
+
+            {/* Error Message */}
+            {error && (
+              <View style={[styles.errorBox, isDark && styles.darkErrorBox]}>
+                <Text style={[styles.errorText, isDark && styles.darkErrorText]}>
+                  {error}
+                </Text>
+              </View>
+            )}
+
+            {/* Submit Button */}
+            <TouchableOpacity
+              style={[
+                styles.button,
+                (!folderName.trim() || loading) && styles.buttonDisabled
+              ]}
+              onPress={handleSubmit}
+              disabled={!folderName.trim() || loading}
+              activeOpacity={0.8}
+            >
+              {loading ? (
+                <View style={styles.buttonContent}>
+                  <ActivityIndicator size="small" color="#FFF" />
+                  <Text style={styles.buttonText}>{t('folders.creating')}</Text>
+                </View>
+              ) : (
+                <View style={styles.buttonContent}>
+                  <FolderPlus size={18} color="#FFF" />
+                  <Text style={styles.buttonText}>{t('folders.createFolder')}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+
+        </View>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
+  );
 }
 
-const getStyles = (isDark: boolean) => StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: isDark ? '#111827' : '#f9fafb', // dark:bg-gray-900 vs bg-gray-50
-    paddingHorizontal: 24,
-  },
-  contentWrapper: {
-    alignItems: 'center',
-    width: '100%',
-    maxWidth: 384, // max-w-md
-  },
-  iconContainer: {
-    width: 80,
-    height: 80,
-    backgroundColor: isDark ? 'rgba(37, 99, 235, 0.3)' : '#dbeafe', // dark:bg-blue-900/30 vs bg-blue-100
-    borderRadius: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24, // mb-6
-  },
-  title: {
-    fontSize: 24, // text-2xl
-    fontWeight: 'bold',
-    color: isDark ? '#ffffff' : '#111827', // dark:text-white vs text-gray-900
-    marginBottom: 8, // mb-2
-  },
-  description: {
-    fontSize: 16,
-    color: isDark ? '#9ca3af' : '#4b5563', // dark:text-gray-400 vs text-gray-600
-    marginBottom: 32, // mb-8
-    textAlign: 'center',
-  },
-  formContainer: {
-    width: '100%',
-    gap: 16, // space-y-4
-  },
-  input: {
-    width: '100%',
-    backgroundColor: isDark ? '#2E2E2E' : '#ffffff', // dark:bg-[#2E2E2E] vs bg-white
-    color: isDark ? '#ffffff' : '#111827', // dark:text-white vs text-gray-900
-    paddingHorizontal: 16, // px-4
-    paddingVertical: 12, // py-3
-    borderRadius: 12, // rounded-xl
-    borderWidth: 1,
-    borderColor: isDark ? '#4b5563' : '#d1d5db', // dark:border-gray-600 vs border-gray-300
-    fontSize: 16,
-  },
-  errorBox: {
-    backgroundColor: isDark ? 'rgba(185, 28, 28, 0.2)' : '#fef2f2', // dark:bg-red-900/20 vs bg-red-50
-    borderColor: isDark ? '#991b1b' : '#fecaca', // dark:border-red-800 vs border-red-200
-    borderWidth: 1,
-    borderRadius: 12, // rounded-xl
-    padding: 12, // p-3
-  },
-  errorText: {
-    color: isDark ? '#f87171' : '#dc2626', // dark:text-red-400 vs text-red-600
-    fontSize: 14, // text-sm
-    textAlign: 'center',
-  },
-  button: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#2563eb', // base color blue-600
-    paddingVertical: 12, // py-3
-    paddingHorizontal: 16, // px-4
-    borderRadius: 12, // rounded-xl
-    // Trong RN không có gradient đơn giản, sử dụng màu chính
-    // Không có shadow mặc định, cần thêm nếu muốn: elevation: 5, shadow...
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  buttonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  buttonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '500', // font-medium
-  },
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+  },
+  darkContainer: {
+    backgroundColor: '#111827',
+  },
+  inner: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  iconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#DBEAFE',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  darkIconCircle: {
+    backgroundColor: 'rgba(30, 58, 138, 0.5)',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  darkText: {
+    color: '#F9FAFB',
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#4B5563',
+    textAlign: 'center',
+    marginBottom: 32,
+    lineHeight: 24,
+  },
+  darkSubtitle: {
+    color: '#9CA3AF',
+  },
+  form: {
+    width: '100%',
+    maxWidth: 400,
+  },
+  inputContainer: {
+    marginBottom: 16,
+  },
+  input: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: '#111827',
+  },
+  darkInput: {
+    backgroundColor: '#374151',
+    borderColor: '#4B5563',
+    color: '#F9FAFB',
+  },
+  textArea: {
+    minHeight: 100,
+    paddingTop: 14, // Đảm bảo text bắt đầu từ trên cùng
+  },
+  errorBox: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  darkErrorBox: {
+    backgroundColor: 'rgba(127, 29, 29, 0.2)',
+    borderColor: '#7F1D1D',
+  },
+  errorText: {
+    color: '#DC2626',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  darkErrorText: {
+    color: '#F87171',
+  },
+  button: {
+    backgroundColor: '#2563EB',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  buttonDisabled: {
+    backgroundColor: '#93C5FD',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  buttonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
 });
