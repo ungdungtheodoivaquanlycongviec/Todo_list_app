@@ -90,12 +90,12 @@ export const ROLE_SUMMARIES: Record<
     capabilities: 'Xem tất cả task/note/folder, không thể chỉnh sửa',
     badgeColor: 'from-slate-500 to-slate-600'
   },
-  [GROUP_ROLE_KEYS.QA]: {
-    scope: 'read_only',
-    summary: 'Giám sát chất lượng',
-    capabilities: 'Xem toàn bộ nội dung, không được chỉnh sửa',
-    badgeColor: 'from-slate-500 to-slate-600'
-  },
+  [GROUP_ROLE_KEYS.QA]: {
+    scope: 'read_only',
+    summary: 'Giám sát chất lượng',
+    capabilities: 'Xem tất cả folder trong group, CRUD task trong folder được PM/PO/Leader gán',
+    badgeColor: 'from-slate-500 to-slate-600'
+  },
   [GROUP_ROLE_KEYS.DEV_MANAGER]: {
     scope: 'read_only',
     summary: 'Theo dõi đội phát triển',
