@@ -1,38 +1,74 @@
 import React from 'react';
 import {
   View,
+  Text,
   StyleSheet,
-  SafeAreaView, // Sử dụng SafeAreaView để tránh các vùng như notch
+  SafeAreaView,
   Platform,
+  TouchableOpacity
 } from 'react-native';
 
 // ⚠️ ĐIỀU CHỈNH ĐƯỜNG DẪN IMPORT CHO MOBILE
-// Giả định TopBar nằm trong src/components/layout
-import { useTheme } from '../../context/ThemeContext';
+import { useTheme } from '../../context/ThemeContext'; // Nếu có dùng
 import UserMenu from '../common/UserMenu';
 import NotificationDropdown from '../../screens/NotificationDropdown';
 import { User } from '../../types/auth.types';
+import { getRoleLabel } from '../constants/groupRoles'; // Import hàm này từ logic chung
 
-// Giữ nguyên interface, đảm bảo tính tương thích với các component phụ thuộc
 interface TopBarProps {
   user: User;
   onLogout: () => void;
   theme: string;
   onThemeChange: (theme: string) => void;
   onProfileClick?: () => void;
+  onViewChange: (view: string) => void; // Đã thêm lại prop này để khớp logic Notification
 }
 
-export default function TopBar({ user, onLogout, theme, onThemeChange, onProfileClick }: TopBarProps) {
+export default function TopBar({
+  user,
+  onLogout,
+  theme,
+  onThemeChange,
+  onProfileClick,
+  onViewChange
+}: TopBarProps) {
+  
+  // Logic lấy role giống hệt bản Web
+  const businessRole = (user as any)?.groupRole as string | null | undefined;
+  const isLeader = Boolean((user as any)?.isLeader);
+
   return (
-    // Sử dụng SafeAreaView và View để thay thế cho div
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         <View style={styles.content}>
-          <View style={styles.rightContainer}>
-            {/* NotificationDropdown (Giả định đã được chuyển đổi sang RN) */}
-            <NotificationDropdown />
+          
+          {/* --- LEFT SIDE: User Info (Đã thêm lại) --- */}
+          <View style={styles.userInfoContainer}>
+            <Text style={styles.userName} numberOfLines={1} ellipsizeMode="tail">
+              {user.name}
+            </Text>
             
-            {/* UserMenu (Giả định đã được chuyển đổi sang RN) */}
+            <View style={styles.roleRow}>
+              <Text style={styles.roleText}>
+                {businessRole ? getRoleLabel(businessRole) : 'No role'}
+              </Text>
+
+              {isLeader && (
+                <>
+                  <Text style={styles.dotSeparator}>•</Text>
+                  <View style={styles.leadBadge}>
+                    <Text style={styles.leadText}>Lead</Text>
+                  </View>
+                </>
+              )}
+            </View>
+          </View>
+
+          {/* --- RIGHT SIDE: Controls --- */}
+          <View style={styles.rightContainer}>
+            {/* Truyền prop onNavigate/onViewChange cho Notification nếu cần */}
+            <NotificationDropdown onNavigate={onViewChange} />
+            
             <UserMenu 
               currentUser={user} 
               onLogout={onLogout}
@@ -41,6 +77,7 @@ export default function TopBar({ user, onLogout, theme, onThemeChange, onProfile
               onProfileClick={onProfileClick}
             />
           </View>
+
         </View>
       </View>
     </SafeAreaView>
@@ -48,32 +85,72 @@ export default function TopBar({ user, onLogout, theme, onThemeChange, onProfile
 }
 
 // --- Stylesheet ---
-
 const styles = StyleSheet.create({
   safeArea: {
-    // Dùng màu nền cho SafeAreaView để có hiệu ứng liền mạch với status bar
-    backgroundColor: '#ffffff', // Tương đương bg-white
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb', // Tương đương border-gray-200
+    backgroundColor: '#ffffff',
+    // Shadow nhẹ thay vì border cứng để đẹp hơn trên mobile
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2, // Cho Android
+    zIndex: 10, // Đảm bảo nổi lên trên nội dung khác
   },
   container: {
     width: '100%',
-    backgroundColor: '#ffffff', // bg-white (Có thể bỏ nếu đã dùng trong safeArea, nhưng giữ để rõ ràng)
-    // Loại bỏ border-b vì đã đặt ở safeArea
+    backgroundColor: '#ffffff',
   },
   content: {
-    paddingHorizontal: 16, // px-4 sm:px-6
-    paddingVertical: 12, // py-3 md:py-4
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between', // QUAN TRỌNG: Đẩy 2 phần sang 2 bên
     alignItems: 'center',
-    // Đặt chiều cao tối thiểu cho dễ nhìn trên di động
-    minHeight: 56, 
+    minHeight: 60, // Tăng nhẹ chiều cao chuẩn
   },
-  rightContainer: {
-    // max-w-full, flex justify-end, items-center gap-2 sm:gap-3
+  
+  // Styles cho User Info (Bên trái)
+  userInfoContainer: {
+    flex: 1, // Để text có thể truncate nếu quá dài
+    paddingRight: 10,
+    justifyContent: 'center',
+  },
+  userName: {
+    fontSize: 16,
+    fontWeight: '700', // font-semibold -> bold
+    color: '#111827', // text-gray-900
+    marginBottom: 2,
+  },
+  roleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12, // Khoảng cách giữa Notification và UserMenu
+  },
+  roleText: {
+    fontSize: 12,
+    color: '#4B5563', // text-gray-700
+    fontWeight: '500',
+  },
+  dotSeparator: {
+    marginHorizontal: 6,
+    color: '#9CA3AF', // text-gray-400
+    fontSize: 10,
+  },
+  leadBadge: {
+    backgroundColor: '#EFF6FF', // bg-blue-50
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  leadText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#2563EB', // text-blue-600
+  },
+
+  // Styles cho Controls (Bên phải)
+  rightContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12, // Khoảng cách giữa các nút
   },
 });

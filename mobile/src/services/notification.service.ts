@@ -1,368 +1,174 @@
 import { authService } from './auth.service';
-// 💡 ĐÃ SỬA: Thay thế API_BASE_URL bằng API_URL
 import { API_URL } from '../config/api.config'; 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// ... (Giữ nguyên các Interface Notification và NotificationsResponse ở trên) ...
 export interface Notification {
-  _id: string;
-  recipient: string;
-  sender: {
-    _id: string;
-    name: string;
-    email: string;
-    avatar?: string;
-  };
-  type: 'group_invitation' | 'task_assignment' | 'group_update' | 'group_name_change' | 'new_task';
-  title: string;
-  message: string;
-  data: {
-    groupId?: string;
-    groupName?: string;
-    action?: string;
-  };
-  isRead: boolean;
-  status: 'pending' | 'accepted' | 'declined' | 'expired';
-  expiresAt: string;
-  createdAt: string;
-  updatedAt: string;
+  _id: string;
+  recipient: string;
+  sender?: {
+    _id: string;
+    name: string;
+    email: string;
+    avatar?: string;
+  } | null;
+  type:
+    | 'group_invitation'
+    | 'task_assignment'
+    | 'group_update'
+    | 'group_name_change'
+    | 'new_task'
+    | 'chat_message';
+  title: string;
+  message: string;
+  data: {
+    taskId?: string;
+    groupId?: string;
+    groupName?: string;
+    action?: string;
+    contextType?: 'group' | 'direct';
+    conversationId?: string | null;
+    messageId?: string | null;
+    [key: string]: any;
+  };
+  isRead: boolean;
+  status?: 'pending' | 'accepted' | 'declined' | 'expired';
+  expiresAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface NotificationsResponse {
-  notifications: Notification[];
-  pagination: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
+  notifications: Notification[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
 }
 
+// 🔥 ĐÃ SỬA LỖI Ở HÀM NÀY
+const fetchWithAuth = async (endpoint: string, options: RequestInit = {}) => {
+  const token = await authService.getAuthToken();
+  
+  // ⚠️ THAY ĐỔI: Dùng Record<string, string> thay vì HeadersInit
+  // Điều này cho phép bạn gán headers['Authorization'] mà không bị lỗi
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as any), // Ép kiểu để merge headers cũ
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const url = `${API_URL}${endpoint}`;
+
+  const response = await fetch(url, {
+    ...options,
+    headers, // Fetch chấp nhận Record<string, string> nên dòng này hợp lệ
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
+      // Nếu có authService.logout() thì gọi ở đây
+      throw new Error('Authentication failed. Please login again.');
+    }
+
+    const errorText = await response.text();
+    let errorMessage = `Request failed: ${response.status}`;
+    try {
+      const errorData = JSON.parse(errorText);
+      errorMessage = errorData.message || errorMessage;
+    } catch {
+      errorMessage = errorText || errorMessage;
+    }
+    throw new Error(errorMessage);
+  }
+
+  if (response.status === 204) return null;
+
+  const data = await response.json();
+  return data.data || data;
+};
+
+// ... (Phần export const notificationService giữ nguyên như file trước) ...
 export const notificationService = {
-  // Get all notifications for current user
-  getNotifications: async (options?: {
-    page?: number;
-    limit?: number;
-    unreadOnly?: boolean;
-  }): Promise<NotificationsResponse> => {
-    // Cần sử dụng await/async vì authService.getAuthToken() có thể là async (tôi giả định như vậy)
-    const token = await authService.getAuthToken(); 
-    const headers: HeadersInit = {};
+  // Get all notifications
+  getNotifications: async (options?: {
+    page?: number;
+    limit?: number;
+    unreadOnly?: boolean;
+  }): Promise<NotificationsResponse> => {
+    const queryParams = new URLSearchParams();
+    if (options?.page) queryParams.append('page', options.page.toString());
+    if (options?.limit) queryParams.append('limit', options.limit.toString());
+    if (options?.unreadOnly) queryParams.append('unreadOnly', 'true');
 
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    } else {
-      throw new Error('No authentication token found');
-    }
+    const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    return fetchWithAuth(`/notifications${queryString}`);
+  },
 
-    const queryParams = new URLSearchParams();
-    if (options?.page) queryParams.append('page', options.page.toString());
-    if (options?.limit) queryParams.append('limit', options.limit.toString());
-    if (options?.unreadOnly) queryParams.append('unreadOnly', 'true');
+  getUnreadCount: async (): Promise<{ unreadCount: number }> => {
+    return fetchWithAuth('/notifications/unread-count');
+  },
 
-    // 💡 ĐÃ SỬA URL
-    const url = `${API_URL}/notifications${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+  markAsRead: async (id: string): Promise<Notification> => {
+    return fetchWithAuth(`/notifications/${id}/read`, { method: 'PATCH' });
+  },
 
-    const response = await fetch(url, {
-      headers,
-      // Xóa 'credentials: include' nếu không cần thiết trong React Native
-      // credentials: 'include', 
-    });
+ // Mark all as read
+  markAllAsRead: async (): Promise<{ modifiedCount: number }> => {
+    // 👇 ĐÃ SỬA: Thay dấu ` ở cuối chuỗi bằng dấu '
+    return fetchWithAuth('/notifications/mark-all-read', { method: 'PATCH' });
+  },
 
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
+  acceptGroupInvitation: async (id: string): Promise<{ group: any; user: any }> => {
+    return fetchWithAuth(`/notifications/${id}/accept`, { method: 'POST' });
+  },
 
-      const errorText = await response.text();
-      throw new Error(`Failed to fetch notifications: ${response.status}`);
-    }
+  declineGroupInvitation: async (id: string): Promise<Notification> => {
+    return fetchWithAuth(`/notifications/${id}/decline`, { method: 'POST' });
+  },
 
-    const data = await response.json();
-    return data.data || data;
-  },
+  deleteNotification: async (id: string): Promise<Notification> => {
+    return fetchWithAuth(`/notifications/${id}`, { method: 'DELETE' });
+  },
 
-  // Get unread count
-  getUnreadCount: async (): Promise<{ unreadCount: number }> => {
-    // Cần sử dụng await/async
-    const token = await authService.getAuthToken(); 
-    const headers: HeadersInit = {};
+  updatePreferences: async (preferences: any): Promise<any> => {
+    return fetchWithAuth('/notifications/preferences', {
+      method: 'PATCH',
+      body: JSON.stringify(preferences),
+    });
+  },
 
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    } else {
-      throw new Error('No authentication token found');
-    }
+  archiveNotifications: async (ids: string[]): Promise<any> => {
+    return fetchWithAuth('/notifications/archive', {
+      method: 'PATCH',
+      body: JSON.stringify({ ids }),
+    });
+  },
 
-    // 💡 ĐÃ SỬA URL
-    const response = await fetch(`${API_URL}/notifications/unread-count`, {
-      headers,
-      // credentials: 'include',
-    });
+  deleteNotifications: async (ids: string[]): Promise<any> => {
+    return fetchWithAuth('/notifications', {
+      method: 'DELETE',
+      body: JSON.stringify({ ids }),
+    });
+  },
 
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
+  createGroupNameChangeNotification: async (groupId: string, oldName: string, newName: string): Promise<void> => {
+    return fetchWithAuth('/notifications/group-name-change', {
+      method: 'POST',
+      body: JSON.stringify({ groupId, oldName, newName }),
+    });
+  },
 
-      const errorText = await response.text();
-      throw new Error(`Failed to fetch unread count: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.data || data;
-  },
-
-  // Mark notification as read
-  markAsRead: async (id: string): Promise<Notification> => {
-    // Cần sử dụng await/async
-    const token = await authService.getAuthToken();
-    const headers: HeadersInit = {};
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    } else {
-      throw new Error('No authentication token found');
-    }
-
-    // 💡 ĐÃ SỬA URL
-    const response = await fetch(`${API_URL}/notifications/${id}/read`, {
-      method: 'PATCH',
-      headers,
-      // credentials: 'include',
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
-
-      const errorText = await response.text();
-      throw new Error(`Failed to mark notification as read: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.data || data;
-  },
-
-  // Mark all notifications as read
-  markAllAsRead: async (): Promise<{ modifiedCount: number }> => {
-    // Cần sử dụng await/async
-    const token = await authService.getAuthToken();
-    const headers: HeadersInit = {};
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    } else {
-      throw new Error('No authentication token found');
-    }
-
-    // 💡 ĐÃ SỬA URL
-    const response = await fetch(`${API_URL}/notifications/mark-all-read`, {
-      method: 'PATCH',
-      headers,
-      // credentials: 'include',
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
-
-      const errorText = await response.text();
-      throw new Error(`Failed to mark all notifications as read: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.data || data;
-  },
-
-  // Accept group invitation
-  acceptGroupInvitation: async (id: string): Promise<{ group: any; user: any }> => {
-    // Cần sử dụng await/async
-    const token = await authService.getAuthToken();
-    const headers: HeadersInit = {};
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    } else {
-      throw new Error('No authentication token found');
-    }
-
-    // 💡 ĐÃ SỬA URL
-    const response = await fetch(`${API_URL}/notifications/${id}/accept`, {
-      method: 'POST',
-      headers,
-      // credentials: 'include',
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
-
-      const errorText = await response.text();
-      let errorMessage = `Failed to accept group invitation: ${response.status}`;
-
-      try {
-        const errorData = JSON.parse(errorText);
-        errorMessage = errorData.message || errorMessage;
-      } catch {
-        errorMessage = errorText || errorMessage;
-      }
-
-      throw new Error(errorMessage);
-    }
-
-    const data = await response.json();
-    return data.data || data;
-  },
-
-  // Decline group invitation
-  declineGroupInvitation: async (id: string): Promise<Notification> => {
-    // Cần sử dụng await/async
-    const token = await authService.getAuthToken();
-    const headers: HeadersInit = {};
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    } else {
-      throw new Error('No authentication token found');
-    }
-
-    // 💡 ĐÃ SỬA URL
-    const response = await fetch(`${API_URL}/notifications/${id}/decline`, {
-      method: 'POST',
-      headers,
-      // credentials: 'include',
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
-
-      const errorText = await response.text();
-      let errorMessage = `Failed to decline group invitation: ${response.status}`;
-
-      try {
-        const errorData = JSON.parse(errorText);
-        errorMessage = errorData.message || errorMessage;
-      } catch {
-        errorMessage = errorText || errorMessage;
-      }
-
-      throw new Error(errorMessage);
-    }
-
-    const data = await response.json();
-    return data.data || data;
-  },
-
-  // Delete notification
-  deleteNotification: async (id: string): Promise<Notification> => {
-    // Cần sử dụng await/async
-    const token = await authService.getAuthToken();
-    const headers: HeadersInit = {};
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    } else {
-      throw new Error('No authentication token found');
-    }
-
-    // 💡 ĐÃ SỬA URL
-    const response = await fetch(`${API_URL}/notifications/${id}`, {
-      method: 'DELETE',
-      headers,
-      // credentials: 'include',
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
-
-      const errorText = await response.text();
-      throw new Error(`Failed to delete notification: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.data || data;
-  },
-
-  // Create notification for group name change
-  createGroupNameChangeNotification: async (groupId: string, oldName: string, newName: string): Promise<void> => {
-    // Cần sử dụng await/async
-    const token = await authService.getAuthToken();
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    // 💡 ĐÃ SỬA URL
-    const response = await fetch(`${API_URL}/notifications/group-name-change`, {
-      method: 'POST',
-      headers,
-      // credentials: 'include',
-      body: JSON.stringify({
-        groupId,
-        oldName,
-        newName
-      }),
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
-
-      const errorText = await response.text();
-      throw new Error(`Failed to create notification: ${response.status}`);
-    }
-  },
-
-  // Create notification for new task
-  createNewTaskNotification: async (groupId: string, taskTitle: string): Promise<void> => {
-    // Cần sử dụng await/async
-    const token = await authService.getAuthToken();
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    // 💡 ĐÃ SỬA URL
-    const response = await fetch(`${API_URL}/notifications/new-task`, {
-      method: 'POST',
-      headers,
-      // credentials: 'include',
-      body: JSON.stringify({
-        groupId,
-        taskTitle
-      }),
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-        throw new Error('Authentication failed. Please login again.');
-      }
-
-      const errorText = await response.text();
-      throw new Error(`Failed to create notification: ${response.status}`);
-    }
-  }
+  createNewTaskNotification: async (groupId: string, taskTitle: string): Promise<void> => {
+    return fetchWithAuth('/notifications/new-task', {
+      method: 'POST',
+      body: JSON.stringify({ groupId, taskTitle }),
+    });
+  }
 };

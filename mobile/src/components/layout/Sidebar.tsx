@@ -1,5 +1,5 @@
-
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+// Sidebar.tsx - Fixed version with no vertical overscroll
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,15 +11,40 @@ import {
   StyleSheet,
   SafeAreaView,
   ActivityIndicator,
+  PanResponder,
+  Dimensions,
 } from 'react-native';
-import Ionicons from 'react-native-vector-icons/Ionicons';
 import { Picker } from '@react-native-picker/picker';
+
+// Import Lucide React Native icons
+import {
+  Search,
+  Plus,
+  ChevronDown,
+  ChevronRight,
+  X,
+  Users,
+  Folder as FolderIcon,
+  Loader2,
+  FolderPlus,
+  Check,
+  User,
+  Home,
+  AlertCircle,
+  UserPlus,
+  MoreVertical,
+  Edit,
+  Trash2,
+} from 'lucide-react-native';
 
 // Context imports
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { useFolder } from '../../context/FolderContext';
 import { useSocket } from '../../hooks/useSocket';
+import { useGroupChange } from '../../hooks/useGroupChange';
+import { useConfirm } from '../../context/ConfirmContext';
+import { useSafeToast } from '../../context/ToastContext';
 
 // Service imports
 import { groupService } from '../../services/group.service';
@@ -30,22 +55,19 @@ import { Group } from '../../types/group.types';
 import { Folder } from '../../types/folder.types';
 
 // Utils imports
-import {
-  DEFAULT_INVITE_ROLE,
-  ROLE_SECTIONS,
-} from '../constants/groupRoles';
+import { GROUP_ROLE_KEYS, GroupRoleKey } from '../constants/groupRoles';
 import {
   getMemberRole,
   canManageFolders,
   canAssignFolderMembers,
-  canAddMembers
+  canAddMembers,
 } from '../../utils/groupRoleUtils';
 
 // Component imports
 import { FolderAccessModal } from '../folders/FolderAccessModal';
 
 // ====================================================================
-// --- STYLES ABSTRACTION FOR REACT NATIVE ---
+// --- STYLES ABSTRACTION ---
 // ====================================================================
 
 const getColors = (isDark: boolean) => ({
@@ -58,34 +80,80 @@ const getColors = (isDark: boolean) => ({
   blueAccentBg: isDark ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF',
   red: isDark ? '#F87171' : '#EF4444',
   green: isDark ? '#34D399' : '#10B981',
+  gray100: isDark ? '#374151' : '#F3F4F6',
+  gray800: isDark ? '#1F2937' : '#6B7280',
 });
 
 const getSidebarStyles = (isDark: boolean) => {
   const colors = getColors(isDark);
+  const screenHeight = Dimensions.get('window').height;
+  
   return StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: colors.sidebarBg,
       borderRightWidth: 1,
       borderRightColor: colors.border,
+      height: screenHeight,
+      maxHeight: screenHeight,
+      overflow: 'hidden',
     },
     header: {
-      padding: 16,
+      padding: 20,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
     },
     userInfo: {
-      flexDirection: 'column',
-      marginBottom: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 20,
+    },
+    userAvatar: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.bluePrimary,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 12,
+    },
+    userTextContainer: {
+      flex: 1,
     },
     userName: {
       fontSize: 16,
       fontWeight: '600',
       color: colors.textPrimary,
+      marginBottom: 2,
     },
     userEmail: {
       fontSize: 13,
       color: colors.textSecondary,
+    },
+    userRoleBadge: {
+      backgroundColor: colors.blueAccentBg,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 12,
+      marginTop: 4,
+    },
+    userRoleText: {
+      fontSize: 11,
+      color: colors.bluePrimary,
+      fontWeight: '500',
+    },
+    workspaceSelector: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      overflow: 'hidden',
+      marginTop: 8,
+    },
+    workspacePicker: {
+      width: '100%',
+      color: colors.textPrimary,
+      backgroundColor: isDark ? '#2E2E2E' : 'white',
+      height: 48,
     },
     searchContainer: {
       padding: 16,
@@ -97,38 +165,119 @@ const getSidebarStyles = (isDark: boolean) => {
       flexDirection: 'row',
       alignItems: 'center',
     },
+    searchIcon: {
+      position: 'absolute',
+      left: 12,
+      zIndex: 1,
+    },
     searchInput: {
       flex: 1,
       backgroundColor: isDark ? '#2E2E2E' : 'white',
       borderColor: colors.border,
       borderWidth: 1,
-      borderRadius: 8,
-      paddingVertical: 10,
-      paddingHorizontal: 12,
-      paddingLeft: 40,
+      borderRadius: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      paddingLeft: 44,
       fontSize: 14,
       color: colors.textPrimary,
     },
-    actionButton: {
-        padding: 5,
-        borderRadius: 5,
-        marginLeft: 5,
-    }
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+    },
+    sectionTitle: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.textSecondary,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    sectionButton: {
+      padding: 4,
+      borderRadius: 6,
+    },
+    scrollContent: {
+      flex: 1,
+      padding: 16,
+    },
+    scrollContainer: {
+      flex: 1,
+      maxHeight: screenHeight - 300, // Approximate height calculation
+      overflow: 'hidden',
+    },
+    emptyState: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 32,
+    },
+    emptyStateText: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      marginTop: 8,
+    },
+    emptyStateAction: {
+      color: colors.bluePrimary,
+      fontSize: 14,
+      fontWeight: '500',
+      marginTop: 4,
+    },
+    loadingContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 16,
+    },
+    loadingText: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      marginLeft: 8,
+    },
+    badge: {
+      backgroundColor: colors.bluePrimary,
+      borderRadius: 10,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      marginLeft: 8,
+    },
+    badgeText: {
+      color: 'white',
+      fontSize: 10,
+      fontWeight: '600',
+    },
+    closeButton: {
+      position: 'absolute',
+      top: 10,
+      right: 10,
+      zIndex: 100,
+      padding: 8,
+      borderRadius: 8,
+      backgroundColor: 'rgba(0,0,0,0.1)',
+    },
   });
 };
 
 // ====================================================================
-// --- MODAL COMPONENTS (RN Conversion) ---
+// --- MODAL COMPONENTS ---
 // ====================================================================
 
-// --- Create Group Modal Component ---
 interface CreateGroupModalProps {
+  visible: boolean;
   onClose: () => void;
   onSubmit: (data: { name: string; description?: string }) => Promise<void>;
   theme: 'light' | 'dark';
 }
 
-const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSubmit, theme }) => {
+const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
+  visible,
+  onClose,
+  onSubmit,
+  theme,
+}) => {
   const { t } = useLanguage();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -136,113 +285,6 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSubmit, 
   const [error, setError] = useState<string | null>(null);
   const isDark = theme === 'dark';
   const colors = getColors(isDark);
-  
-  const styles = StyleSheet.create({
-    centeredView: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: 'rgba(0,0,0,0.6)',
-      padding: 20,
-    },
-    modalView: {
-      backgroundColor: isDark ? '#1F1F1F' : 'white',
-      borderRadius: 16,
-      padding: 24,
-      width: '100%',
-      maxWidth: 400,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 6,
-      elevation: 10,
-    },
-    modalHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: 20,
-    },
-    modalIcon: {
-      width: 40,
-      height: 40,
-      borderRadius: 12,
-      backgroundColor: '#3b82f6',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginRight: 12,
-    },
-    modalTitle: {
-      fontSize: 18,
-      fontWeight: 'bold',
-      color: colors.textPrimary,
-    },
-    modalSubtitle: {
-      fontSize: 14,
-      color: colors.textSecondary,
-      marginTop: 2,
-    },
-    input: {
-      backgroundColor: isDark ? '#2E2E2E' : '#ffffff',
-      borderColor: isDark ? '#374151' : '#d1d5db',
-      borderWidth: 1,
-      borderRadius: 12,
-      padding: 12,
-      fontSize: 16,
-      color: colors.textPrimary,
-      marginBottom: 16,
-    },
-    textArea: {
-      minHeight: 100,
-      textAlignVertical: 'top',
-    },
-    buttonContainer: {
-      flexDirection: 'row',
-      marginTop: 24,
-      gap: 12,
-    },
-    button: {
-      flex: 1,
-      padding: 16,
-      borderRadius: 12,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    cancelButton: {
-      backgroundColor: isDark ? '#374151' : '#f3f4f6',
-    },
-    cancelButtonText: {
-      fontSize: 16,
-      fontWeight: '500',
-      color: isDark ? '#d1d5db' : '#374151',
-    },
-    submitButton: {
-      backgroundColor: '#3b82f6',
-    },
-    submitButtonDisabled: {
-      backgroundColor: '#9ca3af',
-    },
-    submitButtonText: {
-      fontSize: 16,
-      fontWeight: '500',
-      color: '#ffffff',
-    },
-    errorContainer: {
-      backgroundColor: '#fef2f2',
-      borderWidth: 1,
-      borderColor: '#fecaca',
-      borderRadius: 12,
-      padding: 12,
-      marginBottom: 16,
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    errorText: {
-      fontSize: 14,
-      color: '#dc2626',
-      marginLeft: 8,
-      flex: 1,
-    },
-  });
 
   const handleSubmit = async () => {
     if (!name.trim()) {
@@ -253,9 +295,9 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSubmit, 
     setLoading(true);
     setError(null);
     try {
-      await onSubmit({ 
-        name: name.trim(), 
-        description: description.trim() || undefined 
+      await onSubmit({
+        name: name.trim(),
+        description: description.trim() || undefined,
       });
       setName('');
       setDescription('');
@@ -266,13 +308,20 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSubmit, 
     }
   };
 
+  if (!visible) return null;
+
   return (
-    <Modal animationType="fade" transparent={true} visible={true} onRequestClose={onClose}>
+    <Modal
+      animationType="fade"
+      transparent={true}
+      visible={visible}
+      onRequestClose={onClose}
+    >
       <View style={styles.centeredView}>
         <View style={styles.modalView}>
           <View style={styles.modalHeader}>
             <View style={styles.modalIcon}>
-              <Ionicons name="folder" size={20} color="#ffffff" />
+              <FolderIcon size={24} color="#ffffff" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.modalTitle}>
@@ -283,11 +332,11 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSubmit, 
               </Text>
             </View>
             <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={24} color={colors.textSecondary} />
+              <X size={24} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
-          <Text style={{ color: colors.textPrimary, marginBottom: 8, fontWeight: '500' }}>
+          <Text style={styles.inputLabel}>
             {t('sidebar.projectName')} *
           </Text>
           <TextInput
@@ -297,9 +346,10 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSubmit, 
             onChangeText={setName}
             style={styles.input}
             editable={!loading}
+            autoFocus
           />
 
-          <Text style={{ color: colors.textPrimary, marginBottom: 8, fontWeight: '500' }}>
+          <Text style={styles.inputLabel}>
             {t('sidebar.projectDescription')}
           </Text>
           <TextInput
@@ -316,7 +366,7 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSubmit, 
 
           {error && (
             <View style={styles.errorContainer}>
-              <Ionicons name="warning" size={16} color="#dc2626" />
+              <AlertCircle size={16} color={isDark ? '#fca5a5' : '#dc2626'} style={styles.errorIcon} />
               <Text style={styles.errorText}>{error}</Text>
             </View>
           )}
@@ -337,7 +387,7 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSubmit, 
               style={[
                 styles.button,
                 styles.submitButton,
-                (!name.trim() || loading) && styles.submitButtonDisabled
+                (!name.trim() || loading) && styles.submitButtonDisabled,
               ]}
             >
               {loading ? (
@@ -355,149 +405,27 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSubmit, 
   );
 };
 
-// --- Invite User Modal Component ---
 interface InviteUserModalProps {
+  visible: boolean;
   groupName: string;
   onClose: () => void;
-  onSubmit: (email: string, role: string) => Promise<void>;
+  onSubmit: (email: string) => Promise<void>;
   theme: 'light' | 'dark';
 }
 
-const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, onSubmit, theme }) => {
+const InviteUserModal: React.FC<InviteUserModalProps> = ({
+  visible,
+  groupName,
+  onClose,
+  onSubmit,
+  theme,
+}) => {
   const { t } = useLanguage();
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<string>(DEFAULT_INVITE_ROLE);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
   const isDark = theme === 'dark';
   const colors = getColors(isDark);
-  
-  const styles = StyleSheet.create({
-    centeredView: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: 'rgba(0,0,0,0.6)',
-      padding: 20,
-    },
-    modalView: {
-      backgroundColor: isDark ? '#1F1F1F' : 'white',
-      borderRadius: 16,
-      padding: 24,
-      width: '100%',
-      maxWidth: 400,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 6,
-      elevation: 10,
-    },
-    modalHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: 20,
-    },
-    modalIcon: {
-      width: 40,
-      height: 40,
-      borderRadius: 12,
-      backgroundColor: '#10b981',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginRight: 12,
-    },
-    modalTitle: {
-      fontSize: 18,
-      fontWeight: 'bold',
-      color: colors.textPrimary,
-    },
-    modalSubtitle: {
-      fontSize: 14,
-      color: colors.textSecondary,
-      marginTop: 2,
-    },
-    groupInfo: {
-      backgroundColor: isDark ? '#374151' : '#dbeafe',
-      borderRadius: 12,
-      padding: 12,
-      marginBottom: 20,
-    },
-    groupInfoText: {
-      fontSize: 14,
-      color: isDark ? '#f3f4f6' : '#1e40af',
-    },
-    groupName: {
-      fontWeight: '600',
-    },
-    input: {
-      backgroundColor: isDark ? '#2E2E2E' : '#ffffff',
-      borderColor: isDark ? '#374151' : '#d1d5db',
-      borderWidth: 1,
-      borderRadius: 12,
-      padding: 12,
-      fontSize: 16,
-      color: colors.textPrimary,
-      marginBottom: 16,
-    },
-    pickerContainer: {
-      backgroundColor: isDark ? '#2E2E2E' : '#ffffff',
-      borderWidth: 1,
-      borderColor: isDark ? '#374151' : '#d1d5db',
-      borderRadius: 12,
-      overflow: 'hidden',
-      marginBottom: 16,
-    },
-    picker: {
-      color: colors.textPrimary,
-    },
-    buttonContainer: {
-      flexDirection: 'row',
-      marginTop: 8,
-      gap: 12,
-    },
-    button: {
-      flex: 1,
-      padding: 16,
-      borderRadius: 12,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    cancelButton: {
-      backgroundColor: isDark ? '#374151' : '#f3f4f6',
-    },
-    cancelButtonText: {
-      fontSize: 16,
-      fontWeight: '500',
-      color: isDark ? '#d1d5db' : '#374151',
-    },
-    submitButton: {
-      backgroundColor: '#10b981',
-    },
-    submitButtonDisabled: {
-      backgroundColor: '#9ca3af',
-    },
-    submitButtonText: {
-      fontSize: 16,
-      fontWeight: '500',
-      color: '#ffffff',
-    },
-    errorContainer: {
-      backgroundColor: '#fef2f2',
-      borderWidth: 1,
-      borderColor: '#fecaca',
-      borderRadius: 12,
-      padding: 12,
-      marginBottom: 16,
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    errorText: {
-      fontSize: 14,
-      color: '#dc2626',
-      marginLeft: 8,
-      flex: 1,
-    },
-  });
 
   const handleSubmit = async () => {
     if (!email.trim()) {
@@ -505,12 +433,17 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, o
       return;
     }
 
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setError('Please enter a valid email address');
+      return;
+    }
+
     setLoading(true);
     setError('');
     try {
-      await onSubmit(email.trim(), role);
+      await onSubmit(email.trim());
       setEmail('');
-      setRole(DEFAULT_INVITE_ROLE);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to invite user');
     } finally {
@@ -518,13 +451,20 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, o
     }
   };
 
+  if (!visible) return null;
+
   return (
-    <Modal animationType="fade" transparent={true} visible={true} onRequestClose={onClose}>
+    <Modal
+      animationType="fade"
+      transparent={true}
+      visible={visible}
+      onRequestClose={onClose}
+    >
       <View style={styles.centeredView}>
         <View style={styles.modalView}>
           <View style={styles.modalHeader}>
             <View style={styles.modalIcon}>
-              <Ionicons name="people" size={20} color="#ffffff" />
+              <Users size={24} color="#ffffff" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.modalTitle}>
@@ -535,18 +475,18 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, o
               </Text>
             </View>
             <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={24} color={colors.textSecondary} />
+              <X size={24} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
           <View style={styles.groupInfo}>
             <Text style={styles.groupInfoText}>
-              {t('sidebar.invitingTo')}: 
+              {t('sidebar.invitingTo')}:
               <Text style={styles.groupName}> {groupName}</Text>
             </Text>
           </View>
 
-          <Text style={{ color: colors.textPrimary, marginBottom: 8, fontWeight: '500' }}>
+          <Text style={styles.inputLabel}>
             {t('sidebar.emailAddress')} *
           </Text>
           <TextInput
@@ -557,35 +497,14 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, o
             style={styles.input}
             keyboardType="email-address"
             autoCapitalize="none"
+            autoCorrect={false}
             editable={!loading}
+            autoFocus
           />
-
-          <Text style={{ color: colors.textPrimary, marginBottom: 8, fontWeight: '500' }}>
-            {t('sidebar.assignRole')} *
-          </Text>
-          <View style={styles.pickerContainer}>
-            <Picker
-              selectedValue={role}
-              onValueChange={(itemValue) => setRole(itemValue)}
-              style={styles.picker}
-              enabled={!loading}
-            >
-              {ROLE_SECTIONS.flatMap(section => 
-                section.roles.map((option) => (
-                  <Picker.Item 
-                    key={option.value} 
-                    label={option.label}
-                    value={option.value}
-                    color={colors.textPrimary}
-                  />
-                ))
-              )}
-            </Picker>
-          </View>
 
           {error ? (
             <View style={styles.errorContainer}>
-              <Ionicons name="warning" size={16} color="#dc2626" />
+              <AlertCircle size={16} color={isDark ? '#fca5a5' : '#dc2626'} style={styles.errorIcon} />
               <Text style={styles.errorText}>{error}</Text>
             </View>
           ) : null}
@@ -602,11 +521,11 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, o
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleSubmit}
-              disabled={!email.trim() || !role || loading}
+              disabled={!email.trim() || loading}
               style={[
                 styles.button,
                 styles.submitButton,
-                (!email.trim() || !role || loading) && styles.submitButtonDisabled
+                (!email.trim() || loading) && styles.submitButtonDisabled,
               ]}
             >
               {loading ? (
@@ -625,21 +544,529 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({ groupName, onClose, o
 };
 
 // ====================================================================
+// --- STYLES FOR MODALS ---
+// ====================================================================
+
+const styles = StyleSheet.create({
+  centeredView: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    padding: 20,
+  },
+  modalView: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  modalIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#3b82f6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  groupInfo: {
+    backgroundColor: '#dbeafe',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+  },
+  groupInfoText: {
+    fontSize: 14,
+    color: '#1e40af',
+  },
+  groupName: {
+    fontWeight: '600',
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#1F2937',
+    marginBottom: 8,
+  },
+  input: {
+    backgroundColor: '#ffffff',
+    borderColor: '#d1d5db',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    color: '#1F2937',
+    marginBottom: 16,
+  },
+  textArea: {
+    height: 100,
+    textAlignVertical: 'top',
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 24,
+  },
+  button: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#f3f4f6',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  submitButton: {
+    backgroundColor: '#3b82f6',
+  },
+  submitButtonDisabled: {
+    backgroundColor: '#9ca3af',
+  },
+  submitButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#ffffff',
+  },
+  errorContainer: {
+    backgroundColor: '#fef2f2',
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  errorIcon: {
+    marginRight: 8,
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#dc2626',
+    flex: 1,
+  },
+});
+
+// ====================================================================
+// --- PERMISSION DIALOG ---
+// ====================================================================
+
+const PermissionDialogComponent = ({ 
+  visible, 
+  message, 
+  onClose,
+  theme 
+}: { 
+  visible: boolean; 
+  message: string; 
+  onClose: () => void;
+  theme: 'light' | 'dark';
+}) => {
+  const isDark = theme === 'dark';
+  const colors = getColors(isDark);
+  
+  const permissionStyles = StyleSheet.create({
+    overlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 1000,
+    },
+    dialog: {
+      backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+      borderRadius: 16,
+      padding: 24,
+      width: '80%',
+      alignItems: 'center',
+    },
+    title: {
+      fontSize: 18,
+      fontWeight: 'bold',
+      color: colors.textPrimary,
+      marginTop: 12,
+    },
+    message: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      marginVertical: 16,
+    },
+    button: {
+      backgroundColor: colors.bluePrimary,
+      paddingHorizontal: 20,
+      paddingVertical: 10,
+      borderRadius: 8,
+    },
+    buttonText: {
+      color: '#FFFFFF',
+      fontWeight: '600',
+    },
+  });
+
+  if (!visible) return null;
+
+  return (
+    <Modal
+      transparent={true}
+      animationType="fade"
+      visible={visible}
+      onRequestClose={onClose}
+    >
+      <View style={permissionStyles.overlay}>
+        <View style={permissionStyles.dialog}>
+          <AlertCircle size={32} color="#EF4444" />
+          <Text style={permissionStyles.title}>
+            Permission Denied
+          </Text>
+          <Text style={permissionStyles.message}>{message}</Text>
+          <TouchableOpacity style={permissionStyles.button} onPress={onClose}>
+            <Text style={permissionStyles.buttonText}>
+              OK
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// ====================================================================
+// --- FOLDER AND GROUP ITEM COMPONENTS ---
+// ====================================================================
+
+interface FolderItemProps {
+  folder: Folder;
+  groupId: string;
+  isActive: boolean;
+  isEditing: boolean;
+  renamingName: string;
+  renamingLoading: boolean;
+  onPress: () => void;
+  onLongPress: () => void;
+  onRenameChange: (name: string) => void;
+  onRenameSubmit: () => void;
+  onRenameCancel: () => void;
+  theme: 'light' | 'dark';
+}
+
+const FolderItem: React.FC<FolderItemProps> = ({
+  folder,
+  groupId,
+  isActive,
+  isEditing,
+  renamingName,
+  renamingLoading,
+  onPress,
+  onLongPress,
+  onRenameChange,
+  onRenameSubmit,
+  onRenameCancel,
+  theme,
+}) => {
+  const isDark = theme === 'dark';
+  const colors = getColors(isDark);
+
+  const folderItemStyles = StyleSheet.create({
+    container: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: 12,
+      borderRadius: 8,
+      marginBottom: 4,
+      borderWidth: 1,
+      borderColor: isActive ? colors.bluePrimary : colors.border,
+      backgroundColor: isActive ? colors.blueAccentBg : 'transparent',
+    },
+    content: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    indicator: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: isActive ? colors.bluePrimary : colors.textSecondary,
+      marginRight: 12,
+    },
+    textContainer: {
+      flex: 1,
+    },
+    name: {
+      fontSize: 14,
+      fontWeight: '500',
+      color: colors.textPrimary,
+      marginBottom: 2,
+    },
+    meta: {
+      fontSize: 12,
+      color: colors.textSecondary,
+    },
+    editContainer: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    editInput: {
+      flex: 1,
+      fontSize: 14,
+      color: colors.textPrimary,
+      padding: 0,
+      marginRight: 8,
+    },
+    actionButton: {
+      padding: 4,
+      borderRadius: 4,
+    },
+  });
+
+  if (isEditing) {
+    return (
+      <View style={folderItemStyles.container}>
+        <View style={folderItemStyles.editContainer}>
+          <TextInput
+            value={renamingName}
+            onChangeText={onRenameChange}
+            style={folderItemStyles.editInput}
+            autoFocus
+            editable={!renamingLoading}
+          />
+          <TouchableOpacity
+            onPress={onRenameSubmit}
+            disabled={renamingLoading}
+            style={folderItemStyles.actionButton}
+          >
+            {renamingLoading ? (
+              <Loader2 size={16} color={colors.green} />
+            ) : (
+              <Check size={16} color={colors.green} />
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onRenameCancel} style={folderItemStyles.actionButton}>
+            <X size={16} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <TouchableOpacity
+      style={folderItemStyles.container}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={500}
+    >
+      <View style={folderItemStyles.content}>
+        <View style={folderItemStyles.indicator} />
+        <View style={folderItemStyles.textContainer}>
+          <Text style={folderItemStyles.name} numberOfLines={1}>
+            {folder.name}
+            {folder.isDefault && ' • Default'}
+          </Text>
+          <Text style={folderItemStyles.meta}>
+            {folder.taskCount ?? 0} tasks • {folder.noteCount ?? 0} notes
+          </Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+};
+
+interface GroupCardProps {
+  group: Group;
+  isActive: boolean;
+  isExpanded: boolean;
+  canInvite: boolean;
+  canManageFolders: boolean;
+  canManageGroup: boolean;
+  onToggle: () => void;
+  onClick: () => void;
+  onInvite: () => void;
+  onAddFolder: () => void;
+  onLongPress: () => void;
+  theme: 'light' | 'dark';
+  children?: React.ReactNode;
+}
+
+const GroupCard: React.FC<GroupCardProps> = ({
+  group,
+  isActive,
+  isExpanded,
+  canInvite,
+  canManageFolders,
+  canManageGroup,
+  onToggle,
+  onClick,
+  onInvite,
+  onAddFolder,
+  onLongPress,
+  theme,
+  children,
+}) => {
+  const isDark = theme === 'dark';
+  const colors = getColors(isDark);
+  const isPersonalWorkspace = (group as any).isPersonalWorkspace;
+
+  const groupCardStyles = StyleSheet.create({
+    container: {
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: isActive ? colors.bluePrimary : 'transparent',
+      backgroundColor: isActive ? colors.blueAccentBg : 'transparent',
+      marginBottom: 8,
+      overflow: 'hidden',
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 12,
+    },
+    toggleButton: {
+      padding: 4,
+      borderRadius: 4,
+      marginRight: 8,
+    },
+    content: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    indicator: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: isActive ? colors.bluePrimary : colors.textSecondary,
+      marginRight: 12,
+    },
+    textContainer: {
+      flex: 1,
+    },
+    name: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: isActive ? colors.bluePrimary : colors.textPrimary,
+      marginBottom: 2,
+    },
+    meta: {
+      fontSize: 12,
+      color: colors.textSecondary,
+    },
+    actions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    actionButton: {
+      padding: 6,
+      borderRadius: 6,
+      marginLeft: 4,
+    },
+    folderContainer: {
+      paddingLeft: 44,
+      paddingRight: 12,
+      paddingBottom: 12,
+    },
+  });
+
+  return (
+    <View style={groupCardStyles.container}>
+      <TouchableOpacity style={groupCardStyles.header} onLongPress={onLongPress} delayLongPress={500}>
+        <TouchableOpacity onPress={onToggle} style={groupCardStyles.toggleButton}>
+          {isExpanded ? (
+            <ChevronDown size={18} color={colors.textSecondary} />
+          ) : (
+            <ChevronRight size={18} color={colors.textSecondary} />
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity style={groupCardStyles.content} onPress={onClick}>
+          <View style={groupCardStyles.indicator} />
+          <View style={groupCardStyles.textContainer}>
+            <Text style={groupCardStyles.name} numberOfLines={1}>
+              {group.name}
+            </Text>
+            <Text style={groupCardStyles.meta}>
+              {group.members?.length || 0} members
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        <View style={groupCardStyles.actions}>
+          {canManageFolders && (
+            <TouchableOpacity onPress={onAddFolder} style={groupCardStyles.actionButton}>
+              <FolderPlus size={18} color={colors.textSecondary} />
+            </TouchableOpacity>
+          )}
+          {canInvite && !isPersonalWorkspace && (
+            <TouchableOpacity onPress={onInvite} style={groupCardStyles.actionButton}>
+              <UserPlus size={18} color={colors.textSecondary} />
+            </TouchableOpacity>
+          )}
+          {canManageGroup && !isPersonalWorkspace && (
+            <TouchableOpacity onPress={onLongPress} style={groupCardStyles.actionButton}>
+              <MoreVertical size={18} color={colors.textSecondary} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </TouchableOpacity>
+
+      {isExpanded && <View style={groupCardStyles.folderContainer}>{children}</View>}
+    </View>
+  );
+};
+
+// ====================================================================
 // --- MAIN SIDEBAR COMPONENT ---
 // ====================================================================
 
-export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' }) {
+export default function Sidebar({ theme = 'light', onClose }: { theme?: 'light' | 'dark'; onClose?: () => void }) {
   const { t } = useLanguage();
   const { user, currentGroup, setCurrentGroup } = useAuth();
   const { socket, isConnected } = useSocket();
-  const isDark = theme === 'dark';
-  const colors = getColors(isDark);
-  const styles = getSidebarStyles(isDark);
-
-  const userRole = currentGroup && user ? getMemberRole(currentGroup, user._id) : null;
-  const canDeleteFolders = canManageFolders(userRole);
-  const canEditFolders = canManageFolders(userRole);
-  const canAssignFolders = canAssignFolderMembers(userRole);
+  const confirmDialog = useConfirm();
+  const toast = useSafeToast();
+  const userRoleInCurrentGroup = currentGroup && user ? getMemberRole(currentGroup, user._id) : null;
+  const isLeader = Boolean((user as any)?.isLeader);
+  const businessRole = ((user as any)?.groupRole || null) as GroupRoleKey | null;
+  const canManageGroups = Boolean(businessRole === GROUP_ROLE_KEYS.PRODUCT_OWNER || isLeader);
+  const canDeleteFolders = canManageFolders(userRoleInCurrentGroup, isLeader);
+  const canEditFolders = canManageFolders(userRoleInCurrentGroup, isLeader);
+  const canAssignFolders = canAssignFolderMembers(userRoleInCurrentGroup, isLeader);
+  
   const {
     folders,
     currentFolder,
@@ -648,12 +1075,13 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
     createFolder,
     deleteFolder,
     refreshFolders,
-    error: foldersError
+    error: foldersError,
   } = useFolder();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [projectsExpanded, setProjectsExpanded] = useState(true);
   const [sharedExpanded, setSharedExpanded] = useState(true);
+  const [personalWorkspace, setPersonalWorkspace] = useState<Group | null>(null);
   const [myGroups, setMyGroups] = useState<Group[]>([]);
   const [sharedGroups, setSharedGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
@@ -662,21 +1090,23 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   
-  // Folder state
   const [groupFoldersMap, setGroupFoldersMap] = useState<
     Record<string, { folders: Folder[]; loading: boolean; error?: string }>
   >({});
   const [folderFormState, setFolderFormState] = useState<{
     groupId: string | null;
     name: string;
+    description: string;
     loading: boolean;
     error: string | null;
   }>({
     groupId: null,
     name: '',
+    description: '',
     loading: false,
     error: null
   });
+
   const [pendingFolderSelection, setPendingFolderSelection] = useState<{
     groupId: string;
     folderId: string;
@@ -691,12 +1121,16 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
   const [deletingFolderId, setDeletingFolderId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<{ folderId: string; message: string } | null>(null);
   
-  // Context menu & access
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
     folder: Folder;
     groupId: string;
+  } | null>(null);
+  const [groupContextMenu, setGroupContextMenu] = useState<{
+    x: number;
+    y: number;
+    group: Group;
   } | null>(null);
   const [showFolderAccessModal, setShowFolderAccessModal] = useState(false);
   const [selectedFolderForAccess, setSelectedFolderForAccess] = useState<{
@@ -705,14 +1139,68 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
   } | null>(null);
   const [assigningMembers, setAssigningMembers] = useState(false);
   const [assignError, setAssignError] = useState<string | null>(null);
+  const [blockedUsers, setBlockedUsers] = useState<Array<{
+    userId: string;
+    userName: string;
+    userEmail: string;
+    tasks: Array<{ taskId: string; taskTitle: string; taskStatus: string }>;
+  }>>([]);
   const [groupMembersMap, setGroupMembersMap] = useState<Record<string, Group['members']>>({});
 
-  // Load groups on mount
+  const [permissionDialog, setPermissionDialog] = useState<{
+    message: string;
+  } | null>(null);
+
+  // State để kiểm soát scroll
+  const [scrollEnabled, setScrollEnabled] = useState(true);
+  const scrollViewRef = useRef<ScrollView>(null);
+
+  // PanResponder để xử lý vuốt ngang đóng sidebar
+  const [panResponderEnabled, setPanResponderEnabled] = useState(true);
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => panResponderEnabled,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // Chỉ bắt sự kiện khi vuốt ngang nhiều hơn dọc (tỉ lệ 2:1)
+        const isHorizontalSwipe = Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2;
+        return isHorizontalSwipe && panResponderEnabled;
+      },
+      onPanResponderGrant: () => {
+        // Tạm thời disable scroll dọc khi bắt đầu vuốt ngang
+        setScrollEnabled(false);
+      },
+      onPanResponderMove: (_, gestureState) => {
+        // Có thể thêm hiệu ứng kéo sidebar nếu cần
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        // Kích hoạt lại scroll dọc
+        setScrollEnabled(true);
+        
+        // Vuốt ngang phải đủ mạnh -> đóng sidebar
+        if (Math.abs(gestureState.dx) > 50 && Math.abs(gestureState.vx) > 0.3) {
+          onClose?.();
+        }
+      },
+      onPanResponderTerminate: () => {
+        // Kích hoạt lại scroll dọc khi kết thúc
+        setScrollEnabled(true);
+        setPanResponderEnabled(true);
+      },
+    })
+  ).current;
+
+  const isDark = theme === 'dark';
+  const colors = getColors(isDark);
+  const sidebarStyles = getSidebarStyles(isDark);
+
+  useGroupChange(() => {
+    loadGroups();
+  });
+
   useEffect(() => {
     loadGroups();
   }, []);
 
-  // Auto-expand current group
   useEffect(() => {
     if (!currentGroup?._id) return;
     setExpandedGroups(prev => ({
@@ -721,7 +1209,14 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
     }));
   }, [currentGroup?._id]);
 
-  // Socket effects
+  useEffect(() => {
+    if (!pendingFolderSelection) return;
+    if (currentGroup?._id === pendingFolderSelection.groupId) {
+      refreshFolders(pendingFolderSelection.folderId);
+      setPendingFolderSelection(null);
+    }
+  }, [pendingFolderSelection, currentGroup?._id, refreshFolders]);
+
   useEffect(() => {
     if (!socket || !isConnected) return;
 
@@ -756,7 +1251,7 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
       groupId: string;
     }) => {
       console.log('[Sidebar] Received folder update:', data.eventKey, 'for group:', data.groupId);
-      
+
       if (data.groupId === currentGroup?._id) {
         refreshFolders();
       } else {
@@ -782,7 +1277,6 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
     };
   }, [socket, currentGroup?._id, refreshFolders]);
 
-  // Load group folders
   const loadGroupFolders = useCallback(
     async (groupId: string) => {
       if (!groupId) return;
@@ -819,14 +1313,21 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
     []
   );
 
-  // Load all groups
   const loadGroups = async () => {
     try {
       setLoading(true);
       const response = await groupService.getAllGroups();
-      setMyGroups(response.myGroups);
+      const personal = (response.myGroups || []).find(
+        (g: any) => g && (g as any).isPersonalWorkspace
+      ) || null;
+      const regularMyGroups = (response.myGroups || []).filter(
+        (g: any) => !g || !(g as any).isPersonalWorkspace
+      );
+
+      setPersonalWorkspace(personal);
+      setMyGroups(regularMyGroups);
       setSharedGroups(response.sharedGroups);
-      
+
       const membersMap: Record<string, Group['members']> = {};
       [...response.myGroups, ...response.sharedGroups].forEach(group => {
         if (group._id && group.members) {
@@ -836,22 +1337,24 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
       setGroupMembersMap(prev => ({ ...prev, ...membersMap }));
     } catch (error) {
       console.error('Failed to load groups:', error);
-      Alert.alert('Error', 'Failed to load projects');
+      toast.showError(
+        error instanceof Error ? error.message : 'Failed to load projects',
+        'Error'
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  // Handlers
   const handleWorkspaceChange = async (groupId: string) => {
     if (groupId === currentGroup?._id) return;
-    
+
     try {
       const result = await groupService.switchToGroup(groupId);
       setCurrentGroup(result.group);
     } catch (error) {
       console.error('Failed to switch group:', error);
-      Alert.alert('Error', 'Failed to switch project');
+      toast.showError('Failed to switch project', 'Error');
     }
   };
 
@@ -862,19 +1365,33 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
   const filteredGroups = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
     if (!query) {
-      return { myGroups, sharedGroups };
+      return {
+        personalWorkspace: personalWorkspace ? [personalWorkspace] : [],
+        myGroups,
+        sharedGroups,
+      };
     }
-    
-    const filterFn = (groups: Group[]) => 
-      groups.filter(group => group.name.toLowerCase().includes(query));
+
+    const filterFn = (groups: Group[]) =>
+      groups.filter(group =>
+        group.name.toLowerCase().includes(query) ||
+        group.description?.toLowerCase().includes(query)
+      );
 
     return {
+      personalWorkspace: personalWorkspace && personalWorkspace.name.toLowerCase().includes(query) ? [personalWorkspace] : [],
       myGroups: filterFn(myGroups),
-      sharedGroups: filterFn(sharedGroups)
+      sharedGroups: filterFn(sharedGroups),
     };
-  }, [searchQuery, myGroups, sharedGroups]);
+  }, [searchQuery, personalWorkspace, myGroups, sharedGroups]);
 
   const handleAddProject = () => {
+    if (!canManageGroups) {
+      setPermissionDialog({
+        message: 'You do not have permission to create new projects. Only Product Owners or Leaders are allowed.'
+      });
+      return;
+    }
     setShowCreateModal(true);
   };
 
@@ -888,6 +1405,7 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
       setMyGroups(prev => [newGroup, ...prev]);
       setCurrentGroup(newGroup);
       setShowCreateModal(false);
+      toast.showSuccess('Project created successfully', 'Success');
     } catch (error) {
       console.error('Failed to create group:', error);
       throw error;
@@ -899,26 +1417,26 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
     setShowInviteModal(true);
   };
 
-  // FIX LỖI 2: Điều chỉnh hàm inviteUserToGroup
-  const handleInviteSubmit = async (email: string, role: string) => {
+  const handleInviteSubmit = async (email: string) => {
     if (!selectedGroup) return;
-    
+
     try {
-      // Option 1: Sửa service để nhận 3 params
       await groupService.inviteUserToGroup(selectedGroup._id, email);
-      // Hoặc Option 2: Nếu service chỉ nhận 2 params
-      // await groupService.inviteUserToGroup(selectedGroup._id, { email, role });
-      
       setShowInviteModal(false);
       setSelectedGroup(null);
       loadGroups();
+      toast.showSuccess('Invitation sent successfully', 'Success');
     } catch (error) {
       console.error('Failed to invite user:', error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Failed to invite user. Please check your permissions.';
+      toast.showError(message, 'Error');
       throw error;
     }
   };
 
-  // Folder handlers
   const handleGroupToggle = (groupId: string) => {
     const willExpand = !expandedGroups[groupId];
     setExpandedGroups(prev => ({
@@ -936,7 +1454,27 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
   };
 
   const handleOpenFolderForm = (groupId: string) => {
-    setExpandedGroups(prev => ({ ...prev, [groupId]: true }));
+    const group =
+      myGroups.find(g => g._id === groupId) ||
+      sharedGroups.find(g => g._id === groupId) ||
+      (personalWorkspace && personalWorkspace._id === groupId ? personalWorkspace : null);
+
+    if (group && user) {
+      const groupUserRole = getMemberRole(group, user._id);
+      const effectiveRole = (businessRole || groupUserRole) as GroupRoleKey | null;
+      const canManageThisGroupFolders = canManageFolders(effectiveRole, isLeader);
+      if (!canManageThisGroupFolders) {
+        setPermissionDialog({
+          message: 'You do not have permission to create folders in this group. Only Product Owners or Leaders are allowed.'
+        });
+        return;
+      }
+    }
+
+    setExpandedGroups(prev => ({
+      ...prev,
+      [groupId]: true
+    }));
 
     if (currentGroup?._id === groupId) {
       refreshFolders();
@@ -947,6 +1485,7 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
     setFolderFormState({
       groupId,
       name: '',
+      description: '',
       loading: false,
       error: null
     });
@@ -956,6 +1495,7 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
     setFolderFormState({
       groupId: null,
       name: '',
+      description: '',
       loading: false,
       error: null
     });
@@ -972,14 +1512,16 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
 
     try {
       if (currentGroup?._id === folderFormState.groupId) {
-        await createFolder(folderFormState.name.trim());
+        await createFolder(folderFormState.name.trim(), folderFormState.description.trim() || undefined);
       } else {
         await folderService.createFolder(folderFormState.groupId, {
-          name: folderFormState.name.trim()
+          name: folderFormState.name.trim(),
+          description: folderFormState.description.trim() || undefined
         });
         await loadGroupFolders(folderFormState.groupId);
       }
       closeFolderForm();
+      toast.showSuccess('Folder created successfully', 'Success');
     } catch (error) {
       setFolderFormState(prev => ({
         ...prev,
@@ -1004,8 +1546,64 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
     } catch (error) {
       console.error('Failed to switch group while selecting folder:', error);
       setPendingFolderSelection(null);
-      Alert.alert('Error', 'Failed to switch to folder');
+      toast.showError('Failed to switch to folder', 'Error');
     }
+  };
+
+  const handleFolderLongPress = (folder: Folder, groupId: string) => {
+    if (!canEditFolders && !canDeleteFolders && !canAssignFolders) {
+      return;
+    }
+
+    Alert.alert(
+      'Folder Actions',
+      'Choose an action',
+      [
+        canEditFolders && {
+          text: 'Rename',
+          onPress: () => startRenamingFolder(groupId, folder),
+        },
+        canAssignFolders && {
+          text: 'Assign Members',
+          onPress: () => handleContextMenuAssign(folder, groupId),
+        },
+        canDeleteFolders && {
+          text: 'Delete',
+          style: 'destructive' as const,
+          onPress: () => handleDeleteFolder(groupId, folder._id),
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel' as const,
+        },
+      ].filter(Boolean) as any[]
+    );
+  };
+
+  const handleGroupLongPress = (group: Group) => {
+    if (!canManageGroups || (group as any).isPersonalWorkspace) {
+      return;
+    }
+
+    Alert.alert(
+      'Group Actions',
+      'Choose an action',
+      [
+        {
+          text: 'Rename',
+          onPress: () => handleGroupRename(group),
+        },
+        {
+          text: 'Delete',
+          style: 'destructive' as const,
+          onPress: () => handleGroupDelete(group),
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel' as const,
+        },
+      ]
+    );
   };
 
   const startRenamingFolder = (groupId: string, folder: Folder) => {
@@ -1040,6 +1638,7 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
       }
 
       setRenamingState(null);
+      toast.showSuccess('Folder renamed successfully', 'Success');
     } catch (error) {
       setRenamingError(error instanceof Error ? error.message : 'Failed to rename folder');
     } finally {
@@ -1063,93 +1662,97 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
     };
   };
 
-  const handleDeleteFolder = (groupId: string, folderId: string) => {
-    Alert.alert(
-      'Delete Folder',
-      'Are you sure you want to delete this folder? This will also delete all tasks and notes in this folder.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            setDeletingFolderId(folderId);
-            setDeleteError(null);
-            setContextMenu(null);
+  const handleDeleteFolder = async (groupId: string, folderId: string) => {
+    const group =
+      myGroups.find(g => g._id === groupId) ||
+      sharedGroups.find(g => g._id === groupId) ||
+      (personalWorkspace && personalWorkspace._id === groupId ? personalWorkspace : null);
 
-            try {
-              if (currentGroup?._id === groupId) {
-                await deleteFolder(folderId);
-              } else {
-                await folderService.deleteFolder(groupId, folderId);
-                await loadGroupFolders(groupId);
-              }
-
-              if (renamingState?.folderId === folderId) {
-                setRenamingState(null);
-              }
-            } catch (error) {
-              setDeleteError({
-                folderId,
-                message: error instanceof Error ? error.message : 'Failed to delete folder'
-              });
-            } finally {
-              setDeletingFolderId(null);
-            }
-          }
-        }
-      ]
-    );
-  };
-
-  const handleFolderLongPress = (e: any, folder: Folder, groupId: string) => {
-    if (!canEditFolders && !canDeleteFolders && !canAssignFolders) {
-      return;
+    if (group && user) {
+      const groupUserRole = getMemberRole(group, user._id);
+      const effectiveRole = (businessRole || groupUserRole) as GroupRoleKey | null;
+      const canManageThisGroupFolders = canManageFolders(effectiveRole, isLeader);
+      if (!canManageThisGroupFolders) {
+        setPermissionDialog({
+          message: 'You do not have permission to delete folders in this group. Only Product Owners or Leaders are allowed.'
+        });
+        return;
+      }
     }
 
-    const clientX = e.nativeEvent.pageX;
-    const clientY = e.nativeEvent.pageY;
-    
-    setContextMenu({
-      x: clientX,
-      y: clientY,
-      folder,
-      groupId
+    const confirmed = await confirmDialog.confirm({
+      title: 'Delete Folder',
+      message: 'Are you sure you want to delete this folder? All tasks and notes in this folder will also be deleted.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      variant: 'danger',
+      icon: 'delete'
     });
+
+    if (!confirmed) return;
+
+    setDeletingFolderId(folderId);
+    setDeleteError(null);
+
+    try {
+      if (currentGroup?._id === groupId) {
+        await deleteFolder(folderId);
+      } else {
+        await folderService.deleteFolder(groupId, folderId);
+        await loadGroupFolders(groupId);
+      }
+
+      if (renamingState?.folderId === folderId) {
+        setRenamingState(null);
+      }
+      toast.showSuccess('Folder deleted successfully', 'Success');
+    } catch (error) {
+      setDeleteError({
+        folderId,
+        message: error instanceof Error ? error.message : 'Failed to delete folder'
+      });
+    } finally {
+      setDeletingFolderId(null);
+    }
   };
 
-  const handleContextMenuEdit = () => {
-    if (!contextMenu) return;
-    startRenamingFolder(contextMenu.groupId, contextMenu.folder);
-    setContextMenu(null);
-  };
+  const handleContextMenuAssign = async (folder: Folder, groupId: string) => {
+    const group =
+      myGroups.find(g => g._id === groupId) ||
+      sharedGroups.find(g => g._id === groupId) ||
+      (personalWorkspace && personalWorkspace._id === groupId ? personalWorkspace : null);
 
-  const handleContextMenuDelete = () => {
-    if (!contextMenu) return;
-    handleDeleteFolder(contextMenu.groupId, contextMenu.folder._id);
-  };
+    if (group && user) {
+      const groupUserRole = getMemberRole(group, user._id);
+      const effectiveRole = (businessRole || groupUserRole) as GroupRoleKey | null;
+      const canAssignThisGroupFolders = canAssignFolderMembers(effectiveRole, isLeader);
+      if (!canAssignThisGroupFolders) {
+        setPermissionDialog({
+          message: 'You do not have permission to assign members to this folder. Only Product Owners or Leaders are allowed.'
+        });
+        return;
+      }
+    }
 
-  const handleContextMenuAssign = async () => {
-    if (!contextMenu) return;
-    
-    if (!groupMembersMap[contextMenu.groupId]) {
+    if (!groupMembersMap[groupId]) {
       try {
-        const group = await groupService.getGroupById(contextMenu.groupId);
-        setGroupMembersMap(prev => ({
-          ...prev,
-          [contextMenu.groupId]: group.members || []
-        }));
+        const group = await groupService.getGroupById(groupId);
+        if (group) {
+          setGroupMembersMap(prev => ({
+            ...prev,
+            [groupId]: group.members || []
+          }));
+        }
       } catch (error) {
         console.error('Failed to load group members:', error);
       }
     }
-    
+
     setSelectedFolderForAccess({
-      folder: contextMenu.folder,
-      groupId: contextMenu.groupId
+      folder,
+      groupId
     });
     setShowFolderAccessModal(true);
-    setContextMenu(null);
   };
 
   const handleAssignFolderMembers = async (memberIds: string[]) => {
@@ -1157,6 +1760,7 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
 
     setAssigningMembers(true);
     setAssignError(null);
+    setBlockedUsers([]);
 
     try {
       await folderService.setFolderMembers(
@@ -1173,66 +1777,213 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
 
       setShowFolderAccessModal(false);
       setSelectedFolderForAccess(null);
-    } catch (error) {
-      setAssignError(error instanceof Error ? error.message : 'Failed to assign folder members');
+      toast.showSuccess('Folder members updated successfully', 'Success');
+    } catch (error: unknown) {
+      const err = error as Error & {
+        blockedUsers?: Array<{
+          userId: string;
+          userName: string;
+          userEmail: string;
+          tasks: Array<{ taskId: string; taskTitle: string; taskStatus: string }>;
+        }>;
+      };
+      setAssignError(err.message || 'Failed to assign folder members');
+      if (err.blockedUsers && Array.isArray(err.blockedUsers)) {
+        setBlockedUsers(err.blockedUsers);
+      }
     } finally {
       setAssigningMembers(false);
     }
   };
 
-  // Render folder list
+  const handleGroupRename = async (group: Group) => {
+    Alert.prompt(
+      'Rename Group',
+      'Enter new name for the group',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Save',
+          onPress: async (newName) => {
+            if (!newName || newName.trim() === '' || newName === group.name) return;
+            try {
+              await groupService.updateGroup(group._id, { name: newName.trim() });
+              await loadGroups();
+              toast.showSuccess('Group renamed successfully', 'Success');
+            } catch (error) {
+              console.error('Failed to rename group:', error);
+              toast.showError('Failed to rename group', 'Error');
+            }
+          },
+        },
+      ],
+      'plain-text',
+      group.name
+    );
+  };
+
+  const handleGroupDelete = async (group: Group) => {
+    const confirmed = await confirmDialog.confirm({
+      title: 'Delete Group',
+      message: 'Are you sure you want to delete this group? All folders, tasks and notes inside will be deleted.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      variant: 'danger',
+      icon: 'delete'
+    });
+
+    if (!confirmed) return;
+
+    try {
+      await groupService.deleteGroup(group._id);
+      await loadGroups();
+      if (currentGroup?._id === group._id) {
+        const firstGroup = myGroups[0] || sharedGroups[0] || personalWorkspace;
+        if (firstGroup) {
+          await handleWorkspaceChange(firstGroup._id);
+        }
+      }
+      toast.showSuccess('Group deleted successfully', 'Success');
+    } catch (error) {
+      console.error('Failed to delete group:', error);
+      toast.showError('Failed to delete group', 'Error');
+    }
+  };
+
   const renderFolderListForGroup = (group: Group) => {
     const folderState = getFolderStateForGroup(group._id);
     const formVisible = folderFormState.groupId === group._id;
+
     const folderListStyles = StyleSheet.create({
-        container: { paddingLeft: 30, marginTop: 10 },
-        folderItem: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: 10,
-            borderRadius: 8,
-            marginBottom: 5,
-            borderWidth: 1,
-            borderColor: colors.border,
-            backgroundColor: colors.sidebarBg,
-        },
-        activeFolderItem: {
-            backgroundColor: colors.blueAccentBg,
-            borderColor: colors.bluePrimary,
-        },
+      container: {
+        gap: 8,
+      },
+      loadingContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+      },
+      loadingText: {
+        fontSize: 14,
+        color: colors.textSecondary,
+        marginLeft: 8,
+      },
+      emptyState: {
+        alignItems: 'center',
+        paddingVertical: 20,
+      },
+      emptyStateText: {
+        fontSize: 14,
+        color: colors.textSecondary,
+        textAlign: 'center',
+        marginTop: 8,
+      },
+      formContainer: {
+        gap: 8,
+        marginBottom: 12,
+      },
+      formInput: {
+        backgroundColor: isDark ? '#2E2E2E' : 'white',
+        borderColor: colors.border,
+        borderWidth: 1,
+        borderRadius: 8,
+        padding: 12,
+        fontSize: 14,
+        color: colors.textPrimary,
+      },
+      formTextArea: {
+        height: 80,
+        textAlignVertical: 'top',
+      },
+      formButtons: {
+        flexDirection: 'row',
+        gap: 8,
+      },
+      formButton: {
+        flex: 1,
+        padding: 12,
+        borderRadius: 8,
+        alignItems: 'center',
+      },
+      cancelButton: {
+        backgroundColor: isDark ? '#374151' : '#E5E7EB',
+      },
+      cancelButtonText: {
+        color: colors.textPrimary,
+        fontWeight: '500',
+      },
+      createButton: {
+        backgroundColor: colors.bluePrimary,
+      },
+      createButtonDisabled: {
+        backgroundColor: colors.gray800,
+      },
+      createButtonText: {
+        color: 'white',
+        fontWeight: '500',
+      },
+      errorText: {
+        fontSize: 12,
+        color: colors.red,
+        marginTop: 4,
+      },
     });
 
     return (
       <View style={folderListStyles.container}>
         {formVisible && (
-          <View style={{ marginBottom: 10 }}>
+          <View style={folderListStyles.formContainer}>
             <TextInput
               placeholder="Folder name"
               placeholderTextColor={colors.textSecondary}
               value={folderFormState.name}
-              onChangeText={(text) => setFolderFormState(prev => ({ ...prev, name: text }))}
-              style={[styles.searchInput, { marginBottom: 8, paddingLeft: 12 }]}
+              onChangeText={(text) =>
+                setFolderFormState(prev => ({ ...prev, name: text }))
+              }
+              style={folderListStyles.formInput}
               editable={!folderFormState.loading}
             />
-            {folderFormState.error && <Text style={{ color: colors.red, fontSize: 12 }}>{folderFormState.error}</Text>}
-            <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TextInput
+              placeholder="Description (optional)"
+              placeholderTextColor={colors.textSecondary}
+              value={folderFormState.description}
+              onChangeText={(text) =>
+                setFolderFormState(prev => ({ ...prev, description: text }))
+              }
+              style={[folderListStyles.formInput, folderListStyles.formTextArea]}
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+              editable={!folderFormState.loading}
+            />
+            {folderFormState.error && (
+              <Text style={folderListStyles.errorText}>{folderFormState.error}</Text>
+            )}
+            <View style={folderListStyles.formButtons}>
               <TouchableOpacity
                 onPress={closeFolderForm}
                 disabled={folderFormState.loading}
-                style={{ flex: 1, padding: 8, borderRadius: 8, backgroundColor: isDark ? '#374151' : '#E5E7EB' }}
+                style={[folderListStyles.formButton, folderListStyles.cancelButton]}
               >
-                <Text style={{ textAlign: 'center', color: colors.textPrimary }}>Cancel</Text>
+                <Text style={folderListStyles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleFolderFormSubmit}
-                disabled={folderFormState.loading}
-                style={{ flex: 1, padding: 8, borderRadius: 8, backgroundColor: colors.bluePrimary, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }}
+                disabled={!folderFormState.name.trim() || folderFormState.loading}
+                style={[
+                  folderListStyles.formButton,
+                  folderListStyles.createButton,
+                  (!folderFormState.name.trim() || folderFormState.loading) && folderListStyles.createButtonDisabled,
+                ]}
               >
                 {folderFormState.loading ? (
-                  <ActivityIndicator color="white" size="small" />
+                  <ActivityIndicator size="small" color="white" />
                 ) : (
-                  <Text style={{ color: 'white', fontWeight: 'bold' }}>Create</Text>
+                  <Text style={folderListStyles.createButtonText}>Create</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -1240,73 +1991,49 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
         )}
 
         {folderState.loading ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+          <View style={folderListStyles.loadingContainer}>
             <ActivityIndicator color={colors.textSecondary} size="small" />
-            <Text style={{ color: colors.textSecondary }}>Loading folders...</Text>
+            <Text style={folderListStyles.loadingText}>Loading folders...</Text>
           </View>
         ) : folderState.error ? (
-          <Text style={{ color: colors.red }}>{folderState.error}</Text>
-        ) : folderState.folders.length === 0 ? (
-          <Text style={{ color: colors.textSecondary }}>No folders yet</Text>
+          <Text style={{ color: colors.red, fontSize: 14, textAlign: 'center' }}>
+            {folderState.error}
+          </Text>
+        ) : folderState.folders.length === 0 && !formVisible ? (
+          <View style={folderListStyles.emptyState}>
+            <FolderIcon size={32} color={colors.textSecondary} />
+            <Text style={folderListStyles.emptyStateText}>
+              No folders yet. Create one to start organizing.
+            </Text>
+          </View>
         ) : (
-          folderState.folders.map(folder => {
+          folderState.folders.map((folder) => {
             const folderGroupId = folder.groupId || group._id;
             const isActiveGroup = currentGroup?._id === folderGroupId;
             const isActiveFolder = isActiveGroup && currentFolder?._id === folder._id;
-            const isEditing = renamingState?.folderId === folder._id && renamingState?.groupId === folderGroupId;
-            
+            const isEditing =
+              renamingState?.folderId === folder._id && renamingState?.groupId === folderGroupId;
+
             return (
-              <View
+              <FolderItem
                 key={folder._id}
-                style={[
-                  folderListStyles.folderItem,
-                  isActiveFolder && folderListStyles.activeFolderItem
-                ]}
-              >
-                {isEditing ? (
-                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                    <TextInput
-                      value={renamingState?.name || ''}
-                      onChangeText={(text) =>
-                        setRenamingState(prev => (prev ? { ...prev, name: text } : prev))
-                      }
-                      style={{ flex: 1, color: colors.textPrimary, padding: 0 }}
-                      autoFocus
-                      editable={!renamingLoading}
-                    />
-                    <TouchableOpacity
-                      onPress={handleRenameSubmit}
-                      disabled={renamingLoading}
-                      style={{ padding: 5 }}
-                    >
-                      <Ionicons name={renamingLoading ? 'ellipsis-horizontal' : 'checkmark'} size={18} color={colors.green} />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={cancelRenaming} style={{ padding: 5 }}>
-                      <Ionicons name="close" size={18} color={colors.textSecondary} />
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <TouchableOpacity
-                    onPress={() => handleFolderClick(folderGroupId, folder._id)}
-                    onLongPress={(e) => handleFolderLongPress(e, folder, folderGroupId)}
-                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: isActiveFolder ? colors.bluePrimary : colors.textSecondary }} />
-                      <View>
-                        <Text style={{ color: colors.textPrimary, fontWeight: '500' }}>
-                          {folder.name}
-                        </Text>
-                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
-                          {folder.taskCount ?? 0} tasks • {folder.noteCount ?? 0} notes
-                        </Text>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                )}
-                {(isEditing && renamingError) && <Text style={{ color: colors.red, fontSize: 12 }}>{renamingError}</Text>}
-                {deleteError?.folderId === folder._id && <Text style={{ color: colors.red, fontSize: 12 }}>{deleteError.message}</Text>}
-              </View>
+                folder={folder}
+                groupId={folderGroupId}
+                isActive={isActiveFolder}
+                isEditing={isEditing}
+                renamingName={renamingState?.name || ''}
+                renamingLoading={renamingLoading}
+                onPress={() => handleFolderClick(folderGroupId, folder._id)}
+                onLongPress={() => handleFolderLongPress(folder, folderGroupId)}
+                onRenameChange={(name) =>
+                  setRenamingState((prev) =>
+                    prev ? { ...prev, name } : prev
+                  )
+                }
+                onRenameSubmit={handleRenameSubmit}
+                onRenameCancel={cancelRenaming}
+                theme={theme}
+              />
             );
           })
         )}
@@ -1314,121 +2041,247 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
     );
   };
 
-  // Render group card
-  const renderGroupCard = (group: Group, options?: { canInvite?: boolean }) => {
+  const renderGroupCard = (group: Group, options?: {
+    canInvite?: boolean;
+    canManageFolders?: boolean;
+    canManageGroup?: boolean;
+  }) => {
     const isActive = currentGroup?._id === group._id;
     const isExpanded = !!expandedGroups[group._id];
-    const groupUserRole = user ? getMemberRole(group, user._id) : null;
-    const canAddFolder = canManageFolders(groupUserRole);
-
-    const groupCardStyles = StyleSheet.create({
-        card: {
-            borderRadius: 8,
-            borderWidth: 1,
-            marginBottom: 8,
-            borderColor: isActive ? colors.bluePrimary : 'transparent',
-            backgroundColor: isActive ? colors.blueAccentBg : colors.sidebarBg,
-        },
-        content: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            padding: 10,
-        },
-        infoWrapper: {
-            flex: 1,
-            marginLeft: 10,
-        },
-        groupName: {
-            fontSize: 15,
-            fontWeight: '600',
-            color: isActive ? colors.bluePrimary : colors.textPrimary,
-        },
-        actionButton: {
-            padding: 5,
-            borderRadius: 5,
-            marginLeft: 5,
-        }
-    });
+    const isPersonalWorkspace = (group as any).isPersonalWorkspace;
 
     return (
-      <View key={group._id} style={groupCardStyles.card}>
-        <View style={groupCardStyles.content}>
-            <TouchableOpacity
-              onPress={() => handleGroupToggle(group._id)}
-              style={groupCardStyles.actionButton}
-            >
-              <Ionicons name={isExpanded ? 'chevron-down' : 'chevron-forward'} size={18} color={colors.textSecondary} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-                onPress={() => handleProjectClick(group)}
-                style={groupCardStyles.infoWrapper}
-            >
-                <Text style={groupCardStyles.groupName} numberOfLines={1}>{group.name}</Text>
-                <Text style={{ fontSize: 12, color: colors.textSecondary }}>
-                    {group.members?.length || 0} members
-                </Text>
-            </TouchableOpacity>
-
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                {canAddFolder && (
-                    <TouchableOpacity
-                        onPress={() => handleOpenFolderForm(group._id)}
-                        style={groupCardStyles.actionButton}
-                    >
-                        <Ionicons name="folder-outline" size={18} color={colors.textSecondary} />
-                    </TouchableOpacity>
-                )}
-                {options?.canInvite && (
-                    <TouchableOpacity
-                        onPress={() => handleInviteUser(group)}
-                        style={groupCardStyles.actionButton}
-                    >
-                        <Ionicons name="person-add-outline" size={18} color={colors.textSecondary} />
-                    </TouchableOpacity>
-                )}
-            </View>
-        </View>
-        
-        {isExpanded && renderFolderListForGroup(group)}
-      </View>
+      <GroupCard
+        key={group._id}
+        group={group}
+        isActive={isActive}
+        isExpanded={isExpanded}
+        canInvite={options?.canInvite || false}
+        canManageFolders={options?.canManageFolders || false}
+        canManageGroup={options?.canManageGroup || false}
+        onToggle={() => handleGroupToggle(group._id)}
+        onClick={() => handleProjectClick(group)}
+        onInvite={() => handleInviteUser(group)}
+        onAddFolder={() => handleOpenFolderForm(group._id)}
+        onLongPress={() => handleGroupLongPress(group)}
+        theme={theme}
+      >
+        {renderFolderListForGroup(group)}
+      </GroupCard>
     );
   };
-  
-  const { myGroups: finalMyGroups, sharedGroups: finalSharedGroups } = filteredGroups;
 
-  return (
-    <SafeAreaView style={styles.container}>
-      {/* Header with User Info & Workspace Selector */}
-      <View style={styles.header}>
-        <View style={styles.userInfo}>
-          <Text style={styles.userName} numberOfLines={1}>
-            {user?.name || 'User'}
-          </Text>
-          <Text style={styles.userEmail} numberOfLines={1}>
-            {user?.email || 'user@example.com'}
-          </Text>
+  const { personalWorkspace: filteredPersonal, myGroups: filteredMyGroups, sharedGroups: filteredSharedGroups } = filteredGroups;
+
+  // Nội dung scrollable
+  const ScrollableContent = () => (
+    <View style={{ flex: 1 }}>
+      {/* Personal Workspace */}
+      {filteredPersonal.length > 0 && (
+        <View style={{ marginBottom: 24 }}>
+          <View style={sidebarStyles.sectionHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Home size={16} color={colors.bluePrimary} style={{ marginRight: 8 }} />
+              <Text style={sidebarStyles.sectionTitle}>
+                Personal Workspace
+              </Text>
+            </View>
+          </View>
+          {filteredPersonal.map((group) => {
+            const groupUserRole = user ? getMemberRole(group, user._id) : null;
+            const effectiveRole = (businessRole || groupUserRole) as GroupRoleKey | null;
+            const canManageFoldersForPersonal = canManageFolders(effectiveRole, isLeader);
+            return renderGroupCard(group, {
+              canManageFolders: canManageFoldersForPersonal,
+              canManageGroup: false,
+            });
+          })}
+        </View>
+      )}
+
+      {/* My Projects */}
+      <View style={{ marginBottom: 24 }}>
+        <View style={sidebarStyles.sectionHeader}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <FolderIcon size={16} color={colors.textSecondary} style={{ marginRight: 8 }} />
+            <Text style={sidebarStyles.sectionTitle}>
+              My Projects
+            </Text>
+            {filteredMyGroups.length > 0 && (
+              <View style={sidebarStyles.badge}>
+                <Text style={sidebarStyles.badgeText}>{filteredMyGroups.length}</Text>
+              </View>
+            )}
+          </View>
+          <TouchableOpacity
+            onPress={handleAddProject}
+            style={sidebarStyles.sectionButton}
+            disabled={!canManageGroups}
+          >
+            <Plus size={20} color={canManageGroups ? colors.textPrimary : colors.textSecondary} />
+          </TouchableOpacity>
         </View>
 
-        <View style={{ borderColor: colors.border, borderWidth: 1, borderRadius: 12, overflow: 'hidden', marginTop: 8 }}>
+        {projectsExpanded && (
+          <View style={{ marginTop: 8 }}>
+            {loading ? (
+              <View style={sidebarStyles.loadingContainer}>
+                <ActivityIndicator size="small" color={colors.textSecondary} />
+                <Text style={sidebarStyles.loadingText}>
+                  Loading projects...
+                </Text>
+              </View>
+            ) : filteredMyGroups.length === 0 ? (
+              <View style={sidebarStyles.emptyState}>
+                <FolderIcon size={40} color={colors.textSecondary} />
+                <Text style={sidebarStyles.emptyStateText}>
+                  No projects yet
+                </Text>
+                {canManageGroups && (
+                  <TouchableOpacity onPress={handleAddProject}>
+                    <Text style={sidebarStyles.emptyStateAction}>
+                      Create your first project
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : (
+              filteredMyGroups.map((group) => {
+                const groupUserRole = user ? getMemberRole(group, user._id) : null;
+                const effectiveRole = (businessRole || groupUserRole) as GroupRoleKey | null;
+                const canInvite = canAddMembers(effectiveRole, isLeader);
+                const canManageFoldersForGroup = canManageFolders(effectiveRole, isLeader);
+                return renderGroupCard(group, {
+                  canInvite,
+                  canManageFolders: canManageFoldersForGroup,
+                  canManageGroup: canManageGroups,
+                });
+              })
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* Shared with me */}
+      <View style={{ marginBottom: 24 }}>
+        <TouchableOpacity
+          style={sidebarStyles.sectionHeader}
+          onPress={() => setSharedExpanded(!sharedExpanded)}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Users size={16} color={colors.textSecondary} style={{ marginRight: 8 }} />
+            <Text style={sidebarStyles.sectionTitle}>
+              Shared with me
+            </Text>
+            {filteredSharedGroups.length > 0 && (
+              <View style={sidebarStyles.badge}>
+                <Text style={sidebarStyles.badgeText}>{filteredSharedGroups.length}</Text>
+              </View>
+            )}
+          </View>
+          {sharedExpanded ? (
+            <ChevronDown size={20} color={colors.textSecondary} />
+          ) : (
+            <ChevronRight size={20} color={colors.textSecondary} />
+          )}
+        </TouchableOpacity>
+
+        {sharedExpanded && (
+          <View style={{ marginTop: 8 }}>
+            {loading ? (
+              <View style={sidebarStyles.loadingContainer}>
+                <ActivityIndicator size="small" color={colors.textSecondary} />
+                <Text style={sidebarStyles.loadingText}>
+                  Loading...
+                </Text>
+              </View>
+            ) : filteredSharedGroups.length === 0 ? (
+              <View style={sidebarStyles.emptyState}>
+                <Users size={40} color={colors.textSecondary} />
+                <Text style={sidebarStyles.emptyStateText}>
+                  No shared projects
+                </Text>
+              </View>
+            ) : (
+              filteredSharedGroups.map((group) => {
+                const groupUserRole = user ? getMemberRole(group, user._id) : null;
+                const effectiveRole = (businessRole || groupUserRole) as GroupRoleKey | null;
+                const canManageFoldersForGroup = canManageFolders(effectiveRole, isLeader);
+                return renderGroupCard(group, {
+                  canInvite: false,
+                  canManageFolders: canManageFoldersForGroup,
+                  canManageGroup: false,
+                });
+              })
+            )}
+          </View>
+        )}
+      </View>
+    </View>
+  );
+
+  return (
+    <SafeAreaView style={sidebarStyles.container}>
+      {/* Permission Dialog */}
+      <PermissionDialogComponent
+        visible={!!permissionDialog}
+        message={permissionDialog?.message || ''}
+        onClose={() => setPermissionDialog(null)}
+        theme={theme}
+      />
+
+      {/* Nút đóng sidebar */}
+      {onClose && (
+        <TouchableOpacity 
+          style={sidebarStyles.closeButton}
+          onPress={onClose}
+        >
+          <X size={24} color={colors.textSecondary} />
+        </TouchableOpacity>
+      )}
+
+      {/* Header with User Info */}
+      <View style={sidebarStyles.header}>
+        <View style={sidebarStyles.userInfo}>
+          <View style={sidebarStyles.userAvatar}>
+            <User size={20} color="white" />
+          </View>
+          <View style={sidebarStyles.userTextContainer}>
+            <Text style={sidebarStyles.userName} numberOfLines={1}>
+              {user?.name || 'User'}
+            </Text>
+            <Text style={sidebarStyles.userEmail} numberOfLines={1}>
+              {user?.email || 'user@example.com'}
+            </Text>
+            {(businessRole || isLeader) && (
+              <View style={sidebarStyles.userRoleBadge}>
+                <Text style={sidebarStyles.userRoleText}>
+                  {isLeader ? 'Leader' : businessRole === GROUP_ROLE_KEYS.PRODUCT_OWNER ? 'Product Owner' : 'Member'}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {/* Workspace Selector */}
+        <View style={sidebarStyles.workspaceSelector}>
           <Picker
             selectedValue={currentGroup?._id || ''}
             onValueChange={(itemValue) => handleWorkspaceChange(itemValue)}
-            style={{ 
-              width: '100%', 
-              color: colors.textPrimary, 
-              backgroundColor: isDark ? '#2E2E2E' : 'white',
-              height: 48,
-            }}
+            style={sidebarStyles.workspacePicker}
           >
             {loading ? (
               <Picker.Item label="Loading workspaces..." value="" />
             ) : (
-              [...myGroups, ...sharedGroups].map(group => (
-                <Picker.Item 
-                  key={group._id} 
-                  label={group.name} 
-                  value={group._id} 
+              [
+                ...(personalWorkspace ? [personalWorkspace] : []),
+                ...myGroups,
+                ...sharedGroups,
+              ].map((group) => (
+                <Picker.Item
+                  key={group._id}
+                  label={group.name}
+                  value={group._id}
                   color={colors.textPrimary}
                 />
               ))
@@ -1438,113 +2291,107 @@ export default function Sidebar({ theme = 'light' }: { theme?: 'light' | 'dark' 
       </View>
 
       {/* Search */}
-      <View style={styles.searchContainer}>
-        <View style={styles.searchInputWrapper}>
-          <Ionicons name="search" style={{ position: 'absolute', left: 10, zIndex: 1 }} size={16} color={colors.textSecondary} />
+      <View style={sidebarStyles.searchContainer}>
+        <View style={sidebarStyles.searchInputWrapper}>
+          <Search size={18} color={colors.textSecondary} style={sidebarStyles.searchIcon} />
           <TextInput
             placeholder="Search projects..."
             placeholderTextColor={colors.textSecondary}
-            style={styles.searchInput}
+            style={sidebarStyles.searchInput}
             onChangeText={handleSearch}
             value={searchQuery}
+            clearButtonMode="while-editing"
           />
         </View>
       </View>
 
-      {/* Scrollable Content */}
-      <ScrollView style={{ flex: 1, padding: 16 }}>
-        {/* My Projects */}
-        <View style={{ marginBottom: 20 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <TouchableOpacity 
-              onPress={() => setProjectsExpanded(!projectsExpanded)} 
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
-            >
-              <Ionicons name={projectsExpanded ? 'chevron-down' : 'chevron-forward'} size={16} color={colors.textSecondary} />
-              <Ionicons name="folder-outline" size={16} color={colors.textSecondary} />
-              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textPrimary }}>MY PROJECTS</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-                onPress={handleAddProject} 
-                style={styles.actionButton}
-            >
-                <Ionicons name="add-outline" size={20} color={colors.textPrimary} />
-            </TouchableOpacity>
-          </View>
-          
-          {projectsExpanded && (
-            <View style={{ marginTop: 10 }}>
-              {loading ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <ActivityIndicator size="small" color={colors.textSecondary} />
-                  <Text style={{ color: colors.textSecondary }}>Loading projects...</Text>
-                </View>
-              ) : finalMyGroups.length === 0 ? (
-                <View style={{ alignItems: 'center', paddingVertical: 20 }}>
-                  <Ionicons name="folder-outline" size={32} color={colors.textSecondary} />
-                  <Text style={{ color: colors.textSecondary, marginTop: 8 }}>No projects yet</Text>
-                  <TouchableOpacity onPress={handleAddProject}>
-                    <Text style={{ color: colors.bluePrimary, marginTop: 4 }}>Create your first project</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                finalMyGroups.map(group => {
-                  const groupUserRole = user ? getMemberRole(group, user._id) : null;
-                  return renderGroupCard(group, { canInvite: canAddMembers(groupUserRole) });
-                })
-              )}
-            </View>
-          )}
-        </View>
-
-        {/* Shared with me */}
-        <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 20 }}>
-          <TouchableOpacity 
-            onPress={() => setSharedExpanded(!sharedExpanded)} 
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}
-          >
-            <Ionicons name="people-outline" size={16} color={colors.textSecondary} />
-            <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textPrimary }}>SHARED WITH ME</Text>
-            <Ionicons 
-              name={sharedExpanded ? 'chevron-down' : 'chevron-forward'} 
-              size={16} 
-              color={colors.textSecondary} 
-              style={{ marginLeft: 'auto' }}
-            />
-          </TouchableOpacity>
-          
-          {sharedExpanded && (
-            <View style={{ marginTop: 10 }}>
-              {loading ? (
-                <Text style={{ color: colors.textSecondary }}>Loading...</Text>
-              ) : finalSharedGroups.length === 0 ? (
-                <Text style={{ color: colors.textSecondary }}>No shared projects</Text>
-              ) : (
-                finalSharedGroups.map(group => renderGroupCard(group))
-              )}
-            </View>
-          )}
-        </View>
-      </ScrollView>
+      {/* FIXED: Scrollable Content với container giới hạn */}
+      <View 
+        style={sidebarStyles.scrollContainer}
+        {...panResponder.panHandlers}
+      >
+        <ScrollView 
+          ref={scrollViewRef}
+          style={sidebarStyles.scrollContent}
+          showsVerticalScrollIndicator={true}
+          scrollEnabled={scrollEnabled}
+          // Ngăn overscroll vertical
+          overScrollMode="never"
+          // Ngăn nested scrolling issues
+          nestedScrollEnabled={true}
+          // Scroll boundaries
+          maximumZoomScale={1}
+          minimumZoomScale={1}
+          // Event handlers để kiểm soát pan responder
+          onScrollBeginDrag={() => {
+            // Khi bắt đầu scroll dọc, disable pan responder
+            setPanResponderEnabled(false);
+          }}
+          onScrollEndDrag={() => {
+            // Khi kết thúc scroll, kích hoạt lại pan responder sau delay
+            setTimeout(() => {
+              setPanResponderEnabled(true);
+            }, 100);
+          }}
+          onMomentumScrollEnd={() => {
+            setPanResponderEnabled(true);
+          }}
+          scrollEventThrottle={16}
+          // Kiểm tra scroll boundaries
+          onScroll={(event) => {
+            const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
+            const isAtTop = contentOffset.y <= 10;
+            const isAtBottom = contentOffset.y >= contentSize.height - layoutMeasurement.height - 10;
+            
+            // Nếu ở biên trên hoặc dưới, có thể kích hoạt pan responder
+            if (isAtTop || isAtBottom) {
+              setPanResponderEnabled(true);
+            }
+          }}
+        >
+          <ScrollableContent />
+        </ScrollView>
+      </View>
 
       {/* Modals */}
-      {showCreateModal && (
-        <CreateGroupModal
-          onClose={() => setShowCreateModal(false)}
-          onSubmit={handleCreateGroup}
-          theme={isDark ? 'dark' : 'light'}
-        />
-      )}
+      <CreateGroupModal
+        visible={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onSubmit={handleCreateGroup}
+        theme={theme}
+      />
 
-      {showInviteModal && selectedGroup && (
-        <InviteUserModal
-          groupName={selectedGroup.name}
+      <InviteUserModal
+        visible={showInviteModal}
+        groupName={selectedGroup?.name || ''}
+        onClose={() => {
+          setShowInviteModal(false);
+          setSelectedGroup(null);
+        }}
+        onSubmit={handleInviteSubmit}
+        theme={theme}
+      />
+
+      {/* Folder Access Modal */}
+      {showFolderAccessModal && selectedFolderForAccess && (
+        <FolderAccessModal
+          visible={showFolderAccessModal}
+          folder={selectedFolderForAccess.folder}
+          members={
+            groupMembersMap[selectedFolderForAccess.groupId] ||
+            (currentGroup?._id === selectedFolderForAccess.groupId ? currentGroup.members || [] : [])
+          }
           onClose={() => {
-            setShowInviteModal(false);
-            setSelectedGroup(null);
+            setShowFolderAccessModal(false);
+            setSelectedFolderForAccess(null);
+            setAssignError(null);
+            setBlockedUsers([]);
           }}
-          onSubmit={handleInviteSubmit}
-          theme={isDark ? 'dark' : 'light'}
+          onSave={handleAssignFolderMembers}
+          saving={assigningMembers}
+          error={assignError || undefined}
+          blockedUsers={blockedUsers}
+          theme={theme}
         />
       )}
     </SafeAreaView>
