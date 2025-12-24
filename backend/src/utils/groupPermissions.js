@@ -82,6 +82,10 @@ const canWriteInFolder = (role, { isAssigned = false, isLeader = false } = {}) =
   if (isProductOwner(role) || isPM(role) || isLeader) {
     return true;
   }
+  // QA role: can write if assigned to folder (assigned by PM/PO/Leader)
+  if (role === GROUP_ROLE_KEYS.QA) {
+    return isAssigned;
+  }
   if (isReadOnlyRole(role)) {
     return false;
   }
@@ -93,8 +97,16 @@ const canWriteInFolder = (role, { isAssigned = false, isLeader = false } = {}) =
 
 // Everyone with a non-null role can create tasks,
 // except read-only roles – but leaders are always allowed regardless of business role
-const canCreateTasks = ({ role, isLeader = false } = {}) =>
-  Boolean(role) && (!isReadOnlyRole(role) || isLeader);
+// QA can create tasks if assigned to folder (checked separately in task service)
+const canCreateTasks = ({ role, isLeader = false, isAssignedToFolder = false } = {}) => {
+  if (!role) return false;
+  if (isLeader) return true;
+  // QA can create tasks if assigned to folder
+  if (role === GROUP_ROLE_KEYS.QA) {
+    return isAssignedToFolder;
+  }
+  return !isReadOnlyRole(role);
+};
 
 const canViewFolder = (role, { isAssigned = false, isLeader = false } = {}) => {
   // Leaders có quyền xem mọi folder trong group
@@ -123,14 +135,15 @@ const isAdminRole = ({ role, isLeader = false } = {}) =>
 
 /**
  * Check if user can edit a task (update, timer, repeat, attachments)
- * Allowed: Admin roles, task creator, or assignees
+ * Allowed: Admin roles, task creator, assignees, or QA assigned to folder
  * @param {Object} params
  * @param {String} params.role - User's role in the group
  * @param {Boolean} params.isCreator - Is user the task creator
  * @param {Boolean} params.isAssignee - Is user assigned to the task
+ * @param {Boolean} params.isAssignedToFolder - Is user assigned to the folder containing the task (for QA)
  * @returns {Boolean}
  */
-const canEditTask = ({ role, isCreator = false, isAssignee = false, isLeader = false } = {}) => {
+const canEditTask = ({ role, isCreator = false, isAssignee = false, isLeader = false, isAssignedToFolder = false } = {}) => {
   if (isAdminRole({ role, isLeader })) {
     return true;
   }
@@ -140,23 +153,32 @@ const canEditTask = ({ role, isCreator = false, isAssignee = false, isLeader = f
   if (isAssignee) {
     return true;
   }
+  // QA can edit tasks if assigned to the folder containing the task
+  if (role === GROUP_ROLE_KEYS.QA && isAssignedToFolder) {
+    return true;
+  }
   return false;
 };
 
 /**
  * Check if user can delete a task
- * Allowed: Admin roles or task creator only (NOT assignees)
+ * Allowed: Admin roles, task creator, or QA assigned to folder
  * @param {Object} params
  * @param {String} params.role - User's role in the group
  * @param {Boolean} params.isCreator - Is user the task creator
+ * @param {Boolean} params.isAssignedToFolder - Is user assigned to the folder containing the task (for QA)
  * @returns {Boolean}
  */
-const canDeleteTask = ({ role, isCreator = false, isLeader = false } = {}) => {
+const canDeleteTask = ({ role, isCreator = false, isLeader = false, isAssignedToFolder = false } = {}) => {
   // Admin roles (PO/PM/Leader) can delete any task; otherwise only creator can delete
   if (isCreator) {
     return true;
   }
   if (isAdminRole({ role, isLeader })) {
+    return true;
+  }
+  // QA can delete tasks if assigned to the folder containing the task
+  if (role === GROUP_ROLE_KEYS.QA && isAssignedToFolder) {
     return true;
   }
   return false;

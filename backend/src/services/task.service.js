@@ -407,6 +407,17 @@ const buildScopedFolderFilter = async ({
   return clauses;
 };
 
+const hasFolderAssignment = (folderDoc, requesterId) => {
+  if (!folderDoc || !Array.isArray(folderDoc.memberAccess)) {
+    return false;
+  }
+  const targetId = normalizeId(requesterId);
+  if (!targetId) {
+    return false;
+  }
+  return folderDoc.memberAccess.some(access => normalizeId(access.userId) === targetId);
+};
+
 const ensureTaskWriteAccess = async (taskDoc, requesterId) => {
   if (!taskDoc) {
     raiseError(ERROR_MESSAGES.TASK_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
@@ -469,8 +480,17 @@ const ensureTaskEditAccess = async (taskDoc, requesterId) => {
     assignee => normalizeId(assignee.userId) === normalizedRequesterId
   );
 
-  if (!isPersonalOwner && !canEditTask({ role, isCreator, isAssignee, isLeader: requester.isLeader })) {
-    raiseError('Bạn không có quyền chỉnh sửa task này. Chỉ PM, Product Owner, người tạo task hoặc người được gán mới có thể chỉnh sửa.', HTTP_STATUS.FORBIDDEN);
+  // Check folder assignment for QA role
+  let isAssignedToFolder = false;
+  if (role === GROUP_ROLE_KEYS.QA && taskDoc.folderId) {
+    const folder = await Folder.findById(taskDoc.folderId);
+    if (folder) {
+      isAssignedToFolder = hasFolderAssignment(folder, requesterId);
+    }
+  }
+
+  if (!isPersonalOwner && !canEditTask({ role, isCreator, isAssignee, isLeader: requester.isLeader, isAssignedToFolder })) {
+    raiseError('Bạn không có quyền chỉnh sửa task này. Chỉ PM, Product Owner, người tạo task, người được gán hoặc QA được assign vào folder mới có thể chỉnh sửa.', HTTP_STATUS.FORBIDDEN);
   }
 
   return { group, role, isCreator, isAssignee, requester };
@@ -503,8 +523,17 @@ const ensureTaskDeleteAccess = async (taskDoc, requesterId) => {
 
   const isCreator = normalizedRequesterId === creatorId;
 
-  if (!isPersonalOwner && !canDeleteTask({ role, isCreator, isLeader: requester.isLeader })) {
-    raiseError('Bạn không có quyền xóa task này. Chỉ người tạo task mới có thể xóa.', HTTP_STATUS.FORBIDDEN);
+  // Check folder assignment for QA role
+  let isAssignedToFolder = false;
+  if (role === GROUP_ROLE_KEYS.QA && taskDoc.folderId) {
+    const folder = await Folder.findById(taskDoc.folderId);
+    if (folder) {
+      isAssignedToFolder = hasFolderAssignment(folder, requesterId);
+    }
+  }
+
+  if (!isPersonalOwner && !canDeleteTask({ role, isCreator, isLeader: requester.isLeader, isAssignedToFolder })) {
+    raiseError('Bạn không có quyền xóa task này. Chỉ người tạo task, PM, Product Owner hoặc QA được assign vào folder mới có thể xóa.', HTTP_STATUS.FORBIDDEN);
   }
 
   return { group, role, isCreator, requester };
@@ -549,15 +578,12 @@ class TaskService {
       targetGroup = group;
       requesterRole = role;
 
-      if (!isPersonalOwner && !canCreateTasks({ role: requesterRole, isLeader: requester.isLeader })) {
-        raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
-      }
-
       groupMemberIds = new Set(
         group.members.map(member => normalizeId(member.userId)).filter(Boolean)
       );
       taskData.groupId = groupId;
 
+      // Resolve folder first to check assignment for QA role
       const { folder } = await enforceFolderAccess({
         group,
         groupId,
@@ -569,6 +595,16 @@ class TaskService {
       });
 
       taskData.folderId = folder ? folder._id : null;
+
+      // Check folder assignment for QA role before checking create permission
+      let isAssignedToFolder = false;
+      if (role === GROUP_ROLE_KEYS.QA && folder) {
+        isAssignedToFolder = hasFolderAssignment(folder, creatorId);
+      }
+
+      if (!isPersonalOwner && !canCreateTasks({ role: requesterRole, isLeader: requester.isLeader, isAssignedToFolder })) {
+        raiseError(ERROR_MESSAGES.GROUP_ACCESS_DENIED, HTTP_STATUS.FORBIDDEN);
+      }
     }
 
     let assignedIds = [];

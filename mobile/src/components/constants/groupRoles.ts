@@ -158,108 +158,96 @@ export const ROLE_SUMMARIES: Record<
     badgeColor: string;
   }
 > = {
-  [GROUP_ROLE_KEYS.PRODUCT_OWNER]: {
-    scope: 'full',
-    summary: 'Toàn quyền quản trị dự án',
-    capabilities: 'Tạo/chỉnh sửa mọi nội dung, phân quyền, gán folder',
-    badgeColor: 'from-amber-500 to-amber-600'
-  },
-  [GROUP_ROLE_KEYS.PM]: {
-    scope: 'full',
-    summary: 'Quản lý dự án, cấp thư mục',
-    capabilities: 'Tạo/chỉnh sửa task/note/folder, gán folder cho thành viên',
-    badgeColor: 'from-blue-500 to-blue-600'
-  },
-  [GROUP_ROLE_KEYS.SALE]: {
-    scope: 'read_only',
-    summary: 'Chỉ xem tiến độ',
-    capabilities: 'Xem tất cả task/note/folder, không thể chỉnh sửa',
-    badgeColor: 'from-slate-500 to-slate-600'
-  },
+  [GROUP_ROLE_KEYS.PRODUCT_OWNER]: {
+    scope: 'full',
+    summary: 'Toàn quyền quản trị dự án',
+    capabilities: 'Tạo/chỉnh sửa mọi nội dung, phân quyền, gán folder',
+    badgeColor: 'from-amber-500 to-amber-600'
+  },
+  [GROUP_ROLE_KEYS.PM]: {
+    scope: 'full',
+    summary: 'Quản lý dự án, cấp thư mục',
+    capabilities: 'Tạo/chỉnh sửa task/note/folder, gán folder cho thành viên',
+    badgeColor: 'from-blue-500 to-blue-600'
+  },
+  [GROUP_ROLE_KEYS.SALE]: {
+    scope: 'read_only',
+    summary: 'Chỉ xem tiến độ',
+    capabilities: 'Xem tất cả task/note/folder, không thể chỉnh sửa',
+    badgeColor: 'from-slate-500 to-slate-600'
+  },
   [GROUP_ROLE_KEYS.QA]: {
     scope: 'read_only',
     summary: 'Giám sát chất lượng',
-    capabilities: 'Xem toàn bộ nội dung, không được chỉnh sửa',
+    capabilities: 'Xem tất cả folder trong group, CRUD task trong folder được PM/PO/Leader gán',
     badgeColor: 'from-slate-500 to-slate-600'
   },
-  [GROUP_ROLE_KEYS.DEV_MANAGER]: {
-    scope: 'read_only',
-    summary: 'Theo dõi đội phát triển',
-    capabilities: 'Quyền xem toàn bộ, không tạo/chỉnh sửa',
-    badgeColor: 'from-slate-500 to-slate-600'
-  },
-  [GROUP_ROLE_KEYS.BA]: {
-    scope: 'folder_scoped',
-    summary: 'Làm việc trong folder được gán',
-    capabilities: 'Tạo/chỉnh sửa task/note trong folder được PM gán',
-    badgeColor: 'from-emerald-500 to-emerald-600'
-  },
-  [GROUP_ROLE_KEYS.BOT_BUILDER]: {
-    scope: 'folder_scoped',
-    summary: 'Thực hiện bot theo folder được gán',
-    capabilities: 'Toàn quyền trong folder được gán',
-    badgeColor: 'from-emerald-500 to-emerald-600'
-  },
-  [GROUP_ROLE_KEYS.QC]: {
-    scope: 'folder_scoped',
-    summary: 'Kiểm thử trong folder được giao',
-    capabilities: 'Tạo/chỉnh sửa/xóa trong folder đã được gán',
-    badgeColor: 'from-emerald-500 to-emerald-600'
-  },
-  [GROUP_ROLE_KEYS.DEVOPS]: {
-    scope: 'folder_scoped',
-    summary: 'Vận hành hạ tầng theo folder',
-    capabilities: 'Chỉnh sửa nội dung trong folder được giao',
-    badgeColor: 'from-purple-500 to-purple-600'
-  },
-  [GROUP_ROLE_KEYS.CLOUD_INFRA]: {
-    scope: 'folder_scoped',
-    summary: 'Quản lý cloud/infra',
-    capabilities: 'Quyền thực thi trong folder được gán',
-    badgeColor: 'from-purple-500 to-purple-600'
-  },
-  [GROUP_ROLE_KEYS.SECURITY]: {
-    scope: 'folder_scoped',
-    summary: 'Đảm bảo bảo mật trong folder được phân',
-    capabilities: 'Chỉnh sửa nội dung folder được gán',
-    badgeColor: 'from-purple-500 to-purple-600'
-  },
-  [GROUP_ROLE_KEYS.CHATBOT]: {
-    scope: 'folder_scoped',
-    summary: 'Team sản phẩm Chatbot',
-    capabilities: 'Thực hiện task/note trong folder được gán',
-    badgeColor: 'from-teal-500 to-teal-600'
-  },
-  [GROUP_ROLE_KEYS.VOICEBOT]: {
-    scope: 'folder_scoped',
-    summary: 'Team sản phẩm Voicebot',
-    capabilities: 'Thực hiện task/note trong folder được gán',
-    badgeColor: 'from-teal-500 to-teal-600'
-  },
-  [GROUP_ROLE_KEYS.DEVELOPER]: {
-    scope: 'folder_scoped',
-    summary: 'Dev thực thi trong folder được gán',
-    capabilities: 'Toàn quyền trong folder đã được gán',
-    badgeColor: 'from-teal-500 to-teal-600'
-  }
-};
-
-// --- 10. ROLE SECTIONS (UI GROUPING) ---
-export const ROLE_SECTION_KEYS = [
-  { titleKey: 'roles.sections.monitoring', roles: [GROUP_ROLE_KEYS.SALE, GROUP_ROLE_KEYS.QA, GROUP_ROLE_KEYS.DEV_MANAGER] },
-  { titleKey: 'roles.sections.management', roles: [GROUP_ROLE_KEYS.PM, GROUP_ROLE_KEYS.BA, GROUP_ROLE_KEYS.BOT_BUILDER, GROUP_ROLE_KEYS.QC] },
-  { titleKey: 'roles.sections.infrastructure', roles: [GROUP_ROLE_KEYS.DEVOPS, GROUP_ROLE_KEYS.CLOUD_INFRA, GROUP_ROLE_KEYS.SECURITY] },
-  { titleKey: 'roles.sections.productTeam', roles: [GROUP_ROLE_KEYS.CHATBOT, GROUP_ROLE_KEYS.VOICEBOT, GROUP_ROLE_KEYS.DEVELOPER] }
-];
-
-export const getRoleSections = (t: TranslateFunction) => {
-  return ROLE_SECTION_KEYS.map(section => ({
-    title: t(section.titleKey),
-    roles: section.roles.map(role => ({
-      value: role,
-      label: t(ROLE_LABEL_KEYS[role])
-    }))
-  }));
+  [GROUP_ROLE_KEYS.DEV_MANAGER]: {
+    scope: 'read_only',
+    summary: 'Theo dõi đội phát triển',
+    capabilities: 'Quyền xem toàn bộ, không tạo/chỉnh sửa',
+    badgeColor: 'from-slate-500 to-slate-600'
+  },
+  [GROUP_ROLE_KEYS.BA]: {
+    scope: 'folder_scoped',
+    summary: 'Làm việc trong folder được gán',
+    capabilities: 'Tạo/chỉnh sửa task/note trong folder được PM gán',
+    badgeColor: 'from-emerald-500 to-emerald-600'
+  },
+  [GROUP_ROLE_KEYS.TECH_LEAD]: {
+    scope: 'folder_scoped',
+    summary: 'Dẫn dắt kỹ thuật trong folder được giao',
+    capabilities: 'Quyền CRUD trong folder đã được gán',
+    badgeColor: 'from-emerald-500 to-emerald-600'
+  },
+  [GROUP_ROLE_KEYS.BOT_BUILDER]: {
+    scope: 'folder_scoped',
+    summary: 'Thực hiện bot theo folder được gán',
+    capabilities: 'Toàn quyền trong folder được gán',
+    badgeColor: 'from-emerald-500 to-emerald-600'
+  },
+  [GROUP_ROLE_KEYS.QC]: {
+    scope: 'folder_scoped',
+    summary: 'Kiểm thử trong folder được giao',
+    capabilities: 'Tạo/chỉnh sửa/xóa trong folder đã được gán',
+    badgeColor: 'from-emerald-500 to-emerald-600'
+  },
+  [GROUP_ROLE_KEYS.DEVOPS]: {
+    scope: 'folder_scoped',
+    summary: 'Vận hành hạ tầng theo folder',
+    capabilities: 'Chỉnh sửa nội dung trong folder được giao',
+    badgeColor: 'from-purple-500 to-purple-600'
+  },
+  [GROUP_ROLE_KEYS.CLOUD_INFRA]: {
+    scope: 'folder_scoped',
+    summary: 'Quản lý cloud/infra',
+    capabilities: 'Quyền thực thi trong folder được gán',
+    badgeColor: 'from-purple-500 to-purple-600'
+  },
+  [GROUP_ROLE_KEYS.SECURITY]: {
+    scope: 'folder_scoped',
+    summary: 'Đảm bảo bảo mật trong folder được phân',
+    capabilities: 'Chỉnh sửa nội dung folder được gán',
+    badgeColor: 'from-purple-500 to-purple-600'
+  },
+  [GROUP_ROLE_KEYS.CHATBOT]: {
+    scope: 'folder_scoped',
+    summary: 'Team sản phẩm Chatbot',
+    capabilities: 'Thực hiện task/note trong folder được gán',
+    badgeColor: 'from-teal-500 to-teal-600'
+  },
+  [GROUP_ROLE_KEYS.VOICEBOT]: {
+    scope: 'folder_scoped',
+    summary: 'Team sản phẩm Voicebot',
+    capabilities: 'Thực hiện task/note trong folder được gán',
+    badgeColor: 'from-teal-500 to-teal-600'
+  },
+  [GROUP_ROLE_KEYS.DEVELOPER]: {
+    scope: 'folder_scoped',
+    summary: 'Dev thực thi trong folder được gán',
+    capabilities: 'Toàn quyền trong folder đã được gán',
+    badgeColor: 'from-teal-500 to-teal-600'
+  }
 };
 
 // Legacy static sections

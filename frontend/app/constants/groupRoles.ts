@@ -175,7 +175,7 @@ export const ROLE_SUMMARIES: Record<
   [GROUP_ROLE_KEYS.QA]: {
     scope: 'read_only',
     summary: 'Giám sát chất lượng',
-    capabilities: 'Xem toàn bộ nội dung, không được chỉnh sửa',
+    capabilities: 'Xem tất cả folder trong group, CRUD task trong folder được PM/PO/Leader gán',
     badgeColor: 'from-slate-500 to-slate-600'
   },
   [GROUP_ROLE_KEYS.DEV_MANAGER]: {
