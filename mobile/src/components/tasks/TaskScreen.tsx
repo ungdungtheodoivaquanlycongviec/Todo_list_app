@@ -15,6 +15,8 @@ import {
   Image,
   Platform,
   ActionSheetIOS,
+  TouchableWithoutFeedback,
+  Pressable,
 } from 'react-native';
 // ✅ Icons Lucide
 import { 
@@ -98,6 +100,151 @@ const TaskTimer = ({ task, isRunning }: { task: Task; isRunning: boolean }) => {
       <Clock size={12} color="#9ca3af" />
       <Text style={styles.timeText}>—</Text>
     </View>
+  );
+};
+
+// Component: ActiveTimersPopup
+const ActiveTimersPopup = ({ taskId, visible, onClose }: { taskId: string; visible: boolean; onClose: () => void }) => {
+  const { getAllActiveTimers } = useTimer();
+  const { user: currentUser } = useAuth();
+  const activeTimers = getAllActiveTimers(taskId);
+  const { isDark } = useTheme();
+
+  const formatElapsedTime = (seconds: number) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return h > 0 
+      ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+      : `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  if (!visible) return null;
+
+  return (
+    <Modal transparent visible={visible} animationType="fade">
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={styles.modalOverlay}>
+          <Pressable onPress={(e) => e.stopPropagation()}>
+            <View style={[styles.popupContent, isDark && styles.darkPopupContent]}>
+              <View style={styles.popupHeader}>
+                <Text style={[styles.popupTitle, isDark && styles.darkText]}>
+                  Active Timers ({activeTimers.length})
+                </Text>
+                <TouchableOpacity onPress={onClose}>
+                  <X size={20} color={isDark ? '#e5e7eb' : '#374151'} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.popupScroll} showsVerticalScrollIndicator={false}>
+                {activeTimers.map((timer) => {
+                  const timerElapsed = Math.floor((Date.now() - timer.startTime.getTime()) / 1000);
+                  const isCurrentUser = timer.userId === currentUser?._id;
+                  return (
+                    <View key={timer.userId} style={[styles.timerRow, isDark && styles.darkTimerRow]}>
+                      <View style={styles.timerUser}>
+                        <View style={[styles.timerAvatar, isCurrentUser ? styles.timerAvatarCurrent : styles.timerAvatarOther]}>
+                          {timer.userAvatar ? (
+                            <Image source={{ uri: timer.userAvatar }} style={styles.timerAvatarImage} />
+                          ) : (
+                            <Text style={styles.timerAvatarText}>
+                              {(timer.userName || 'U').charAt(0).toUpperCase()}
+                            </Text>
+                          )}
+                        </View>
+                        <View style={styles.timerUserInfo}>
+                          <Text style={[styles.timerUserName, isDark && styles.darkText]} numberOfLines={1}>
+                            {timer.userName || 'Unknown'}
+                          </Text>
+                          {isCurrentUser && (
+                            <View style={styles.youBadge}>
+                              <Text style={styles.youBadgeText}>You</Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                      <Text style={[styles.timerElapsed, isDark && styles.darkText]}>
+                        {formatElapsedTime(timerElapsed)}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          </Pressable>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+};
+
+// Component: InlineEditField
+const InlineEditField = ({ 
+  task, 
+  field, 
+  value, 
+  options,
+  onSave 
+}: { 
+  task: Task; 
+  field: string; 
+  value: string; 
+  options?: string[];
+  onSave: (value: string) => void;
+}) => {
+  const [editing, setEditing] = useState(false);
+  const [tempValue, setTempValue] = useState(value);
+  const { isDark } = useTheme();
+
+  const handleSave = () => {
+    if (tempValue !== value) {
+      onSave(tempValue);
+    }
+    setEditing(false);
+  };
+
+  const handleCancel = () => {
+    setTempValue(value);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <View style={styles.inlineEditContainer}>
+        {options ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {options.map(option => (
+              <TouchableOpacity
+                key={option}
+                style={[styles.inlineOption, tempValue === option && styles.inlineOptionSelected]}
+                onPress={() => {
+                  setTempValue(option);
+                  handleSave();
+                }}
+              >
+                <Text style={[styles.inlineOptionText, tempValue === option && styles.inlineOptionTextSelected]}>
+                  {option}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        ) : (
+          <TextInput
+            value={tempValue}
+            onChangeText={setTempValue}
+            onBlur={handleSave}
+            onSubmitEditing={handleSave}
+            autoFocus
+            style={[styles.inlineInput, isDark && styles.darkInlineInput]}
+          />
+        )}
+      </View>
+    );
+  }
+
+  return (
+    <TouchableOpacity onPress={() => setEditing(true)}>
+      <Text style={[styles.inlineText, isDark && styles.darkText]}>{value || '—'}</Text>
+    </TouchableOpacity>
   );
 };
 
@@ -281,6 +428,7 @@ export default function TasksView() {
   // --- COMPONENT: Rich Task Row (List View đầy đủ thông tin) ---
   const TaskRow = ({ task, isCompleted, isOverdueMode }: { task: Task, isCompleted?: boolean, isOverdueMode?: boolean }) => {
     const assigneeInfo = getDetailedAssignees(task);
+    const assigneeSummary = getAssigneeSummary(task);
     const isRunning = isTimerRunning(task._id);
     const isOverdue = !isCompleted && task.dueDate && new Date(task.dueDate) < new Date();
 

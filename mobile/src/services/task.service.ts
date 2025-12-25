@@ -1,9 +1,8 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
-import { Task } from '../types/task.types';
 import { authService } from './auth.service';
 // import { notificationService } from './notification.service'; // Bỏ comment nếu đã setup notification
 import { API_URL } from '../config/api.config';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Task } from '../types/task.types'; // Đảm bảo file types đã có
 
 // ----------------------------------------------------------------------
 // 1. HELPERS & UTILS
@@ -11,7 +10,6 @@ import { API_URL } from '../config/api.config';
 
 // Chuẩn hóa dữ liệu trả về từ Backend (giống Web)
 const normalizeTaskResponse = (data: any): Task => {
-  if (!data) return data;
   if (data.data?.task) return data.data.task;
   if (data.task) return data.task;
   if (data.data && !data.task) return data.data;
@@ -21,18 +19,18 @@ const normalizeTaskResponse = (data: any): Task => {
 // Tạo Headers (Tự động thêm Token & Content-Type)
 const getHeaders = async (isMultipart = false) => {
   const token = await authService.getAuthToken();
-  const headers: any = {};
   
+  // Xử lý Headers đặc biệt cho FormData (không set Content-Type)
+  const isFormData = options.body instanceof FormData;
+  
+  const headers: Record<string, string> = {
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+    ...(options.headers as any),
+  };
+
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
-  
-  if (!isMultipart) {
-    headers['Content-Type'] = 'application/json';
-  }
-  
-  return headers;
-};
 
 // Xử lý phản hồi chung (Lỗi 401, 403, Parse JSON lỗi)
 const handleResponse = async (response: Response, actionName: string) => {
@@ -42,17 +40,18 @@ const handleResponse = async (response: Response, actionName: string) => {
       await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
       throw new Error('Authentication failed. Please login again.');
     }
+    
+    // Xử lý lỗi 304 (Not Modified)
+    if (response.status === 304) return { status: 304 };
 
     // 2. Lỗi quyền truy cập
     if (response.status === 403) {
-       throw new Error('You must join or create a group to manage tasks');
+      throw new Error('You must join or create a group to manage tasks');
     }
 
     // 3. Lỗi logic từ Backend
     const errorText = await response.text();
-    console.error(`[TaskService] ${actionName} Error (${response.status}):`, errorText);
-    
-    let errorMessage = `Failed to ${actionName}: ${response.status}`;
+    let errorMessage = `Request failed: ${response.status}`;
     try {
       const errorData = JSON.parse(errorText);
       errorMessage = errorData.message || errorMessage;
@@ -65,7 +64,8 @@ const handleResponse = async (response: Response, actionName: string) => {
   // 204 No Content
   if (response.status === 204) return null;
 
-  return response.json();
+  const data = await response.json();
+  return data;
 };
 
 // Helper để format file cho FormData của React Native
@@ -107,16 +107,11 @@ export const taskService = {
       taskData.groupId = currentGroupId;
     }
 
-    const headers = await getHeaders();
-    console.log('[API] Creating task:', taskData);
-
-    const response = await fetch(`${API_URL}/tasks`, {
+    const data = await fetchWithAuth('/tasks', {
       method: 'POST',
-      headers,
       body: JSON.stringify(taskData),
     });
 
-    const data = await handleResponse(response, 'create task');
     const task = normalizeTaskResponse(data);
 
     // Gửi thông báo (Nếu có service)
@@ -128,8 +123,14 @@ export const taskService = {
   },
 
   getAllTasks: async (filters?: any, options?: any): Promise<TasksResponse> => {
-    const headers = await getHeaders();
     const queryParams = new URLSearchParams();
+    const mergeParams = { ...filters, ...options };
+    
+    Object.keys(mergeParams).forEach(key => {
+      if (mergeParams[key] !== undefined && mergeParams[key] !== null && mergeParams[key] !== '') {
+        queryParams.append(key, mergeParams[key]);
+      }
+    });
 
     // Mapping filters giống Web
     if (filters) {
@@ -175,10 +176,9 @@ export const taskService = {
     return { tasks: tasks || [], pagination };
   },
 
+  // Lấy task theo ID
   getTaskById: async (id: string): Promise<Task> => {
-    const headers = await getHeaders();
-    const response = await fetch(`${API_URL}/tasks/${id}`, { headers });
-    const data = await handleResponse(response, 'fetch task by id');
+    const data = await fetchWithAuth(`/tasks/${id}`);
     return normalizeTaskResponse(data);
   },
 
@@ -186,30 +186,22 @@ export const taskService = {
     const headers = await getHeaders();
     // Loại bỏ các trường hệ thống không được sửa
     const { _id, __v, createdAt, updatedAt, createdBy, ...cleanData } = updateData;
-
-    console.log(`[API] Updating task ${id}:`, cleanData);
-
-    const response = await fetch(`${API_URL}/tasks/${id}`, {
+    
+    const data = await fetchWithAuth(`/tasks/${id}`, {
       method: 'PUT',
-      headers,
       body: JSON.stringify(cleanData),
     });
 
-    if (response.status === 304) {
+    // Handle 304 Not Modified -> Re-fetch
+    if (data && data.status === 304) {
       return taskService.getTaskById(id);
     }
 
-    const data = await handleResponse(response, 'update task');
     return normalizeTaskResponse(data);
   },
 
   deleteTask: async (id: string): Promise<void> => {
-    const headers = await getHeaders();
-    const response = await fetch(`${API_URL}/tasks/${id}`, {
-      method: 'DELETE',
-      headers,
-    });
-    await handleResponse(response, 'delete task');
+    await fetchWithAuth(`/tasks/${id}`, { method: 'DELETE' });
   },
 
   // =================================================================
@@ -292,13 +284,10 @@ export const taskService = {
   },
 
   addComment: async (taskId: string, content: string): Promise<Task> => {
-    const headers = await getHeaders();
-    const response = await fetch(`${API_URL}/tasks/${taskId}/comments`, {
+    const data = await fetchWithAuth(`/tasks/${taskId}/comments`, {
       method: 'POST',
-      headers,
       body: JSON.stringify({ content }),
     });
-    const data = await handleResponse(response, 'add comment');
     return normalizeTaskResponse(data);
   },
 
@@ -328,33 +317,31 @@ export const taskService = {
   addCommentWithFile: async (taskId: string, content: string, file: any): Promise<Task> => {
     const headers = await getHeaders(true); // true = Multipart/form-data
     const formData = new FormData();
-    
     formData.append('content', content);
     formData.append('file', createMobileFileObject(file) as any);
 
-    const response = await fetch(`${API_URL}/tasks/${taskId}/comments/with-file`, {
+    const data = await fetchWithAuth(`/tasks/${taskId}/comments/with-file`, {
       method: 'POST',
-      headers, 
       body: formData,
     });
-
-    const data = await handleResponse(response, 'add comment with file');
     return normalizeTaskResponse(data);
   },
 
-  uploadAttachment: async (taskId: string, file: any): Promise<Task> => {
-    const headers = await getHeaders(true);
+  // Upload attachment
+  uploadAttachment: async (taskId: string, file: RNFile): Promise<Task> => {
     const formData = new FormData();
+    formData.append('file', {
+      uri: file.uri,
+      name: file.name,
+      type: file.type || 'application/octet-stream',
+    } as any);
 
     formData.append('file', createMobileFileObject(file) as any);
 
     const response = await fetch(`${API_URL}/tasks/${taskId}/attachments`, {
       method: 'POST',
-      headers,
       body: formData,
     });
-
-    const data = await handleResponse(response, 'upload attachment');
     return normalizeTaskResponse(data);
   },
 
@@ -363,26 +350,26 @@ export const taskService = {
   // =================================================================
 
   getKanbanView: async (filters?: any): Promise<any> => {
-    const headers = await getHeaders();
     const queryParams = new URLSearchParams();
     if (filters) {
       Object.keys(filters).forEach(key => {
         if (filters[key]) queryParams.append(key, filters[key]);
       });
     }
-    
-    const response = await fetch(`${API_URL}/tasks/kanban?${queryParams.toString()}`, { headers });
-    const data = await handleResponse(response, 'fetch kanban');
+    const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    const data = await fetchWithAuth(`/tasks/kanban${queryString}`);
     return data.data || data;
   },
 
+  // Calendar View
   getCalendarView: async (year: number, month: number, folderId?: string): Promise<any> => {
-    const headers = await getHeaders();
-    const params = new URLSearchParams({ year: String(year), month: String(month) });
+    const params = new URLSearchParams({
+      year: String(year),
+      month: String(month)
+    });
     if (folderId) params.append('folderId', folderId);
 
-    const response = await fetch(`${API_URL}/tasks/calendar?${params.toString()}`, { headers });
-    const data = await handleResponse(response, 'fetch calendar');
+    const data = await fetchWithAuth(`/tasks/calendar?${params.toString()}`);
     return data.data || data;
   },
 
@@ -391,28 +378,20 @@ export const taskService = {
   // =================================================================
 
   assignUsersToTask: async (taskId: string, userIds: string[]): Promise<any> => {
-    const headers = await getHeaders();
-    const response = await fetch(`${API_URL}/tasks/${taskId}/assign`, {
+    return fetchWithAuth(`/tasks/${taskId}/assign`, {
       method: 'POST',
-      headers,
       body: JSON.stringify({ userIds }),
     });
-    return await handleResponse(response, 'assign users');
   },
 
+  // Unassign user
   unassignUserFromTask: async (taskId: string, userId: string): Promise<any> => {
-    const headers = await getHeaders();
-    const response = await fetch(`${API_URL}/tasks/${taskId}/unassign/${userId}`, {
-      method: 'DELETE',
-      headers,
-    });
-    return await handleResponse(response, 'unassign user');
+    return fetchWithAuth(`/tasks/${taskId}/unassign/${userId}`, { method: 'DELETE' });
   },
 
+  // Get assignees
   getTaskAssignees: async (taskId: string): Promise<any> => {
-    const headers = await getHeaders();
-    const response = await fetch(`${API_URL}/tasks/${taskId}/assignees`, { headers });
-    return await handleResponse(response, 'get assignees');
+    return fetchWithAuth(`/tasks/${taskId}/assignees`);
   },
 
   // =================================================================
@@ -434,24 +413,53 @@ export const taskService = {
   },
 
   setCustomStatus: async (taskId: string, name: string, color: string): Promise<Task> => {
-    const headers = await getHeaders();
-    const response = await fetch(`${API_URL}/tasks/${taskId}/custom-status`, {
+    const data = await fetchWithAuth(`/tasks/${taskId}/custom-status`, {
       method: 'POST',
-      headers,
       body: JSON.stringify({ name, color }),
     });
-    const data = await handleResponse(response, 'set custom status');
     return normalizeTaskResponse(data);
   },
 
+  // Repetition
   setTaskRepetition: async (taskId: string, repetitionSettings: any): Promise<Task> => {
-    const headers = await getHeaders();
-    const response = await fetch(`${API_URL}/tasks/${taskId}/repeat`, {
+    const data = await fetchWithAuth(`/tasks/${taskId}/repeat`, {
       method: 'POST',
-      headers,
       body: JSON.stringify(repetitionSettings),
     });
-    const data = await handleResponse(response, 'set task repetition');
     return normalizeTaskResponse(data);
+  },
+
+  // Get Comments Paginated
+  getComments: async (
+    taskId: string,
+    options?: { page?: number; limit?: number }
+  ): Promise<{
+    comments: any[];
+    pagination: {
+      page: number;
+      limit: number;
+      totalComments: number;
+      totalPages: number;
+      hasNextPage: boolean;
+      hasPrevPage: boolean;
+    };
+  }> => {
+    const params = new URLSearchParams();
+    if (options?.page) params.append('page', options.page.toString());
+    if (options?.limit) params.append('limit', options.limit.toString());
+    
+    const data = await fetchWithAuth(`/tasks/${taskId}/comments?${params.toString()}`);
+    
+    return {
+      comments: data.data?.comments || data.comments || [],
+      pagination: data.data?.pagination || data.pagination || {
+        page: options?.page || 1,
+        limit: options?.limit || 15,
+        totalComments: 0,
+        totalPages: 1,
+        hasNextPage: false,
+        hasPrevPage: false
+      }
+    };
   }
 };

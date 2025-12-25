@@ -48,6 +48,53 @@ export interface NotificationsResponse {
   };
 }
 
+// 🔥 ĐÃ SỬA LỖI Ở HÀM NÀY
+const fetchWithAuth = async (endpoint: string, options: RequestInit = {}) => {
+  const token = await authService.getAuthToken();
+  
+  // ⚠️ THAY ĐỔI: Dùng Record<string, string> thay vì HeadersInit
+  // Điều này cho phép bạn gán headers['Authorization'] mà không bị lỗi
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as any), // Ép kiểu để merge headers cũ
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const url = `${API_URL}${endpoint}`;
+
+  const response = await fetch(url, {
+    ...options,
+    headers, // Fetch chấp nhận Record<string, string> nên dòng này hợp lệ
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
+      // Nếu có authService.logout() thì gọi ở đây
+      throw new Error('Authentication failed. Please login again.');
+    }
+
+    const errorText = await response.text();
+    let errorMessage = `Request failed: ${response.status}`;
+    try {
+      const errorData = JSON.parse(errorText);
+      errorMessage = errorData.message || errorMessage;
+    } catch {
+      errorMessage = errorText || errorMessage;
+    }
+    throw new Error(errorMessage);
+  }
+
+  if (response.status === 204) return null;
+
+  const data = await response.json();
+  return data.data || data;
+};
+
+// ... (Phần export const notificationService giữ nguyên như file trước) ...
 export const notificationService = {
   // Helper lấy headers với token (giảm lặp code)
   getHeaders: async () => {
