@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
+  ScrollView,
   Modal,
   Alert,
   StyleSheet,
@@ -12,67 +13,73 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  FlatList,
   Image,
   Dimensions,
-  RefreshControl,
-  ScrollView
 } from 'react-native';
-import {
-  X, Flag, CheckCircle, PlayCircle, StopCircle,
-  MessageSquare, Edit2, Trash2, Send, Plus,
-  User as UserIcon, Paperclip, CheckSquare, Square, ChevronDown,
-  Timer, RefreshCw, FileText, Upload
-} from 'lucide-react-native';
-import dayjs from 'dayjs';
-import relativeTime from 'dayjs/plugin/relativeTime';
-
 import { useTheme } from '../../context/ThemeContext';
-import { useLanguage } from '../../context/LanguageContext';
-import { useTimer } from '../../context/TimerContext';
-import { useAuth } from '../../context/AuthContext';
-import { useFolder } from '../../context/FolderContext';
-import { taskService } from '../../services/task.service';
-import { useTaskRealtime } from '../../hooks/useTaskRealtime';
-import { 
-  getMemberRole
-  // XÓA IMPORT GROUP_ROLE_KEYS GÂY LỖI
-} from '../../utils/groupRoleUtils';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import Feather from 'react-native-vector-icons/Feather';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import FontAwesome from 'react-native-vector-icons/FontAwesome';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
-import { Task } from '../../types/task.types';
 
-// --- 1. ĐỊNH NGHĨA LOCAL (Fix lỗi thiếu Type) ---
-interface LocalSubtask {
-  _id: string;
-  title: string;
-  completed: boolean;
-}
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
-interface LocalAttachment {
+interface MinimalUser {
   _id: string;
   name: string;
-  url: string;
-  type?: string;
-  size: number;
-  filename?: string;
-  mimetype?: string;
+  email: string;
+  avatar?: string;
 }
 
-// --- 2. ĐỊNH NGHĨA CONST LOCAL (Fix lỗi module not exported) ---
-const GROUP_ROLE_KEYS = {
-  PRODUCT_OWNER: 'PRODUCT_OWNER',
-  PM: 'PM'
-};
-
-// Setup dayjs
-dayjs.extend(relativeTime);
+interface AssignedUser {
+  userId: string | MinimalUser;
+  assignedAt: string;
+}
 
 interface TaskDetailModalProps {
   visible: boolean;
   onClose: () => void;
-  onTaskUpdate: (updatedTask: Task) => void;
+  onTaskUpdate: (updatedTask: any) => void;
   onTaskDelete: (taskId: string) => void;
   taskId: string;
+  currentUser?: any;
+}
+
+interface Comment {
+  _id?: string;
+  userId?: string;
+  user?: any;
+  content: string;
+  createdAt: string;
+  updatedAt?: string;
+  isEdited?: boolean;
+  attachment?: any;
+}
+
+interface TimeEntry {
+  _id?: string;
+  user?: any;
+  date: string;
+  hours: number;
+  minutes: number;
+  description?: string;
+  billable: boolean;
+  startTime?: string;
+  endTime?: string;
+  createdAt?: string;
+}
+
+interface ScheduledWork {
+  _id?: string;
+  user?: any;
+  scheduledDate: string;
+  estimatedHours: number;
+  estimatedMinutes: number;
+  description?: string;
+  status: string;
+  createdAt?: string;
 }
 
 export default function TaskDetailModal({
@@ -81,634 +88,1563 @@ export default function TaskDetailModal({
   onTaskUpdate,
   onTaskDelete,
   taskId,
+  currentUser,
 }: TaskDetailModalProps) {
-  // --- Hooks ---
   const { isDark } = useTheme();
-  const { t } = useLanguage();
-  const { user: currentUser, currentGroup } = useAuth();
-  const { currentFolder } = useFolder();
-  const { isTimerRunning } = useTimer(); // Chỉ lấy trạng thái, không dùng hàm start/stop của context để tránh lỗi tham số
-  
-  // Fake Regional
-  const formatDate = (d: string) => dayjs(d).format('DD/MM/YYYY');
-
-  // --- State ---
   const [task, setTask] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [description, setDescription] = useState('');
+  const [comment, setComment] = useState('');
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [estimatedTime, setEstimatedTime] = useState('');
   
-  // Comments
-  const [comments, setComments] = useState<any[]>([]);
-  const [commentsPage, setCommentsPage] = useState(1);
-  const [hasMoreComments, setHasMoreComments] = useState(true);
-  const [loadingMoreComments, setLoadingMoreComments] = useState(false);
-  const [commentText, setCommentText] = useState('');
-  const [isSendingComment, setIsSendingComment] = useState(false);
-
-  // Edit States
+  // State for editable fields
   const [editingField, setEditingField] = useState<string | null>(null);
   const [tempValue, setTempValue] = useState('');
   
-  // Modals
-  const [showStatusPicker, setShowStatusPicker] = useState(false);
-  const [showPriorityPicker, setShowPriorityPicker] = useState(false);
-  const [showAssignModal, setShowAssignModal] = useState(false);
-  const [showTimeLogModal, setShowTimeLogModal] = useState(false);
-  const [showRepeatModal, setShowRepeatModal] = useState(false);
-  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  // Task properties state
+  const [taskProperties, setTaskProperties] = useState({
+    title: '',
+    status: 'todo',
+    dueDate: '',
+    estimatedTime: '',
+    type: 'Operational',
+    priority: 'medium',
+    description: ''
+  });
 
-  // Forms
+  // Existing state for time entries and scheduled work
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
+  const [scheduledWork, setScheduledWork] = useState<ScheduledWork[]>([]);
+  const [showTimeEntryForm, setShowTimeEntryForm] = useState(false);
   const [newTimeEntry, setNewTimeEntry] = useState({
-    date: dayjs().format('YYYY-MM-DD'),
-    hours: '0',
-    minutes: '0',
+    date: new Date().toISOString().split('T')[0],
+    hours: 0,
+    minutes: 0,
     description: '',
     billable: true
   });
-
-  // Timer UI
-  const [localElapsedTime, setLocalElapsedTime] = useState(0);
-  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  // --- Logic Quyền ---
-  const userRole = getMemberRole(currentGroup, currentUser?._id);
-  const isCreator = task?.createdBy?._id === currentUser?._id;
-  
-  // Sử dụng biến GROUP_ROLE_KEYS định nghĩa nội bộ
-  const canManage = isCreator || userRole === GROUP_ROLE_KEYS.PRODUCT_OWNER || userRole === GROUP_ROLE_KEYS.PM;
-  const canEdit = true; 
-
-  const PRIORITY_OPTIONS = ['low', 'medium', 'high', 'urgent'];
-  const STATUS_OPTIONS = ['todo', 'in_progress', 'completed', 'cancelled'];
-
-  // --- Realtime ---
-  useTaskRealtime({
-    onTaskUpdated: ({ task: updatedTask, taskId: updatedId }) => {
-      if (updatedId === taskId && updatedTask) {
-        setTask((prev: any) => ({ ...prev, ...updatedTask }));
-        onTaskUpdate(updatedTask);
-      }
-    },
-    onTaskDeleted: ({ taskId: deletedId }) => {
-      if (deletedId === taskId) {
-        onClose();
-        onTaskDelete(taskId);
-      }
-    }
+  const [showScheduledWorkForm, setShowScheduledWorkForm] = useState(false);
+  const [newScheduledWork, setNewScheduledWork] = useState({
+    scheduledDate: new Date().toISOString().split('T')[0],
+    estimatedHours: 0,
+    estimatedMinutes: 0,
+    description: '',
+    status: 'scheduled'
   });
 
-  // --- API ---
-  const fetchTaskDetails = useCallback(async () => {
-    if (!taskId) return;
-    try {
-      const response = await taskService.getTaskById(taskId) as any;
-      if (response.success) {
-        setTask(response.data);
-      }
-    } catch (error) {
-      Alert.alert(t('error.generic'), t('error.notFound'));
-      onClose();
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [taskId, t, onClose]);
+  // NEW: State for custom status functionality
+  const [showCustomStatusModal, setShowCustomStatusModal] = useState(false);
+  const [customStatusName, setCustomStatusName] = useState('');
+  const [customStatusColor, setCustomStatusColor] = useState('#3B82F6');
 
-  const fetchComments = useCallback(async (page = 1, reset = false) => {
-    if (!taskId) return;
-    try {
-      if (page > 1) setLoadingMoreComments(true);
-      const res = await taskService.getComments(taskId, { page, limit: 10 }) as any;
-      
-      if (reset) {
-        setComments(res.comments);
-        setCommentsPage(1);
-      } else {
-        setComments(prev => [...prev, ...res.comments]);
-        setCommentsPage(page);
-      }
-      setHasMoreComments(res.pagination.hasNextPage);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoadingMoreComments(false);
-    }
-  }, [taskId]);
+  // NEW: State for timer functionality
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [timerStartTime, setTimerStartTime] = useState<Date | null>(null);
+  const [elapsedTime, setElapsedTime] = useState(0);
 
-  useEffect(() => {
-    if (visible) {
-      setLoading(true);
-      fetchTaskDetails();
-      fetchComments(1, true);
-    }
-    return () => {
-      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-    };
-  }, [visible, fetchTaskDetails, fetchComments]);
+  // NEW: State for repeat task functionality
+  const [showRepeatModal, setShowRepeatModal] = useState(false);
+  const [repeatSettings, setRepeatSettings] = useState({
+    isRepeating: false,
+    frequency: 'weekly',
+    interval: 1,
+    endDate: '',
+    occurrences: null
+  });
 
-  // --- Timer ---
-  const taskHasRunningTimer = isTimerRunning(taskId);
-  useEffect(() => {
-    if (taskHasRunningTimer) {
-      timerIntervalRef.current = setInterval(() => {
-        setLocalElapsedTime(prev => prev + 1);
-      }, 1000);
-    } else {
-      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-      setLocalElapsedTime(0);
-    }
-    return () => {
-      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-    };
-  }, [taskHasRunningTimer]);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentContent, setEditingCommentContent] = useState('');
+  const [showCommentMenu, setShowCommentMenu] = useState<string | null>(null);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
 
-  const handleToggleTimer = async () => {
-    try {
-      if (taskHasRunningTimer) {
-        // --- FIX LỖI: Dùng taskService thay vì Context function thiếu tham số ---
-        await (taskService as any).stopTimer(taskId);
-      } else {
-        // --- FIX LỖI: Dùng taskService thay vì Context function thiếu tham số ---
-        await (taskService as any).startTimer(taskId);
-      }
-      fetchTaskDetails(); // Reload để cập nhật trạng thái
-    } catch (error) {
-      Alert.alert(t('error.generic'));
-    }
-  };
+  const estimatedTimeOptions = ['15m', '30m', '1h', '2h', '4h', '1d', '2d', '1w'];
+  const taskTypeOptions = ['Operational', 'Strategic', 'Financial', 'Technical', 'Other'];
+  const priorityOptions = ['low', 'medium', 'high', 'urgent'];
+  const statusOptions = ['todo', 'in_progress', 'completed', 'archived'];
 
-  // --- Updates ---
-  const handleUpdateTask = async (field: string, value: any) => {
-    if (!task) return;
-    const oldTask = { ...task };
-    setTask({ ...task, [field]: value });
-
-    try {
-      const res = await taskService.updateTask(task._id, { [field]: value }) as any;
-      if (res.success) {
-        onTaskUpdate(res.data);
-        setTask(res.data);
-      } else {
-        throw new Error(res.message);
-      }
-    } catch (error) {
-      setTask(oldTask);
-      Alert.alert(t('error.tryAgain'));
-    }
-  };
-
-  // --- Subtasks ---
-  const handleToggleSubtask = (subtaskId: string) => {
-    if (!task) return;
-    const updatedSubtasks = task.subtasks?.map((s: LocalSubtask) => 
-      s._id === subtaskId ? { ...s, completed: !s.completed } : s
-    );
-    handleUpdateTask('subtasks', updatedSubtasks);
-  };
-
-  const handleAddSubtask = () => {
-    Alert.prompt(
-      t('tasks.subtasks' as any),
-      t('tasks.enterSubtaskName' as any),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('common.add'),
-          onPress: (text) => {
-            if (text && task) {
-              const newSubtask = { title: text, completed: false };
-              const updated = [...(task.subtasks || []), newSubtask];
-              handleUpdateTask('subtasks', updated);
-            }
-          }
-        }
-      ],
-      'plain-text'
-    );
-  };
-
-  const handleSendComment = async () => {
-    if (!commentText.trim() || !task) return;
-    setIsSendingComment(true);
-    try {
-      const res = await taskService.addComment(task._id, commentText) as any;
-      if (res.success) {
-        setCommentText('');
-        fetchComments(1, true);
-      }
-    } catch (error) {
-      Alert.alert(t('error.generic'));
-    } finally {
-      setIsSendingComment(false);
-    }
-  };
-
-  const handleLogTime = async () => {
-    if (!task) return;
-    try {
-      const hours = parseInt(newTimeEntry.hours) || 0;
-      const minutes = parseInt(newTimeEntry.minutes) || 0;
-      if (hours === 0 && minutes === 0) return;
-
-      const entry = {
-        date: new Date(newTimeEntry.date).toISOString(),
-        hours,
-        minutes,
-        description: newTimeEntry.description,
-        billable: newTimeEntry.billable,
-        user: currentUser?._id
-      };
-
-      const updatedEntries = [...(task.timeEntries || []), entry];
-      
-      let statusUpdate = {};
-      if (task.status === 'todo') statusUpdate = { status: 'in_progress' };
-
-      await taskService.updateTask(taskId, {
-        timeEntries: updatedEntries,
-        ...statusUpdate
-      });
-      
-      setShowTimeLogModal(false);
-      fetchTaskDetails();
-    } catch (error) {
-      Alert.alert(t('error.generic'));
-    }
-  };
-
-  // --- Render Helpers ---
+  // Helper functions
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'completed': return '#10B981';
-      case 'in_progress': return '#3B82F6';
-      case 'cancelled': return '#EF4444';
-      default: return '#6B7280';
+      case 'in_progress': return '#F59E0B';
+      case 'archived': return '#6B7280';
+      default: return '#3B82F6';
     }
   };
 
-  const getPriorityColor = (priority: string) => {
+  const getStatusDisplay = (status: string) => {
+    return status.split('_').map(word => 
+      word.charAt(0).toUpperCase() + word.slice(1)
+    ).join(' ');
+  };
+
+  const getPriorityStyle = (priority: string) => {
     switch (priority) {
-      case 'urgent': return '#DC2626';
-      case 'high': return '#F59E0B';
-      case 'medium': return '#3B82F6';
-      default: return '#6B7280';
+      case 'critical':
+      case 'urgent':
+        return { backgroundColor: '#FEE2E2', color: '#DC2626' };
+      case 'high':
+        return { backgroundColor: '#FFEDD5', color: '#EA580C' };
+      case 'medium':
+        return { backgroundColor: '#FEF3C7', color: '#D97706' };
+      default:
+        return { backgroundColor: '#D1FAE5', color: '#059669' };
     }
   };
 
-  const formatTime = (seconds: number) => {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  const formatElapsedTime = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const renderHeader = () => (
-    <View style={[styles.headerContent, isDark && styles.darkContainer]}>
-      {editingField === 'title' ? (
-        <TextInput
-          style={[styles.titleInput, isDark && styles.darkText]}
-          value={tempValue}
-          onChangeText={setTempValue}
-          onBlur={() => { handleUpdateTask('title', tempValue); setEditingField(null); }}
-          autoFocus
-          multiline
-        />
-      ) : (
-        <TouchableOpacity onPress={() => { setEditingField('title'); setTempValue(task?.title || ''); }}>
-          <Text style={[styles.titleText, isDark && styles.darkText]}>
-            {task?.title || t('misc.untitledTask')}
-          </Text>
-        </TouchableOpacity>
-      )}
+  const getTotalLoggedTime = useCallback(() => {
+    const totalMinutes = timeEntries.reduce((total, entry) => {
+      return total + (entry.hours * 60) + (entry.minutes || 0);
+    }, 0);
+    
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${hours}:${minutes.toString().padStart(2, '0')}h`;
+  }, [timeEntries]);
 
-      <View style={styles.row}>
-        <TouchableOpacity 
-          style={[styles.badge, { borderColor: getStatusColor(task?.status || '') }]}
-          onPress={() => setShowStatusPicker(true)}
-        >
-          <View style={[styles.dot, { backgroundColor: getStatusColor(task?.status || '') }]} />
-          <Text style={[styles.badgeText, isDark && styles.darkText]}>
-            {t(`status.${task?.status}` as any)}
-          </Text>
-          <ChevronDown size={14} color={isDark ? '#9CA3AF' : '#4B5563'} />
-        </TouchableOpacity>
+  // Fetch task details
+  const fetchTaskDetails = useCallback(async () => {
+    if (!visible || !taskId) return;
 
-        <TouchableOpacity 
-          style={[styles.badge, { borderColor: getPriorityColor(task?.priority || '') }]}
-          onPress={() => setShowPriorityPicker(true)}
-        >
-          <Flag size={14} color={getPriorityColor(task?.priority || '')} />
-          <Text style={[styles.badgeText, isDark && styles.darkText]}>
-            {t(`priority.${task?.priority}` as any)}
-          </Text>
-        </TouchableOpacity>
-      </View>
+    try {
+      setLoading(true);
+      // Simulate API call - replace with actual service
+      // const taskData = await taskService.getTaskById(taskId);
+      
+      // Mock data for demonstration
+      const mockTaskData = {
+        _id: taskId,
+        title: 'Sample Task',
+        status: 'todo',
+        description: 'This is a sample task description',
+        dueDate: new Date().toISOString(),
+        estimatedTime: '2h',
+        type: 'Operational',
+        priority: 'medium',
+        assignedTo: [],
+        comments: [],
+        attachments: [],
+        timeEntries: [],
+        scheduledWork: []
+      };
+      
+      setTask(mockTaskData);
+      setTaskProperties({
+        title: mockTaskData.title,
+        status: mockTaskData.status,
+        dueDate: mockTaskData.dueDate ? new Date(mockTaskData.dueDate).toISOString().split('T')[0] : '',
+        estimatedTime: mockTaskData.estimatedTime,
+        type: mockTaskData.type,
+        priority: mockTaskData.priority,
+        description: mockTaskData.description
+      });
+      
+    } catch (error) {
+      console.error('Error fetching task details:', error);
+      Alert.alert('Error', 'Failed to load task details');
+    } finally {
+      setLoading(false);
+    }
+  }, [visible, taskId]);
 
-      {task?.status !== 'completed' && (
-        <View style={[styles.card, isDark && styles.darkCard]}>
-          <View>
-            <Text style={[styles.label, isDark && styles.darkSubText]}>{t('taskDetail.time')}</Text>
-            <Text style={[styles.timerText, isDark && styles.darkText]}>
-              {formatTime(localElapsedTime)}
-            </Text>
-          </View>
-          <TouchableOpacity 
-            style={[styles.playBtn, taskHasRunningTimer ? styles.stopBtn : {}]}
-            onPress={handleToggleTimer}
-          >
-            {taskHasRunningTimer ? <StopCircle size={24} color="#FFF" /> : <PlayCircle size={24} color="#FFF" />}
-            <Text style={styles.playBtnText}>
-              {taskHasRunningTimer ? t('taskDetail.stopTimer') : t('taskDetail.startTime')}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
+  useEffect(() => {
+    if (visible) {
+      fetchTaskDetails();
+    }
+  }, [visible, fetchTaskDetails]);
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.actionsScroll}>
-        <TouchableOpacity style={[styles.actionBtn, isDark && styles.darkCard]} onPress={() => setShowTimeLogModal(true)}>
-          <Timer size={16} color="#3B82F6" />
-          <Text style={[styles.actionBtnText, isDark && styles.darkText]}>{t('taskDetail.logTime')}</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={[styles.actionBtn, isDark && styles.darkCard]} onPress={() => setShowRepeatModal(true)}>
-          <RefreshCw size={16} color="#10B981" />
-          <Text style={[styles.actionBtnText, isDark && styles.darkText]}>{t('taskDetail.repeatTask')}</Text>
-        </TouchableOpacity>
+  // Timer effect
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
 
-        <TouchableOpacity style={[styles.actionBtn, isDark && styles.darkCard]} onPress={() => setShowAssignModal(true)}>
-          <UserIcon size={16} color="#8B5CF6" />
-          <Text style={[styles.actionBtnText, isDark && styles.darkText]}>{t('assignee.addAssignee')}</Text>
-        </TouchableOpacity>
-      </ScrollView>
+    if (isTimerRunning && timerStartTime) {
+      interval = setInterval(() => {
+        const now = new Date();
+        const elapsed = Math.floor((now.getTime() - timerStartTime.getTime()) / 1000);
+        setElapsedTime(elapsed);
+      }, 1000);
+    }
 
-      <View style={[styles.divider, isDark && styles.darkBorder]} />
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [isTimerRunning, timerStartTime]);
 
+  const handleStartTimer = () => {
+    if (!isTimerRunning) {
+      setTimerStartTime(new Date());
+      setIsTimerRunning(true);
+    }
+  };
+
+  const handleStopTimer = () => {
+    if (isTimerRunning) {
+      setIsTimerRunning(false);
+      setTimerStartTime(null);
+      setElapsedTime(0);
+    }
+  };
+
+  const handleDelete = () => {
+    Alert.alert(
+      'Delete Task',
+      'Are you sure you want to delete this task?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive',
+          onPress: () => {
+            onTaskDelete(taskId);
+            onClose();
+          }
+        }
+      ]
+    );
+  };
+
+  const handleAddComment = () => {
+    if (!comment.trim() || !task) return;
+
+    const newComment: Comment = {
+      _id: Date.now().toString(),
+      userId: currentUser?._id,
+      user: currentUser,
+      content: comment.trim(),
+      createdAt: new Date().toISOString(),
+      isEdited: false
+    };
+
+    setComments(prev => [...prev, newComment]);
+    setComment('');
+  };
+
+  const handleDeleteComment = (commentId: string) => {
+    Alert.alert(
+      'Delete Comment',
+      'Are you sure you want to delete this comment?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive',
+          onPress: () => {
+            setComments(prev => prev.filter(comment => comment._id !== commentId));
+            setShowCommentMenu(null);
+          }
+        }
+      ]
+    );
+  };
+
+  const startEditingComment = (comment: Comment) => {
+    setEditingCommentId(comment._id!);
+    setEditingCommentContent(comment.content);
+    setShowCommentMenu(null);
+  };
+
+  const handleUpdateComment = (commentId: string) => {
+    setComments(prev =>
+      prev.map(comment =>
+        comment._id === commentId
+          ? {
+              ...comment,
+              content: editingCommentContent,
+              updatedAt: new Date().toISOString(),
+              isEdited: true,
+            }
+          : comment,
+      ),
+    );
+    setEditingCommentId(null);
+    setEditingCommentContent('');
+  };
+
+  const cancelEditingComment = () => {
+    setEditingCommentId(null);
+    setEditingCommentContent('');
+  };
+
+  const isCommentOwner = (comment: Comment) => {
+    return currentUser && comment.userId === currentUser._id;
+  };
+
+  const getUserDisplayName = (comment: Comment) => {
+    return comment.user?.name || currentUser?.name || 'User';
+  };
+
+  const getUserInitial = (comment: Comment) => {
+    const name = getUserDisplayName(comment);
+    return name.charAt(0).toUpperCase();
+  };
+
+  // Assignee Section Component
+  const AssigneeSection = ({ task }: { task: any }) => {
+    const assignees = task.assignedTo || [];
+    
+    return (
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Edit2 size={18} color={isDark ? '#9CA3AF' : '#4B5563'} />
-          <Text style={[styles.sectionTitle, isDark && styles.darkText]}>{t('tasks.description')}</Text>
-        </View>
-        {editingField === 'description' ? (
-          <TextInput
-            style={[styles.descInput, isDark && styles.darkText]}
-            value={tempValue}
-            onChangeText={setTempValue}
-            onBlur={() => { handleUpdateTask('description', tempValue); setEditingField(null); }}
-            multiline
-            autoFocus
-          />
-        ) : (
-          <TouchableOpacity onPress={() => { setEditingField('description'); setTempValue(task?.description || ''); }}>
-            <Text style={[styles.descText, isDark && styles.darkText]}>
-              {task?.description || t('tasks.descriptionPlaceholder')}
-            </Text>
+          <Text style={[styles.sectionTitle, isDark && styles.darkText]}>
+            Assigned to ({assignees.length})
+          </Text>
+          <TouchableOpacity>
+            <Text style={styles.addButtonText}>+ Add assignee</Text>
           </TouchableOpacity>
+        </View>
+        
+        {assignees.length === 0 ? (
+          <View style={[styles.emptyState, isDark && styles.darkEmptyState]}>
+            <Feather name="user" size={32} color={isDark ? '#9CA3AF' : '#6B7280'} />
+            <Text style={[styles.emptyStateText, isDark && styles.darkText]}>No one assigned</Text>
+            <TouchableOpacity>
+              <Text style={styles.assignButtonText}>Assign someone</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.assigneesList}>
+            {assignees.map((assignee: any, index: number) => (
+              <View key={index} style={[styles.assigneeItem, isDark && styles.darkAssigneeItem]}>
+                <View style={styles.assigneeAvatar}>
+                  <Text style={styles.assigneeInitial}>
+                    {assignee.userId?.name?.charAt(0)?.toUpperCase() || 'U'}
+                  </Text>
+                </View>
+                <View style={styles.assigneeInfo}>
+                  <Text style={[styles.assigneeName, isDark && styles.darkText]}>
+                    {assignee.userId?.name || 'Unknown User'}
+                  </Text>
+                  <Text style={[styles.assigneeEmail, isDark && styles.darkSubtitle]}>
+                    {assignee.userId?.email || ''}
+                  </Text>
+                </View>
+                <TouchableOpacity style={styles.removeAssigneeButton}>
+                  <Feather name="trash-2" size={16} color="#DC2626" />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
         )}
       </View>
+    );
+  };
 
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <CheckSquare size={18} color={isDark ? '#9CA3AF' : '#4B5563'} />
-          <Text style={[styles.sectionTitle, isDark && styles.darkText]}>{t('tasks.subtasks' as any)}</Text>
-          <TouchableOpacity onPress={handleAddSubtask} style={{ marginLeft: 'auto' }}>
-            <Plus size={20} color="#3B82F6" />
-          </TouchableOpacity>
+  // Comment Item Component
+  const CommentItem = ({ comment, index }: { comment: Comment; index: number }) => {
+    const isEditing = editingCommentId === comment._id;
+    const isOwner = isCommentOwner(comment);
+
+    return (
+      <View key={comment._id || `comment-${index}`} style={styles.commentItem}>
+        <View style={styles.commentAvatar}>
+          <Text style={styles.commentInitial}>
+            {getUserInitial(comment)}
+          </Text>
         </View>
-        {task?.subtasks?.map((sub: LocalSubtask) => (
-          <TouchableOpacity 
-            key={sub._id} 
-            style={styles.subtaskRow}
-            onPress={() => handleToggleSubtask(sub._id)}
-          >
-            {sub.completed ? (
-              <CheckSquare size={20} color="#10B981" />
-            ) : (
-              <Square size={20} color={isDark ? '#9CA3AF' : '#6B7280'} />
-            )}
-            <Text style={[styles.subtaskText, isDark && styles.darkText, sub.completed && styles.completedText]}>
-              {sub.title}
+        <View style={styles.commentContent}>
+          <View style={styles.commentHeader}>
+            <Text style={[styles.commentAuthor, isDark && styles.darkText]}>
+              {getUserDisplayName(comment)}
             </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+            <Text style={[styles.commentDate, isDark && styles.darkSubtitle]}>
+              {new Date(comment.createdAt).toLocaleDateString()}
+              {comment.isEdited && ' (edited)'}
+            </Text>
+            
+            {isOwner && !isEditing && (
+              <TouchableOpacity
+                style={styles.commentMenuButton}
+                onPress={() => setShowCommentMenu(showCommentMenu === comment._id ? null : comment._id!)}
+              >
+                <Feather name="more-vertical" size={14} color={isDark ? '#9CA3AF' : '#6B7280'} />
+              </TouchableOpacity>
+            )}
+          </View>
 
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Paperclip size={18} color={isDark ? '#9CA3AF' : '#4B5563'} />
-          <Text style={[styles.sectionTitle, isDark && styles.darkText]}>{t('tasks.attachments')}</Text>
-          <TouchableOpacity style={{ marginLeft: 'auto' }}>
-            <Upload size={20} color="#3B82F6" />
-          </TouchableOpacity>
-        </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {task?.attachments?.map((file: LocalAttachment, idx: number) => (
-            <TouchableOpacity key={idx} style={[styles.fileCard, isDark && styles.darkCard]}>
-              <View style={styles.fileIconBox}>
-                <FileText size={24} color="#3B82F6" />
+          {showCommentMenu === comment._id && (
+            <View style={[styles.commentMenu, isDark && styles.darkDropdown]}>
+              <TouchableOpacity
+                style={styles.commentMenuItem}
+                onPress={() => startEditingComment(comment)}
+              >
+                <Text style={[styles.commentMenuText, isDark && styles.darkText]}>Edit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.commentMenuItem}
+                onPress={() => handleDeleteComment(comment._id!)}
+              >
+                <Text style={styles.deleteMenuText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {isEditing ? (
+            <View style={styles.commentEditContainer}>
+              <TextInput
+                style={[styles.commentEditInput, isDark && styles.darkInput]}
+                value={editingCommentContent}
+                onChangeText={setEditingCommentContent}
+                multiline
+                numberOfLines={3}
+                autoFocus
+              />
+              <View style={styles.commentEditActions}>
+                <TouchableOpacity
+                  style={styles.saveCommentButton}
+                  onPress={() => handleUpdateComment(comment._id!)}
+                  disabled={!editingCommentContent.trim()}
+                >
+                  <Feather name="check" size={14} color="#FFFFFF" />
+                  <Text style={styles.saveCommentText}>Save</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.cancelCommentButton, isDark && styles.darkCancelButton]}
+                  onPress={cancelEditingComment}
+                >
+                  <Text style={[styles.cancelCommentText, isDark && styles.darkText]}>Cancel</Text>
+                </TouchableOpacity>
               </View>
-              <Text numberOfLines={1} style={[styles.fileName, isDark && styles.darkText]}>
-                {file.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      <View style={[styles.sectionHeader, { marginTop: 10 }]}>
-        <MessageSquare size={18} color={isDark ? '#9CA3AF' : '#4B5563'} />
-        <Text style={[styles.sectionTitle, isDark && styles.darkText]}>
-          {t('tasks.comments')} ({comments.length})
-        </Text>
-      </View>
-    </View>
-  );
-
-  const renderComment = ({ item }: { item: any }) => (
-    <View style={styles.commentItem}>
-      <View style={styles.avatar}>
-        <Text style={styles.avatarText}>{item.user?.name?.charAt(0) || 'U'}</Text>
-      </View>
-      <View style={[styles.commentBubble, isDark && styles.darkCard]}>
-        <View style={styles.commentHeader}>
-          <Text style={[styles.commentUser, isDark && styles.darkText]}>{item.user?.name || 'User'}</Text>
-          <Text style={styles.commentDate}>{dayjs(item.createdAt).fromNow()}</Text>
+            </View>
+          ) : (
+            <Text style={[styles.commentText, isDark && styles.darkText]}>
+              {comment.content}
+            </Text>
+          )}
         </View>
-        <Text style={[styles.commentContent, isDark && styles.darkText]}>{item.content}</Text>
+      </View>
+    );
+  };
+
+  // Time Entry Form Component
+  const TimeEntryForm = () => (
+    <View style={[styles.formContainer, isDark && styles.darkFormContainer]}>
+      <Text style={[styles.formTitle, isDark && styles.darkText]}>Add Time Entry</Text>
+      <View style={styles.formGrid}>
+        <View style={styles.formField}>
+          <Text style={[styles.formLabel, isDark && styles.darkSubtitle]}>Date</Text>
+          <TextInput
+            style={[styles.formInput, isDark && styles.darkInput]}
+            value={newTimeEntry.date}
+            onChangeText={(text) => setNewTimeEntry({...newTimeEntry, date: text})}
+          />
+        </View>
+        <View style={styles.formField}>
+          <Text style={[styles.formLabel, isDark && styles.darkSubtitle]}>Hours</Text>
+          <TextInput
+            style={[styles.formInput, isDark && styles.darkInput]}
+            value={newTimeEntry.hours.toString()}
+            onChangeText={(text) => setNewTimeEntry({...newTimeEntry, hours: parseInt(text) || 0})}
+            keyboardType="numeric"
+          />
+        </View>
+        <View style={styles.formField}>
+          <Text style={[styles.formLabel, isDark && styles.darkSubtitle]}>Minutes</Text>
+          <TextInput
+            style={[styles.formInput, isDark && styles.darkInput]}
+            value={newTimeEntry.minutes.toString()}
+            onChangeText={(text) => setNewTimeEntry({...newTimeEntry, minutes: parseInt(text) || 0})}
+            keyboardType="numeric"
+          />
+        </View>
+        <View style={styles.formField}>
+          <Text style={[styles.formLabel, isDark && styles.darkSubtitle]}>Billable</Text>
+          <TouchableOpacity
+            style={styles.checkboxContainer}
+            onPress={() => setNewTimeEntry({...newTimeEntry, billable: !newTimeEntry.billable})}
+          >
+            <View style={[styles.checkbox, newTimeEntry.billable && styles.checkboxChecked]}>
+              {newTimeEntry.billable && <Feather name="check" size={12} color="#FFFFFF" />}
+            </View>
+            <Text style={[styles.checkboxLabel, isDark && styles.darkSubtitle]}>Billable</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.fullWidthField}>
+          <Text style={[styles.formLabel, isDark && styles.darkSubtitle]}>Description</Text>
+          <TextInput
+            style={[styles.formInput, isDark && styles.darkInput]}
+            value={newTimeEntry.description}
+            onChangeText={(text) => setNewTimeEntry({...newTimeEntry, description: text})}
+            placeholder="Optional description"
+            placeholderTextColor={isDark ? '#9CA3AF' : '#6B7280'}
+          />
+        </View>
+      </View>
+      <View style={styles.formActions}>
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={() => {/* Handle add time entry */}}
+        >
+          <Text style={styles.primaryButtonText}>Add Entry</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.secondaryButton, isDark && styles.darkSecondaryButton]}
+          onPress={() => setShowTimeEntryForm(false)}
+        >
+          <Text style={[styles.secondaryButtonText, isDark && styles.darkText]}>Cancel</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
 
   if (!visible) return null;
 
+  if (loading) {
+    return (
+      <Modal visible={visible} animationType="slide">
+        <SafeAreaView style={[styles.container, isDark && styles.darkContainer]}>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#3B82F6" />
+            <Text style={[styles.loadingText, isDark && styles.darkText]}>
+              Loading task details...
+            </Text>
+          </View>
+        </SafeAreaView>
+      </Modal>
+    );
+  }
+
+  if (!task) {
+    return (
+      <Modal visible={visible} animationType="slide">
+        <SafeAreaView style={[styles.container, isDark && styles.darkContainer]}>
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>Failed to load task details</Text>
+            <TouchableOpacity style={styles.errorCloseButton} onPress={onClose}>
+              <Text style={styles.errorCloseButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </Modal>
+    );
+  }
+
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
       <SafeAreaView style={[styles.container, isDark && styles.darkContainer]}>
-        <View style={[styles.navBar, isDark && styles.darkBorder]}>
-          <TouchableOpacity onPress={onClose} style={styles.iconBtn}>
-            <X size={24} color={isDark ? '#F3F4F6' : '#111827'} />
-          </TouchableOpacity>
-          <View style={{ flexDirection: 'row', gap: 12 }}>
-            {canManage && (
-              <TouchableOpacity onPress={() => Alert.alert(t('common.delete'), t('taskContextMenu.confirmDelete' as any), [{text: t('common.cancel')}, {text: t('common.delete'), onPress: () => onTaskDelete(taskId), style: 'destructive'}])}>
-                <Trash2 size={24} color="#EF4444" />
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+        
+        <KeyboardAvoidingView 
+          style={styles.keyboardAvoid}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          {/* Header */}
+          <View style={[styles.header, isDark && styles.darkHeader]}>
+            <View style={styles.headerContent}>
+              <Text style={[styles.title, isDark && styles.darkText]}>
+                {taskProperties.title || 'Untitled Task'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={onClose}
+              style={[styles.closeButton, isDark && styles.darkCloseButton]}
+            >
+              <Ionicons name="close" size={24} color={isDark ? '#E5E7EB' : '#374151'} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView 
+            style={styles.scrollView}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+          >
+            {/* Task Properties */}
+            <View style={styles.propertiesContainer}>
+              {/* Status */}
+              <TouchableOpacity 
+                style={[styles.propertyItem, isDark && styles.darkPropertyItem]}
+                onPress={() => {/* Start editing status */}}
+              >
+                <View style={styles.propertyLeft}>
+                  <View 
+                    style={[
+                      styles.statusIndicator,
+                      { backgroundColor: getStatusColor(taskProperties.status) }
+                    ]} 
+                  />
+                  <Text style={[styles.propertyLabel, isDark && styles.darkText]}>
+                    Status
+                  </Text>
+                </View>
+                <View style={styles.propertyRight}>
+                  <Text style={[styles.propertyValue, isDark && styles.darkText]}>
+                    {getStatusDisplay(taskProperties.status)}
+                  </Text>
+                  <Feather name="edit-2" size={14} color={isDark ? '#9CA3AF' : '#6B7280'} />
+                </View>
               </TouchableOpacity>
-            )}
+
+              {/* Due Date */}
+              <TouchableOpacity 
+                style={[styles.propertyItem, isDark && styles.darkPropertyItem]}
+                onPress={() => {/* Start editing due date */}}
+              >
+                <View style={styles.propertyLeft}>
+                  <Feather name="calendar" size={16} color={isDark ? '#9CA3AF' : '#6B7280'} />
+                  <Text style={[styles.propertyLabel, isDark && styles.darkText]}>
+                    Due date
+                  </Text>
+                </View>
+                <View style={styles.propertyRight}>
+                  <Text style={[styles.propertyValue, isDark && styles.darkText]}>
+                    {taskProperties.dueDate ? new Date(taskProperties.dueDate).toLocaleDateString('en-GB') : '—'}
+                  </Text>
+                  <Feather name="edit-2" size={14} color={isDark ? '#9CA3AF' : '#6B7280'} />
+                </View>
+              </TouchableOpacity>
+
+              {/* Estimated Time */}
+              <TouchableOpacity 
+                style={[styles.propertyItem, isDark && styles.darkPropertyItem]}
+                onPress={() => {/* Start editing estimated time */}}
+              >
+                <View style={styles.propertyLeft}>
+                  <Feather name="clock" size={16} color={isDark ? '#9CA3AF' : '#6B7280'} />
+                  <Text style={[styles.propertyLabel, isDark && styles.darkText]}>
+                    Estimated time
+                  </Text>
+                </View>
+                <View style={styles.propertyRight}>
+                  <Text style={[styles.propertyValue, isDark && styles.darkText]}>
+                    {taskProperties.estimatedTime || '—'}
+                  </Text>
+                  <Feather name="edit-2" size={14} color={isDark ? '#9CA3AF' : '#6B7280'} />
+                </View>
+              </TouchableOpacity>
+
+              {/* Type */}
+              <TouchableOpacity 
+                style={[styles.propertyItem, isDark && styles.darkPropertyItem]}
+                onPress={() => {/* Start editing type */}}
+              >
+                <View style={styles.propertyLeft}>
+                  <Feather name="flag" size={16} color={isDark ? '#9CA3AF' : '#6B7280'} />
+                  <Text style={[styles.propertyLabel, isDark && styles.darkText]}>
+                    Type
+                  </Text>
+                </View>
+                <View style={styles.propertyRight}>
+                  <Text style={[styles.propertyValue, isDark && styles.darkText]}>
+                    {taskProperties.type}
+                  </Text>
+                  <Feather name="edit-2" size={14} color={isDark ? '#9CA3AF' : '#6B7280'} />
+                </View>
+              </TouchableOpacity>
+
+              {/* Assignees */}
+              <AssigneeSection task={task} />
+
+              {/* Priority */}
+              <TouchableOpacity 
+                style={[styles.propertyItem, isDark && styles.darkPropertyItem]}
+                onPress={() => {/* Start editing priority */}}
+              >
+                <View style={styles.propertyLeft}>
+                  <Feather name="flag" size={16} color={isDark ? '#9CA3AF' : '#6B7280'} />
+                  <Text style={[styles.propertyLabel, isDark && styles.darkText]}>
+                    Priority
+                  </Text>
+                </View>
+                <View style={styles.propertyRight}>
+                  <View 
+                    style={[
+                      styles.priorityBadge,
+                      getPriorityStyle(taskProperties.priority)
+                    ]}
+                  >
+                    <Text style={styles.priorityText}>
+                      {taskProperties.priority.charAt(0).toUpperCase() + taskProperties.priority.slice(1)}
+                    </Text>
+                  </View>
+                  <Feather name="edit-2" size={14} color={isDark ? '#9CA3AF' : '#6B7280'} />
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            {/* Action Buttons */}
+            <View style={styles.actionButtons}>
+              <TouchableOpacity 
+                style={[styles.actionButton, isDark && styles.darkActionButton]}
+                onPress={() => setShowCustomStatusModal(true)}
+              >
+                <Feather name="plus" size={16} color={isDark ? '#E5E7EB' : '#374151'} />
+                <Text style={[styles.actionButtonText, isDark && styles.darkText]}>
+                  Add status
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[
+                  styles.actionButton,
+                  isTimerRunning ? styles.timerButtonActive : styles.timerButton,
+                  isDark && styles.darkActionButton
+                ]}
+                onPress={isTimerRunning ? handleStopTimer : handleStartTimer}
+              >
+                <Feather name="play-circle" size={16} color={isTimerRunning ? '#DC2626' : (isDark ? '#E5E7EB' : '#374151')} />
+                <Text style={[
+                  styles.actionButtonText,
+                  isTimerRunning ? styles.timerButtonTextActive : {},
+                  isDark && styles.darkText
+                ]}>
+                  {isTimerRunning ? `Stop (${formatElapsedTime(elapsedTime)})` : 'Start time'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.actionButton, isDark && styles.darkActionButton]}
+                onPress={() => setShowTimeEntryForm(!showTimeEntryForm)}
+              >
+                <Feather name="clock" size={16} color={isDark ? '#E5E7EB' : '#374151'} />
+                <Text style={[styles.actionButtonText, isDark && styles.darkText]}>
+                  Log time
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.actionButton, isDark && styles.darkActionButton]}
+                onPress={() => setShowRepeatModal(true)}
+              >
+                <Feather name="refresh-cw" size={16} color={isDark ? '#E5E7EB' : '#374151'} />
+                <Text style={[styles.actionButtonText, isDark && styles.darkText]}>
+                  Repeat task
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Time Entry Form */}
+            {showTimeEntryForm && <TimeEntryForm />}
+
+            {/* Description */}
+            <View style={styles.section}>
+              <Text style={[styles.sectionTitle, isDark && styles.darkText]}>
+                Description
+              </Text>
+              <TouchableOpacity 
+                style={[styles.descriptionContainer, isDark && styles.darkInput]}
+                onPress={() => {/* Start editing description */}}
+              >
+                <Text style={[styles.descriptionText, isDark && styles.darkText]}>
+                  {taskProperties.description || 'Click to add a description...'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Comments Section */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.sectionTitle, isDark && styles.darkText]}>
+                  <Feather name="message-square" size={16} color={isDark ? '#E5E7EB' : '#374151'} />
+                  {' '}Comments ({comments.length})
+                </Text>
+              </View>
+              
+              <View style={styles.commentsList}>
+                {comments.length > 0 ? (
+                  comments.map((comment, index) => (
+                    <CommentItem key={comment._id || `comment-${index}`} comment={comment} index={index} />
+                  ))
+                ) : (
+                  <View style={styles.emptyComments}>
+                    <Text style={[styles.emptyCommentsText, isDark && styles.darkSubtitle]}>
+                      No comments yet
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Comment Input */}
+              <View style={styles.commentInputContainer}>
+                <View style={styles.currentUserAvatar}>
+                  <Text style={styles.currentUserInitial}>
+                    {currentUser?.name?.charAt(0)?.toUpperCase() || 'U'}
+                  </Text>
+                </View>
+                <View style={styles.commentInputWrapper}>
+                  <TextInput
+                    style={[styles.commentInput, isDark && styles.darkInput]}
+                    value={comment}
+                    onChangeText={setComment}
+                    placeholder="Type a message..."
+                    placeholderTextColor={isDark ? '#9CA3AF' : '#6B7280'}
+                    multiline
+                    numberOfLines={3}
+                  />
+                  <TouchableOpacity
+                    style={[styles.sendButton, !comment.trim() && styles.sendButtonDisabled]}
+                    onPress={handleAddComment}
+                    disabled={!comment.trim()}
+                  >
+                    <Feather name="send" size={16} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </ScrollView>
+
+          {/* Footer with Delete Button */}
+          <View style={[styles.footer, isDark && styles.darkFooter]}>
+            <TouchableOpacity 
+              style={styles.deleteButton}
+              onPress={handleDelete}
+            >
+              <Feather name="trash-2" size={18} color="#FFFFFF" />
+              <Text style={styles.deleteButtonText}>Delete Task</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+
+      {/* Custom Status Modal */}
+      <Modal
+        visible={showCustomStatusModal}
+        animationType="fade"
+        transparent={true}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, isDark && styles.darkModalContent]}>
+            <Text style={[styles.modalTitle, isDark && styles.darkText]}>
+              Add Custom Status
+            </Text>
+            
+            <View style={styles.modalSection}>
+              <Text style={[styles.modalLabel, isDark && styles.darkText]}>
+                Status Name
+              </Text>
+              <TextInput
+                style={[styles.modalInput, isDark && styles.darkInput]}
+                value={customStatusName}
+                onChangeText={setCustomStatusName}
+                placeholder="e.g., In Review, Blocked, On Hold"
+                placeholderTextColor={isDark ? '#9CA3AF' : '#6B7280'}
+              />
+            </View>
+            
+            <View style={styles.modalSection}>
+              <Text style={[styles.modalLabel, isDark && styles.darkText]}>
+                Color
+              </Text>
+              <View style={styles.colorPicker}>
+                {['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4'].map((color) => (
+                  <TouchableOpacity
+                    key={color}
+                    style={[
+                      styles.colorOption,
+                      { backgroundColor: color },
+                      customStatusColor === color && styles.colorOptionSelected
+                    ]}
+                    onPress={() => setCustomStatusColor(color)}
+                  />
+                ))}
+              </View>
+            </View>
+            
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonSecondary, isDark && styles.darkCancelButton]}
+                onPress={() => setShowCustomStatusModal(false)}
+              >
+                <Text style={[styles.modalButtonText, isDark && styles.darkText]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonPrimary, !customStatusName.trim() && styles.modalButtonDisabled]}
+                onPress={() => {
+                  // Handle add custom status
+                  setShowCustomStatusModal(false);
+                }}
+                disabled={!customStatusName.trim()}
+              >
+                <Text style={styles.modalButtonPrimaryText}>Add Status</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-
-        {loading && !task ? (
-          <View style={styles.center}><ActivityIndicator size="large" color="#3B82F6" /></View>
-        ) : (
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-            <FlatList
-              data={comments}
-              renderItem={renderComment}
-              keyExtractor={(item) => item._id}
-              ListHeaderComponent={renderHeader()}
-              contentContainerStyle={{ padding: 16, paddingBottom: 80 }}
-              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchTaskDetails(); }} />}
-              onEndReached={() => hasMoreComments && fetchComments(commentsPage + 1)}
-              onEndReachedThreshold={0.5}
-              ListFooterComponent={loadingMoreComments ? <ActivityIndicator color="#3B82F6" /> : null}
-            />
-
-            <View style={[styles.footer, isDark && styles.darkFooter]}>
-              <TextInput
-                style={[styles.input, isDark && styles.darkInput]}
-                placeholder={t('chat.typeMessage')}
-                placeholderTextColor="#9CA3AF"
-                value={commentText}
-                onChangeText={setCommentText}
-                multiline
-              />
-              <TouchableOpacity 
-                style={[styles.sendBtn, (!commentText.trim() || isSendingComment) && styles.disabled]} 
-                onPress={handleSendComment}
-                disabled={!commentText.trim() || isSendingComment}
-              >
-                {isSendingComment ? <ActivityIndicator color="#FFF" size="small"/> : <Send size={20} color="#FFF" />}
-              </TouchableOpacity>
-            </View>
-          </KeyboardAvoidingView>
-        )}
-
-        {/* MODALS */}
-        <Modal visible={showStatusPicker} transparent animationType="fade">
-          <TouchableOpacity style={styles.modalBg} onPress={() => setShowStatusPicker(false)}>
-            <View style={[styles.modalContent, isDark && styles.darkContainer]}>
-              <Text style={[styles.modalTitle, isDark && styles.darkText]}>{t('tasks.status')}</Text>
-              {STATUS_OPTIONS.map(opt => (
-                <TouchableOpacity key={opt} style={styles.optionRow} onPress={() => { handleUpdateTask('status', opt); setShowStatusPicker(false); }}>
-                  <View style={[styles.dot, { backgroundColor: getStatusColor(opt) }]} />
-                  <Text style={[styles.optionText, isDark && styles.darkText]}>{t(`status.${opt}` as any)}</Text>
-                  {task?.status === opt && <CheckCircle size={18} color="#3B82F6" />}
-                </TouchableOpacity>
-              ))}
-            </View>
-          </TouchableOpacity>
-        </Modal>
-
-        <Modal visible={showPriorityPicker} transparent animationType="fade">
-          <TouchableOpacity style={styles.modalBg} onPress={() => setShowPriorityPicker(false)}>
-            <View style={[styles.modalContent, isDark && styles.darkContainer]}>
-              <Text style={[styles.modalTitle, isDark && styles.darkText]}>{t('tasks.priority')}</Text>
-              {PRIORITY_OPTIONS.map(opt => (
-                <TouchableOpacity key={opt} style={styles.optionRow} onPress={() => { handleUpdateTask('priority', opt); setShowPriorityPicker(false); }}>
-                  <Flag size={18} color={getPriorityColor(opt)} />
-                  <Text style={[styles.optionText, isDark && styles.darkText]}>{t(`priority.${opt}` as any)}</Text>
-                  {task?.priority === opt && <CheckCircle size={18} color="#3B82F6" />}
-                </TouchableOpacity>
-              ))}
-            </View>
-          </TouchableOpacity>
-        </Modal>
-
-        <Modal visible={showTimeLogModal} transparent animationType="slide">
-          <View style={styles.modalBg}>
-            <View style={[styles.modalContent, isDark && styles.darkContainer]}>
-              <Text style={[styles.modalTitle, isDark && styles.darkText]}>{t('taskDetail.logTime')}</Text>
-              <View style={styles.formRow}>
-                <Text style={[styles.label, isDark && styles.darkText]}>{t('taskDetail.hours')}</Text>
-                <TextInput style={[styles.input, isDark && styles.darkInput]} keyboardType="numeric" value={newTimeEntry.hours} onChangeText={(t) => setNewTimeEntry({...newTimeEntry, hours: t})} />
-              </View>
-              <View style={styles.formRow}>
-                <Text style={[styles.label, isDark && styles.darkText]}>{t('taskDetail.minutes')}</Text>
-                <TextInput style={[styles.input, isDark && styles.darkInput]} keyboardType="numeric" value={newTimeEntry.minutes} onChangeText={(t) => setNewTimeEntry({...newTimeEntry, minutes: t})} />
-              </View>
-              <TextInput style={[styles.input, isDark && styles.darkInput, { marginTop: 10 }]} placeholder={t('taskDetail.description')} placeholderTextColor="#9CA3AF" value={newTimeEntry.description} onChangeText={(t) => setNewTimeEntry({...newTimeEntry, description: t})} />
-              <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
-                <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowTimeLogModal(false)}><Text style={styles.cancelBtnText}>{t('common.cancel')}</Text></TouchableOpacity>
-                <TouchableOpacity style={styles.confirmBtn} onPress={handleLogTime}><Text style={styles.confirmBtnText}>{t('common.save')}</Text></TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
-
-      </SafeAreaView>
+      </Modal>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFF' },
-  darkContainer: { backgroundColor: '#1F2937' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  navBar: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  darkBorder: { borderBottomColor: '#374151' },
-  iconBtn: { padding: 4 },
-  headerContent: { marginBottom: 20 },
-  titleInput: { fontSize: 22, fontWeight: '700', color: '#111827', marginBottom: 12 },
-  titleText: { fontSize: 22, fontWeight: '700', color: '#111827', marginBottom: 12 },
-  darkText: { color: '#F9FAFB' },
-  darkSubText: { color: '#9CA3AF' },
-  row: { flexDirection: 'row', gap: 12, marginBottom: 16 },
-  badge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, gap: 6 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  badgeText: { fontSize: 13, fontWeight: '500', color: '#374151', textTransform: 'capitalize' },
-  card: { backgroundColor: '#F9FAFB', padding: 16, borderRadius: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  darkCard: { backgroundColor: '#374151' },
-  label: { fontSize: 12, color: '#6B7280', marginBottom: 4 },
-  timerText: { fontSize: 20, fontWeight: '700', color: '#111827', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
-  playBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#3B82F6', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8, gap: 8 },
-  stopBtn: { backgroundColor: '#EF4444' },
-  playBtnText: { color: '#FFF', fontWeight: '600' },
-  actionsScroll: { flexDirection: 'row', marginBottom: 16 },
-  actionBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F9FAFB', padding: 10, borderRadius: 8, marginRight: 10, gap: 6, borderWidth: 1, borderColor: '#E5E7EB' },
-  actionBtnText: { fontSize: 13, color: '#374151', fontWeight: '500' },
-  divider: { height: 1, backgroundColor: '#F3F4F6', marginBottom: 20 },
-  section: { marginBottom: 24 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
-  sectionTitle: { fontSize: 15, fontWeight: '600', color: '#4B5563' },
-  descInput: { fontSize: 15, color: '#374151', minHeight: 60, textAlignVertical: 'top' },
-  descText: { fontSize: 15, color: '#374151', lineHeight: 22 },
-  subtaskRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, gap: 12 },
-  subtaskText: { fontSize: 15, color: '#374151', flex: 1 },
-  completedText: { textDecorationLine: 'line-through', color: '#9CA3AF' },
-  fileCard: { width: 100, padding: 10, backgroundColor: '#F9FAFB', borderRadius: 8, marginRight: 12, borderWidth: 1, borderColor: '#E5E7EB', alignItems: 'center' },
-  fileIconBox: { width: 36, height: 36, backgroundColor: '#EBF5FF', borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginBottom: 6 },
-  fileName: { fontSize: 11, color: '#374151', textAlign: 'center' },
-  commentItem: { flexDirection: 'row', gap: 12, marginBottom: 16 },
-  avatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#E5E7EB', justifyContent: 'center', alignItems: 'center' },
-  avatarText: { fontSize: 12, fontWeight: 'bold', color: '#6B7280' },
-  commentBubble: { flex: 1, backgroundColor: '#F3F4F6', padding: 12, borderRadius: 12, borderTopLeftRadius: 2 },
-  commentHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  commentUser: { fontSize: 13, fontWeight: '700', color: '#111827' },
-  commentDate: { fontSize: 10, color: '#9CA3AF' },
-  commentContent: { fontSize: 14, color: '#374151', lineHeight: 20 },
-  footer: { flexDirection: 'row', padding: 12, borderTopWidth: 1, borderTopColor: '#F3F4F6', backgroundColor: '#FFF', alignItems: 'flex-end', gap: 10 },
-  darkFooter: { backgroundColor: '#1F2937', borderTopColor: '#374151' },
-  input: { flex: 1, backgroundColor: '#F9FAFB', borderRadius: 20, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, fontSize: 15, color: '#111827', maxHeight: 100 },
-  darkInput: { backgroundColor: '#374151', color: '#F9FAFB' },
-  sendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#3B82F6', justifyContent: 'center', alignItems: 'center', marginBottom: 2 },
-  disabled: { backgroundColor: '#E5E7EB' },
-  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24 },
-  modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 20, textAlign: 'center', color: '#111827' },
-  optionRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', gap: 12 },
-  optionText: { fontSize: 16, flex: 1, color: '#111827' },
-  formRow: { marginBottom: 12 },
-  confirmBtn: { flex: 1, backgroundColor: '#3B82F6', padding: 12, borderRadius: 8, alignItems: 'center' },
-  cancelBtn: { flex: 1, borderWidth: 1, borderColor: '#E5E7EB', padding: 12, borderRadius: 8, alignItems: 'center' },
-  confirmBtnText: { color: '#FFF', fontWeight: '600' },
-  cancelBtnText: { color: '#374151' },
+  container: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  darkContainer: {
+    backgroundColor: '#1F2937',
+  },
+  keyboardAvoid: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  darkHeader: {
+    borderBottomColor: '#374151',
+  },
+  headerContent: {
+    flex: 1,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#111827',
+  },
+  darkText: {
+    color: '#F9FAFB',
+  },
+  closeButton: {
+    padding: 4,
+  },
+  darkCloseButton: {
+    // Additional dark mode styles if needed
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 16,
+  },
+  propertiesContainer: {
+    gap: 8,
+    marginBottom: 20,
+  },
+  propertyItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+  },
+  darkPropertyItem: {
+    backgroundColor: '#374151',
+  },
+  propertyLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  propertyRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  propertyLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  propertyValue: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  statusIndicator: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  priorityBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  priorityText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  section: {
+    marginBottom: 24,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  addButtonText: {
+    color: '#3B82F6',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  assignButtonText: {
+    color: '#3B82F6',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    borderStyle: 'dashed',
+  },
+  darkEmptyState: {
+    backgroundColor: '#374151',
+    borderColor: '#4B5563',
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 8,
+  },
+  assigneesList: {
+    gap: 8,
+  },
+  assigneeItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  darkAssigneeItem: {
+    backgroundColor: '#374151',
+    borderColor: '#4B5563',
+  },
+  assigneeAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#3B82F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  assigneeInitial: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  assigneeInfo: {
+    flex: 1,
+  },
+  assigneeName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  assigneeEmail: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  removeAssigneeButton: {
+    padding: 4,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 20,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+  },
+  darkActionButton: {
+    backgroundColor: '#374151',
+    borderColor: '#4B5563',
+  },
+  actionButtonText: {
+    fontSize: 14,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  timerButton: {
+    // Uses base actionButton styles
+  },
+  timerButtonActive: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+  },
+  timerButtonTextActive: {
+    color: '#DC2626',
+  },
+  descriptionContainer: {
+    padding: 12,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  darkInput: {
+    backgroundColor: '#374151',
+    borderColor: '#4B5563',
+    color: '#F9FAFB',
+  },
+  descriptionText: {
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 20,
+  },
+  commentsList: {
+    gap: 16,
+    marginBottom: 16,
+  },
+  commentItem: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  commentAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#3B82F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  commentInitial: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  commentContent: {
+    flex: 1,
+  },
+  commentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  commentAuthor: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  commentDate: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  commentMenuButton: {
+    padding: 4,
+    marginLeft: 'auto',
+  },
+  commentMenu: {
+    position: 'absolute',
+    top: 24,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+    zIndex: 1000,
+  },
+  darkDropdown: {
+    backgroundColor: '#374151',
+    borderColor: '#4B5563',
+  },
+  commentMenuItem: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  commentMenuText: {
+    fontSize: 14,
+    color: '#374151',
+  },
+  deleteMenuText: {
+    fontSize: 14,
+    color: '#DC2626',
+  },
+  commentEditContainer: {
+    gap: 8,
+  },
+  commentEditInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    backgroundColor: '#FFFFFF',
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  commentEditActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  saveCommentButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#3B82F6',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  saveCommentText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  cancelCommentButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 6,
+    backgroundColor: '#FFFFFF',
+  },
+  darkCancelButton: {
+    backgroundColor: '#4B5563',
+    borderColor: '#6B7280',
+  },
+  cancelCommentText: {
+    fontSize: 12,
+    color: '#374151',
+  },
+  commentText: {
+    fontSize: 14,
+    color: '#374151',
+    lineHeight: 20,
+  },
+  emptyComments: {
+    alignItems: 'center',
+    padding: 24,
+  },
+  emptyCommentsText: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  commentInputContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  currentUserAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#3B82F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  currentUserInitial: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  commentInputWrapper: {
+    flex: 1,
+    position: 'relative',
+  },
+  commentInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    backgroundColor: '#FFFFFF',
+    minHeight: 80,
+    textAlignVertical: 'top',
+    paddingRight: 50,
+  },
+  sendButton: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: '#3B82F6',
+    padding: 8,
+    borderRadius: 8,
+  },
+  sendButtonDisabled: {
+    backgroundColor: '#9CA3AF',
+  },
+  footer: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+  },
+  darkFooter: {
+    backgroundColor: '#374151',
+    borderTopColor: '#4B5563',
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#DC2626',
+    padding: 12,
+    borderRadius: 8,
+  },
+  deleteButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#374151',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#DC2626',
+  },
+  errorCloseButton: {
+    backgroundColor: '#3B82F6',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  errorCloseButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+  },
+  darkModalContent: {
+    backgroundColor: '#374151',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 20,
+  },
+  modalSection: {
+    marginBottom: 16,
+  },
+  modalLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    backgroundColor: '#FFFFFF',
+  },
+  colorPicker: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  colorOption: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  colorOptionSelected: {
+    borderColor: '#000000',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+  },
+  modalButton: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalButtonSecondary: {
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+  },
+  modalButtonPrimary: {
+    backgroundColor: '#3B82F6',
+  },
+  modalButtonDisabled: {
+    backgroundColor: '#9CA3AF',
+  },
+  modalButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  modalButtonPrimaryText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#FFFFFF',
+  },
+  darkSubtitle: {
+    color: '#9CA3AF',
+  },
+  // New styles for forms
+  formContainer: {
+    padding: 16,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginBottom: 16,
+  },
+  darkFormContainer: {
+    backgroundColor: '#374151',
+    borderColor: '#4B5563',
+  },
+  formTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 12,
+  },
+  formGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 16,
+  },
+  formField: {
+    flex: 1,
+    minWidth: '45%',
+  },
+  fullWidthField: {
+    width: '100%',
+  },
+  formLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 4,
+    fontWeight: '500',
+  },
+  formInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    padding: 8,
+    fontSize: 14,
+    backgroundColor: '#FFFFFF',
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  checkbox: {
+    width: 16,
+    height: 16,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: '#3B82F6',
+    borderColor: '#3B82F6',
+  },
+  checkboxLabel: {
+    fontSize: 14,
+    color: '#374151',
+  },
+  formActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  primaryButton: {
+    flex: 1,
+    backgroundColor: '#3B82F6',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  primaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  secondaryButton: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+  },
+  darkSecondaryButton: {
+    backgroundColor: '#4B5563',
+    borderColor: '#6B7280',
+  },
+  secondaryButtonText: {
+    color: '#374151',
+    fontSize: 14,
+    fontWeight: '600',
+  },
 });

@@ -166,13 +166,6 @@ export default function AuthPages() {
       {/* Cloud decorations */}
       <CloudDecoration />
 
-      {/* Logo */}
-      <div className="mb-6 z-10">
-        <div className="flex items-center gap-2">
-          {/* Your logo here */}
-        </div>
-      </div>
-
       {/* Auth Form */}
       <div className="z-10">
         {currentPage === 'login' && (
@@ -293,13 +286,6 @@ function LoginForm({ onSwitchToSignup, onSwitchToForgot, t }: { onSwitchToSignup
 
   return (
     <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-[0_8px_32px_rgba(0,0,0,0.08)] w-full max-w-md p-8 border border-white/60">
-      {/* Icon */}
-      <div className="flex justify-center mb-4">
-        <div className="w-14 h-14 bg-gray-50 rounded-2xl flex items-center justify-center shadow-sm border border-gray-100">
-          <LogIn className="w-6 h-6 text-gray-700" />
-        </div>
-      </div>
-
       <h1 className="text-2xl font-bold text-center text-gray-800 mb-2">{t.signInTitle}</h1>
       <p className="text-center text-gray-500 text-sm mb-6">{t.signInSubtitle}</p>
 
@@ -529,13 +515,6 @@ function SignupForm({ onSwitchToLogin, t }: { onSwitchToLogin: () => void; t: ty
 
   return (
     <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-[0_8px_32px_rgba(0,0,0,0.08)] w-full max-w-md p-8 border border-white/60">
-      {/* Icon */}
-      <div className="flex justify-center mb-4">
-        <div className="w-14 h-14 bg-gray-50 rounded-2xl flex items-center justify-center shadow-sm border border-gray-100">
-          <User className="w-6 h-6 text-gray-700" />
-        </div>
-      </div>
-
       <h1 className="text-2xl font-bold text-center text-gray-800 mb-2">{t.createAccount}</h1>
       <p className="text-center text-gray-500 text-sm mb-6">{t.createAccountSubtitle}</p>
 
