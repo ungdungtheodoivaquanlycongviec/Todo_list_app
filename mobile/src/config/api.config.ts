@@ -1,42 +1,38 @@
-// API Configuration for Mobile App
 import { Platform } from 'react-native';
 
-// 🚨 Cần thay thế bằng IP nội bộ THỰC TẾ của máy tính đang chạy Backend
-const YOUR_LAN_IP: string = '192.168.1.11'; 
-const API_PORT: string = '8080';
+// --------------------------------------------------------
+// 1. CẤU HÌNH CỔNG & IP
+// --------------------------------------------------------
+const API_PORT: string = '8080'; // Cổng API Backend (bạn xác nhận là 8080)
 
-// Hàm tính toán URL gốc (ví dụ: http://192.168.1.15:8080), không có /api
+// ⚠️ QUAN TRỌNG: Thay số này bằng IP LAN máy tính của bạn (VD: 192.168.1.6)
+// Cách lấy: Mở CMD trên máy tính -> gõ "ipconfig" -> xem dòng IPv4 Address
+const YOUR_LAN_IP: string = '192.168.1.4'; 
+
 const getBaseUrl = (): string => {
-  if (__DEV__) {
-    // 1. iOS Simulator
-    if (Platform.OS === 'ios') {
-      return `http://localhost:${API_PORT}`;
-    }
-    
-    // 2. Android Emulator (sử dụng 10.0.2.2 nếu backend chạy trên máy tính)
-    // Nếu bạn dùng 10.0.2.2, hãy đảm bảo YOUR_LAN_IP = '10.0.2.2'
-    if (Platform.OS === 'android' && YOUR_LAN_IP === '10.0.2.2') { 
-         return `http://10.0.2.2:${API_PORT}`;
-    }
-
-    // 3. Thiết bị Vật lý hoặc IP LAN
-    console.warn(`[DEV] Using LAN IP for Base URL: http://${YOUR_LAN_IP}:${API_PORT}`);
-    return `http://${YOUR_LAN_IP}:${API_PORT}`;
-  }
-  
-  // Production - Thay thế bằng Production Domain
-  return 'https://api.yourdomain.com'; 
+  if (__DEV__) {
+    if (Platform.OS === 'ios') {
+      return `http://localhost:${API_PORT}`;
+    }
+    
+    // Android: Vì 10.0.2.2 đang gây lỗi Network Error cho bạn, 
+    // chúng ta sẽ dùng IP LAN (cách này ổn định nhất nếu máy tính và điện thoại chung Wifi)
+    return `http://${YOUR_LAN_IP}:${API_PORT}`;
+  }
+  
+  return 'https://api.yourdomain.com'; 
 };
 
-// 💡 EXPORT 1: URL gốc (http://IP:PORT)
+// --------------------------------------------------------
+// XUẤT BIẾN
+// --------------------------------------------------------
 export const BASE_URL = getBaseUrl(); 
 
-// 💡 EXPORT 2: URL API (http://IP:PORT/api) - Dùng cho Axios/HTTP
+// API URL (http://192.168.1.x:8080/api)
 export const API_URL = `${BASE_URL}/api`; 
 
-// 💡 EXPORT 3: URL Socket (Sử dụng URL gốc)
+// SOCKET URL (http://192.168.1.x:8080)
 export const SOCKET_URL = BASE_URL; 
-// 💡 EXPORT 4: Namespace Socket
-export const SOCKET_NAMESPACE = '/ws/app'; 
 
-console.log('API_URL configured:', API_URL, 'Platform:', Platform.OS);
+// ✅ ĐÃ SỬA: Namespace khớp với Backend của bạn
+export const SOCKET_NAMESPACE = '/ws/app';
