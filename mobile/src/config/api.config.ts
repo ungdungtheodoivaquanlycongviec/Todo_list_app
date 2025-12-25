@@ -1,10 +1,5 @@
 import { Platform } from 'react-native';
 
-<<<<<<< HEAD
-// 🚨 Cần thay thế bằng IP nội bộ THỰC TẾ của máy tính đang chạy Backend
-const YOUR_LAN_IP: string = '192.168.1.11'; 
-const API_PORT: string = '8080';
-=======
 // --------------------------------------------------------
 // 1. CẤU HÌNH CỔNG & IP
 // --------------------------------------------------------
@@ -12,8 +7,7 @@ const API_PORT: string = '8080'; // Cổng API Backend (bạn xác nhận là 80
 
 // ⚠️ QUAN TRỌNG: Thay số này bằng IP LAN máy tính của bạn (VD: 192.168.1.6)
 // Cách lấy: Mở CMD trên máy tính -> gõ "ipconfig" -> xem dòng IPv4 Address
-const YOUR_LAN_IP: string = '192.168.1.6'; 
->>>>>>> main
+const YOUR_LAN_IP: string = '192.168.1.4'; 
 
 const getBaseUrl = (): string => {
   if (__DEV__) {
