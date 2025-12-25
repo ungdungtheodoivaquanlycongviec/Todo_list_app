@@ -1,131 +1,132 @@
 import { useEffect, useRef, useState } from 'react';
-import io from 'socket.io-client'; 
-
+import io from 'socket.io-client';
+import type { Socket } from 'socket.io-client'; // Import Type riêng
 import { useAuth } from '../context/AuthContext';
-import { authService } from '../services/auth.service'; 
-// import AsyncStorage from '@react-native-async-storage/async-storage'; // Không cần thiết
+import { authService } from '../services/auth.service';
+import { SOCKET_URL, SOCKET_NAMESPACE } from '../config/api.config';
 
-// 💡 ĐÃ SỬA: Import các biến từ file cấu hình mới
-import { SOCKET_URL, SOCKET_NAMESPACE } from '../config/api.config'; 
+// Dùng ReturnType để tránh mọi lỗi type
+type ClientSocket = ReturnType<typeof io>;
 
-// Xóa bỏ logic đọc process.env cũ
-const FINAL_SOCKET_URL = SOCKET_URL; 
-const FINAL_SOCKET_NAMESPACE = SOCKET_NAMESPACE;
-
-let sharedSocket: any | null = null; 
+let sharedSocket: ClientSocket | null = null;
 let subscriberCount = 0;
+let disconnectTimeout: NodeJS.Timeout | null = null;
+
+// 🔥 BIẾN MỚI: Cờ đánh dấu đang gọi video
+let isCallActive = false; 
+
 const connectionListeners = new Set<(isConnected: boolean) => void>();
 
-const notifyConnectionListeners = (state: boolean) => {
-// ... Giữ nguyên ...
-  connectionListeners.forEach((listener) => {
-    try {
-      listener(state);
-    } catch (error) {
-      console.error('[Socket] Connection listener error:', error);
-    }
-  });
+// 🔥 HÀM MỚI: Cho phép bên ngoài (ChatScreen/MeetingView) điều khiển trạng thái gọi
+export const setSocketCallState = (active: boolean) => {
+  console.log(`[Socket] Setting Call Active State: ${active}`);
+  isCallActive = active;
+  
+  // Nếu đang gọi mà có hẹn giờ ngắt -> HỦY NGAY
+  if (active && disconnectTimeout) {
+    console.log('[Socket] Call started, cancelling pending disconnect.');
+    clearTimeout(disconnectTimeout);
+    disconnectTimeout = null;
+  }
 };
 
-// 💡 SỬ DỤNG biến FINAL_SOCKET_URL và FINAL_SOCKET_NAMESPACE
-const createSharedSocket = (token: string): any => {
-  const socket = io(`${FINAL_SOCKET_URL}${FINAL_SOCKET_NAMESPACE}`, {
-    auth: {
-      token
-    },
-    transports: ['websocket', 'polling'],
-    reconnection: true,
-    reconnectionDelay: 1000,
-    reconnectionAttempts: 5
-  });
+const notifyConnectionListeners = (state: boolean) => {
+  connectionListeners.forEach((listener) => {
+    try { listener(state); } catch (error) { console.error(error); }
+  });
+};
 
-  socket.on('connect', () => {
-    console.log('[Socket] Connected');
-    notifyConnectionListeners(true);
-  });
+const createSharedSocket = (token: string): ClientSocket => {
+  const cleanUrl = SOCKET_URL.replace(/\/$/, '');
+  const cleanNamespace = SOCKET_NAMESPACE.replace(/^\//, '');
+  const connectionUrl = cleanNamespace ? `${cleanUrl}/${cleanNamespace}` : cleanUrl;
 
-  socket.on('disconnect', (reason: string) => { 
-    console.log('[Socket] Disconnected, reason:', reason);
-    notifyConnectionListeners(false);
-  });
+  const socket = io(connectionUrl, {
+    auth: { token },
+    transports: ['websocket'], // Bắt buộc
+    reconnection: true,
+    reconnectionDelay: 1000,
+    reconnectionAttempts: 10,
+    forceNew: true,
+  });
 
-  socket.on('connect_error', (error: Error) => { 
-    console.error('[Socket] Connection error:', error);
-    notifyConnectionListeners(false);
-  });
+  socket.on('connect', () => {
+    console.log('[Socket] Connected ✅ ID:', socket.id);
+    notifyConnectionListeners(true);
+  });
 
-  return socket;
+  socket.on('disconnect', (reason: any) => {
+    console.log('[Socket] Disconnected ❌ Reason:', reason);
+    notifyConnectionListeners(false);
+  });
+
+  return socket as ClientSocket;
 };
 
 export function useSocket() {
-  const { user } = useAuth();
-  const socketRef = useRef<any | null>(null); 
-  const [isConnected, setIsConnected] = useState<boolean>(false);
+  const { user } = useAuth();
+  const socketRef = useRef<ClientSocket | null>(null);
+  const [isConnected, setIsConnected] = useState<boolean>(false);
 
-  useEffect(() => {
-    let isMounted = true;
+  useEffect(() => {
+    let isMounted = true;
 
-    if (!user) {
-      if (isMounted) setIsConnected(false);
-      socketRef.current = null;
-      return;
-    }
+    const initSocket = async () => {
+      if (!user) return;
+      const token = await authService.getAuthToken();
+      if (!isMounted || !token) return;
 
-    const initializeSocket = async () => {
-      // 💡 Giữ nguyên logic lấy token từ authService
-      const token = await authService.getAuthToken(); 
+      if (disconnectTimeout) {
+        console.log('[Socket] Cancel disconnect (Reusing)');
+        clearTimeout(disconnectTimeout);
+        disconnectTimeout = null;
+      }
 
-      if (!isMounted) return;
+      subscriberCount++;
 
-      if (!token) {
-        console.warn('[Socket] Missing access token. Realtime features disabled.');
-        setIsConnected(false);
-        socketRef.current = null;
-        return;
-      }
+      if (!sharedSocket) {
+        sharedSocket = createSharedSocket(token);
+      } else if (!sharedSocket.connected) {
+        sharedSocket.connect();
+      }
 
-      subscriberCount += 1;
+      socketRef.current = sharedSocket;
+      setIsConnected(sharedSocket.connected);
 
-      if (!sharedSocket) {
-        sharedSocket = createSharedSocket(token);
-      }
+      connectionListeners.add((state) => { if (isMounted) setIsConnected(state); });
+    };
 
-      socketRef.current = sharedSocket;
-      setIsConnected(sharedSocket.connected);
+    initSocket();
 
-      const listener = (state: boolean) => {
-        if (isMounted) setIsConnected(state);
-      };
+    return () => {
+      isMounted = false;
+      subscriberCount--;
 
-      connectionListeners.add(listener);
-    };
+      // 🔥 LOGIC QUAN TRỌNG NHẤT:
+      // Chỉ ngắt kết nối khi:
+      // 1. Không còn ai dùng (count <= 0)
+      // 2. VÀ KHÔNG CÓ CUỘC GỌI NÀO ĐANG DIỄN RA (!isCallActive)
+      if (subscriberCount <= 0) {
+        subscriberCount = 0;
+        if (disconnectTimeout) clearTimeout(disconnectTimeout);
 
-    initializeSocket();
+        if (isCallActive) {
+           console.log('[Socket] Subscribers = 0 but Call is Active. KEEPING CONNECTION ALIVE.');
+           return; // ⛔️ DỪNG LẠI, KHÔNG ĐƯỢC NGẮT!
+        }
 
-    return () => {
-      isMounted = false;
-      
-      subscriberCount = Math.max(0, subscriberCount - 1);
+        console.log('[Socket] Scheduling disconnect in 2s...');
+        disconnectTimeout = setTimeout(() => {
+          // Kiểm tra lại lần nữa cho chắc
+          if (sharedSocket && subscriberCount === 0 && !isCallActive) {
+            console.log('[Socket] Timeout reached. Disconnecting.');
+            sharedSocket.disconnect();
+            sharedSocket = null;
+          }
+        }, 2000);
+      }
+    };
+  }, [user]);
 
-      if (subscriberCount === 0 && sharedSocket) {
-        console.log('[Socket] No more subscribers, disconnecting socket');
-        sharedSocket.disconnect();
-        sharedSocket = null;
-      }
-      
-      // Giữ nguyên logic gỡ listener
-      connectionListeners.forEach(listener => {
-        if (listener.toString() === listener.toString()) { // Logic gỡ listener chính xác hơn
-          connectionListeners.delete(listener);
-        }
-      });
-      
-      socketRef.current = null;
-    };
-  }, [user]);
-
-  return {
-    socket: socketRef.current,
-    isConnected
-  };
+  return { socket: socketRef.current, isConnected };
 }

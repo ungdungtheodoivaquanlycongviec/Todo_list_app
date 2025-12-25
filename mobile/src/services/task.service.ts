@@ -2,13 +2,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { Task } from '../types/task.types';
 import { authService } from './auth.service';
-// import { notificationService } from './notification.service'; 
+// import { notificationService } from './notification.service'; // Bỏ comment nếu đã setup notification
 import { API_URL } from '../config/api.config';
 
 // ----------------------------------------------------------------------
-// 1. HELPERS
+// 1. HELPERS & UTILS
 // ----------------------------------------------------------------------
 
+// Chuẩn hóa dữ liệu trả về từ Backend (giống Web)
 const normalizeTaskResponse = (data: any): Task => {
   if (!data) return data;
   if (data.data?.task) return data.data.task;
@@ -17,6 +18,7 @@ const normalizeTaskResponse = (data: any): Task => {
   return data;
 };
 
+// Tạo Headers (Tự động thêm Token & Content-Type)
 const getHeaders = async (isMultipart = false) => {
   const token = await authService.getAuthToken();
   const headers: any = {};
@@ -32,17 +34,21 @@ const getHeaders = async (isMultipart = false) => {
   return headers;
 };
 
+// Xử lý phản hồi chung (Lỗi 401, 403, Parse JSON lỗi)
 const handleResponse = async (response: Response, actionName: string) => {
   if (!response.ok) {
+    // 1. Lỗi xác thực -> Logout
     if (response.status === 401) {
       await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
       throw new Error('Authentication failed. Please login again.');
     }
 
+    // 2. Lỗi quyền truy cập
     if (response.status === 403) {
        throw new Error('You must join or create a group to manage tasks');
     }
 
+    // 3. Lỗi logic từ Backend
     const errorText = await response.text();
     console.error(`[TaskService] ${actionName} Error (${response.status}):`, errorText);
     
@@ -56,9 +62,19 @@ const handleResponse = async (response: Response, actionName: string) => {
     throw new Error(errorMessage);
   }
   
+  // 204 No Content
   if (response.status === 204) return null;
 
   return response.json();
+};
+
+// Helper để format file cho FormData của React Native
+const createMobileFileObject = (file: any) => {
+  return {
+    uri: Platform.OS === 'ios' ? file.uri.replace('file://', '') : file.uri,
+    type: file.type || 'image/jpeg', // Fallback type
+    name: file.name || `upload_${Date.now()}.jpg`, // Fallback name
+  };
 };
 
 // ----------------------------------------------------------------------
@@ -72,8 +88,12 @@ interface TasksResponse {
 
 export const taskService = {
   
-  // --- CREATE ---
+  // =================================================================
+  // A. BASIC CRUD (Create, Read, Update, Delete)
+  // =================================================================
+
   createTask: async (taskData: any): Promise<Task> => {
+    // Lấy currentGroupId từ storage nếu thiếu
     let currentGroupId = null;
     try {
       const userStr = await AsyncStorage.getItem('user');
@@ -81,9 +101,7 @@ export const taskService = {
         const user = JSON.parse(userStr);
         currentGroupId = user.currentGroupId;
       }
-    } catch (e) {
-      console.warn('Error reading user from storage', e);
-    }
+    } catch (e) { console.warn('Error reading user from storage', e); }
 
     if (currentGroupId && !taskData.groupId) {
       taskData.groupId = currentGroupId;
@@ -101,16 +119,19 @@ export const taskService = {
     const data = await handleResponse(response, 'create task');
     const task = normalizeTaskResponse(data);
 
-    // if (task.groupId) notificationService.createNewTaskNotification(...)
+    // Gửi thông báo (Nếu có service)
+    // if (task.groupId && notificationService) {
+    //    try { await notificationService.createNewTaskNotification(task.groupId, task.title); } catch {}
+    // }
 
     return task;
   },
 
-  // --- READ ---
   getAllTasks: async (filters?: any, options?: any): Promise<TasksResponse> => {
     const headers = await getHeaders();
     const queryParams = new URLSearchParams();
 
+    // Mapping filters giống Web
     if (filters) {
       Object.keys(filters).forEach(key => {
         if (filters[key] != null && filters[key] !== '') {
@@ -133,6 +154,7 @@ export const taskService = {
     const response = await fetch(url, { headers });
     const responseData = await handleResponse(response, 'fetch tasks');
 
+    // Normalize cấu trúc trả về
     let tasks: Task[] = [];
     let pagination = {};
 
@@ -160,9 +182,9 @@ export const taskService = {
     return normalizeTaskResponse(data);
   },
 
-  // --- UPDATE ---
   updateTask: async (id: string, updateData: any): Promise<Task> => {
     const headers = await getHeaders();
+    // Loại bỏ các trường hệ thống không được sửa
     const { _id, __v, createdAt, updatedAt, createdBy, ...cleanData } = updateData;
 
     console.log(`[API] Updating task ${id}:`, cleanData);
@@ -181,7 +203,6 @@ export const taskService = {
     return normalizeTaskResponse(data);
   },
 
-  // --- DELETE ---
   deleteTask: async (id: string): Promise<void> => {
     const headers = await getHeaders();
     const response = await fetch(`${API_URL}/tasks/${id}`, {
@@ -191,17 +212,15 @@ export const taskService = {
     await handleResponse(response, 'delete task');
   },
 
-  // --- ACTIONS (SỬA LỖI 404: Tự xử lý logic ở Client) ---
-  
-  // 1. Duplicate (Tự lấy data cũ -> Tạo mới)
+  // =================================================================
+  // B. ACTIONS & UTILS
+  // =================================================================
+
   duplicateTask: async (taskId: string): Promise<Task> => {
     try {
       console.log('[Service] Duplicating task manually:', taskId);
-      
-      // B1: Lấy chi tiết task gốc
       const originalTask = await taskService.getTaskById(taskId);
       
-      // B2: Chuẩn bị dữ liệu cho task mới
       const newTaskData = {
         title: `${originalTask.title} (Copy)`,
         description: originalTask.description,
@@ -211,30 +230,67 @@ export const taskService = {
         tags: originalTask.tags || [],
         dueDate: originalTask.dueDate,
         folderId: originalTask.folderId, 
-        status: 'todo', // Reset về todo
-        
-        // Copy mảng người được giao (chỉ lấy ID)
+        status: 'todo',
         assignedTo: originalTask.assignedTo?.map((a: any) => ({
           userId: typeof a.userId === 'object' ? a.userId._id : a.userId
         })) || []
       };
 
-      // B3: Gọi hàm tạo mới
       return await taskService.createTask(newTaskData);
-
     } catch (error) {
       console.error('Manual duplicate failed:', error);
       throw error;
     }
   },
 
-  // 2. Move Task (Dùng updateTask thay vì gọi API /move)
   moveTaskToFolder: async (taskId: string, folderId: string): Promise<Task> => {
-    console.log('[Service] Moving task via update:', taskId, 'to folder:', folderId);
     return await taskService.updateTask(taskId, { folderId: folderId });
   },
 
-  // --- COMMENTS ---
+  // =================================================================
+  // C. COMMENTS (Đầy đủ chức năng như Web)
+  // =================================================================
+
+  // ✅ [MỚI] Lấy danh sách comment có phân trang
+  getComments: async (
+    taskId: string,
+    options?: { page?: number; limit?: number }
+  ): Promise<{
+    comments: any[];
+    pagination: {
+      page: number;
+      limit: number;
+      totalComments: number;
+      totalPages: number;
+      hasNextPage: boolean;
+      hasPrevPage: boolean;
+    };
+  }> => {
+    const headers = await getHeaders();
+    const params = new URLSearchParams();
+    if (options?.page) params.append('page', options.page.toString());
+    if (options?.limit) params.append('limit', options.limit.toString());
+
+    const url = `${API_URL}/tasks/${taskId}/comments${params.toString() ? `?${params.toString()}` : ''}`;
+    console.log('[API] Fetching comments:', url);
+
+    const response = await fetch(url, { headers });
+    const responseData = await handleResponse(response, 'fetch comments');
+
+    // Normalize
+    return {
+      comments: responseData.data?.comments || responseData.comments || [],
+      pagination: responseData.data?.pagination || responseData.pagination || {
+        page: options?.page || 1,
+        limit: options?.limit || 15,
+        totalComments: 0,
+        totalPages: 1,
+        hasNextPage: false,
+        hasPrevPage: false
+      }
+    };
+  },
+
   addComment: async (taskId: string, content: string): Promise<Task> => {
     const headers = await getHeaders();
     const response = await fetch(`${API_URL}/tasks/${taskId}/comments`, {
@@ -265,22 +321,16 @@ export const taskService = {
     return await handleResponse(response, 'delete comment');
   },
 
-  // --- FILE UPLOAD ---
-  
+  // =================================================================
+  // D. FILE UPLOAD (Đã fix cho React Native)
+  // =================================================================
+
   addCommentWithFile: async (taskId: string, content: string, file: any): Promise<Task> => {
-    const headers = await getHeaders(true); // true = Multipart header
+    const headers = await getHeaders(true); // true = Multipart/form-data
     const formData = new FormData();
     
     formData.append('content', content);
-    
-    // Cấu trúc file bắt buộc cho React Native
-    const fileToUpload = {
-      uri: Platform.OS === 'ios' ? file.uri.replace('file://', '') : file.uri,
-      type: file.type || 'image/jpeg',
-      name: file.name || 'upload.jpg',
-    };
-    
-    formData.append('file', fileToUpload as any);
+    formData.append('file', createMobileFileObject(file) as any);
 
     const response = await fetch(`${API_URL}/tasks/${taskId}/comments/with-file`, {
       method: 'POST',
@@ -296,13 +346,7 @@ export const taskService = {
     const headers = await getHeaders(true);
     const formData = new FormData();
 
-    const fileToUpload = {
-      uri: Platform.OS === 'ios' ? file.uri.replace('file://', '') : file.uri,
-      type: file.type || 'image/jpeg',
-      name: file.name || 'upload.jpg',
-    };
-
-    formData.append('file', fileToUpload as any);
+    formData.append('file', createMobileFileObject(file) as any);
 
     const response = await fetch(`${API_URL}/tasks/${taskId}/attachments`, {
       method: 'POST',
@@ -314,7 +358,10 @@ export const taskService = {
     return normalizeTaskResponse(data);
   },
 
-  // --- VIEWS ---
+  // =================================================================
+  // E. SPECIFIC VIEWS (Kanban, Calendar)
+  // =================================================================
+
   getKanbanView: async (filters?: any): Promise<any> => {
     const headers = await getHeaders();
     const queryParams = new URLSearchParams();
@@ -339,7 +386,10 @@ export const taskService = {
     return data.data || data;
   },
 
-  // --- ASSIGNMENT ---
+  // =================================================================
+  // F. ASSIGNMENT & COLLABORATION (Đã đồng bộ)
+  // =================================================================
+
   assignUsersToTask: async (taskId: string, userIds: string[]): Promise<any> => {
     const headers = await getHeaders();
     const response = await fetch(`${API_URL}/tasks/${taskId}/assign`, {
@@ -365,28 +415,24 @@ export const taskService = {
     return await handleResponse(response, 'get assignees');
   },
 
-  // --- TIMER ---
+  // =================================================================
+  // G. TIMER & SETTINGS
+  // =================================================================
+
   startTimer: async (taskId: string): Promise<Task> => {
     const headers = await getHeaders();
-    const response = await fetch(`${API_URL}/tasks/${taskId}/start-timer`, {
-      method: 'POST',
-      headers,
-    });
+    const response = await fetch(`${API_URL}/tasks/${taskId}/start-timer`, { method: 'POST', headers });
     const data = await handleResponse(response, 'start timer');
     return normalizeTaskResponse(data);
   },
 
   stopTimer: async (taskId: string): Promise<Task> => {
     const headers = await getHeaders();
-    const response = await fetch(`${API_URL}/tasks/${taskId}/stop-timer`, {
-      method: 'POST',
-      headers,
-    });
+    const response = await fetch(`${API_URL}/tasks/${taskId}/stop-timer`, { method: 'POST', headers });
     const data = await handleResponse(response, 'stop timer');
     return normalizeTaskResponse(data);
   },
 
-  // --- SETTINGS ---
   setCustomStatus: async (taskId: string, name: string, color: string): Promise<Task> => {
     const headers = await getHeaders();
     const response = await fetch(`${API_URL}/tasks/${taskId}/custom-status`, {

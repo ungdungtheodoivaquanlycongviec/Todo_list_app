@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
-  ScrollView,
   StyleSheet,
   ActivityIndicator,
   Alert,
@@ -12,689 +11,725 @@ import {
   Dimensions,
   SafeAreaView,
   Modal,
-  TouchableWithoutFeedback,
   KeyboardAvoidingView,
   Platform,
-  FlatList
+  FlatList,
+  TouchableWithoutFeedback,
+  StatusBar,
+  PermissionsAndroid
 } from 'react-native';
-import Ionicons from 'react-native-vector-icons/Ionicons'; 
-import Feather from 'react-native-vector-icons/Feather';
 
-// --- IMPORTS ---
+// --- ICONS (Lucide) ---
+import { 
+  Menu, Search, Edit2, Phone, Video, 
+  Image as ImageIcon, Paperclip, Send, 
+  X, Reply, Copy, Trash2, 
+  FileText, MessageSquare, Forward, Mic, MicOff 
+} from 'lucide-react-native';
+
+// --- NATIVE LIBRARIES ---
+import { launchImageLibrary, ImageLibraryOptions } from 'react-native-image-picker';
+import DocumentPicker from 'react-native-document-picker';
+import Clipboard from '@react-native-clipboard/clipboard';
+
+// --- CONTEXTS & SERVICES ---
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useRegional } from '../context/RegionalContext';
 import { chatService, ChatMessage, DirectConversationSummary } from '../services/chat.service'; 
 import { useSocket } from '../hooks/useSocket';
-import { User } from '../types/auth.types'; 
+import { MeetingConfig, meetingService } from '../services/meeting.service';
+
+// --- CUSTOM COMPONENTS ---
+import MeetingView from './MeetingView';
+import IncomingCallNotification from './IncomingCallNotification';
+import MentionInput, { MentionableUser } from '../components/common/MentionInput';
+import MentionHighlight from '../components/common/MentionHighlight';
 
 const { width, height } = Dimensions.get('window');
-const SIDEBAR_WIDTH = Math.min(width * 0.85, 350);
+const SIDEBAR_WIDTH = Math.min(width * 0.85, 320);
 
-// --- HELPER COMPONENTS ---
+// --- TYPES ---
+interface ExtendedChatMessage extends ChatMessage {
+  callData?: {
+    status: 'active' | 'ended';
+    meetingId: string;
+    startedAt?: string;
+    endedAt?: string;
+    callType: 'group' | 'direct';
+  };
+  messageType?: 'text' | 'call' | 'system';
+  mentions?: { users: string[] };
+}
 
-const BottomSheet = ({ visible, onClose, title, children }: any) => (
-  <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-    <TouchableWithoutFeedback onPress={onClose}>
-      <View style={styles.bottomSheetOverlay}>
-        <TouchableWithoutFeedback>
-          <View style={styles.bottomSheetContent}>
-            <View style={styles.bottomSheetHeader}>
-              <View style={styles.bottomSheetHandle} />
-              {title && <Text style={styles.bottomSheetTitle}>{title}</Text>}
-            </View>
-            {children}
-          </View>
-        </TouchableWithoutFeedback>
-      </View>
-    </TouchableWithoutFeedback>
-  </Modal>
-);
+// --- SUB COMPONENTS ---
 
-const MessageActionSheet = ({ visible, onClose, onAction, isOwn, message }: any) => {
-  if (!message) return null;
+const TypingIndicator = ({ typingUsers, t }: { typingUsers: Set<string>, t: any }) => {
+  if (typingUsers.size === 0) return null;
+  const count = Array.from(typingUsers).length;
+  const text = count === 1 
+    ? (t('chat.personTyping' as any) || 'Someone is typing...') 
+    : (t('chat.peopleTyping' as any) || 'People are typing...');
   
-  const ActionItem = ({ icon, label, color = '#374151', action }: any) => (
-    <TouchableOpacity 
-      style={styles.actionItem} 
-      onPress={() => { onAction(action, message); onClose(); }}
-    >
-      <View style={[styles.actionIcon, { backgroundColor: color + '10' }]}>
-        <Ionicons name={icon} size={20} color={color} />
-      </View>
-      <Text style={[styles.actionLabel, { color }]}>{label}</Text>
-    </TouchableOpacity>
-  );
-
   return (
-    <BottomSheet visible={visible} onClose={onClose}>
-      <View style={styles.actionGrid}>
-        <ActionItem icon="arrow-undo" label="Reply" action="reply" />
-        <ActionItem icon="copy" label="Copy" action="copy" />
-        {isOwn && <ActionItem icon="create" label="Edit" action="edit" />}
-        {isOwn && <ActionItem icon="trash" label="Delete" color="#EF4444" action="delete" />}
-      </View>
-      <Text style={styles.sectionLabel}>Reactions</Text>
-      <View style={styles.reactionQuickBar}>
-        {['👍', '❤️', '😂', '😮', '😢', '🔥'].map(emoji => (
-          <TouchableOpacity key={emoji} onPress={() => { onAction('react', message, emoji); onClose(); }} style={styles.quickEmoji}>
-            <Text style={{ fontSize: 24 }}>{emoji}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </BottomSheet>
-  );
-};
-
-const AttachmentPicker = ({ visible, onClose, onPick }: any) => (
-  <BottomSheet visible={visible} onClose={onClose} title="Share Content">
-    <View style={styles.attachmentGrid}>
-      <TouchableOpacity style={styles.attachItem} onPress={() => { onPick('image'); onClose(); }}>
-        <View style={[styles.attachIcon, { backgroundColor: '#3B82F6' }]}>
-          <Ionicons name="image" size={24} color="#FFF" />
-        </View>
-        <Text style={styles.attachLabel}>Photo</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.attachItem} onPress={() => { onPick('file'); onClose(); }}>
-        <View style={[styles.attachIcon, { backgroundColor: '#10B981' }]}>
-          <Ionicons name="document-text" size={24} color="#FFF" />
-        </View>
-        <Text style={styles.attachLabel}>Document</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.attachItem} onPress={() => { onPick('camera'); onClose(); }}>
-        <View style={[styles.attachIcon, { backgroundColor: '#F59E0B' }]}>
-          <Ionicons name="camera" size={24} color="#FFF" />
-        </View>
-        <Text style={styles.attachLabel}>Camera</Text>
-      </TouchableOpacity>
+    <View style={styles.typingContainer}>
+      <Text style={styles.typingText}>{text}</Text>
     </View>
-  </BottomSheet>
-);
-
-const ChatInfoModal = ({ visible, onClose, context, group, dmUser }: any) => {
-  return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={styles.infoContainer}>
-        <View style={styles.infoHeader}>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Ionicons name="close" size={24} color="#374151" />
-          </TouchableOpacity>
-          <Text style={styles.infoTitle}>Details</Text>
-          <View style={{ width: 40 }} /> 
-        </View>
-        
-        <ScrollView contentContainerStyle={styles.infoContent}>
-          <View style={styles.infoProfile}>
-             <View style={[styles.infoAvatar, { backgroundColor: context === 'group' ? '#10B981' : '#3B82F6' }]}>
-                <Text style={{fontSize: 32, color: '#FFF', fontWeight: 'bold'}}>
-                    {context === 'group' ? group?.name?.charAt(0) : (dmUser?.name?.charAt(0) || '?')}
-                </Text>
-             </View>
-             <Text style={styles.infoName}>{context === 'group' ? group?.name : (dmUser?.name || 'Unknown User')}</Text>
-             <Text style={styles.infoSubtitle}>{context === 'group' ? 'Group Chat' : (dmUser?.email || '')}</Text>
-          </View>
-
-          <View style={styles.infoSection}>
-             <Text style={styles.infoSectionTitle}>Actions</Text>
-             <TouchableOpacity style={styles.infoRow}>
-                <Ionicons name="search" size={20} color="#374151" />
-                <Text style={styles.infoRowText}>Search in Conversation</Text>
-             </TouchableOpacity>
-             <TouchableOpacity style={styles.infoRow}>
-                <Ionicons name="images" size={20} color="#374151" />
-                <Text style={styles.infoRowText}>Shared Media</Text>
-             </TouchableOpacity>
-             <TouchableOpacity style={styles.infoRow}>
-                <Ionicons name="notifications" size={20} color="#374151" />
-                <Text style={styles.infoRowText}>Notifications</Text>
-             </TouchableOpacity>
-          </View>
-
-          {context === 'group' && (
-             <View style={styles.infoSection}>
-                <Text style={styles.infoSectionTitle}>Members ({group?.members?.length || 0})</Text>
-                {group?.members?.slice(0, 5).map((m: any, i: number) => (
-                    <View key={i} style={styles.memberRow}>
-                        <View style={styles.memberAvatar}><Text>{m.userId.name?.charAt(0)}</Text></View>
-                        <Text style={styles.memberName}>{m.userId.name}</Text>
-                        <Text style={styles.memberRole}>{m.role}</Text>
-                    </View>
-                ))}
-                <TouchableOpacity style={styles.viewAllButton}>
-                    <Text style={{color: '#3B82F6'}}>View All Members</Text>
-                </TouchableOpacity>
-             </View>
-          )}
-        </ScrollView>
-      </View>
-    </Modal>
   );
 };
 
-const CreateNewConversationModal = ({ visible, onClose, onSubmit }: { visible: boolean, onClose: () => void, onSubmit: (email: string) => void }) => {
-    const [email, setEmail] = useState('');
-    
-    return (
-        <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
-            <TouchableWithoutFeedback onPress={onClose}>
-                <View style={styles.modalOverlay}>
-                    <TouchableWithoutFeedback>
-                        <View style={styles.modalContent}>
-                            <Text style={styles.modalTitle}>New Conversation</Text>
-                            <Text style={styles.modalSubtitle}>Enter email to start a direct chat</Text>
-                            
-                            <TextInput
-                                style={styles.modalInput}
-                                placeholder="user@example.com"
-                                value={email}
-                                onChangeText={setEmail}
-                                autoCapitalize="none"
-                                keyboardType="email-address"
-                            />
-                            
-                            <View style={styles.modalActions}>
-                                <TouchableOpacity onPress={onClose} style={styles.modalButtonCancel}>
-                                    <Text style={styles.modalButtonTextCancel}>Cancel</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity 
-                                    onPress={() => { onSubmit(email); onClose(); setEmail(''); }} 
-                                    style={styles.modalButtonPrimary}
-                                    disabled={!email.trim()}
-                                >
-                                    <Text style={styles.modalButtonTextPrimary}>Start Chat</Text>
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-                    </TouchableWithoutFeedback>
-                </View>
-            </TouchableWithoutFeedback>
-        </Modal>
-    );
+const CallMessageItem = ({ message, onJoin, t }: { message: ExtendedChatMessage, onJoin: () => void, t: any }) => {
+  const isActive = message.callData?.status === 'active';
+  const duration = message.callData?.endedAt && message.callData?.startedAt
+    ? Math.round((new Date(message.callData.endedAt).getTime() - new Date(message.callData.startedAt).getTime()) / 1000)
+    : null;
+
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+  };
+
+  return (
+    <View style={styles.callMessageContainer}>
+      <View style={[styles.callIconContainer, isActive && styles.callIconActive]}>
+        <Phone size={20} color="#FFF" />
+      </View>
+      <View style={{flex: 1}}>
+        <Text style={styles.callTitle}>
+          {message.senderId.name} {isActive ? (t('chat.startedCall' as any) || 'started a call') : (t('chat.callEnded' as any) || 'call ended')}
+        </Text>
+        <Text style={styles.callSubtitle}>
+          {isActive ? (t('chat.ongoingCall' as any) || 'Ongoing call') : (duration ? `${t('chat.duration' as any) || 'Duration'}: ${formatDuration(duration)}` : (t('chat.callEnded' as any) || 'Ended'))}
+        </Text>
+      </View>
+      {isActive && (
+        <TouchableOpacity onPress={onJoin} style={styles.joinButton}>
+          <Video size={16} color="#FFF" />
+          <Text style={styles.joinButtonText}>{t('chat.join' as any) || 'Join'}</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
 };
 
 // --- MAIN COMPONENT ---
+
 export default function ChatScreen({ navigation }: any) {
     const { user, currentGroup } = useAuth();
     const { t } = useLanguage();
     const { formatTime } = useRegional();
     const { socket, isConnected } = useSocket();
 
-    // --- STATE ---
-    const [messages, setMessages] = useState<ChatMessage[]>([]);
-    const [messagesLoading, setMessagesLoading] = useState(true);
+    // Data State
+    const [messages, setMessages] = useState<ExtendedChatMessage[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [hasMore, setHasMore] = useState(true);
+    const [directConversations, setDirectConversations] = useState<DirectConversationSummary[]>([]);
+    const [directConversationsLoading, setDirectConversationsLoading] = useState(false);
+    
+    // UI State
     const [message, setMessage] = useState('');
+    const [activeContext, setActiveContext] = useState<'group' | 'direct'>('group');
+    const [activeDirectConversation, setActiveDirectConversation] = useState<DirectConversationSummary | null>(null);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    
+    // Message Actions State
     const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
-    const [uploading, setUploading] = useState(false);
+    const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
+    const [forwardingMessage, setForwardingMessage] = useState<ChatMessage | null>(null); 
     const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
     
-    const [activeContext, setActiveContext] = useState<'group' | 'direct'>('group');
-    const [directConversations, setDirectConversations] = useState<DirectConversationSummary[]>([]);
-    const [activeDirectConversation, setActiveDirectConversation] = useState<DirectConversationSummary | null>(null);
+    // Attachments State
+    const [pendingAttachment, setPendingAttachment] = useState<any>(null); 
+    const [uploading, setUploading] = useState(false);
+    const [lightboxImage, setLightboxImage] = useState<string | null>(null); 
+
+    // Call State
+    const [incomingCall, setIncomingCall] = useState<any>(null);
+    const [activeMeetingConfig, setActiveMeetingConfig] = useState<MeetingConfig | null>(null);
+    const [pendingStoredMeeting, setPendingStoredMeeting] = useState<any>(null);
     
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-    const [isInfoOpen, setIsInfoOpen] = useState(false);
-    const [showNewChatModal, setShowNewChatModal] = useState(false);
-    const [sidebarSearch, setSidebarSearch] = useState('');
-    const [lightboxImage, setLightboxImage] = useState<string | null>(null);
-    
-    const [selectedMessage, setSelectedMessage] = useState<ChatMessage | null>(null);
+    // Modal State
+    const [selectedMessage, setSelectedMessage] = useState<ExtendedChatMessage | null>(null);
     const [showActionSheet, setShowActionSheet] = useState(false);
-    const [showAttachSheet, setShowAttachSheet] = useState(false);
-    const [pendingAttachment, setPendingAttachment] = useState<any | null>(null); 
+    const [showNewChatModal, setShowNewChatModal] = useState(false);
+    const [showForwardModal, setShowForwardModal] = useState(false); 
+    const [newChatEmail, setNewChatEmail] = useState('');
+    const [sidebarSearch, setSidebarSearch] = useState(''); 
 
-    const scrollViewRef = useRef<ScrollView>(null);
+    const flatListRef = useRef<FlatList>(null);
 
-    // --- DATA LOADING ---
-    const loadDirectConversations = useCallback(async () => {
-        try {
-            const conversations = await chatService.getDirectConversations();
-            setDirectConversations(conversations);
-        } catch (error) {
-            console.error('Failed to load conversations', error);
-        }
-    }, []);
-
-    useEffect(() => {
-        loadDirectConversations();
-    }, [loadDirectConversations]);
-
-    const loadMessages = useCallback(async () => {
-        setMessagesLoading(true);
-        try {
-            if (activeContext === 'group' && currentGroup?._id) {
-                const res = await chatService.getMessages(currentGroup._id, { limit: 50 });
-                setMessages(res.messages as ChatMessage[]);
-            } else if (activeContext === 'direct' && activeDirectConversation?._id) {
-                const res = await chatService.getDirectMessages(activeDirectConversation._id, { limit: 50 });
-                setMessages(res.messages as ChatMessage[]);
-            } else {
-                setMessages([]);
+    // --- 1. XIN QUYỀN (PERMISSION) ---
+    const requestPermissions = async () => {
+        if (Platform.OS === 'android') {
+            try {
+                await PermissionsAndroid.requestMultiple([
+                    PermissionsAndroid.PERMISSIONS.CAMERA,
+                    PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+                    PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
+                    PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
+                ]);
+            } catch (err) {
+                console.warn(err);
             }
-        } catch (error) {
-            console.error('Failed to load messages', error);
-        } finally {
-            setMessagesLoading(false);
         }
-    }, [activeContext, currentGroup?._id, activeDirectConversation?._id]);
-
-    useEffect(() => {
-        loadMessages();
-        setReplyingTo(null);
-        setTypingUsers(new Set());
-    }, [activeContext, currentGroup?._id, activeDirectConversation?._id, loadMessages]);
-
-    const scrollToBottom = () => {
-        setTimeout(() => {
-             scrollViewRef.current?.scrollToEnd({ animated: true });
-        }, 100);
     };
 
     useEffect(() => {
-        if (!messagesLoading) scrollToBottom();
-    }, [messages, messagesLoading]);
+        requestPermissions();
+        const checkStoredMeeting = async () => {
+            const stored = await meetingService.getStoredMeeting();
+            if (stored) setPendingStoredMeeting(stored);
+        };
+        checkStoredMeeting();
+        loadDirectConversations();
+    }, []);
+
+    // --- FIX SOCKET ---
+    useEffect(() => {
+        if (socket && isConnected) {
+            meetingService.setSocket(socket);
+        }
+    }, [socket, isConnected]);
+
+    // --- LOAD DATA ---
+    const loadDirectConversations = async () => {
+        try {
+            setDirectConversationsLoading(true);
+            const res = await chatService.getDirectConversations();
+            setDirectConversations(res);
+        } catch (e) { console.error(e); }
+        finally { setDirectConversationsLoading(false); }
+    };
+
+    const loadMessages = useCallback(async (reset = true) => {
+        if (reset) setLoading(true);
+        else setLoadingMore(true);
+
+        try {
+            const limit = 20;
+            const before = !reset && messages.length > 0 ? messages[0].createdAt : undefined;
+            
+            let res;
+            if (activeContext === 'group' && currentGroup?._id) {
+                res = await chatService.getMessages(currentGroup._id, { limit, before });
+            } else if (activeContext === 'direct' && activeDirectConversation?._id) {
+                res = await chatService.getDirectMessages(activeDirectConversation._id, { limit, before });
+            }
+
+            if (res) {
+                const newMsgs = res.messages as ExtendedChatMessage[];
+                if (reset) {
+                    setMessages(newMsgs);
+                    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100);
+                } else {
+                    setMessages(prev => [...newMsgs, ...prev]);
+                }
+                setHasMore(newMsgs.length >= limit);
+            }
+        } catch (e) { console.error(e); } 
+        finally { 
+            setLoading(false); 
+            setLoadingMore(false);
+        }
+    }, [activeContext, currentGroup?._id, activeDirectConversation?._id, messages]);
+
+    useEffect(() => {
+        setMessages([]);
+        loadMessages(true);
+        setReplyingTo(null);
+        setEditingMessage(null);
+        setPendingAttachment(null);
+    }, [activeContext, currentGroup?._id, activeDirectConversation?._id]);
 
     // --- SOCKET HANDLERS ---
     useEffect(() => {
-        if (!socket) return;
+        if (!socket || !isConnected) return;
 
-        if (isConnected) {
-            if (currentGroup?._id) socket.emit('chat:join', currentGroup._id, () => {});
-            if (activeDirectConversation?._id) socket.emit('direct:join', activeDirectConversation._id, () => {});
-        }
+        if (activeContext === 'group' && currentGroup?._id) socket.emit('chat:join', currentGroup._id, () => {});
+        if (activeContext === 'direct' && activeDirectConversation?._id) socket.emit('direct:join', activeDirectConversation._id, () => {});
 
-        const handleMessage = (data: { type: string; message: ChatMessage; conversationId?: string }) => {
-            const isCurrentContext = 
-                (activeContext === 'group' && !data.conversationId) || 
-                (activeContext === 'direct' && data.conversationId === activeDirectConversation?._id);
-
-            if (isCurrentContext) {
+        const handleMessage = (data: { type: string, message: ExtendedChatMessage, conversationId?: string }) => {
+            const isRelevant = (activeContext === 'group' && !data.conversationId) || 
+                               (activeContext === 'direct' && data.conversationId === activeDirectConversation?._id);
+            
+            if (isRelevant) {
                 if (data.type === 'new') {
                     setMessages(prev => [...prev, data.message]);
-                    scrollToBottom();
+                    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
                 } else {
-                     setMessages(prev => prev.map(msg => msg._id === data.message._id ? data.message : msg));
+                    setMessages(prev => prev.map(m => m._id === data.message._id ? data.message : m));
                 }
             }
             if (data.conversationId) loadDirectConversations();
         };
 
+        const handleIncomingCall = (data: any) => {
+            if (data.callerId !== user?._id) setIncomingCall(data);
+        };
+
+        const handleReaction = (data: { messageId: string, message: ExtendedChatMessage }) => {
+             setMessages(prev => prev.map(m => m._id === data.messageId ? data.message : m));
+        };
+
+        const handleTyping = (data: { userId: string, isTyping: boolean }) => {
+            if (data.userId === user?._id) return;
+            setTypingUsers(prev => {
+                const next = new Set(prev);
+                data.isTyping ? next.add(data.userId) : next.delete(data.userId);
+                return next;
+            });
+        };
+
         socket.on('chat:message', handleMessage);
         socket.on('direct:message', handleMessage);
-        
+        socket.on('chat:reaction', handleReaction);
+        socket.on('direct:reaction', handleReaction);
+        socket.on('chat:typing', handleTyping);
+        socket.on('direct:typing', handleTyping);
+        socket.on('call:incoming', handleIncomingCall);
+
         return () => {
-            socket.off('chat:message', handleMessage);
-            socket.off('direct:message', handleMessage);
+            socket.off('chat:message');
+            socket.off('direct:message');
+            socket.off('chat:reaction');
+            socket.off('direct:reaction');
+            socket.off('chat:typing');
+            socket.off('direct:typing');
+            socket.off('call:incoming');
         };
-    }, [socket, isConnected, activeContext, currentGroup?._id, activeDirectConversation?._id, loadDirectConversations]);
+    }, [socket, isConnected, activeContext, currentGroup?._id, activeDirectConversation?._id]);
 
     // --- ACTIONS ---
 
-    const handleSendMessage = async () => {
-        if (!message.trim()) return;
+    const handlePickImage = async () => {
+        const options: ImageLibraryOptions = { mediaType: 'photo', quality: 0.8, selectionLimit: 1 };
+        try {
+            const result = await launchImageLibrary(options);
+            if (result.assets && result.assets.length > 0) {
+                const asset = result.assets[0];
+                setPendingAttachment({
+                    uri: asset.uri,
+                    name: asset.fileName || 'image.jpg',
+                    type: asset.type || 'image/jpeg',
+                    size: asset.fileSize || 0
+                });
+            }
+        } catch (error) { Alert.alert('Error', 'Failed to pick image'); }
+    };
+
+    const handlePickDocument = async () => {
+        try {
+            const result = await DocumentPicker.pick({ type: [DocumentPicker.types.allFiles], allowMultiSelection: false });
+            const file = result[0];
+            setPendingAttachment({ uri: file.uri, name: file.name, type: file.type || 'application/octet-stream', size: file.size });
+        } catch (err) { if (!DocumentPicker.isCancel(err)) Alert.alert('Error', 'Failed to pick document'); }
+    };
+
+    const handleCopy = (content: string) => {
+        Clipboard.setString(content);
+        Alert.alert('Copied', 'Message copied to clipboard');
+        setShowActionSheet(false);
+    };
+
+    // ✅ FIX TYPESCRIPT: Sửa lỗi sendMessage và sendDirectMessage
+    const handleSend = async () => {
+        if (!message.trim() && !pendingAttachment) return;
+        
         const content = message.trim();
         setMessage('');
-
+        setReplyingTo(null);
+        setEditingMessage(null);
+        
         try {
-            const payload = { content, replyTo: replyingTo?._id };
-            if (activeContext === 'group' && currentGroup?._id) {
-                await socket.emit('chat:send', { groupId: currentGroup._id, ...payload });
-            } else if (activeContext === 'direct' && activeDirectConversation?._id) {
-                await socket.emit('direct:send', { conversationId: activeDirectConversation._id, ...payload });
+            let attachments: any[] = [];
+            
+            if (pendingAttachment) {
+                setUploading(true);
+                try {
+                    if (activeContext === 'group' && currentGroup?._id) {
+                        const uploaded = await chatService.uploadAttachment(currentGroup._id, pendingAttachment);
+                        attachments = [uploaded];
+                    } else if (activeContext === 'direct' && activeDirectConversation?._id) {
+                        const uploaded = await chatService.uploadDirectAttachment(activeDirectConversation._id, pendingAttachment);
+                        attachments = [uploaded];
+                    }
+                } catch (err: any) {
+                    Alert.alert('Upload Error', err.message);
+                    setUploading(false);
+                    return;
+                }
+                setPendingAttachment(null);
+                setUploading(false);
             }
-            setReplyingTo(null);
-        } catch (error) {
-            Alert.alert('Error', 'Failed to send message');
-        }
+
+            if (editingMessage) {
+                const event = activeContext === 'group' ? 'chat:edit' : 'direct:edit';
+                socket?.emit(event, { messageId: editingMessage._id, content });
+            } else {
+                const payload = { content, replyTo: replyingTo?._id, attachments };
+                
+                if (activeContext === 'group' && currentGroup?._id) {
+                    // ✅ FIX: Gửi object { content } nếu service yêu cầu, hoặc giữ nguyên payload nếu service tự xử lý
+                    // Giả sử server lắng nghe sự kiện socket trực tiếp
+                    await socket?.emit('chat:send', { groupId: currentGroup._id, ...payload });
+                } 
+                else if (activeContext === 'direct' && activeDirectConversation?._id) {
+                    await socket?.emit('direct:send', { conversationId: activeDirectConversation._id, ...payload });
+                }
+            }
+        } catch (e) { Alert.alert(t('common.error' as any), t('chat.sendError' as any)); }
     };
 
-    const handleStartNewChat = async (email: string) => {
+    const handleForwardMessage = async (targetId: string, type: 'group' | 'direct') => {
+        if (!forwardingMessage || !socket) return;
+        const payload = { 
+            content: `[Forwarded] ${forwardingMessage.content}`, 
+            attachments: forwardingMessage.attachments 
+        };
         try {
-            const conv = await chatService.startDirectConversation({ email });
-            setDirectConversations(prev => [conv, ...prev.filter(c => c._id !== conv._id)]);
-            setActiveContext('direct');
-            setActiveDirectConversation(conv);
-            setIsSidebarOpen(false);
-        } catch (error) {
-            Alert.alert('Error', (error as Error).message);
+            if (type === 'group') await socket.emit('chat:send', { groupId: targetId, ...payload });
+            else await socket.emit('direct:send', { conversationId: targetId, ...payload });
+            Alert.alert('Success', 'Message forwarded');
+            setForwardingMessage(null);
+            setShowForwardModal(false);
+        } catch (e) { Alert.alert('Error', 'Failed to forward message'); }
+    };
+
+    const handleReaction = (messageId: string, emoji: string) => {
+        const event = activeContext === 'group' ? 'chat:reaction' : 'direct:reaction';
+        socket?.emit(event, { messageId, emoji });
+    };
+
+    const getMentionableUsers = (): MentionableUser[] => {
+        if (activeContext === 'group' && currentGroup) {
+            return currentGroup.members.map((m: any) => ({
+                _id: typeof m.userId === 'string' ? m.userId : m.userId._id,
+                name: typeof m.userId === 'string' ? m.name : m.userId.name,
+                avatar: typeof m.userId === 'string' ? m.avatar : m.userId.avatar,
+                email: typeof m.userId === 'string' ? m.email || '' : m.userId.email || ''
+            })).filter((u: any) => u._id !== user?._id);
         }
+        return [];
     };
 
-    // --- RENDER HELPERS ---
+    // --- RENDER ---
+    const renderMessage = ({ item }: { item: ExtendedChatMessage }) => {
+        if (item.messageType === 'call') {
+            return <CallMessageItem 
+                message={item} 
+                onJoin={() => {
+                    if (item.callData) {
+                        setActiveMeetingConfig({
+                            meetingId: item.callData.meetingId,
+                            type: item.callData.callType,
+                            groupId: item.callData.callType === 'group' ? currentGroup?._id : undefined,
+                            conversationId: item.callData.callType === 'direct' ? activeDirectConversation?._id : undefined
+                        });
+                    }
+                }} 
+                t={t} 
+            />;
+        }
 
-    const renderSidebar = () => {
-        // 1. FIX: Kiểm tra null cho dm.targetUser trước khi truy cập .name
-        const filteredDMs = directConversations.filter(dm => 
-            (dm.targetUser?.name || '').toLowerCase().includes(sidebarSearch.toLowerCase())
-        );
+        const isOwn = item.senderId._id === user?._id;
+        const reactions = item.reactions?.reduce((acc: any, r: any) => {
+            acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+            return acc;
+        }, {});
 
-        return (
-            <Modal visible={isSidebarOpen} transparent animationType="fade" onRequestClose={() => setIsSidebarOpen(false)}>
-                <TouchableWithoutFeedback onPress={() => setIsSidebarOpen(false)}>
-                    <View style={styles.drawerOverlay}>
-                        <TouchableWithoutFeedback>
-                            <View style={styles.drawerContainer}>
-                                <View style={styles.drawerHeader}>
-                                    <Text style={styles.drawerTitle}>Chats</Text>
-                                    <TouchableOpacity onPress={() => setShowNewChatModal(true)}>
-                                        <Ionicons name="create-outline" size={24} color="#3B82F6" />
-                                    </TouchableOpacity>
-                                </View>
-
-                                <View style={styles.searchContainer}>
-                                    <Ionicons name="search" size={20} color="#9CA3AF" />
-                                    <TextInput 
-                                        style={styles.searchInput} 
-                                        placeholder="Search conversations..." 
-                                        value={sidebarSearch}
-                                        onChangeText={setSidebarSearch}
-                                    />
-                                </View>
-
-                                <ScrollView style={styles.drawerList}>
-                                    {currentGroup && (
-                                        <TouchableOpacity 
-                                            style={[styles.drawerItem, activeContext === 'group' && styles.drawerItemActive]}
-                                            onPress={() => { setActiveContext('group'); setIsSidebarOpen(false); }}
-                                        >
-                                            <View style={[styles.avatar, { backgroundColor: '#10B981' }]}>
-                                                <Ionicons name="people" size={20} color="#FFF" />
-                                            </View>
-                                            <View style={{ flex: 1 }}>
-                                                <Text style={styles.drawerItemTitle}>{currentGroup.name}</Text>
-                                                <Text style={styles.drawerItemSubtitle}>Group Chat</Text>
-                                            </View>
-                                        </TouchableOpacity>
-                                    )}
-
-                                    <Text style={styles.drawerSectionTitle}>DIRECT MESSAGES</Text>
-
-                                    {filteredDMs.map(dm => (
-                                        <TouchableOpacity 
-                                            key={dm._id}
-                                            style={[styles.drawerItem, activeContext === 'direct' && activeDirectConversation?._id === dm._id && styles.drawerItemActive]}
-                                            onPress={() => { 
-                                                setActiveContext('direct'); 
-                                                setActiveDirectConversation(dm); 
-                                                setIsSidebarOpen(false); 
-                                            }}
-                                        >
-                                            {/* 2. FIX: Kiểm tra null cho dm.targetUser và cung cấp giá trị mặc định */}
-                                            <View style={styles.avatar}>
-                                                <Text style={styles.avatarText}>
-                                                    {dm.targetUser?.name?.charAt(0).toUpperCase() || '?'}
-                                                </Text>
-                                            </View>
-                                            <View style={{ flex: 1 }}>
-                                                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                                                    <Text style={styles.drawerItemTitle}>
-                                                        {dm.targetUser?.name || 'Unknown User'}
-                                                    </Text>
-                                                    {dm.unreadCount > 0 && <View style={styles.unreadBadge}><Text style={styles.unreadText}>{dm.unreadCount}</Text></View>}
-                                                </View>
-                                                <Text style={styles.drawerItemSubtitle} numberOfLines={1}>
-                                                    {dm.lastMessagePreview || 'Start a conversation'}
-                                                </Text>
-                                            </View>
-                                        </TouchableOpacity>
-                                    ))}
-                                </ScrollView>
-                            </View>
-                        </TouchableWithoutFeedback>
-                    </View>
-                </TouchableWithoutFeedback>
-            </Modal>
-        );
-    };
-
-    const renderMessageItem = ({ item }: { item: ChatMessage }) => {
-        const msg = item;
-        const isOwn = msg.senderId._id === user?._id;
         return (
             <TouchableOpacity 
-                key={msg._id} 
-                activeOpacity={0.8} 
-                onLongPress={() => { setSelectedMessage(msg); setShowActionSheet(true); }}
-                style={[styles.messageRow, isOwn ? styles.rowOwn : styles.rowOther]}
+                activeOpacity={0.9}
+                onLongPress={() => { setSelectedMessage(item); setShowActionSheet(true); }}
+                style={[styles.msgRow, isOwn ? styles.rowOwn : styles.rowOther]}
             >
-                {!isOwn && <View style={styles.messageAvatar}><Text style={styles.avatarTextSmall}>{msg.senderId.name.charAt(0)}</Text></View>}
-                <View style={[styles.messageBubble, isOwn ? styles.bubbleOwn : styles.bubbleOther]}>
-                    {msg.replyTo && (
-                        <View style={styles.replyQuote}>
-                            <Text style={styles.replyName}>{msg.replyTo.senderId.name}</Text>
-                            <Text numberOfLines={1} style={styles.replyText}>{msg.replyTo.content}</Text>
+                {!isOwn && (
+                    <View style={styles.msgAvatar}>
+                        <Text style={styles.avatarTxtSmall}>{item.senderId.name.charAt(0)}</Text>
+                    </View>
+                )}
+                <View style={{maxWidth: '75%'}}>
+                    {!isOwn && activeContext === 'group' && <Text style={styles.senderName}>{item.senderId.name}</Text>}
+                    <View style={[styles.bubble, isOwn ? styles.bubbleOwn : styles.bubbleOther]}>
+                        {item.attachments && item.attachments.map((att, idx) => (
+                            <TouchableOpacity key={idx} onPress={() => att.type === 'image' ? setLightboxImage(att.url) : Alert.alert('File', 'Download logic here')} style={styles.attachmentThumb}>
+                                {att.type === 'image' ? <Image source={{ uri: att.url }} style={styles.imageThumb} /> : 
+                                <View style={styles.fileThumb}><FileText size={24} color="#6B7280" /><Text numberOfLines={1} style={styles.fileName}>{att.filename}</Text></View>}
+                            </TouchableOpacity>
+                        ))}
+                        {item.content ? (
+                            <MentionHighlight 
+                                content={item.content} 
+                                mentions={item.mentions?.users || []} 
+                                currentUserId={user?._id || ''}
+                                isOwnMessage={isOwn}
+                                style={[styles.msgText, isOwn ? styles.textOwn : styles.textOther]} 
+                            />
+                        ) : null}
+                        <Text style={[styles.timeText, isOwn ? { color: 'rgba(255,255,255,0.7)' } : { color: '#9CA3AF' }]}>{formatTime(new Date(item.createdAt))}</Text>
+                    </View>
+                    {reactions && Object.keys(reactions).length > 0 && (
+                        <View style={[styles.reactionsRow, isOwn ? { alignSelf: 'flex-end' } : { alignSelf: 'flex-start' }]}>
+                            {Object.entries(reactions).map(([emoji, count]: any) => (
+                                <View key={emoji} style={styles.reactionBadge}><Text style={{fontSize: 10}}>{emoji} {count}</Text></View>
+                            ))}
                         </View>
                     )}
-                    <Text style={[styles.messageText, isOwn ? styles.textOwn : styles.textOther]}>{msg.content}</Text>
-                    <Text style={[styles.messageTime, isOwn ? styles.timeOwn : styles.timeOther]}>
-                        {formatTime(new Date(msg.createdAt))}
-                    </Text>
                 </View>
             </TouchableOpacity>
         );
     };
 
-    // 3. FIX: Kiểm tra null cho activeDirectConversation.targetUser trong tiêu đề
-    const headerTitle = activeContext === 'group' 
-        ? currentGroup?.name 
-        : (activeDirectConversation?.targetUser?.name || 'Chat');
-
-    // 4. FIX: Kiểm tra null cho activeDirectConversation.targetUser trong subtitle
-    const headerSubtitle = activeContext === 'group' 
-        ? `${currentGroup?.members?.length || 0} members` 
-        : (activeDirectConversation?.targetUser?.email || 'Direct Message');
+    const title = activeContext === 'group' ? currentGroup?.name : activeDirectConversation?.targetUser?.name;
+    const subTitle = activeContext === 'group' ? `${currentGroup?.members?.length || 0} ${t('nav.members' as any)}` : activeDirectConversation?.targetUser?.email;
 
     return (
         <SafeAreaView style={styles.container}>
-            {/* Header */}
+            <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
+            
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => setIsSidebarOpen(true)} style={styles.headerButton}>
-                    <Ionicons name="menu" size={24} color="#1F2937" />
-                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setIsSidebarOpen(true)} style={styles.iconBtn}><Menu size={24} color="#1F2937" /></TouchableOpacity>
                 <View style={styles.headerCenter}>
-                    <Text style={styles.headerTitle}>{headerTitle}</Text>
-                    <Text style={styles.headerSubtitle}>{headerSubtitle}</Text>
+                    <Text style={styles.headerTitle}>{title || (t('chat.chat' as any) || 'Chat')}</Text>
+                    <Text style={styles.headerSub}>{subTitle}</Text>
                 </View>
-                <TouchableOpacity onPress={() => setIsInfoOpen(true)} style={styles.headerButton}>
-                    <Ionicons name="information-circle-outline" size={24} color="#3B82F6" />
-                </TouchableOpacity>
+                <View style={{flexDirection:'row', gap:10}}>
+                    <TouchableOpacity style={styles.iconBtn} onPress={() => {
+                        const config: MeetingConfig = {
+                            meetingId: `call-${Date.now()}`,
+                            type: activeContext === 'group' ? 'group' : 'direct',
+                            groupId: activeContext === 'group' ? currentGroup?._id : undefined,
+                            conversationId: activeContext === 'direct' ? activeDirectConversation?._id : undefined
+                        };
+                        setActiveMeetingConfig(config);
+                    }}>
+                        <Video size={24} color="#3B82F6" />
+                    </TouchableOpacity>
+                </View>
             </View>
 
-            {/* Chat Area */}
-            <KeyboardAvoidingView 
-                behavior={Platform.OS === "ios" ? "padding" : undefined} 
-                keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
-                style={{ flex: 1 }}
-            >
-                {messagesLoading ? (
-                    <View style={styles.centerContent}><ActivityIndicator size="large" color="#3B82F6" /></View>
-                ) : (
+            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+                {loading ? (<View style={styles.center}><ActivityIndicator size="large" color="#3B82F6" /></View>) : (
                     <FlatList 
-                        ref={scrollViewRef as any}
+                        ref={flatListRef}
                         data={messages}
-                        keyExtractor={(item) => item._id}
-                        renderItem={renderMessageItem}
-                        style={styles.messagesList}
-                        contentContainerStyle={{ padding: 16 }}
-                        ListEmptyComponent={<Text style={styles.emptyText}>No messages yet. Say hello!</Text>}
-                        onContentSizeChange={scrollToBottom}
+                        renderItem={renderMessage}
+                        keyExtractor={item => item._id}
+                        style={styles.list}
+                        contentContainerStyle={{ padding: 16, paddingBottom: 20 }}
+                        onRefresh={() => loadMessages(false)}
+                        refreshing={loadingMore}
                     />
                 )}
 
-                {/* Input Area */}
-                <View style={styles.inputContainer}>
-                    {replyingTo && (
-                        <View style={styles.replyPreviewBar}>
-                            <Text numberOfLines={1} style={{flex: 1, color: '#6B7280'}}>Replying to {replyingTo.senderId.name}</Text>
-                            <TouchableOpacity onPress={() => setReplyingTo(null)}><Ionicons name="close" size={20} /></TouchableOpacity>
+                <View style={styles.footer}>
+                    <TypingIndicator typingUsers={typingUsers} t={t} />
+                    {(replyingTo || editingMessage || pendingAttachment) && (
+                        <View style={styles.previewBar}>
+                            <View style={styles.previewContent}>
+                                {pendingAttachment ? (
+                                    <View style={{flexDirection:'row', alignItems:'center'}}><Paperclip size={16} color="#3B82F6" /><Text style={styles.previewTitle} numberOfLines={1}>{pendingAttachment.name}</Text></View>
+                                ) : (
+                                    <><Text style={styles.previewTitle}>{editingMessage ? t('common.edit' as any) : `${t('chat.replyingTo' as any)} ${replyingTo?.senderId.name}`}</Text><Text numberOfLines={1} style={styles.previewText}>{editingMessage?.content || replyingTo?.content}</Text></>
+                                )}
+                            </View>
+                            <TouchableOpacity onPress={() => { setReplyingTo(null); setEditingMessage(null); setPendingAttachment(null); }}><X size={20} color="#6B7280" /></TouchableOpacity>
                         </View>
                     )}
                     <View style={styles.inputRow}>
-                        <TouchableOpacity onPress={() => setShowAttachSheet(true)} style={styles.attachButton}>
-                            <Feather name="plus" size={24} color="#9CA3AF" />
-                        </TouchableOpacity>
-                        <TextInput
-                            style={styles.textInput}
-                            placeholder="Message..."
+                        <TouchableOpacity style={styles.attachBtn} onPress={handlePickImage}><ImageIcon size={22} color="#6B7280" /></TouchableOpacity>
+                        <TouchableOpacity style={styles.attachBtn} onPress={handlePickDocument}><Paperclip size={22} color="#6B7280" /></TouchableOpacity>
+                        <MentionInput 
                             value={message}
-                            onChangeText={setMessage}
-                            multiline
+                            onChange={(val) => { setMessage(val); }}
+                            onSubmit={handleSend}
+                            placeholder={t('chat.placeholder' as any)}
+                            mentionableUsers={getMentionableUsers()}
+                            style={styles.input}
                         />
-                        <TouchableOpacity onPress={handleSendMessage} style={[styles.sendButton, !message.trim() && {backgroundColor: '#E5E7EB'}]} disabled={!message.trim()}>
-                            <Ionicons name="send" size={20} color="#FFF" />
+                        <TouchableOpacity onPress={handleSend} disabled={(!message.trim() && !pendingAttachment) || uploading} style={[styles.sendBtn, (!message.trim() && !pendingAttachment) && { backgroundColor: '#E5E7EB' }]}>
+                            {uploading ? <ActivityIndicator size="small" color="#FFF" /> : <Send size={20} color="#FFF" />}
                         </TouchableOpacity>
                     </View>
                 </View>
             </KeyboardAvoidingView>
 
-            {/* Modals */}
-            {renderSidebar()}
-            
-            <MessageActionSheet 
-                visible={showActionSheet} 
-                onClose={() => setShowActionSheet(false)} 
-                onAction={(action: any, msg: any, extra: any) => {
-                    if (action === 'reply') setReplyingTo(msg);
-                    else if (action === 'edit') setMessage(msg.content);
-                    else if (action === 'copy') Alert.alert('Copied');
-                    else if (action === 'delete') Alert.alert('Deleted');
-                    else if (action === 'react') console.log('React', extra);
-                }}
-                isOwn={selectedMessage?.senderId._id === user?._id}
-                message={selectedMessage}
-            />
+            {/* ✅ FIX CRASH: Modal MeetingView */}
+            <Modal 
+                visible={!!activeMeetingConfig} 
+                animationType="slide" 
+                // Quan trọng: Không set null ở đây để tránh unmount MeetingView đột ngột khi bấm Back
+                onRequestClose={() => { return; }}
+                presentationStyle="fullScreen"
+            >
+                {activeMeetingConfig && (
+                    <MeetingView 
+                        config={activeMeetingConfig} 
+                        onClose={() => setActiveMeetingConfig(null)}
+                        title={activeContext === 'group' ? currentGroup?.name : activeDirectConversation?.targetUser?.name}
+                    />
+                )}
+            </Modal>
 
-            <AttachmentPicker 
-                visible={showAttachSheet} 
-                onClose={() => setShowAttachSheet(false)}
-                onPick={(type: any) => console.log('Pick', type)}
-            />
+            {incomingCall && (
+                <IncomingCallNotification 
+                    meetingId={incomingCall.meetingId}
+                    type={incomingCall.type}
+                    callerName={incomingCall.callerName}
+                    groupName={incomingCall.groupName}
+                    onAccept={() => {
+                        const config: MeetingConfig = {
+                            meetingId: incomingCall.meetingId,
+                            type: incomingCall.type,
+                            groupId: incomingCall.groupId,
+                            conversationId: incomingCall.conversationId
+                        };
+                        setIncomingCall(null);
+                        setActiveMeetingConfig(config);
+                    }}
+                    onDecline={() => setIncomingCall(null)}
+                />
+            )}
 
-            <ChatInfoModal 
-                visible={isInfoOpen} 
-                onClose={() => setIsInfoOpen(false)}
-                context={activeContext}
-                group={currentGroup}
-                dmUser={activeDirectConversation?.targetUser}
-            />
-            
-            <CreateNewConversationModal 
-                visible={showNewChatModal} 
-                onClose={() => setShowNewChatModal(false)} 
-                onSubmit={handleStartNewChat} 
-            />
-            
+            {/* Sidebar & Other Modals (Giữ nguyên) */}
+            <Modal visible={isSidebarOpen} transparent animationType="fade" onRequestClose={() => setIsSidebarOpen(false)}>
+                <TouchableOpacity style={styles.sidebarOverlay} onPress={() => setIsSidebarOpen(false)}>
+                    <TouchableWithoutFeedback>
+                        <View style={styles.sidebar}>
+                            <View style={styles.sidebarHeader}>
+                                <Text style={styles.sidebarTitle}>{t('nav.chat' as any)}</Text>
+                                <TouchableOpacity onPress={() => setShowNewChatModal(true)}><Edit2 size={20} color="#3B82F6" /></TouchableOpacity>
+                            </View>
+                            <View style={styles.sidebarSearch}><Search size={16} color="#9CA3AF" /><TextInput placeholder="Search..." style={styles.sidebarSearchInput} value={sidebarSearch} onChangeText={setSidebarSearch} /></View>
+                            <TouchableOpacity style={[styles.sidebarItem, activeContext === 'group' && styles.sidebarItemActive]} onPress={() => { setActiveContext('group'); setIsSidebarOpen(false); }}>
+                                <View style={[styles.sidebarAvatar, {backgroundColor:'#10B981'}]}><MessageSquare size={18} color="#FFF"/></View><Text style={styles.sidebarName}>{currentGroup?.name || 'Group Chat'}</Text>
+                            </TouchableOpacity>
+                            <Text style={styles.sidebarSection}>Direct Messages</Text>
+                            <FlatList 
+                                data={directConversations.filter(c => c.targetUser?.name.toLowerCase().includes(sidebarSearch.toLowerCase()))}
+                                keyExtractor={item => item._id}
+                                renderItem={({ item }) => (
+                                    <TouchableOpacity style={[styles.sidebarItem, activeContext === 'direct' && activeDirectConversation?._id === item._id && styles.sidebarItemActive]} onPress={() => { setActiveContext('direct'); setActiveDirectConversation(item); setIsSidebarOpen(false); }}>
+                                        <Image source={{uri: item.targetUser?.avatar}} style={styles.sidebarAvatarImg} />
+                                        <View><Text style={styles.sidebarName}>{item.targetUser?.name}</Text><Text style={styles.sidebarSub} numberOfLines={1}>{item.lastMessagePreview || 'Start a chat'}</Text></View>
+                                    </TouchableOpacity>
+                                )}
+                            />
+                        </View>
+                    </TouchableWithoutFeedback>
+                </TouchableOpacity>
+            </Modal>
+
+            <Modal visible={showActionSheet} transparent animationType="slide" onRequestClose={() => setShowActionSheet(false)}>
+                 <TouchableOpacity style={styles.bottomSheetOverlay} onPress={() => setShowActionSheet(false)}>
+                    <View style={styles.bottomSheetContent}>
+                        <View style={styles.emojiRow}>{['👍','❤️','😂','😮','😢','🔥'].map(emoji => (<TouchableOpacity key={emoji} onPress={() => { if (selectedMessage) handleReaction(selectedMessage._id, emoji); setShowActionSheet(false); }}><Text style={{fontSize: 24}}>{emoji}</Text></TouchableOpacity>))}</View>
+                        <View style={styles.actionGrid}>
+                            <TouchableOpacity style={styles.actionBtn} onPress={() => { if(selectedMessage) setReplyingTo(selectedMessage); setShowActionSheet(false); }}><Reply size={20} color="#374151" /><Text style={styles.actionText}>Reply</Text></TouchableOpacity>
+                            <TouchableOpacity style={styles.actionBtn} onPress={() => { if(selectedMessage) handleCopy(selectedMessage.content); }}><Copy size={20} color="#374151" /><Text style={styles.actionText}>Copy</Text></TouchableOpacity>
+                            <TouchableOpacity style={styles.actionBtn} onPress={() => { if(selectedMessage) { setForwardingMessage(selectedMessage); setShowForwardModal(true); setShowActionSheet(false); }}}><Forward size={20} color="#374151" /><Text style={styles.actionText}>Forward</Text></TouchableOpacity>
+                            {selectedMessage?.senderId._id === user?._id && (<TouchableOpacity style={styles.actionBtn} onPress={() => { if (selectedMessage) { Alert.alert('Delete', 'Delete this message?', [{ text: 'Cancel' }, { text: 'Delete', style: 'destructive', onPress: () => { const event = activeContext === 'group' ? 'chat:delete' : 'direct:delete'; socket?.emit(event, { messageId: selectedMessage._id }); setShowActionSheet(false); }}]); }}}><Trash2 size={20} color="#EF4444" /><Text style={[styles.actionText, {color: '#EF4444'}]}>Delete</Text></TouchableOpacity>)}
+                        </View>
+                    </View>
+                 </TouchableOpacity>
+            </Modal>
+
+            <Modal visible={showForwardModal} transparent animationType="fade" onRequestClose={() => setShowForwardModal(false)}>
+                <View style={styles.modalOverlay}><View style={styles.modalContent}><Text style={styles.modalTitle}>Forward to...</Text><FlatList data={directConversations} keyExtractor={item => item._id} renderItem={({item}) => (<TouchableOpacity style={styles.sidebarItem} onPress={() => handleForwardMessage(item._id, 'direct')}><Image source={{uri: item.targetUser?.avatar}} style={styles.sidebarAvatarImg} /><Text style={styles.sidebarName}>{item.targetUser?.name}</Text></TouchableOpacity>)} /><TouchableOpacity onPress={() => setShowForwardModal(false)} style={styles.modalCloseBtn}><Text style={{color:'#6B7280'}}>Cancel</Text></TouchableOpacity></View></View>
+            </Modal>
+
+            <Modal visible={showNewChatModal} transparent animationType="fade" onRequestClose={() => setShowNewChatModal(false)}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>New Direct Chat</Text>
+                        <TextInput placeholder="Enter email address" style={styles.modalInput} value={newChatEmail} onChangeText={setNewChatEmail} autoCapitalize="none" />
+                        <View style={{flexDirection:'row', justifyContent:'flex-end', gap: 10, marginTop: 15}}>
+                            <TouchableOpacity onPress={() => setShowNewChatModal(false)}><Text style={{color:'#6B7280', padding: 10}}>Cancel</Text></TouchableOpacity>
+                            <TouchableOpacity style={{backgroundColor:'#3B82F6', padding: 10, borderRadius: 8}} onPress={async () => { try { const res = await chatService.startDirectConversation({ email: newChatEmail }); setDirectConversations(prev => [res, ...prev]); setActiveContext('direct'); setActiveDirectConversation(res); setShowNewChatModal(false); setIsSidebarOpen(false); } catch (e: any) { Alert.alert('Error', e.message); } }}><Text style={{color:'#FFF'}}>Start Chat</Text></TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            {lightboxImage && (<Modal visible={!!lightboxImage} transparent={true} animationType="fade"><View style={styles.lightboxContainer}><TouchableOpacity style={styles.lightboxClose} onPress={() => setLightboxImage(null)}><X size={24} color="#FFF" /></TouchableOpacity><Image source={{uri: lightboxImage}} style={styles.lightboxImg} resizeMode="contain" /></View></Modal>)}
         </SafeAreaView>
     );
 }
 
-// --- STYLES ---
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#FFF' },
-    centerContent: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    
-    // Header
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
-    headerButton: { padding: 4 },
-    headerCenter: { flex: 1, alignItems: 'center' },
-    headerTitle: { fontSize: 16, fontWeight: '600', color: '#111827' },
-    headerSubtitle: { fontSize: 12, color: '#6B7280' },
-
-    // Drawer / Sidebar
-    drawerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
-    drawerContainer: { width: SIDEBAR_WIDTH, height: '100%', backgroundColor: '#FFF', paddingTop: 50 }, 
-    drawerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
-    drawerTitle: { fontSize: 24, fontWeight: 'bold', color: '#111827' },
-    searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', margin: 16, padding: 8, borderRadius: 8 },
-    searchInput: { flex: 1, marginLeft: 8, fontSize: 14 },
-    drawerList: { flex: 1 },
-    drawerSectionTitle: { fontSize: 12, fontWeight: '600', color: '#6B7280', marginLeft: 16, marginTop: 16, marginBottom: 8 },
-    drawerItem: { flexDirection: 'row', padding: 12, alignItems: 'center', marginHorizontal: 8, borderRadius: 8 },
-    drawerItemActive: { backgroundColor: '#EFF6FF' },
-    avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#3B82F6', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-    avatarText: { color: '#FFF', fontWeight: '600' },
-    drawerItemTitle: { fontSize: 16, fontWeight: '500', color: '#111827' },
-    drawerItemSubtitle: { fontSize: 13, color: '#6B7280' },
-    unreadBadge: { backgroundColor: '#EF4444', borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2 },
-    unreadText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
-
-    // Messages
-    messagesList: { flex: 1, backgroundColor: '#F9FAFB' },
-    emptyText: { textAlign: 'center', marginTop: 50, color: '#9CA3AF' },
-    messageRow: { flexDirection: 'row', marginBottom: 12, alignItems: 'flex-end' },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderBottomWidth: 1, borderColor: '#F3F4F6', backgroundColor: '#FFF' },
+    headerCenter: { alignItems: 'center' },
+    headerTitle: { fontSize: 16, fontWeight: '700', color: '#111827' },
+    headerSub: { fontSize: 12, color: '#6B7280' },
+    iconBtn: { padding: 8 },
+    list: { flex: 1, backgroundColor: '#F9FAFB' },
+    msgRow: { flexDirection: 'row', marginBottom: 16, alignItems: 'flex-end', maxWidth: '85%' },
     rowOwn: { alignSelf: 'flex-end', flexDirection: 'row-reverse' },
     rowOther: { alignSelf: 'flex-start' },
-    messageAvatar: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#9CA3AF', justifyContent: 'center', alignItems: 'center', marginRight: 8, marginBottom: 4 },
-    avatarTextSmall: { color: '#FFF', fontSize: 12 },
-    messageBubble: { maxWidth: '75%', padding: 12, borderRadius: 16 },
-    bubbleOwn: { backgroundColor: '#3B82F6', borderBottomRightRadius: 4 },
-    bubbleOther: { backgroundColor: '#FFF', borderBottomLeftRadius: 4, borderWidth: 1, borderColor: '#E5E7EB' },
-    messageText: { fontSize: 15 },
+    msgAvatar: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#9CA3AF', justifyContent: 'center', alignItems: 'center', marginRight: 8 },
+    avatarTxtSmall: { color: '#FFF', fontSize: 12, fontWeight: 'bold' },
+    bubble: { padding: 12, borderRadius: 16, minWidth: 100 },
+    bubbleOwn: { backgroundColor: '#3B82F6', borderBottomRightRadius: 2 },
+    bubbleOther: { backgroundColor: '#FFF', borderBottomLeftRadius: 2, borderWidth: 1, borderColor: '#E5E7EB' },
+    senderName: { fontSize: 11, color: '#6B7280', marginBottom: 2, marginLeft: 4 },
+    msgText: { fontSize: 15, lineHeight: 22 },
     textOwn: { color: '#FFF' },
     textOther: { color: '#1F2937' },
-    messageTime: { fontSize: 10, marginTop: 4, alignSelf: 'flex-end' },
-    timeOwn: { color: 'rgba(255,255,255,0.7)' },
-    timeOther: { color: '#9CA3AF' },
-    replyQuote: { borderLeftWidth: 2, borderLeftColor: 'rgba(0,0,0,0.2)', paddingLeft: 8, marginBottom: 4 },
-    replyName: { fontSize: 12, fontWeight: 'bold', opacity: 0.8 },
-    replyText: { fontSize: 12, opacity: 0.8 },
-
-    // Input
-    inputContainer: { padding: 10, backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: '#E5E7EB' },
-    replyPreviewBar: { flexDirection: 'row', justifyContent: 'space-between', padding: 8, backgroundColor: '#F3F4F6', borderRadius: 8, marginBottom: 8 },
-    inputRow: { flexDirection: 'row', alignItems: 'center' },
-    attachButton: { padding: 10 },
-    textInput: { flex: 1, backgroundColor: '#F3F4F6', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, maxHeight: 100, marginHorizontal: 8 },
-    sendButton: { padding: 10, backgroundColor: '#3B82F6', borderRadius: 20 },
-
-    // Modal Commons
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-    modalContent: { width: '85%', backgroundColor: '#FFF', borderRadius: 12, padding: 20, elevation: 5 },
-    modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 8 },
-    modalSubtitle: { fontSize: 14, color: '#6B7280', marginBottom: 16 },
-    modalInput: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, padding: 10, marginBottom: 20 },
-    modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12 },
-    modalButtonCancel: { padding: 10 },
-    modalButtonTextCancel: { color: '#6B7280', fontWeight: '600' },
-    modalButtonPrimary: { backgroundColor: '#3B82F6', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
-    modalButtonTextPrimary: { color: '#FFF', fontWeight: '600' },
-
-    // Bottom Sheet
+    timeText: { fontSize: 10, alignSelf: 'flex-end', marginTop: 4 },
+    footer: { borderTopWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF', padding: 10 },
+    inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    input: { flex: 1, maxHeight: 100, backgroundColor: '#F3F4F6', borderRadius: 20, paddingHorizontal: 15 },
+    sendBtn: { padding: 10, backgroundColor: '#3B82F6', borderRadius: 20 },
+    attachBtn: { padding: 8 },
+    previewBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', padding: 8, borderRadius: 8, marginBottom: 8 },
+    previewContent: { flex: 1, marginLeft: 8 },
+    previewTitle: { fontSize: 12, fontWeight: 'bold', color: '#3B82F6', marginBottom: 2 },
+    previewText: { fontSize: 12, color: '#4B5563' },
+    typingContainer: { paddingHorizontal: 12, marginBottom: 4 },
+    typingText: { fontSize: 11, color: '#6B7280', fontStyle: 'italic' },
+    callMessageContainer: { flexDirection: 'row', backgroundColor: '#EFF6FF', padding: 12, borderRadius: 12, marginVertical: 8, alignItems: 'center', alignSelf: 'center', width: '80%', borderWidth: 1, borderColor: '#DBEAFE' },
+    callIconContainer: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#9CA3AF', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+    callIconActive: { backgroundColor: '#10B981' },
+    callTitle: { fontSize: 14, fontWeight: '600', color: '#1F2937' },
+    callSubtitle: { fontSize: 12, color: '#6B7280' },
+    joinButton: { backgroundColor: '#10B981', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginLeft: 8 },
+    joinButtonText: { color: '#FFF', fontSize: 12, fontWeight: '600', marginLeft: 4 },
+    sidebarOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', flexDirection: 'row' },
+    sidebar: { width: SIDEBAR_WIDTH, backgroundColor: '#FFF', height: '100%', padding: 20, paddingTop: 50 },
+    sidebarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
+    sidebarTitle: { fontSize: 24, fontWeight: 'bold', color: '#111827' },
+    sidebarSearch: { flexDirection: 'row', backgroundColor: '#F3F4F6', padding: 8, borderRadius: 8, alignItems: 'center', marginBottom: 15 },
+    sidebarSearchInput: { flex: 1, marginLeft: 8, fontSize: 14 },
+    sidebarSection: { fontSize: 12, fontWeight: '600', color: '#9CA3AF', marginBottom: 8, marginTop: 15, textTransform: 'uppercase' },
+    sidebarItem: { flexDirection: 'row', alignItems: 'center', padding: 10, borderRadius: 8, marginBottom: 2 },
+    sidebarItemActive: { backgroundColor: '#EFF6FF' },
+    sidebarAvatar: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+    sidebarAvatarImg: { width: 36, height: 36, borderRadius: 18, marginRight: 10, backgroundColor: '#E5E7EB' },
+    sidebarName: { fontSize: 15, fontWeight: '500', color: '#1F2937' },
+    sidebarSub: { fontSize: 12, color: '#6B7280' },
+    attachmentThumb: { marginTop: 5 },
+    imageThumb: { width: 200, height: 150, borderRadius: 8, backgroundColor: '#E5E7EB' },
+    fileThumb: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', padding: 10, borderRadius: 8, width: 200 },
+    fileName: { marginLeft: 8, flex: 1, fontSize: 13, color: '#374151' },
+    reactionsRow: { flexDirection: 'row', gap: 4, marginTop: 4, flexWrap: 'wrap' },
+    reactionBadge: { backgroundColor: '#F3F4F6', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, borderWidth: 1, borderColor: '#FFF' },
     bottomSheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
     bottomSheetContent: { backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40 },
-    bottomSheetHeader: { alignItems: 'center', marginBottom: 20 },
-    bottomSheetHandle: { width: 40, height: 4, backgroundColor: '#E5E7EB', borderRadius: 2, marginBottom: 10 },
-    bottomSheetTitle: { fontSize: 16, fontWeight: '600', color: '#374151' },
-    actionGrid: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 24 },
-    actionItem: { alignItems: 'center', gap: 8 },
-    actionIcon: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center' },
-    actionLabel: { fontSize: 12 },
-    sectionLabel: { fontSize: 14, fontWeight: '600', color: '#6B7280', marginBottom: 12 },
-    reactionQuickBar: { flexDirection: 'row', justifyContent: 'space-between' },
-    quickEmoji: { padding: 8, backgroundColor: '#F9FAFB', borderRadius: 8 },
-    
-    // Attachment Grid
-    attachmentGrid: { flexDirection: 'row', gap: 16 },
-    attachItem: { alignItems: 'center', flex: 1, gap: 8 },
-    attachIcon: { width: 60, height: 60, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
-    attachLabel: { fontSize: 13, fontWeight: '500' },
-
-    // Info Modal
-    infoContainer: { flex: 1, backgroundColor: '#F9FAFB' },
-    infoHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, backgroundColor: '#FFF', borderBottomWidth: 1, borderColor: '#E5E7EB' },
-    infoTitle: { fontSize: 16, fontWeight: '600', textAlign: 'center', flex: 1 },
-    closeButton: { padding: 8, borderRadius: 20 }, 
-    infoContent: { padding: 20, alignItems: 'center' },
-    infoProfile: { alignItems: 'center', marginBottom: 32 },
-    infoAvatar: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
-    infoName: { fontSize: 20, fontWeight: 'bold', color: '#1F2937' },
-    infoSubtitle: { fontSize: 14, color: '#6B7280' },
-    infoSection: { width: '100%', backgroundColor: '#FFF', borderRadius: 12, padding: 16, marginBottom: 16 },
-    infoSectionTitle: { fontSize: 14, fontWeight: '600', color: '#6B7280', marginBottom: 12 },
-    infoRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderColor: '#F3F4F6' },
-    infoRowText: { fontSize: 16, marginLeft: 12, flex: 1 },
-    memberRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
-    memberAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#E5E7EB', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-    memberName: { fontSize: 14, flex: 1 },
-    memberRole: { fontSize: 12, color: '#6B7280' },
-    viewAllButton: { marginTop: 12, alignItems: 'center' },
+    emojiRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20, paddingHorizontal: 10 },
+    actionGrid: { flexDirection: 'row', justifyContent: 'space-around' },
+    actionBtn: { alignItems: 'center', gap: 5 },
+    actionText: { fontSize: 12, color: '#374151' },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+    modalContent: { width: '85%', backgroundColor: '#FFF', borderRadius: 12, padding: 20 },
+    modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
+    modalInput: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 8, padding: 12, fontSize: 16 },
+    modalCloseBtn: { alignSelf: 'center', marginTop: 15 },
+    lightboxContainer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center' },
+    lightboxImg: { width: width, height: height * 0.8 },
+    lightboxClose: { position: 'absolute', top: 50, right: 20, padding: 10, zIndex: 10 }
 });
