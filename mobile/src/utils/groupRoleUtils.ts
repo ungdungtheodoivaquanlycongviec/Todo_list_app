@@ -1,4 +1,4 @@
-// File: src/utils/groupRoleUtils.ts
+// File: src/utils/groupRoleUtils.ts (Mobile - Updated)
 
 import {
   FOLDER_SCOPED_ROLES,
@@ -6,8 +6,8 @@ import {
   GROUP_ROLE_KEYS,
   READ_ONLY_ROLES,
   ROLE_SUMMARIES
-} from '../components/constants/groupRoles';
-import { Group, GroupMember } from '../types/group.types';
+} from '../components/constants/groupRoles'; // Giữ nguyên path import của mobile
+import { Group, GroupMember } from '../types/group.types'; // Giữ nguyên path import của mobile
 
 export const getMemberId = (member: GroupMember): string | null => {
   if (!member) {
@@ -24,7 +24,8 @@ export const getMemberRole = (group: Group | null | undefined, userId?: string |
     return null;
   }
   const member = group.members?.find(item => getMemberId(item) === userId);
-  return member ? member.role : null;
+  // 🟢 Đã sửa: Dùng nullish coalescing giống Web để chuẩn hóa type
+  return member?.role ?? null;
 };
 
 export const isReadOnlyRole = (role?: GroupRoleKey | null) =>
@@ -33,16 +34,21 @@ export const isReadOnlyRole = (role?: GroupRoleKey | null) =>
 export const requiresFolderAssignment = (role?: GroupRoleKey | null) =>
   role ? FOLDER_SCOPED_ROLES.includes(role) : false;
 
-export const canManageRoles = (role?: GroupRoleKey | null) =>
-  role === GROUP_ROLE_KEYS.PRODUCT_OWNER;
+// 🟢 Đã sửa: Roles are assigned by system admin only (account-level)
+// Mobile không được phép hiển thị UI sửa role nữa.
+export const canManageRoles = () => false;
 
-export const canAddMembers = (role?: GroupRoleKey | null) =>
-  role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM;
+// 🟢 Đã sửa: Bổ sung tham số isLeader
+export const canAddMembers = (role?: GroupRoleKey | null, isLeader?: boolean) =>
+  role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM || Boolean(isLeader);
 
-export const canManageFolders = (role?: GroupRoleKey | null) =>
-  role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM;
+// 🟢 Đã sửa: Bổ sung tham số isLeader
+export const canManageFolders = (role?: GroupRoleKey | null, isLeader?: boolean) =>
+  role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM || Boolean(isLeader);
 
-export const canAssignFolderMembers = canManageFolders;
+// 🟢 Đã sửa: Viết tường minh và bổ sung tham số isLeader
+export const canAssignFolderMembers = (role?: GroupRoleKey | null, isLeader?: boolean) =>
+  role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM || Boolean(isLeader);
 
 export const getRoleSummary = (role?: GroupRoleKey | null) =>
   (role && ROLE_SUMMARIES[role]) || null;

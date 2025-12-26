@@ -12,7 +12,7 @@ import { ThemeProvider } from '../context/ThemeContext';
 import { RegionalProvider } from '../context/RegionalContext'; 
 import { TimerProvider } from '../context/TimerContext';
 
-// --- 2. IMPORT CÁC CONTEXT MỚI ---
+// --- 2. IMPORT CÁC CONTEXT MỚI (VỪA TẠO) ---
 import { ToastProvider } from '../context/ToastContext';
 import { ConfirmProvider } from '../context/ConfirmContext';
 import { UIStateProvider } from '../context/UIStateContext';
@@ -45,22 +45,32 @@ function RootNavigator() {
 }
 
 export default function AppNavigator() {
-  // Đã xóa bỏ các comment trong JSX để tránh lỗi "Text strings must be rendered within a <Text> component"
   return (
+    // THỨ TỰ BỌC PROVIDER (Rất quan trọng)
+    // AuthProvider thường ở ngoài cùng để quản lý session
     <AuthProvider>
       <LanguageProvider>
         <RegionalProvider>
           <ThemeProvider>
+            {/* UIStateProvider quản lý trạng thái mở modal/noti toàn cục */}
             <UIStateProvider>
               <FolderProvider>
                 <TimerProvider>
+                  
+                  {/* ConfirmProvider và ToastProvider chứa các UI Overlay (Modal, Popup)
+                      Nên đặt chúng bao bọc NavigationContainer để chúng có thể 
+                      hiển thị đè lên mọi màn hình. */}
+                  
                   <ConfirmProvider>
                     <ToastProvider>
+                      
                       <NavigationContainer>
                         <RootNavigator />
                       </NavigationContainer>
+
                     </ToastProvider>
                   </ConfirmProvider>
+
                 </TimerProvider>
               </FolderProvider>
             </UIStateProvider>
