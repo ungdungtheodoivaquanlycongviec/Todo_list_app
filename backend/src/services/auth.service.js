@@ -58,26 +58,26 @@ class AuthService {
    */
   async register(userData) {
     const { email, password, name } = userData;
-    
+
     // 1. Check if email already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       throw new Error('Email already exists');
     }
-    
+
     // 2. Validate password strength
     const passwordValidation = this.validatePasswordStrength(password);
     if (!passwordValidation.isValid) {
       throw new Error(passwordValidation.errors.join(', '));
     }
-    
+
     // 3. Create user (password will be hashed by pre-save middleware)
     const user = await User.create({
       email,
       password,
       name
     });
-    
+
     // 4. Create Personal Workspace group (single-user group)
     const personalWorkspace = await Group.create({
       name: 'Personal Workspace',
@@ -86,20 +86,20 @@ class AuthService {
       isPersonalWorkspace: true,
       members: [{ userId: user._id, role: null, joinedAt: new Date() }]
     });
-    
+
     // 5. Set Personal Workspace as user's current group and save
     user.currentGroupId = personalWorkspace._id;
     await user.save();
-    
+
     // 6. Generate tokens
     const accessToken = user.generateAccessToken();
     const refreshToken = user.generateRefreshToken();
-    
+
     // 7. Save refresh token to DB
     user.refreshToken = refreshToken;
     user.lastLogin = new Date();
     await user.save();
-    
+
     // 8. Return user + tokens (without sensitive data)
     return {
       user: user.toSafeObject(),
@@ -107,7 +107,7 @@ class AuthService {
       refreshToken
     };
   }
-  
+
   /**
    * Login user
    * @param {String} email
@@ -125,10 +125,10 @@ class AuthService {
     };
 
     const clientInfo = getClientInfo(req);
-    
+
     // 1. Find user by email (include password field)
     const user = await User.findOne({ email }).select('+password +refreshToken');
-    
+
     // 2. Check if user exists
     if (!user) {
       // Log failed login attempt
@@ -142,7 +142,7 @@ class AuthService {
       }).catch(err => console.error('Error logging failed login:', err));
       throw new Error('Invalid credentials');
     }
-    
+
     // 3. Check if user is active
     if (!user.isActive) {
       // Log blocked login attempt
@@ -157,7 +157,7 @@ class AuthService {
       }).catch(err => console.error('Error logging blocked login:', err));
       throw new Error('Account has been deactivated');
     }
-    
+
     // 4. Compare password
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
@@ -173,21 +173,21 @@ class AuthService {
       }).catch(err => console.error('Error logging failed login:', err));
       throw new Error('Invalid credentials');
     }
-    
+
     // 5. Update lastLogin
     user.lastLogin = new Date();
 
     // Ensure personal workspace exists for legacy users
     await this.ensurePersonalWorkspace(user);
-    
+
     // 6. Generate new tokens
     const accessToken = user.generateAccessToken();
     const refreshToken = user.generateRefreshToken();
-    
+
     // 7. Save refresh token
     user.refreshToken = refreshToken;
     await user.save();
-    
+
     // 8. Log successful login
     await LoginHistory.create({
       user: user._id,
@@ -197,7 +197,7 @@ class AuthService {
       userAgent: clientInfo.userAgent,
       loginAt: new Date()
     }).catch(err => console.error('Error logging successful login:', err));
-    
+
     // 9. Return user + tokens
     return {
       user: user.toSafeObject(),
@@ -205,7 +205,7 @@ class AuthService {
       refreshToken
     };
   }
-  
+
   /**
    * Logout user (clear refresh token)
    * @param {String} userId
@@ -214,10 +214,10 @@ class AuthService {
     await User.findByIdAndUpdate(userId, {
       refreshToken: null
     });
-    
+
     return { message: 'Logged out successfully' };
   }
-  
+
   /**
    * Login or register via Google ID token
    * @param {String} idToken - Google ID token from client
@@ -266,7 +266,7 @@ class AuthService {
         avatar: picture,
         isEmailVerified: true
       });
-      
+
       // Create Personal Workspace for new Google user (single-user group)
       const personalWorkspace = await Group.create({
         name: 'Personal Workspace',
@@ -275,7 +275,7 @@ class AuthService {
         isPersonalWorkspace: true,
         members: [{ userId: user._id, role: null, joinedAt: new Date() }]
       });
-      
+
       // Set Personal Workspace as user's current group
       user.currentGroupId = personalWorkspace._id;
       await user.save();
@@ -336,7 +336,7 @@ class AuthService {
     if (!refreshToken) {
       throw new Error('Refresh token is required');
     }
-    
+
     // 1. Verify refresh token
     let decoded;
     try {
@@ -344,37 +344,37 @@ class AuthService {
     } catch (error) {
       throw new Error('Invalid or expired refresh token');
     }
-    
+
     // 2. Find user
     const user = await User.findById(decoded.id).select('+refreshToken');
     if (!user) {
       throw new Error('User not found');
     }
-    
+
     // 3. Check if user is active
     if (!user.isActive) {
       throw new Error('Account has been deactivated');
     }
-    
+
     // 4. Check if refresh token matches DB
     if (user.refreshToken !== refreshToken) {
       throw new Error('Invalid refresh token');
     }
-    
+
     // 5. Generate new access token
     const newAccessToken = user.generateAccessToken();
-    
+
     // 6. Optionally generate new refresh token (rotate)
     const newRefreshToken = user.generateRefreshToken();
     user.refreshToken = newRefreshToken;
     await user.save();
-    
+
     return {
       accessToken: newAccessToken,
       refreshToken: newRefreshToken
     };
   }
-  
+
   /**
    * Verify JWT token
    * @param {String} token
@@ -393,7 +393,7 @@ class AuthService {
       throw error;
     }
   }
-  
+
   /**
    * Validate password strength
    * @param {String} password
@@ -401,31 +401,158 @@ class AuthService {
    */
   validatePasswordStrength(password) {
     const errors = [];
-    
+
     if (password.length < 8) {
       errors.push('Password must be at least 8 characters');
     }
-    
+
     if (!/[A-Z]/.test(password)) {
       errors.push('Password must contain at least one uppercase letter');
     }
-    
+
     if (!/[a-z]/.test(password)) {
       errors.push('Password must contain at least one lowercase letter');
     }
-    
+
     if (!/[0-9]/.test(password)) {
       errors.push('Password must contain at least one number');
     }
-    
+
     if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
       errors.push('Password must contain at least one special character');
     }
-    
+
     return {
       isValid: errors.length === 0,
       errors
     };
+  }
+
+  /**
+   * Request password reset - sends 6-digit code to email
+   * @param {String} email
+   * @returns {Object} - { message }
+   */
+  async requestPasswordReset(email) {
+    const emailService = require('./email.service');
+    const crypto = require('crypto');
+    const bcrypt = require('bcryptjs');
+
+    // Find user by email
+    const user = await User.findOne({ email });
+
+    // Always return success message for security (don't reveal if email exists)
+    if (!user) {
+      return { message: 'If an account exists with that email, a reset code has been sent.' };
+    }
+
+    // Check if user is active
+    if (!user.isActive) {
+      return { message: 'If an account exists with that email, a reset code has been sent.' };
+    }
+
+    // Generate 6-digit code
+    const code = crypto.randomInt(100000, 999999).toString();
+
+    // Hash the code before storing
+    const hashedCode = await bcrypt.hash(code, 10);
+
+    // Save to user with 10-minute expiry
+    user.passwordResetToken = hashedCode;
+    user.passwordResetExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    await user.save();
+
+    // Send email with the code
+    try {
+      await emailService.sendPasswordResetCode(email, code, user.name);
+    } catch (error) {
+      console.error('Failed to send reset email:', error);
+      // Don't throw - we don't want to reveal if email exists
+    }
+
+    return { message: 'If an account exists with that email, a reset code has been sent.' };
+  }
+
+  /**
+   * Verify reset code
+   * @param {String} email
+   * @param {String} code - 6-digit code
+   * @returns {Object} - { valid: boolean }
+   */
+  async verifyResetCode(email, code) {
+    const bcrypt = require('bcryptjs');
+
+    const user = await User.findOne({ email }).select('+passwordResetToken +passwordResetExpires');
+
+    if (!user) {
+      throw new Error('Invalid or expired reset code');
+    }
+
+    if (!user.passwordResetToken || !user.passwordResetExpires) {
+      throw new Error('Invalid or expired reset code');
+    }
+
+    // Check if code has expired
+    if (user.passwordResetExpires < new Date()) {
+      throw new Error('Reset code has expired. Please request a new one.');
+    }
+
+    // Compare code with hashed token
+    const isValid = await bcrypt.compare(code, user.passwordResetToken);
+
+    if (!isValid) {
+      throw new Error('Invalid or expired reset code');
+    }
+
+    return { valid: true };
+  }
+
+  /**
+   * Reset password with verified code
+   * @param {String} email
+   * @param {String} code - 6-digit code
+   * @param {String} newPassword
+   * @returns {Object} - { message }
+   */
+  async resetPassword(email, code, newPassword) {
+    const bcrypt = require('bcryptjs');
+
+    // First verify the code is still valid
+    const user = await User.findOne({ email }).select('+passwordResetToken +passwordResetExpires +password');
+
+    if (!user) {
+      throw new Error('Invalid or expired reset code');
+    }
+
+    if (!user.passwordResetToken || !user.passwordResetExpires) {
+      throw new Error('Invalid or expired reset code');
+    }
+
+    // Check if code has expired
+    if (user.passwordResetExpires < new Date()) {
+      throw new Error('Reset code has expired. Please request a new one.');
+    }
+
+    // Compare code with hashed token
+    const isValid = await bcrypt.compare(code, user.passwordResetToken);
+
+    if (!isValid) {
+      throw new Error('Invalid or expired reset code');
+    }
+
+    // Validate new password strength
+    const passwordValidation = this.validatePasswordStrength(newPassword);
+    if (!passwordValidation.isValid) {
+      throw new Error(passwordValidation.errors.join(', '));
+    }
+
+    // Update password (pre-save hook will hash it)
+    user.password = newPassword;
+    user.passwordResetToken = null;
+    user.passwordResetExpires = null;
+    await user.save();
+
+    return { message: 'Password has been reset successfully. Please log in with your new password.' };
   }
 }
 

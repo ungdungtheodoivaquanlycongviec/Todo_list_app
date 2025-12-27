@@ -28,3 +28,4 @@ backend/scripts/migrate-user-language.js
 VOICE_CALL_IMPLEMENTATION_PLAN.md
 __pycache__/
 *.pyc
+DATABASE_SCHEMA_SIMPLE.puml

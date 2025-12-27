@@ -71,13 +71,30 @@ const translations = {
 
     // Forgot password form
     resetPassword: 'Reset your password',
-    resetPasswordSubtitle: "Enter your email and we'll send you a link to reset your password",
+    resetPasswordSubtitle: "Enter your email and we'll send you a code to reset your password",
     enterEmail: 'Enter your email',
-    sendResetLink: 'Send Reset Link',
+    sendResetCode: 'Send Reset Code',
     sending: 'Sending...',
     backToLogin: 'Back to login',
-    resetSuccess: "If an account exists with that email, we've sent password reset instructions.",
+    codeSent: "We've sent a 6-digit code to your email.",
     returnToLogin: 'Return to login',
+    // Verification step
+    enterVerificationCode: 'Enter verification code',
+    verificationSubtitle: 'Enter the 6-digit code sent to your email',
+    verifyCode: 'Verify Code',
+    verifying: 'Verifying...',
+    resendCode: 'Resend code',
+    codeExpires: 'Code expires in',
+    // New password step
+    setNewPassword: 'Set new password',
+    newPasswordSubtitle: 'Create a strong password for your account',
+    newPassword: 'New password',
+    confirmPassword: 'Confirm password',
+    resetPasswordBtn: 'Reset Password',
+    resetting: 'Resetting...',
+    passwordsDontMatch: "Passwords don't match",
+    passwordResetSuccess: 'Password reset successful!',
+    passwordResetSuccessSubtitle: 'You can now log in with your new password.',
 
     // Errors
     emailRequired: 'Email is required',
@@ -118,13 +135,30 @@ const translations = {
 
     // Forgot password form
     resetPassword: 'Đặt lại mật khẩu',
-    resetPasswordSubtitle: 'Nhập email của bạn và chúng tôi sẽ gửi cho bạn liên kết để đặt lại mật khẩu',
+    resetPasswordSubtitle: 'Nhập email của bạn và chúng tôi sẽ gửi mã xác nhận',
     enterEmail: 'Nhập email của bạn',
-    sendResetLink: 'Gửi liên kết đặt lại',
+    sendResetCode: 'Gửi mã xác nhận',
     sending: 'Đang gửi...',
     backToLogin: 'Quay lại đăng nhập',
-    resetSuccess: 'Nếu tài khoản tồn tại với email đó, chúng tôi đã gửi hướng dẫn đặt lại mật khẩu.',
+    codeSent: 'Chúng tôi đã gửi mã 6 chữ số đến email của bạn.',
     returnToLogin: 'Quay lại đăng nhập',
+    // Verification step
+    enterVerificationCode: 'Nhập mã xác nhận',
+    verificationSubtitle: 'Nhập mã 6 chữ số đã gửi đến email của bạn',
+    verifyCode: 'Xác nhận mã',
+    verifying: 'Đang xác nhận...',
+    resendCode: 'Gửi lại mã',
+    codeExpires: 'Mã hết hạn trong',
+    // New password step
+    setNewPassword: 'Đặt mật khẩu mới',
+    newPasswordSubtitle: 'Tạo mật khẩu mạnh cho tài khoản của bạn',
+    newPassword: 'Mật khẩu mới',
+    confirmPassword: 'Xác nhận mật khẩu',
+    resetPasswordBtn: 'Đặt lại mật khẩu',
+    resetting: 'Đang đặt lại...',
+    passwordsDontMatch: 'Mật khẩu không khớp',
+    passwordResetSuccess: 'Đặt lại mật khẩu thành công!',
+    passwordResetSuccessSubtitle: 'Bạn có thể đăng nhập với mật khẩu mới.',
 
     // Errors
     emailRequired: 'Email là bắt buộc',
@@ -644,12 +678,40 @@ function SignupForm({ onSwitchToLogin, t }: { onSwitchToLogin: () => void; t: ty
 }
 
 function ForgotPasswordForm({ onSwitchToLogin, t }: { onSwitchToLogin: () => void; t: typeof translations.en }) {
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1); // 1: email, 2: code, 3: password, 4: success
   const [email, setEmail] = useState('');
+  const [code, setCode] = useState(['', '', '', '', '', '']);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
+  const [countdown, setCountdown] = useState(0);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const codeInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Countdown timer for resend code
+  useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [countdown]);
+
+  // Password validation
+  const validatePassword = (password: string) => {
+    const errors: string[] = [];
+    if (password.length < 8) errors.push('Min 8 characters');
+    if (!/[A-Z]/.test(password)) errors.push('uppercase letter');
+    if (!/[a-z]/.test(password)) errors.push('lowercase letter');
+    if (!/[0-9]/.test(password)) errors.push('number');
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) errors.push('special character');
+    return { isValid: errors.length === 0, errors };
+  };
+
+  // Step 1: Submit email
+  const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
@@ -667,15 +729,129 @@ function ForgotPasswordForm({ onSwitchToLogin, t }: { onSwitchToLogin: () => voi
     }
 
     try {
-      // TODO: Implement actual password reset API call
-      // For now, simulate a successful request
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      setSuccess(true);
+      const { authService } = await import('../services/auth.service');
+      await authService.requestPasswordReset(email);
+      setStep(2);
+      setCountdown(600); // 10 minutes
     } catch (err: any) {
-      setError(err.message || 'Failed to send reset email. Please try again.');
+      // Still move to step 2 for security (don't reveal if email exists)
+      setStep(2);
+      setCountdown(600);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Handle code input
+  const handleCodeChange = (index: number, value: string) => {
+    if (!/^\d*$/.test(value)) return; // Only digits
+
+    const newCode = [...code];
+    newCode[index] = value.slice(-1); // Only last digit
+    setCode(newCode);
+
+    // Auto-focus next input
+    if (value && index < 5) {
+      codeInputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleCodeKeyDown = (index: number, e: React.KeyboardEvent) => {
+    if (e.key === 'Backspace' && !code[index] && index > 0) {
+      codeInputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleCodePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pastedData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    const newCode = [...code];
+    for (let i = 0; i < pastedData.length; i++) {
+      newCode[i] = pastedData[i];
+    }
+    setCode(newCode);
+    if (pastedData.length > 0) {
+      const focusIndex = Math.min(pastedData.length, 5);
+      codeInputRefs.current[focusIndex]?.focus();
+    }
+  };
+
+  // Step 2: Verify code
+  const handleCodeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError('');
+
+    const codeString = code.join('');
+    if (codeString.length !== 6) {
+      setError('Please enter all 6 digits');
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const { authService } = await import('../services/auth.service');
+      await authService.verifyResetCode(email, codeString);
+      setStep(3);
+    } catch (err: any) {
+      setError(err.message || 'Invalid or expired code');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Resend code
+  const handleResendCode = async () => {
+    if (countdown > 0) return;
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const { authService } = await import('../services/auth.service');
+      await authService.requestPasswordReset(email);
+      setCountdown(600);
+      setCode(['', '', '', '', '', '']);
+    } catch (err: any) {
+      // Silently handle for security
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Step 3: Submit new password
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError('');
+
+    if (newPassword !== confirmPassword) {
+      setError(t.passwordsDontMatch);
+      setIsLoading(false);
+      return;
+    }
+
+    const validation = validatePassword(newPassword);
+    if (!validation.isValid) {
+      setError(`Password must have: ${validation.errors.join(', ')}`);
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const { authService } = await import('../services/auth.service');
+      await authService.resetPassword(email, code.join(''), newPassword);
+      setStep(4);
+    } catch (err: any) {
+      setError(err.message || 'Failed to reset password');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -687,62 +863,228 @@ function ForgotPasswordForm({ onSwitchToLogin, t }: { onSwitchToLogin: () => voi
         </div>
       </div>
 
-      <h1 className="text-2xl font-bold text-center text-gray-800 mb-2">{t.resetPassword}</h1>
-      <p className="text-center text-gray-500 text-sm mb-6">
-        {t.resetPasswordSubtitle}
-      </p>
+      {/* Step 1: Email Entry */}
+      {step === 1 && (
+        <>
+          <h1 className="text-2xl font-bold text-center text-gray-800 mb-2">{t.resetPassword}</h1>
+          <p className="text-center text-gray-500 text-sm mb-6">{t.resetPasswordSubtitle}</p>
 
-      {success ? (
-        <div className="text-center">
-          <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-xl">
-            <p className="text-green-700 text-sm">
-              {t.resetSuccess}
+          <form onSubmit={handleEmailSubmit}>
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
+                {error}
+              </div>
+            )}
+
+            <div className="mb-6">
+              <div className="relative">
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="email"
+                  placeholder={t.enterEmail}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full pl-12 pr-4 py-3.5 bg-gray-50/80 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-300 focus:border-transparent transition-all text-gray-700 placeholder:text-gray-400"
+                  disabled={isLoading}
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full bg-gray-900 hover:bg-gray-800 disabled:bg-gray-400 text-white font-semibold py-3.5 rounded-xl transition-all flex items-center justify-center shadow-lg shadow-gray-900/20 hover:shadow-gray-900/30 mb-4"
+            >
+              {isLoading ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  {t.sending}
+                </>
+              ) : (
+                t.sendResetCode
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={onSwitchToLogin}
+              className="w-full text-gray-600 hover:text-gray-800 font-medium text-sm transition-colors"
+            >
+              {t.backToLogin}
+            </button>
+          </form>
+        </>
+      )}
+
+      {/* Step 2: Code Verification */}
+      {step === 2 && (
+        <>
+          <h1 className="text-2xl font-bold text-center text-gray-800 mb-2">{t.enterVerificationCode}</h1>
+          <p className="text-center text-gray-500 text-sm mb-2">{t.verificationSubtitle}</p>
+          <p className="text-center text-gray-400 text-xs mb-6">{email}</p>
+
+          <form onSubmit={handleCodeSubmit}>
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
+                {error}
+              </div>
+            )}
+
+            {/* 6-digit code input */}
+            <div className="flex justify-center gap-2 mb-4" onPaste={handleCodePaste}>
+              {code.map((digit, index) => (
+                <input
+                  key={index}
+                  ref={(el) => { codeInputRefs.current[index] = el; }}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={1}
+                  value={digit}
+                  onChange={(e) => handleCodeChange(index, e.target.value)}
+                  onKeyDown={(e) => handleCodeKeyDown(index, e)}
+                  className="w-12 h-14 text-center text-xl font-bold bg-gray-50/80 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-300 focus:border-transparent transition-all text-gray-700"
+                  disabled={isLoading}
+                />
+              ))}
+            </div>
+
+            {/* Countdown timer */}
+            {countdown > 0 && (
+              <p className="text-center text-gray-500 text-sm mb-4">
+                {t.codeExpires} <span className="font-mono font-semibold">{formatTime(countdown)}</span>
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={isLoading || code.join('').length !== 6}
+              className="w-full bg-gray-900 hover:bg-gray-800 disabled:bg-gray-400 text-white font-semibold py-3.5 rounded-xl transition-all flex items-center justify-center shadow-lg shadow-gray-900/20 hover:shadow-gray-900/30 mb-4"
+            >
+              {isLoading ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  {t.verifying}
+                </>
+              ) : (
+                t.verifyCode
+              )}
+            </button>
+
+            <div className="flex justify-between items-center">
+              <button
+                type="button"
+                onClick={() => { setStep(1); setError(''); }}
+                className="text-gray-600 hover:text-gray-800 font-medium text-sm transition-colors"
+              >
+                {t.backToLogin}
+              </button>
+              <button
+                type="button"
+                onClick={handleResendCode}
+                disabled={countdown > 0 || isLoading}
+                className="text-gray-600 hover:text-gray-800 font-medium text-sm transition-colors disabled:text-gray-400 disabled:cursor-not-allowed"
+              >
+                {t.resendCode}
+              </button>
+            </div>
+          </form>
+        </>
+      )}
+
+      {/* Step 3: New Password */}
+      {step === 3 && (
+        <>
+          <h1 className="text-2xl font-bold text-center text-gray-800 mb-2">{t.setNewPassword}</h1>
+          <p className="text-center text-gray-500 text-sm mb-6">{t.newPasswordSubtitle}</p>
+
+          <form onSubmit={handlePasswordSubmit}>
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
+                {error}
+              </div>
+            )}
+
+            <div className="mb-4">
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder={t.newPassword}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full pl-12 pr-12 py-3.5 bg-gray-50/80 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-300 focus:border-transparent transition-all text-gray-700 placeholder:text-gray-400"
+                  disabled={isLoading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="mb-2">
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  placeholder={t.confirmPassword}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full pl-12 pr-12 py-3.5 bg-gray-50/80 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-300 focus:border-transparent transition-all text-gray-700 placeholder:text-gray-400"
+                  disabled={isLoading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-400 mb-6 ml-1">
+              {t.passwordHint}
             </p>
+
+            <button
+              type="submit"
+              disabled={isLoading || !newPassword || !confirmPassword}
+              className="w-full bg-gray-900 hover:bg-gray-800 disabled:bg-gray-400 text-white font-semibold py-3.5 rounded-xl transition-all flex items-center justify-center shadow-lg shadow-gray-900/20 hover:shadow-gray-900/30"
+            >
+              {isLoading ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  {t.resetting}
+                </>
+              ) : (
+                t.resetPasswordBtn
+              )}
+            </button>
+          </form>
+        </>
+      )}
+
+      {/* Step 4: Success */}
+      {step === 4 && (
+        <div className="text-center">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
           </div>
+          <h1 className="text-2xl font-bold text-center text-gray-800 mb-2">{t.passwordResetSuccess}</h1>
+          <p className="text-center text-gray-500 text-sm mb-6">{t.passwordResetSuccessSubtitle}</p>
           <button
             onClick={onSwitchToLogin}
-            className="text-gray-800 hover:text-gray-900 font-semibold text-sm transition-colors"
+            className="w-full bg-gray-900 hover:bg-gray-800 text-white font-semibold py-3.5 rounded-xl transition-all shadow-lg shadow-gray-900/20 hover:shadow-gray-900/30"
           >
             {t.returnToLogin}
           </button>
         </div>
-      ) : (
-        <form onSubmit={handleSubmit}>
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
-              {error}
-            </div>
-          )}
-
-          <div className="mb-6">
-            <div className="relative">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                type="email"
-                placeholder={t.enterEmail}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-12 pr-4 py-3.5 bg-gray-50/80 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-300 focus:border-transparent transition-all text-gray-700 placeholder:text-gray-400"
-                disabled={isLoading}
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full bg-gray-900 hover:bg-gray-800 disabled:bg-gray-400 text-white font-semibold py-3.5 rounded-xl transition-all flex items-center justify-center shadow-lg shadow-gray-900/20 hover:shadow-gray-900/30"
-          >
-            {isLoading ? (
-              <>
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                {t.sending}
-              </>
-            ) : (
-              t.sendResetLink
-            )}
-          </button>
-        </form>
       )}
     </div>
   );

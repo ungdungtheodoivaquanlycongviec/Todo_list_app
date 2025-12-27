@@ -11,14 +11,14 @@ const { HTTP_STATUS } = require('../config/constants');
  */
 const register = asyncHandler(async (req, res) => {
   const { email, password, name } = req.body;
-  
+
   try {
     const result = await authService.register({ email, password, name });
-    
+
     sendSuccess(
-      res, 
-      result, 
-      'Đăng ký tài khoản thành công', 
+      res,
+      result,
+      'Đăng ký tài khoản thành công',
       HTTP_STATUS.CREATED
     );
   } catch (error) {
@@ -37,10 +37,10 @@ const register = asyncHandler(async (req, res) => {
  */
 const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
-  
+
   try {
     const result = await authService.login(email, password, req);
-    
+
     sendSuccess(res, result, 'Đăng nhập thành công');
   } catch (error) {
     // Handle authentication errors
@@ -61,7 +61,7 @@ const login = asyncHandler(async (req, res) => {
  */
 const logout = asyncHandler(async (req, res) => {
   const result = await authService.logout(req.user._id);
-  
+
   sendSuccess(res, null, result.message);
 });
 
@@ -72,14 +72,14 @@ const logout = asyncHandler(async (req, res) => {
  */
 const refreshToken = asyncHandler(async (req, res) => {
   const { refreshToken } = req.body;
-  
+
   if (!refreshToken) {
     return sendError(res, 'Refresh token là bắt buộc', 400);
   }
-  
+
   try {
     const result = await authService.refreshToken(refreshToken);
-    
+
     sendSuccess(res, result, 'Token đã được làm mới');
   } catch (error) {
     if (error.message.includes('refresh token')) {
@@ -96,7 +96,7 @@ const refreshToken = asyncHandler(async (req, res) => {
  */
 const getMe = asyncHandler(async (req, res) => {
   const user = await userService.getUserById(req.user._id);
-  
+
   sendSuccess(res, { user }, 'Lấy thông tin người dùng thành công');
 });
 
@@ -119,11 +119,75 @@ const loginWithGoogle = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * @route   POST /api/auth/forgot-password
+ * @desc    Request password reset code
+ * @access  Public
+ */
+const requestPasswordReset = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return sendError(res, 'Email là bắt buộc', 400);
+  }
+
+  try {
+    const result = await authService.requestPasswordReset(email);
+    sendSuccess(res, null, result.message);
+  } catch (error) {
+    // Don't reveal specifics for security
+    sendSuccess(res, null, 'If an account exists with that email, a reset code has been sent.');
+  }
+});
+
+/**
+ * @route   POST /api/auth/verify-reset-code
+ * @desc    Verify password reset code
+ * @access  Public
+ */
+const verifyResetCode = asyncHandler(async (req, res) => {
+  const { email, code } = req.body;
+
+  if (!email || !code) {
+    return sendError(res, 'Email và mã xác nhận là bắt buộc', 400);
+  }
+
+  try {
+    const result = await authService.verifyResetCode(email, code);
+    sendSuccess(res, result, 'Mã xác nhận hợp lệ');
+  } catch (error) {
+    return sendError(res, error.message || 'Mã xác nhận không hợp lệ', 400);
+  }
+});
+
+/**
+ * @route   POST /api/auth/reset-password
+ * @desc    Reset password with verified code
+ * @access  Public
+ */
+const resetPassword = asyncHandler(async (req, res) => {
+  const { email, code, newPassword } = req.body;
+
+  if (!email || !code || !newPassword) {
+    return sendError(res, 'Email, mã xác nhận và mật khẩu mới là bắt buộc', 400);
+  }
+
+  try {
+    const result = await authService.resetPassword(email, code, newPassword);
+    sendSuccess(res, null, result.message);
+  } catch (error) {
+    return sendError(res, error.message || 'Đặt lại mật khẩu thất bại', 400);
+  }
+});
+
 module.exports = {
   register,
   login,
   logout,
   refreshToken,
   getMe,
-  loginWithGoogle
+  loginWithGoogle,
+  requestPasswordReset,
+  verifyResetCode,
+  resetPassword
 };

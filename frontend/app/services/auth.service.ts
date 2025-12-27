@@ -1,17 +1,17 @@
 import apiClient from './api.client';
-import { 
-  User, 
-  LoginRequest, 
-  RegisterRequest, 
+import {
+  User,
+  LoginRequest,
+  RegisterRequest,
   AuthResponse,
-  ApiResponse 
+  ApiResponse
 } from './types/auth.types';
 
 class AuthService {
   // Login user
   async login(credentials: LoginRequest): Promise<AuthResponse> {
     const response = await apiClient.post<ApiResponse<AuthResponse>>(
-      '/auth/login', 
+      '/auth/login',
       credentials
     );
     return response.data;
@@ -29,7 +29,7 @@ class AuthService {
   // Register new user
   async register(userData: RegisterRequest): Promise<AuthResponse> {
     const response = await apiClient.post<ApiResponse<AuthResponse>>(
-      '/auth/register', 
+      '/auth/register',
       userData
     );
     return response.data;
@@ -58,6 +58,33 @@ class AuthService {
       { refreshToken }
     );
     return response.data;
+  }
+
+  // Request password reset code
+  async requestPasswordReset(email: string): Promise<{ message: string }> {
+    const response = await apiClient.post<ApiResponse<null>>(
+      '/auth/forgot-password',
+      { email }
+    );
+    return { message: response.message || 'Reset code sent' };
+  }
+
+  // Verify reset code
+  async verifyResetCode(email: string, code: string): Promise<{ valid: boolean }> {
+    const response = await apiClient.post<ApiResponse<{ valid: boolean }>>(
+      '/auth/verify-reset-code',
+      { email, code }
+    );
+    return response.data;
+  }
+
+  // Reset password with verified code
+  async resetPassword(email: string, code: string, newPassword: string): Promise<{ message: string }> {
+    const response = await apiClient.post<ApiResponse<null>>(
+      '/auth/reset-password',
+      { email, code, newPassword }
+    );
+    return { message: response.message || 'Password reset successful' };
   }
 
   // Save tokens to localStorage
