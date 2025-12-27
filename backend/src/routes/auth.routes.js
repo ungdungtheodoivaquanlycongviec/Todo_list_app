@@ -16,6 +16,11 @@ router.post('/login', authLimiter, validateLogin, authController.login);
 router.post('/refresh-token', authController.refreshToken);
 router.post('/google', authLimiter, authController.loginWithGoogle);
 
+// Password reset routes (public with rate limiting)
+router.post('/forgot-password', authLimiter, authController.requestPasswordReset);
+router.post('/verify-reset-code', authLimiter, authController.verifyResetCode);
+router.post('/reset-password', authLimiter, authController.resetPassword);
+
 // Protected routes
 router.post('/logout', authenticate, authController.logout);
 router.get('/me', authenticate, authController.getMe);

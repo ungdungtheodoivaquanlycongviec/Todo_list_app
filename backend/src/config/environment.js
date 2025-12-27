@@ -24,20 +24,20 @@ const env = {
   port: process.env.PORT || 8080,
   nodeEnv: process.env.NODE_ENV || 'development',
   mongoUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/todolist',
-  
+
   // JWT
   jwtSecret: process.env.JWT_SECRET || 'default_secret_change_this',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET || 'default_refresh_secret_change_this',
   jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d',
-  
+
   // Google OAuth
   googleClientId: process.env.GOOGLE_CLIENT_ID || '',
 
   // File upload
   maxFileSize: parseInt(process.env.MAX_FILE_SIZE) || 10485760, // 10MB
   maxFilesPerTask: parseInt(process.env.MAX_FILES_PER_TASK) || 20,
-  
+
   // Cloudinary
   cloudinary: {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME,
@@ -64,6 +64,16 @@ const env = {
       password: process.env.REDIS_PASSWORD || '',
       tls: process.env.REDIS_TLS === 'true'
     }
+  },
+
+  // SMTP Email
+  smtp: {
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.SMTP_PORT) || 587,
+    secure: process.env.SMTP_SECURE === 'true',
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+    from: process.env.SMTP_FROM || process.env.SMTP_USER
   }
 };
 
