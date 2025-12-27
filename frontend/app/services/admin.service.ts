@@ -124,6 +124,40 @@ export interface Analytics {
   }[];
 }
 
+export interface SystemStatus {
+  serverMetrics: {
+    uptime: string;
+    uptimeSeconds: number;
+    memoryUsed: number;
+    memoryTotal: number;
+    memoryPercent: number;
+    nodeVersion: string;
+    platform: string;
+  };
+  databaseStatus: {
+    state: string;
+    isConnected: boolean;
+    pingMs: number | null;
+    host: string;
+    name: string;
+  };
+  applicationMetrics: {
+    totalUsers: number;
+    totalTasks: number;
+    totalMessages: number;
+    loginsLastHour: number;
+    loginsLast24h: number;
+    tasksCreatedToday: number;
+    messagesCreatedToday: number;
+  };
+  realtimeActivity: {
+    activeConnections: number;
+    uniqueConnectedUsers: number;
+    socketServerActive: boolean;
+  };
+  timestamp: string;
+}
+
 class AdminService {
   // Get all users
   async getUsers(query?: {
@@ -302,6 +336,14 @@ class AdminService {
       '/admin/analytics'
     );
     return response.data.analytics;
+  }
+
+  // Get system status
+  async getSystemStatus(): Promise<SystemStatus> {
+    const response = await apiClient.get<ApiResponse<{ status: SystemStatus }>>(
+      '/admin/system-status'
+    );
+    return response.data.status;
   }
 }
 

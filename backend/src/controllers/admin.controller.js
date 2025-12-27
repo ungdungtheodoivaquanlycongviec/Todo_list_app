@@ -249,6 +249,18 @@ const getAnalytics = asyncHandler(async (req, res) => {
   sendSuccess(res, { analytics }, 'Analytics data retrieved successfully');
 });
 
+/**
+ * @route   GET /api/admin/system-status
+ * @desc    Get system status metrics
+ * @access  Private (Admin/Super Admin)
+ */
+const getSystemStatus = asyncHandler(async (req, res) => {
+  // Get socket namespace from app if available
+  const socketNamespace = req.app.get('socketNamespace') || null;
+  const status = await adminService.getSystemStatus(socketNamespace);
+  sendSuccess(res, { status }, 'System status retrieved successfully');
+});
+
 module.exports = {
   getUsers,
   getUserById,
@@ -262,6 +274,7 @@ module.exports = {
   getLoginHistory,
   getActionLogs,
   getDashboardStats,
-  getAnalytics
+  getAnalytics,
+  getSystemStatus
 };
 

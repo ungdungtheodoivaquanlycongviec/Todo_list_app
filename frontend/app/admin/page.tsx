@@ -388,23 +388,142 @@ function DashboardTab({ stats }: { stats: DashboardStats | null }) {
 
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">System Status</h3>
-          <div className="space-y-4">
-            {[
-              { label: 'API Response Time', value: '42ms', status: 'good' },
-              { label: 'Database Load', value: '24%', status: 'good' },
-              { label: 'Memory Usage', value: '67%', status: 'warning' },
-              { label: 'Active Connections', value: '128', status: 'good' }
-            ].map((item, index) => (
-              <div key={index} className="flex items-center justify-between">
-                <span className="text-gray-600 dark:text-gray-400">{item.label}</span>
-                <div className="flex items-center space-x-3">
-                  <span className="font-medium text-gray-900 dark:text-white">{item.value}</span>
-                  <div className={`w-3 h-3 rounded-full ${item.status === 'good' ? 'bg-green-500' :
-                    item.status === 'warning' ? 'bg-yellow-500' : 'bg-red-500'
-                    }`}></div>
-                </div>
-              </div>
-            ))}
+          <SystemStatusSection />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// System Status Section Component
+function SystemStatusSection() {
+  const [status, setStatus] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadStatus = async () => {
+      try {
+        const data = await adminService.getSystemStatus();
+        setStatus(data);
+      } catch (err) {
+        console.error('Failed to load system status:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadStatus();
+    // Refresh every 30 seconds
+    const interval = setInterval(loadStatus, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (!status) {
+    return <p className="text-gray-500 dark:text-gray-400 text-sm">Unable to load system status</p>;
+  }
+
+  const { serverMetrics, databaseStatus, applicationMetrics, realtimeActivity } = status;
+
+  const StatusIndicator = ({ isGood, isWarning }: { isGood: boolean; isWarning?: boolean }) => (
+    <div className={`w-2.5 h-2.5 rounded-full ${isGood ? 'bg-green-500' : isWarning ? 'bg-yellow-500' : 'bg-red-500'}`} />
+  );
+
+  return (
+    <div className="space-y-5">
+      {/* Server Metrics */}
+      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Server</h4>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-600 dark:text-gray-400">Uptime</span>
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-gray-900 dark:text-white">{serverMetrics.uptime}</span>
+              <StatusIndicator isGood={serverMetrics.uptimeSeconds > 3600} />
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-600 dark:text-gray-400">Memory</span>
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-gray-900 dark:text-white">{serverMetrics.memoryPercent}%</span>
+              <StatusIndicator isGood={serverMetrics.memoryPercent < 70} isWarning={serverMetrics.memoryPercent >= 70 && serverMetrics.memoryPercent < 90} />
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-600 dark:text-gray-400">Node Version</span>
+            <span className="font-medium text-gray-900 dark:text-white">{serverMetrics.nodeVersion}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Database Status */}
+      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Database</h4>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-600 dark:text-gray-400">Status</span>
+            <div className="flex items-center gap-2">
+              <span className={`font-medium capitalize ${databaseStatus.isConnected ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                {databaseStatus.state}
+              </span>
+              <StatusIndicator isGood={databaseStatus.isConnected} />
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-600 dark:text-gray-400">Ping</span>
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-gray-900 dark:text-white">
+                {databaseStatus.pingMs !== null && databaseStatus.pingMs >= 0 ? `${databaseStatus.pingMs}ms` : 'N/A'}
+              </span>
+              <StatusIndicator isGood={databaseStatus.pingMs !== null && databaseStatus.pingMs < 100} isWarning={databaseStatus.pingMs !== null && databaseStatus.pingMs >= 100 && databaseStatus.pingMs < 500} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Application Metrics */}
+      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Application</h4>
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-gray-600 dark:text-gray-400">Logins (1h)</span>
+            <span className="font-medium text-gray-900 dark:text-white">{applicationMetrics.loginsLastHour}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600 dark:text-gray-400">Logins (24h)</span>
+            <span className="font-medium text-gray-900 dark:text-white">{applicationMetrics.loginsLast24h}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600 dark:text-gray-400">Tasks Today</span>
+            <span className="font-medium text-gray-900 dark:text-white">{applicationMetrics.tasksCreatedToday}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600 dark:text-gray-400">Messages Today</span>
+            <span className="font-medium text-gray-900 dark:text-white">{applicationMetrics.messagesCreatedToday}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Realtime Activity */}
+      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Real-time</h4>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-600 dark:text-gray-400">Active Connections</span>
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-gray-900 dark:text-white">{realtimeActivity.activeConnections}</span>
+              <StatusIndicator isGood={realtimeActivity.socketServerActive} />
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-600 dark:text-gray-400">Connected Users</span>
+            <span className="font-medium text-gray-900 dark:text-white">{realtimeActivity.uniqueConnectedUsers}</span>
           </div>
         </div>
       </div>

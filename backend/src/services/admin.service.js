@@ -938,6 +938,135 @@ class AdminService {
       storageByUser
     };
   }
+
+  /**
+   * Get system status with real metrics
+   */
+  async getSystemStatus(socketNamespace = null) {
+    const mongoose = require('mongoose');
+    const Task = require('../models/Task.model');
+    const GroupMessage = require('../models/GroupMessage.model');
+    const DirectMessage = require('../models/DirectMessage.model');
+
+    const now = new Date();
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    // 1. Server/Process Metrics
+    const memUsage = process.memoryUsage();
+    const uptime = process.uptime();
+
+    const formatUptime = (seconds) => {
+      const days = Math.floor(seconds / 86400);
+      const hours = Math.floor((seconds % 86400) / 3600);
+      const mins = Math.floor((seconds % 3600) / 60);
+      if (days > 0) return `${days}d ${hours}h`;
+      if (hours > 0) return `${hours}h ${mins}m`;
+      return `${mins}m`;
+    };
+
+    const serverMetrics = {
+      uptime: formatUptime(uptime),
+      uptimeSeconds: Math.floor(uptime),
+      memoryUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+      memoryTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+      memoryPercent: Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100),
+      nodeVersion: process.version,
+      platform: process.platform
+    };
+
+    // 2. Database Connection Status
+    const dbState = mongoose.connection.readyState;
+    const dbStateMap = {
+      0: 'disconnected',
+      1: 'connected',
+      2: 'connecting',
+      3: 'disconnecting'
+    };
+
+    let dbPingMs = null;
+    try {
+      const pingStart = Date.now();
+      await mongoose.connection.db.admin().ping();
+      dbPingMs = Date.now() - pingStart;
+    } catch (err) {
+      dbPingMs = -1;
+    }
+
+    const databaseStatus = {
+      state: dbStateMap[dbState] || 'unknown',
+      isConnected: dbState === 1,
+      pingMs: dbPingMs,
+      host: mongoose.connection.host || 'unknown',
+      name: mongoose.connection.name || 'unknown'
+    };
+
+    // 3. Application Metrics
+    const [
+      totalUsers,
+      totalTasks,
+      totalGroupMessages,
+      totalDirectMessages,
+      loginsLastHour,
+      loginsLast24h,
+      tasksCreatedToday,
+      messagesCreatedToday
+    ] = await Promise.all([
+      User.countDocuments(),
+      Task.countDocuments(),
+      GroupMessage.countDocuments(),
+      DirectMessage.countDocuments(),
+      LoginHistory.countDocuments({ loginAt: { $gte: oneHourAgo }, status: 'success' }),
+      LoginHistory.countDocuments({ loginAt: { $gte: oneDayAgo }, status: 'success' }),
+      Task.countDocuments({ createdAt: { $gte: todayStart } }),
+      GroupMessage.countDocuments({ createdAt: { $gte: todayStart } })
+    ]);
+
+    const applicationMetrics = {
+      totalUsers,
+      totalTasks,
+      totalMessages: totalGroupMessages + totalDirectMessages,
+      loginsLastHour,
+      loginsLast24h,
+      tasksCreatedToday,
+      messagesCreatedToday
+    };
+
+    // 4. Real-time Activity
+    let activeConnections = 0;
+    let uniqueConnectedUsers = 0;
+
+    if (socketNamespace) {
+      try {
+        const sockets = await socketNamespace.fetchSockets();
+        activeConnections = sockets.length;
+        const userIds = new Set();
+        sockets.forEach(s => {
+          if (s.data?.userId) {
+            userIds.add(s.data.userId.toString());
+          }
+        });
+        uniqueConnectedUsers = userIds.size;
+      } catch (err) {
+        console.error('Error fetching socket stats:', err.message);
+      }
+    }
+
+    const realtimeActivity = {
+      activeConnections,
+      uniqueConnectedUsers,
+      socketServerActive: socketNamespace !== null
+    };
+
+    return {
+      serverMetrics,
+      databaseStatus,
+      applicationMetrics,
+      realtimeActivity,
+      timestamp: new Date().toISOString()
+    };
+  }
 }
 
 module.exports = new AdminService();
