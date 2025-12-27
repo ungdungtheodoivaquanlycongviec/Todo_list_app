@@ -682,9 +682,17 @@ class AdminService {
   }
 
   /**
-   * Get admin dashboard stats
+   * Get admin dashboard stats with real comparisons
    */
   async getDashboardStats() {
+    const mongoose = require('mongoose');
+    const now = new Date();
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const twoDaysAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+
+    // Current counts
     const [
       totalUsers,
       activeUsers,
@@ -697,9 +705,83 @@ class AdminService {
       User.countDocuments({ isActive: true }),
       User.countDocuments({ role: { $in: ['admin', 'super_admin'] } }),
       Group.countDocuments(),
-      LoginHistory.countDocuments({ loginAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }),
-      AdminActionLog.countDocuments({ createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } })
+      LoginHistory.countDocuments({ loginAt: { $gte: oneDayAgo }, status: 'success' }),
+      AdminActionLog.countDocuments({ createdAt: { $gte: oneDayAgo } })
     ]);
+
+    // Previous period counts for comparisons
+    const [
+      usersLastWeek,
+      groupsLastWeek,
+      loginsPreviousDay,
+      actionsPreviousDay
+    ] = await Promise.all([
+      User.countDocuments({ createdAt: { $lte: oneWeekAgo } }),
+      Group.countDocuments({ createdAt: { $lte: oneWeekAgo } }),
+      LoginHistory.countDocuments({
+        loginAt: { $gte: twoDaysAgo, $lt: oneDayAgo },
+        status: 'success'
+      }),
+      AdminActionLog.countDocuments({
+        createdAt: { $gte: twoDaysAgo, $lt: oneDayAgo }
+      })
+    ]);
+
+    // Calculate percentage changes
+    const calcChange = (current, previous) => {
+      if (previous === 0) return current > 0 ? 100 : 0;
+      return Math.round(((current - previous) / previous) * 100);
+    };
+
+    // User growth: new users this week vs total users last week
+    const newUsersThisWeek = totalUsers - usersLastWeek;
+    const userGrowth = usersLastWeek > 0 ? calcChange(totalUsers, usersLastWeek) : 0;
+
+    // Group growth
+    const newGroupsThisWeek = totalGroups - groupsLastWeek;
+    const groupGrowth = groupsLastWeek > 0 ? calcChange(totalGroups, groupsLastWeek) : 0;
+
+    // Login change (day over day)
+    const loginChange = calcChange(recentLogins, loginsPreviousDay);
+
+    // Actions change (day over day)
+    const actionsChange = calcChange(recentActions, actionsPreviousDay);
+
+    // Calculate System Health (0-100%)
+    // - DB Connected: 25%
+    // - DB Ping < 100ms: 25%
+    // - Memory < 80%: 25%
+    // - Server uptime > 1 hour: 25%
+    let systemHealth = 0;
+
+    // DB Connection
+    const dbConnected = mongoose.connection.readyState === 1;
+    if (dbConnected) systemHealth += 25;
+
+    // DB Ping
+    let dbPingMs = -1;
+    try {
+      const pingStart = Date.now();
+      await mongoose.connection.db.admin().ping();
+      dbPingMs = Date.now() - pingStart;
+      if (dbPingMs < 100) systemHealth += 25;
+      else if (dbPingMs < 500) systemHealth += 15;
+    } catch (err) {
+      // Ping failed
+    }
+
+    // Memory Usage
+    const memUsage = process.memoryUsage();
+    const memoryPercent = Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100);
+    if (memoryPercent < 70) systemHealth += 25;
+    else if (memoryPercent < 85) systemHealth += 15;
+    else if (memoryPercent < 95) systemHealth += 5;
+
+    // Server Uptime
+    const uptimeSeconds = process.uptime();
+    if (uptimeSeconds > 3600) systemHealth += 25; // > 1 hour
+    else if (uptimeSeconds > 600) systemHealth += 15; // > 10 min
+    else if (uptimeSeconds > 60) systemHealth += 5; // > 1 min
 
     return {
       totalUsers,
@@ -708,7 +790,21 @@ class AdminService {
       totalAdmins,
       totalGroups,
       recentLogins,
-      recentActions
+      recentActions,
+      // Changes/Growth
+      userGrowth,
+      groupGrowth,
+      loginChange,
+      actionsChange,
+      // System Health
+      systemHealth,
+      // Health components for debugging
+      healthDetails: {
+        dbConnected,
+        dbPingMs,
+        memoryPercent,
+        uptimeSeconds: Math.floor(uptimeSeconds)
+      }
     };
   }
 

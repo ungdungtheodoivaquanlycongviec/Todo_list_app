@@ -89,6 +89,19 @@ export interface DashboardStats {
   totalGroups: number;
   recentLogins: number;
   recentActions: number;
+  // Growth/Change percentages
+  userGrowth: number;
+  groupGrowth: number;
+  loginChange: number;
+  actionsChange: number;
+  // System Health
+  systemHealth: number;
+  healthDetails: {
+    dbConnected: boolean;
+    dbPingMs: number;
+    memoryPercent: number;
+    uptimeSeconds: number;
+  };
 }
 
 export interface SendNotificationRequest {

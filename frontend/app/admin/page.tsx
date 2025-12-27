@@ -273,62 +273,86 @@ function DashboardTab({ stats }: { stats: DashboardStats | null }) {
     );
   }
 
+  // Format change percentage for display
+  const formatChange = (value: number) => {
+    if (value > 0) return `+${value}%`;
+    if (value < 0) return `${value}%`;
+    return '0%';
+  };
+
   const statCards = [
     {
       label: 'Total Users',
       value: stats.totalUsers,
       icon: Users,
       color: 'blue',
-      change: '+12%'
+      change: formatChange(stats.userGrowth),
+      isPositive: stats.userGrowth >= 0,
+      tooltip: 'Total registered users in the system. Change shows week-over-week growth.'
     },
     {
       label: 'Active Users',
       value: stats.activeUsers,
       icon: UserCheck,
       color: 'green',
-      change: '+5%'
+      change: null,
+      isPositive: true,
+      tooltip: 'Users with isActive=true who are not locked or suspended.'
     },
     {
       label: 'Inactive Users',
       value: stats.inactiveUsers,
       icon: UserX,
       color: 'red',
-      change: '-2%'
+      change: null,
+      isPositive: true,
+      tooltip: 'Users who are locked or have isActive=false.'
     },
     {
       label: 'Admins',
       value: stats.totalAdmins,
       icon: Shield,
       color: 'purple',
-      change: '+0%'
+      change: null,
+      isPositive: true,
+      tooltip: 'Users with admin or super_admin role.'
     },
     {
       label: 'Groups',
       value: stats.totalGroups,
       icon: Building,
       color: 'indigo',
-      change: '+8%'
+      change: formatChange(stats.groupGrowth),
+      isPositive: stats.groupGrowth >= 0,
+      tooltip: 'Total groups/workspaces. Change shows week-over-week growth.'
     },
     {
       label: 'Recent Logins',
       value: stats.recentLogins,
       icon: History,
       color: 'yellow',
-      change: '+15%'
+      change: formatChange(stats.loginChange),
+      isPositive: stats.loginChange >= 0,
+      tooltip: 'Successful logins in the last 24 hours. Change compares to previous 24h.'
     },
     {
       label: 'Recent Actions',
       value: stats.recentActions,
       icon: Activity,
       color: 'pink',
-      change: '+23%'
+      change: formatChange(stats.actionsChange),
+      isPositive: stats.actionsChange >= 0,
+      tooltip: 'Admin actions in the last 24 hours. Change compares to previous 24h.'
     },
     {
       label: 'System Health',
-      value: '99.9%',
+      value: `${stats.systemHealth}%`,
       icon: TrendingUp,
       color: 'emerald',
-      change: '+0.1%'
+      change: null,
+      isPositive: stats.systemHealth >= 75,
+      isHealth: true,
+      tooltip: `Health score: DB connected (25%), DB ping <100ms (25%), Memory <70% (25%), Uptime >1h (25%). Current: DB ${stats.healthDetails?.dbConnected ? '✓' : '✗'}, Ping ${stats.healthDetails?.dbPingMs}ms, Memory ${stats.healthDetails?.memoryPercent}%`
     }
   ];
 
@@ -351,18 +375,23 @@ function DashboardTab({ stats }: { stats: DashboardStats | null }) {
           return (
             <div
               key={stat.label}
-              className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all duration-300 border border-gray-100 dark:border-gray-700"
+              title={stat.tooltip}
+              className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all duration-300 border border-gray-100 dark:border-gray-700 cursor-help"
             >
               <div className="flex items-center justify-between mb-4">
                 <div className={`p-3 rounded-xl ${colorClasses[stat.color as keyof typeof colorClasses]} bg-opacity-10`}>
-                  <Icon className={`w-6 h-6 text-${stat.color}-600 dark:text-${stat.color}-400`} />
+                  <Icon className="w-6 h-6 text-gray-700 dark:text-gray-300" />
                 </div>
-                <span className={`text-sm font-medium px-3 py-1 rounded-full ${stat.change.startsWith('+')
-                  ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
-                  : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
-                  }`}>
-                  {stat.change}
-                </span>
+                {stat.change !== null ? (
+                  <span className={`text-sm font-medium px-3 py-1 rounded-full ${stat.isPositive
+                    ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
+                    : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
+                    }`}>
+                    {stat.change}
+                  </span>
+                ) : (
+                  <div className="w-8" />
+                )}
               </div>
               <div className="mb-2">
                 <div className="text-3xl font-bold text-gray-900 dark:text-white">{stat.value}</div>
@@ -371,7 +400,7 @@ function DashboardTab({ stats }: { stats: DashboardStats | null }) {
               <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                 <div
                   className={`h-2 rounded-full ${colorClasses[stat.color as keyof typeof colorClasses]}`}
-                  style={{ width: `${Math.min(100, (Number(stat.value) / 1000) * 100)}%` }}
+                  style={{ width: stat.label === 'System Health' ? `${stats.systemHealth}%` : `${Math.min(100, (Number(stat.value) / 100) * 100)}%` }}
                 ></div>
               </div>
             </div>
