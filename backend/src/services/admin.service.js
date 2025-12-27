@@ -46,6 +46,7 @@ class AdminService {
       search = '',
       role = '',
       isActive = '',
+      groupRole = '',
       sortBy = 'createdAt',
       sortOrder = 'desc'
     } = query;
@@ -70,6 +71,14 @@ class AdminService {
 
     if (isActive !== '') {
       filter.isActive = isActive === 'true';
+    }
+
+    if (groupRole !== '') {
+      if (groupRole === 'null') {
+        filter.groupRole = null;
+      } else {
+        filter.groupRole = groupRole;
+      }
     }
 
     // Build sort
@@ -219,7 +228,7 @@ class AdminService {
       }
       const emailLower = updateData.email.toLowerCase();
       // Check if email is already taken by another user
-      const existingUser = await User.findOne({ 
+      const existingUser = await User.findOne({
         email: emailLower,
         _id: { $ne: userId }
       });
@@ -331,7 +340,7 @@ class AdminService {
 
     const user = await User.findByIdAndUpdate(
       userId,
-      { 
+      {
         isActive: isActive,
         refreshToken: null // Clear refresh token to force re-login
       },
@@ -673,9 +682,17 @@ class AdminService {
   }
 
   /**
-   * Get admin dashboard stats
+   * Get admin dashboard stats with real comparisons
    */
   async getDashboardStats() {
+    const mongoose = require('mongoose');
+    const now = new Date();
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const twoDaysAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+
+    // Current counts
     const [
       totalUsers,
       activeUsers,
@@ -688,9 +705,83 @@ class AdminService {
       User.countDocuments({ isActive: true }),
       User.countDocuments({ role: { $in: ['admin', 'super_admin'] } }),
       Group.countDocuments(),
-      LoginHistory.countDocuments({ loginAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }),
-      AdminActionLog.countDocuments({ createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } })
+      LoginHistory.countDocuments({ loginAt: { $gte: oneDayAgo }, status: 'success' }),
+      AdminActionLog.countDocuments({ createdAt: { $gte: oneDayAgo } })
     ]);
+
+    // Previous period counts for comparisons
+    const [
+      usersLastWeek,
+      groupsLastWeek,
+      loginsPreviousDay,
+      actionsPreviousDay
+    ] = await Promise.all([
+      User.countDocuments({ createdAt: { $lte: oneWeekAgo } }),
+      Group.countDocuments({ createdAt: { $lte: oneWeekAgo } }),
+      LoginHistory.countDocuments({
+        loginAt: { $gte: twoDaysAgo, $lt: oneDayAgo },
+        status: 'success'
+      }),
+      AdminActionLog.countDocuments({
+        createdAt: { $gte: twoDaysAgo, $lt: oneDayAgo }
+      })
+    ]);
+
+    // Calculate percentage changes
+    const calcChange = (current, previous) => {
+      if (previous === 0) return current > 0 ? 100 : 0;
+      return Math.round(((current - previous) / previous) * 100);
+    };
+
+    // User growth: new users this week vs total users last week
+    const newUsersThisWeek = totalUsers - usersLastWeek;
+    const userGrowth = usersLastWeek > 0 ? calcChange(totalUsers, usersLastWeek) : 0;
+
+    // Group growth
+    const newGroupsThisWeek = totalGroups - groupsLastWeek;
+    const groupGrowth = groupsLastWeek > 0 ? calcChange(totalGroups, groupsLastWeek) : 0;
+
+    // Login change (day over day)
+    const loginChange = calcChange(recentLogins, loginsPreviousDay);
+
+    // Actions change (day over day)
+    const actionsChange = calcChange(recentActions, actionsPreviousDay);
+
+    // Calculate System Health (0-100%)
+    // - DB Connected: 25%
+    // - DB Ping < 100ms: 25%
+    // - Memory < 80%: 25%
+    // - Server uptime > 1 hour: 25%
+    let systemHealth = 0;
+
+    // DB Connection
+    const dbConnected = mongoose.connection.readyState === 1;
+    if (dbConnected) systemHealth += 25;
+
+    // DB Ping
+    let dbPingMs = -1;
+    try {
+      const pingStart = Date.now();
+      await mongoose.connection.db.admin().ping();
+      dbPingMs = Date.now() - pingStart;
+      if (dbPingMs < 100) systemHealth += 25;
+      else if (dbPingMs < 500) systemHealth += 15;
+    } catch (err) {
+      // Ping failed
+    }
+
+    // Memory Usage
+    const memUsage = process.memoryUsage();
+    const memoryPercent = Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100);
+    if (memoryPercent < 70) systemHealth += 25;
+    else if (memoryPercent < 85) systemHealth += 15;
+    else if (memoryPercent < 95) systemHealth += 5;
+
+    // Server Uptime
+    const uptimeSeconds = process.uptime();
+    if (uptimeSeconds > 3600) systemHealth += 25; // > 1 hour
+    else if (uptimeSeconds > 600) systemHealth += 15; // > 10 min
+    else if (uptimeSeconds > 60) systemHealth += 5; // > 1 min
 
     return {
       totalUsers,
@@ -699,7 +790,377 @@ class AdminService {
       totalAdmins,
       totalGroups,
       recentLogins,
-      recentActions
+      recentActions,
+      // Changes/Growth
+      userGrowth,
+      groupGrowth,
+      loginChange,
+      actionsChange,
+      // System Health
+      systemHealth,
+      // Health components for debugging
+      healthDetails: {
+        dbConnected,
+        dbPingMs,
+        memoryPercent,
+        uptimeSeconds: Math.floor(uptimeSeconds)
+      }
+    };
+  }
+
+  /**
+   * Get user analytics data
+   */
+  async getAnalytics() {
+    const Task = require('../models/Task.model');
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    // Active users over time (last 7 days - users who logged in)
+    const activeUsersOverTime = await LoginHistory.aggregate([
+      {
+        $match: {
+          loginAt: { $gte: sevenDaysAgo },
+          status: 'success'
+        }
+      },
+      {
+        $group: {
+          _id: {
+            date: { $dateToString: { format: '%Y-%m-%d', date: '$loginAt' } }
+          },
+          uniqueUsers: { $addToSet: '$user' }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          date: '$_id.date',
+          count: { $size: '$uniqueUsers' }
+        }
+      },
+      { $sort: { date: 1 } }
+    ]);
+
+    // Fill in missing dates with 0
+    const dateMap = new Map();
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const dateStr = date.toISOString().split('T')[0];
+      dateMap.set(dateStr, 0);
+    }
+    activeUsersOverTime.forEach(item => {
+      dateMap.set(item.date, item.count);
+    });
+    const activeUsersChart = Array.from(dateMap.entries()).map(([date, count]) => ({
+      date,
+      count
+    }));
+
+    // Most active users (by task creation in last 30 days)
+    const mostActiveUsers = await Task.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: thirtyDaysAgo }
+        }
+      },
+      {
+        $group: {
+          _id: '$createdBy',
+          taskCount: { $sum: 1 },
+          completedCount: {
+            $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
+          }
+        }
+      },
+      { $sort: { taskCount: -1 } },
+      { $limit: 5 },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'user'
+        }
+      },
+      { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 0,
+          userId: '$_id',
+          name: { $ifNull: ['$user.name', 'Unknown'] },
+          email: { $ifNull: ['$user.email', ''] },
+          taskCount: 1,
+          completedCount: 1,
+          completionRate: {
+            $cond: [
+              { $eq: ['$taskCount', 0] },
+              0,
+              { $multiply: [{ $divide: ['$completedCount', '$taskCount'] }, 100] }
+            ]
+          }
+        }
+      }
+    ]);
+
+    // Task completion rates (overall)
+    const taskStats = await Task.aggregate([
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const statusMap = {};
+    let totalTasks = 0;
+    taskStats.forEach(stat => {
+      statusMap[stat._id] = stat.count;
+      totalTasks += stat.count;
+    });
+
+    const completionRate = totalTasks > 0
+      ? Math.round((statusMap['completed'] || 0) / totalTasks * 100)
+      : 0;
+
+    // Storage usage by user - aggregate from multiple sources
+    const GroupMessage = require('../models/GroupMessage.model');
+    const DirectMessage = require('../models/DirectMessage.model');
+
+    // 1. Task attachments
+    const taskAttachments = await Task.aggregate([
+      { $unwind: { path: '$attachments', preserveNullAndEmptyArrays: false } },
+      {
+        $group: {
+          _id: '$attachments.uploadedBy',
+          fileCount: { $sum: 1 },
+          totalSize: { $sum: { $ifNull: ['$attachments.size', 0] } }
+        }
+      }
+    ]);
+
+    // 2. Task comment attachments
+    const commentAttachments = await Task.aggregate([
+      { $unwind: { path: '$comments', preserveNullAndEmptyArrays: false } },
+      { $match: { 'comments.attachment': { $exists: true, $ne: null } } },
+      {
+        $group: {
+          _id: '$comments.user',
+          fileCount: { $sum: 1 },
+          totalSize: { $sum: { $ifNull: ['$comments.attachment.size', 0] } }
+        }
+      }
+    ]);
+
+    // 3. Group message attachments
+    const groupMessageAttachments = await GroupMessage.aggregate([
+      { $unwind: { path: '$attachments', preserveNullAndEmptyArrays: false } },
+      {
+        $group: {
+          _id: '$senderId',
+          fileCount: { $sum: 1 },
+          totalSize: { $sum: { $ifNull: ['$attachments.size', 0] } }
+        }
+      }
+    ]);
+
+    // 4. Direct message attachments
+    const directMessageAttachments = await DirectMessage.aggregate([
+      { $unwind: { path: '$attachments', preserveNullAndEmptyArrays: false } },
+      {
+        $group: {
+          _id: '$senderId',
+          fileCount: { $sum: 1 },
+          totalSize: { $sum: { $ifNull: ['$attachments.size', 0] } }
+        }
+      }
+    ]);
+
+    // Combine all sources
+    const storageMap = new Map();
+
+    const addToStorage = (items) => {
+      items.forEach(item => {
+        if (!item._id) return;
+        const id = item._id.toString();
+        if (storageMap.has(id)) {
+          const existing = storageMap.get(id);
+          existing.fileCount += item.fileCount;
+          existing.totalSize += item.totalSize;
+        } else {
+          storageMap.set(id, {
+            userId: item._id,
+            fileCount: item.fileCount,
+            totalSize: item.totalSize
+          });
+        }
+      });
+    };
+
+    addToStorage(taskAttachments);
+    addToStorage(commentAttachments);
+    addToStorage(groupMessageAttachments);
+    addToStorage(directMessageAttachments);
+
+    // Sort by total size and get top 5
+    const sortedStorage = Array.from(storageMap.values())
+      .sort((a, b) => b.totalSize - a.totalSize)
+      .slice(0, 5);
+
+    // Populate user names
+    const userIds = sortedStorage.map(s => s.userId);
+    const users = await User.find({ _id: { $in: userIds } }).select('name').lean();
+    const userNameMap = new Map(users.map(u => [u._id.toString(), u.name]));
+
+    const storageByUser = sortedStorage.map(item => ({
+      userId: item.userId,
+      name: userNameMap.get(item.userId.toString()) || 'Unknown',
+      fileCount: item.fileCount,
+      totalSize: item.totalSize
+    }));
+
+    return {
+      activeUsersChart,
+      mostActiveUsers,
+      taskStats: {
+        total: totalTasks,
+        completed: statusMap['completed'] || 0,
+        inProgress: statusMap['in_progress'] || 0,
+        todo: statusMap['todo'] || 0,
+        completionRate
+      },
+      storageByUser
+    };
+  }
+
+  /**
+   * Get system status with real metrics
+   */
+  async getSystemStatus(socketNamespace = null) {
+    const mongoose = require('mongoose');
+    const Task = require('../models/Task.model');
+    const GroupMessage = require('../models/GroupMessage.model');
+    const DirectMessage = require('../models/DirectMessage.model');
+
+    const now = new Date();
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    // 1. Server/Process Metrics
+    const memUsage = process.memoryUsage();
+    const uptime = process.uptime();
+
+    const formatUptime = (seconds) => {
+      const days = Math.floor(seconds / 86400);
+      const hours = Math.floor((seconds % 86400) / 3600);
+      const mins = Math.floor((seconds % 3600) / 60);
+      if (days > 0) return `${days}d ${hours}h`;
+      if (hours > 0) return `${hours}h ${mins}m`;
+      return `${mins}m`;
+    };
+
+    const serverMetrics = {
+      uptime: formatUptime(uptime),
+      uptimeSeconds: Math.floor(uptime),
+      memoryUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+      memoryTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+      memoryPercent: Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100),
+      nodeVersion: process.version,
+      platform: process.platform
+    };
+
+    // 2. Database Connection Status
+    const dbState = mongoose.connection.readyState;
+    const dbStateMap = {
+      0: 'disconnected',
+      1: 'connected',
+      2: 'connecting',
+      3: 'disconnecting'
+    };
+
+    let dbPingMs = null;
+    try {
+      const pingStart = Date.now();
+      await mongoose.connection.db.admin().ping();
+      dbPingMs = Date.now() - pingStart;
+    } catch (err) {
+      dbPingMs = -1;
+    }
+
+    const databaseStatus = {
+      state: dbStateMap[dbState] || 'unknown',
+      isConnected: dbState === 1,
+      pingMs: dbPingMs,
+      host: mongoose.connection.host || 'unknown',
+      name: mongoose.connection.name || 'unknown'
+    };
+
+    // 3. Application Metrics
+    const [
+      totalUsers,
+      totalTasks,
+      totalGroupMessages,
+      totalDirectMessages,
+      loginsLastHour,
+      loginsLast24h,
+      tasksCreatedToday,
+      messagesCreatedToday
+    ] = await Promise.all([
+      User.countDocuments(),
+      Task.countDocuments(),
+      GroupMessage.countDocuments(),
+      DirectMessage.countDocuments(),
+      LoginHistory.countDocuments({ loginAt: { $gte: oneHourAgo }, status: 'success' }),
+      LoginHistory.countDocuments({ loginAt: { $gte: oneDayAgo }, status: 'success' }),
+      Task.countDocuments({ createdAt: { $gte: todayStart } }),
+      GroupMessage.countDocuments({ createdAt: { $gte: todayStart } })
+    ]);
+
+    const applicationMetrics = {
+      totalUsers,
+      totalTasks,
+      totalMessages: totalGroupMessages + totalDirectMessages,
+      loginsLastHour,
+      loginsLast24h,
+      tasksCreatedToday,
+      messagesCreatedToday
+    };
+
+    // 4. Real-time Activity
+    let activeConnections = 0;
+    let uniqueConnectedUsers = 0;
+
+    if (socketNamespace) {
+      try {
+        const sockets = await socketNamespace.fetchSockets();
+        activeConnections = sockets.length;
+        const userIds = new Set();
+        sockets.forEach(s => {
+          if (s.data?.userId) {
+            userIds.add(s.data.userId.toString());
+          }
+        });
+        uniqueConnectedUsers = userIds.size;
+      } catch (err) {
+        console.error('Error fetching socket stats:', err.message);
+      }
+    }
+
+    const realtimeActivity = {
+      activeConnections,
+      uniqueConnectedUsers,
+      socketServerActive: socketNamespace !== null
+    };
+
+    return {
+      serverMetrics,
+      databaseStatus,
+      applicationMetrics,
+      realtimeActivity,
+      timestamp: new Date().toISOString()
     };
   }
 }

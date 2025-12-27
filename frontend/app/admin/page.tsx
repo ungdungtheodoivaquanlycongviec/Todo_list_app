@@ -10,11 +10,11 @@ import { Group } from '../services/types/group.types';
 import TopBar from '../components/layouts/TopBar';
 import ProfileSettings from '../components/ProfileSettings';
 import ChatView from '../components/views/ChatView';
-import { 
-  BarChart3, 
-  Users, 
-  Bell, 
-  History, 
+import {
+  BarChart3,
+  Users,
+  Bell,
+  History,
   MessageSquare,
   Search,
   Filter,
@@ -145,8 +145,8 @@ export default function AdminPage() {
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
               className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
             >
-              {sidebarCollapsed ? 
-                <ChevronRight className="w-5 h-5 text-gray-500" /> : 
+              {sidebarCollapsed ?
+                <ChevronRight className="w-5 h-5 text-gray-500" /> :
                 <ChevronLeft className="w-5 h-5 text-gray-500" />
               }
             </button>
@@ -197,13 +197,13 @@ export default function AdminPage() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* TopBar */}
-        <TopBar 
+        <TopBar
           user={user}
           onLogout={logout}
           theme={user.theme || 'auto'}
           onThemeChange={handleThemeChange}
           onProfileClick={() => setShowProfileSettings(true)}
-          onViewChange={() => {}}
+          onViewChange={() => { }}
         />
 
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -273,62 +273,86 @@ function DashboardTab({ stats }: { stats: DashboardStats | null }) {
     );
   }
 
+  // Format change percentage for display
+  const formatChange = (value: number) => {
+    if (value > 0) return `+${value}%`;
+    if (value < 0) return `${value}%`;
+    return '0%';
+  };
+
   const statCards = [
-    { 
-      label: 'Total Users', 
-      value: stats.totalUsers, 
+    {
+      label: 'Total Users',
+      value: stats.totalUsers,
       icon: Users,
       color: 'blue',
-      change: '+12%' 
+      change: formatChange(stats.userGrowth),
+      isPositive: stats.userGrowth >= 0,
+      tooltip: 'Total registered users in the system. Change shows week-over-week growth.'
     },
-    { 
-      label: 'Active Users', 
-      value: stats.activeUsers, 
+    {
+      label: 'Active Users',
+      value: stats.activeUsers,
       icon: UserCheck,
       color: 'green',
-      change: '+5%' 
+      change: null,
+      isPositive: true,
+      tooltip: 'Users with isActive=true who are not locked or suspended.'
     },
-    { 
-      label: 'Inactive Users', 
-      value: stats.inactiveUsers, 
+    {
+      label: 'Inactive Users',
+      value: stats.inactiveUsers,
       icon: UserX,
       color: 'red',
-      change: '-2%' 
+      change: null,
+      isPositive: true,
+      tooltip: 'Users who are locked or have isActive=false.'
     },
-    { 
-      label: 'Admins', 
-      value: stats.totalAdmins, 
+    {
+      label: 'Admins',
+      value: stats.totalAdmins,
       icon: Shield,
       color: 'purple',
-      change: '+0%' 
+      change: null,
+      isPositive: true,
+      tooltip: 'Users with admin or super_admin role.'
     },
-    { 
-      label: 'Groups', 
-      value: stats.totalGroups, 
+    {
+      label: 'Groups',
+      value: stats.totalGroups,
       icon: Building,
       color: 'indigo',
-      change: '+8%' 
+      change: formatChange(stats.groupGrowth),
+      isPositive: stats.groupGrowth >= 0,
+      tooltip: 'Total groups/workspaces. Change shows week-over-week growth.'
     },
-    { 
-      label: 'Recent Logins', 
-      value: stats.recentLogins, 
+    {
+      label: 'Recent Logins',
+      value: stats.recentLogins,
       icon: History,
       color: 'yellow',
-      change: '+15%' 
+      change: formatChange(stats.loginChange),
+      isPositive: stats.loginChange >= 0,
+      tooltip: 'Successful logins in the last 24 hours. Change compares to previous 24h.'
     },
-    { 
-      label: 'Recent Actions', 
-      value: stats.recentActions, 
+    {
+      label: 'Recent Actions',
+      value: stats.recentActions,
       icon: Activity,
       color: 'pink',
-      change: '+23%' 
+      change: formatChange(stats.actionsChange),
+      isPositive: stats.actionsChange >= 0,
+      tooltip: 'Admin actions in the last 24 hours. Change compares to previous 24h.'
     },
-    { 
-      label: 'System Health', 
-      value: '99.9%', 
+    {
+      label: 'System Health',
+      value: `${stats.systemHealth}%`,
       icon: TrendingUp,
       color: 'emerald',
-      change: '+0.1%' 
+      change: null,
+      isPositive: stats.systemHealth >= 75,
+      isHealth: true,
+      tooltip: `Health score: DB connected (25%), DB ping <100ms (25%), Memory <70% (25%), Uptime >1h (25%). Current: DB ${stats.healthDetails?.dbConnected ? '✓' : '✗'}, Ping ${stats.healthDetails?.dbPingMs}ms, Memory ${stats.healthDetails?.memoryPercent}%`
     }
   ];
 
@@ -349,30 +373,34 @@ function DashboardTab({ stats }: { stats: DashboardStats | null }) {
           };
 
           return (
-            <div 
-              key={stat.label} 
-              className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all duration-300 border border-gray-100 dark:border-gray-700"
+            <div
+              key={stat.label}
+              title={stat.tooltip}
+              className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all duration-300 border border-gray-100 dark:border-gray-700 cursor-help"
             >
               <div className="flex items-center justify-between mb-4">
                 <div className={`p-3 rounded-xl ${colorClasses[stat.color as keyof typeof colorClasses]} bg-opacity-10`}>
-                  <Icon className={`w-6 h-6 text-${stat.color}-600 dark:text-${stat.color}-400`} />
+                  <Icon className="w-6 h-6 text-gray-700 dark:text-gray-300" />
                 </div>
-                <span className={`text-sm font-medium px-3 py-1 rounded-full ${
-                  stat.change.startsWith('+') 
+                {stat.change !== null ? (
+                  <span className={`text-sm font-medium px-3 py-1 rounded-full ${stat.isPositive
                     ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
                     : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
-                }`}>
-                  {stat.change}
-                </span>
+                    }`}>
+                    {stat.change}
+                  </span>
+                ) : (
+                  <div className="w-8" />
+                )}
               </div>
               <div className="mb-2">
                 <div className="text-3xl font-bold text-gray-900 dark:text-white">{stat.value}</div>
                 <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">{stat.label}</div>
               </div>
               <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                <div 
+                <div
                   className={`h-2 rounded-full ${colorClasses[stat.color as keyof typeof colorClasses]}`}
-                  style={{ width: `${Math.min(100, (Number(stat.value) / 1000) * 100)}%` }}
+                  style={{ width: stat.label === 'System Health' ? `${stats.systemHealth}%` : `${Math.min(100, (Number(stat.value) / 100) * 100)}%` }}
                 ></div>
               </div>
             </div>
@@ -383,49 +411,288 @@ function DashboardTab({ stats }: { stats: DashboardStats | null }) {
       {/* Recent Activity Section */}
       <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Quick Actions</h3>
-          <div className="space-y-3">
-            {[
-              { label: 'Add New User', action: () => console.log('Add user') },
-              { label: 'Send Broadcast', action: () => console.log('Send broadcast') },
-              { label: 'View Reports', action: () => console.log('View reports') },
-              { label: 'System Settings', action: () => console.log('System settings') }
-            ].map((item, index) => (
-              <button
-                key={index}
-                onClick={item.action}
-                className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-              >
-                <span className="text-gray-700 dark:text-gray-300">{item.label}</span>
-                <ChevronRight className="w-4 h-4 text-gray-400" />
-              </button>
-            ))}
-          </div>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">User Analytics</h3>
+          <UserAnalyticsSection />
         </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">System Status</h3>
-          <div className="space-y-4">
-            {[
-              { label: 'API Response Time', value: '42ms', status: 'good' },
-              { label: 'Database Load', value: '24%', status: 'good' },
-              { label: 'Memory Usage', value: '67%', status: 'warning' },
-              { label: 'Active Connections', value: '128', status: 'good' }
-            ].map((item, index) => (
-              <div key={index} className="flex items-center justify-between">
-                <span className="text-gray-600 dark:text-gray-400">{item.label}</span>
-                <div className="flex items-center space-x-3">
-                  <span className="font-medium text-gray-900 dark:text-white">{item.value}</span>
-                  <div className={`w-3 h-3 rounded-full ${
-                    item.status === 'good' ? 'bg-green-500' :
-                    item.status === 'warning' ? 'bg-yellow-500' : 'bg-red-500'
-                  }`}></div>
+          <SystemStatusSection />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// System Status Section Component
+function SystemStatusSection() {
+  const [status, setStatus] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadStatus = async () => {
+      try {
+        const data = await adminService.getSystemStatus();
+        setStatus(data);
+      } catch (err) {
+        console.error('Failed to load system status:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadStatus();
+    // Refresh every 30 seconds
+    const interval = setInterval(loadStatus, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (!status) {
+    return <p className="text-gray-500 dark:text-gray-400 text-sm">Unable to load system status</p>;
+  }
+
+  const { serverMetrics, databaseStatus, applicationMetrics, realtimeActivity } = status;
+
+  const StatusIndicator = ({ isGood, isWarning }: { isGood: boolean; isWarning?: boolean }) => (
+    <div className={`w-2.5 h-2.5 rounded-full ${isGood ? 'bg-green-500' : isWarning ? 'bg-yellow-500' : 'bg-red-500'}`} />
+  );
+
+  return (
+    <div className="space-y-5">
+      {/* Server Metrics */}
+      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Server</h4>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-600 dark:text-gray-400">Uptime</span>
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-gray-900 dark:text-white">{serverMetrics.uptime}</span>
+              <StatusIndicator isGood={serverMetrics.uptimeSeconds > 3600} />
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-600 dark:text-gray-400">Memory</span>
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-gray-900 dark:text-white">{serverMetrics.memoryPercent}%</span>
+              <StatusIndicator isGood={serverMetrics.memoryPercent < 70} isWarning={serverMetrics.memoryPercent >= 70 && serverMetrics.memoryPercent < 90} />
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-600 dark:text-gray-400">Node Version</span>
+            <span className="font-medium text-gray-900 dark:text-white">{serverMetrics.nodeVersion}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Database Status */}
+      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Database</h4>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-600 dark:text-gray-400">Status</span>
+            <div className="flex items-center gap-2">
+              <span className={`font-medium capitalize ${databaseStatus.isConnected ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                {databaseStatus.state}
+              </span>
+              <StatusIndicator isGood={databaseStatus.isConnected} />
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-600 dark:text-gray-400">Ping</span>
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-gray-900 dark:text-white">
+                {databaseStatus.pingMs !== null && databaseStatus.pingMs >= 0 ? `${databaseStatus.pingMs}ms` : 'N/A'}
+              </span>
+              <StatusIndicator isGood={databaseStatus.pingMs !== null && databaseStatus.pingMs < 100} isWarning={databaseStatus.pingMs !== null && databaseStatus.pingMs >= 100 && databaseStatus.pingMs < 500} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Application Metrics */}
+      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Application</h4>
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-gray-600 dark:text-gray-400">Logins (1h)</span>
+            <span className="font-medium text-gray-900 dark:text-white">{applicationMetrics.loginsLastHour}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600 dark:text-gray-400">Logins (24h)</span>
+            <span className="font-medium text-gray-900 dark:text-white">{applicationMetrics.loginsLast24h}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600 dark:text-gray-400">Tasks Today</span>
+            <span className="font-medium text-gray-900 dark:text-white">{applicationMetrics.tasksCreatedToday}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600 dark:text-gray-400">Messages Today</span>
+            <span className="font-medium text-gray-900 dark:text-white">{applicationMetrics.messagesCreatedToday}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Realtime Activity */}
+      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Real-time</h4>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-600 dark:text-gray-400">Active Connections</span>
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-gray-900 dark:text-white">{realtimeActivity.activeConnections}</span>
+              <StatusIndicator isGood={realtimeActivity.socketServerActive} />
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-600 dark:text-gray-400">Connected Users</span>
+            <span className="font-medium text-gray-900 dark:text-white">{realtimeActivity.uniqueConnectedUsers}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// User Analytics Section Component
+function UserAnalyticsSection() {
+  const [analytics, setAnalytics] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadAnalytics = async () => {
+      try {
+        const data = await adminService.getAnalytics();
+        setAnalytics(data);
+      } catch (err) {
+        console.error('Failed to load analytics:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadAnalytics();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (!analytics) {
+    return <p className="text-gray-500 dark:text-gray-400 text-sm">No analytics data available</p>;
+  }
+
+  const formatSize = (bytes: number) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Active Users Chart (Simple Bar Chart) */}
+      <div>
+        <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+          Active Users (Last 7 Days)
+        </h4>
+        <div className="flex items-end justify-between h-24 gap-1">
+          {analytics.activeUsersChart.map((item: any, index: number) => {
+            const maxCount = Math.max(...analytics.activeUsersChart.map((d: any) => d.count), 1);
+            const heightPercent = (item.count / maxCount) * 100;
+            return (
+              <div key={index} className="flex-1 flex flex-col items-center">
+                <div className="w-full flex flex-col justify-end h-16">
+                  <div
+                    className="w-full bg-gradient-to-t from-blue-500 to-blue-400 rounded-t transition-all"
+                    style={{ height: `${Math.max(heightPercent, 4)}%` }}
+                    title={`${item.count} users`}
+                  />
+                </div>
+                <span className="text-xs text-gray-400 mt-1">
+                  {new Date(item.date).toLocaleDateString('en', { weekday: 'short' }).slice(0, 2)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Most Active Users */}
+      {analytics.mostActiveUsers.length > 0 && (
+        <div>
+          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            Most Active Users (30 Days)
+          </h4>
+          <div className="space-y-2">
+            {analytics.mostActiveUsers.slice(0, 3).map((user: any, index: number) => (
+              <div key={index} className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold">
+                    {user.name?.charAt(0) || '?'}
+                  </div>
+                  <span className="text-gray-700 dark:text-gray-300 truncate max-w-[100px]">{user.name}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-gray-900 dark:text-white font-medium">{user.taskCount}</span>
+                  <span className="text-gray-400 text-xs ml-1">tasks</span>
                 </div>
               </div>
             ))}
           </div>
         </div>
+      )}
+
+      {/* Task Completion Rate */}
+      <div>
+        <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+          Task Completion Rate
+        </h4>
+        <div className="flex items-center gap-3">
+          <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+            <div
+              className="bg-gradient-to-r from-green-500 to-emerald-400 h-3 rounded-full transition-all"
+              style={{ width: `${analytics.taskStats.completionRate}%` }}
+            />
+          </div>
+          <span className="text-lg font-bold text-gray-900 dark:text-white">
+            {analytics.taskStats.completionRate}%
+          </span>
+        </div>
+        <div className="flex justify-between text-xs text-gray-400 mt-1">
+          <span>{analytics.taskStats.completed} completed</span>
+          <span>{analytics.taskStats.total} total</span>
+        </div>
       </div>
+
+      {/* Storage Usage */}
+      {analytics.storageByUser.length > 0 && (
+        <div>
+          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            Storage by User
+          </h4>
+          <div className="space-y-2">
+            {analytics.storageByUser.slice(0, 3).map((user: any, index: number) => (
+              <div key={index} className="flex items-center justify-between text-sm">
+                <span className="text-gray-700 dark:text-gray-300 truncate max-w-[120px]">{user.name}</span>
+                <span className="text-gray-500 dark:text-gray-400">
+                  {formatSize(user.totalSize)} ({user.fileCount} files)
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -438,6 +705,7 @@ function UsersTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [businessRoleFilter, setBusinessRoleFilter] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState<any>(null);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
@@ -445,7 +713,7 @@ function UsersTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
 
   useEffect(() => {
     loadUsers();
-  }, [page, search, roleFilter, statusFilter]);
+  }, [page, search, roleFilter, statusFilter, businessRoleFilter]);
 
   const loadUsers = async () => {
     try {
@@ -454,7 +722,8 @@ function UsersTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       if (search) params.search = search;
       if (roleFilter) params.role = roleFilter;
       if (statusFilter) params.isActive = statusFilter;
-      
+      if (businessRoleFilter) params.groupRole = businessRoleFilter;
+
       const response = await adminService.getUsers(params);
       setUsers(response.users);
       setPagination(response.pagination);
@@ -509,34 +778,69 @@ function UsersTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
 
   const BUSINESS_ROLE_OPTIONS = Object.values(GROUP_ROLE_KEYS);
 
+  // Export users to CSV
+  const handleExportCSV = () => {
+    if (users.length === 0) return;
+
+    const headers = ['#', 'Name', 'Email', 'Role', 'Business Role', 'Is Leader', 'Status', 'Created At'];
+    const csvRows = [
+      headers.join(','),
+      ...users.map((user, index) => [
+        index + 1 + (page - 1) * 20,
+        `"${user.name.replace(/"/g, '""')}"`,
+        user.email,
+        user.role,
+        user.groupRole || 'No role',
+        user.isLeader ? 'Yes' : 'No',
+        user.isActive ? 'Active' : 'Inactive',
+        new Date(user.createdAt).toLocaleDateString()
+      ].join(','))
+    ];
+
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `users_export_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
+
   return (
     <div>
       {/* Filters Card */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search users..."
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
-              className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-            />
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Filter Users</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Search
+            </label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search users..."
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
+                className="w-full pl-10 pr-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              />
+            </div>
           </div>
-          
-          <div className="relative">
-            <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Role
+            </label>
             <select
               value={roleFilter}
               onChange={(e) => {
                 setRoleFilter(e.target.value);
                 setPage(1);
               }}
-              className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none"
+              className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="">All Roles</option>
               <option value="user">User</option>
@@ -545,29 +849,68 @@ function UsersTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
             </select>
           </div>
 
-          <select
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
-              setPage(1);
-            }}
-            className="px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            <option value="">All Status</option>
-            <option value="true">Active</option>
-            <option value="false">Inactive</option>
-          </select>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Status
+            </label>
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setPage(1);
+              }}
+              className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">All Status</option>
+              <option value="true">Active</option>
+              <option value="false">Inactive</option>
+            </select>
+          </div>
 
-          <button 
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Business Role
+            </label>
+            <select
+              value={businessRoleFilter}
+              onChange={(e) => {
+                setBusinessRoleFilter(e.target.value);
+                setPage(1);
+              }}
+              className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">All Business Roles</option>
+              <option value="null">No Role</option>
+              {BUSINESS_ROLE_OPTIONS.map((roleKey) => (
+                <option key={roleKey} value={roleKey}>
+                  {ROLE_LABELS[roleKey] || roleKey}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <button
             onClick={() => {
               setSearch('');
               setRoleFilter('');
               setStatusFilter('');
+              setBusinessRoleFilter('');
               setPage(1);
             }}
-            className="px-4 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl transition-colors"
           >
             Clear Filters
+          </button>
+
+          <button
+            onClick={handleExportCSV}
+            disabled={users.length === 0}
+            className="px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:from-gray-400 disabled:to-gray-500 text-white rounded-xl font-medium transition-all flex items-center"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Export CSV
           </button>
         </div>
       </div>
@@ -592,6 +935,9 @@ function UsersTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
               <table className="w-full">
                 <thead className="bg-gray-50 dark:bg-gray-700/50">
                   <tr>
+                    <th className="px-4 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-12">
+                      #
+                    </th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       User
                     </th>
@@ -610,8 +956,13 @@ function UsersTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {users.map((user) => (
+                  {users.map((user, index) => (
                     <tr key={user._id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                      <td className="px-4 py-4">
+                        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                          {index + 1 + (page - 1) * 20}
+                        </span>
+                      </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center">
                           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">
@@ -625,11 +976,10 @@ function UsersTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center">
-                          <span className={`px-3 py-1.5 rounded-full text-xs font-medium ${
-                            user.role === 'super_admin' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300' :
+                          <span className={`px-3 py-1.5 rounded-full text-xs font-medium ${user.role === 'super_admin' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300' :
                             user.role === 'admin' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' :
-                            'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-                          }`}>
+                              'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                            }`}>
                             {user.role.replace('_', ' ').toUpperCase()}
                           </span>
                         </div>
@@ -670,11 +1020,10 @@ function UsersTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                       <td className="px-6 py-4">
                         <div className="flex items-center">
                           <div className={`w-2 h-2 rounded-full mr-2 ${user.isActive ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                          <span className={`text-sm font-medium ${
-                            user.isActive 
-                              ? 'text-green-700 dark:text-green-400' 
-                              : 'text-red-700 dark:text-red-400'
-                          }`}>
+                          <span className={`text-sm font-medium ${user.isActive
+                            ? 'text-green-700 dark:text-green-400'
+                            : 'text-red-700 dark:text-red-400'
+                            }`}>
                             {user.isActive ? 'Active' : 'Inactive'}
                           </span>
                         </div>
@@ -683,16 +1032,15 @@ function UsersTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                         <div className="flex items-center space-x-2">
                           <button
                             onClick={() => handleLockUnlock(user._id, !user.isActive)}
-                            className={`p-2 rounded-lg transition-colors ${
-                              user.isActive 
-                                ? 'text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20' 
-                                : 'text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20'
-                            }`}
+                            className={`p-2 rounded-lg transition-colors ${user.isActive
+                              ? 'text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20'
+                              : 'text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20'
+                              }`}
                             title={user.isActive ? 'Lock user' : 'Unlock user'}
                           >
                             {user.isActive ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
                           </button>
-                          
+
                           {isSuperAdmin && user.role !== 'super_admin' && (
                             <>
                               {user.role !== 'admin' ? (
@@ -714,10 +1062,6 @@ function UsersTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                               )}
                             </>
                           )}
-                          
-                          <button className="p-2 text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 rounded-lg transition-colors">
-                            <MoreVertical className="w-4 h-4" />
-                          </button>
                         </div>
                       </td>
                     </tr>
@@ -749,16 +1093,15 @@ function UsersTab({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                     let pageNum = i + 1;
                     if (page > 3) pageNum = page - 2 + i;
                     if (pageNum > pagination.pages) return null;
-                    
+
                     return (
                       <button
                         key={pageNum}
                         onClick={() => setPage(pageNum)}
-                        className={`w-10 h-10 rounded-xl transition-colors ${
-                          page === pageNum
-                            ? 'bg-blue-600 text-white'
-                            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                        }`}
+                        className={`w-10 h-10 rounded-xl transition-colors ${page === pageNum
+                          ? 'bg-blue-600 text-white'
+                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                          }`}
                       >
                         {pageNum}
                       </button>
@@ -846,7 +1189,7 @@ function NotificationsTab() {
       setSuccess(null);
 
       const data: any = { title, message };
-      
+
       if (recipientType === 'all') {
         data.sendToAll = true;
       } else if (recipientType === 'users' && recipientIds.length > 0) {
@@ -926,7 +1269,7 @@ function NotificationsTab() {
               placeholder="Enter notification title"
             />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Message
@@ -939,7 +1282,7 @@ function NotificationsTab() {
               placeholder="Type your notification message here..."
             />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Recipients
@@ -957,17 +1300,16 @@ function NotificationsTab() {
                       setRecipientType(option.value as any);
                       setRecipientIds([]);
                     }}
-                    className={`px-4 py-2 rounded-xl transition-colors ${
-                      recipientType === option.value
-                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-                        : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                    }`}
+                    className={`px-4 py-2 rounded-xl transition-colors ${recipientType === option.value
+                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                      : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                      }`}
                   >
                     {option.label}
                   </button>
                 ))}
               </div>
-              
+
               {recipientType === 'users' && (
                 <div className="border border-gray-200 dark:border-gray-600 rounded-xl p-4 max-h-48 overflow-y-auto">
                   {usersLoading ? (
@@ -996,7 +1338,7 @@ function NotificationsTab() {
                   )}
                 </div>
               )}
-              
+
               {recipientType === 'group' && (
                 <div className="border border-gray-200 dark:border-gray-600 rounded-xl p-4">
                   {groupsLoading ? (
@@ -1011,11 +1353,10 @@ function NotificationsTab() {
                         <button
                           key={g._id}
                           onClick={() => handleSelectGroup(g._id)}
-                          className={`p-3 rounded-xl border transition-all ${
-                            recipientIds.includes(g._id)
-                              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                              : 'border-gray-200 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-700'
-                          }`}
+                          className={`p-3 rounded-xl border transition-all ${recipientIds.includes(g._id)
+                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                            : 'border-gray-200 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-700'
+                            }`}
                         >
                           <div className="text-left">
                             <div className="font-medium text-gray-900 dark:text-white">{g.name}</div>
@@ -1031,7 +1372,7 @@ function NotificationsTab() {
               )}
             </div>
           </div>
-          
+
           {/* Status Messages */}
           {success && (
             <div className="bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-900/10 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 px-6 py-4 rounded-xl backdrop-blur-sm">
@@ -1041,7 +1382,7 @@ function NotificationsTab() {
               </div>
             </div>
           )}
-          
+
           {error && (
             <div className="bg-gradient-to-r from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-900/10 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-6 py-4 rounded-xl backdrop-blur-sm">
               <div className="flex items-center">
@@ -1050,14 +1391,14 @@ function NotificationsTab() {
               </div>
             </div>
           )}
-          
+
           {/* Action Buttons */}
           <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
             <button className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center">
               <Download className="w-4 h-4 mr-2" />
               Export Template
             </button>
-            
+
             <div className="flex items-center space-x-3">
               <button
                 onClick={() => {
@@ -1072,7 +1413,7 @@ function NotificationsTab() {
               >
                 Clear
               </button>
-              
+
               <button
                 onClick={handleSend}
                 disabled={loading || !title.trim() || !message.trim()}
@@ -1116,7 +1457,7 @@ function LoginHistoryTab() {
       if (filters.status) params.status = filters.status;
       if (filters.startDate) params.startDate = filters.startDate;
       if (filters.endDate) params.endDate = filters.endDate;
-      
+
       const response = await adminService.getLoginHistory(params);
       setHistory(response.history);
       setPagination(response.pagination);
@@ -1128,17 +1469,29 @@ function LoginHistoryTab() {
     }
   };
 
-  const handleExport = async () => {
-    try {
-      setExporting(true);
-      // Implement export functionality
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      alert('Export completed successfully!');
-    } catch (err) {
-      alert('Export failed');
-    } finally {
-      setExporting(false);
-    }
+  const handleExport = () => {
+    if (history.length === 0) return;
+
+    const headers = ['#', 'Email', 'User Name', 'Status', 'IP Address', 'User Agent', 'Login At'];
+    const csvRows = [
+      headers.join(','),
+      ...history.map((entry, index) => [
+        index + 1 + (page - 1) * 50,
+        entry.email || '',
+        `"${(entry.user?.name || 'Unknown').replace(/"/g, '""')}"`,
+        entry.status,
+        entry.ipAddress || '',
+        `"${(entry.userAgent || '').replace(/"/g, '""')}"`,
+        new Date(entry.loginAt).toLocaleString()
+      ].join(','))
+    ];
+
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `login_history_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
   };
 
   return (
@@ -1162,7 +1515,7 @@ function LoginHistoryTab() {
               className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Status
@@ -1181,7 +1534,7 @@ function LoginHistoryTab() {
               <option value="blocked">Blocked</option>
             </select>
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               From Date
@@ -1196,7 +1549,7 @@ function LoginHistoryTab() {
               className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               To Date
@@ -1212,7 +1565,7 @@ function LoginHistoryTab() {
             />
           </div>
         </div>
-        
+
         <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
           <button
             onClick={() => {
@@ -1228,10 +1581,10 @@ function LoginHistoryTab() {
           >
             Clear Filters
           </button>
-          
+
           <button
             onClick={handleExport}
-            disabled={exporting}
+            disabled={history.length === 0}
             className="px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-xl font-medium transition-all disabled:opacity-50 flex items-center"
           >
             <Download className="w-4 h-4 mr-2" />
@@ -1266,7 +1619,7 @@ function LoginHistoryTab() {
                 <div className="text-2xl font-bold text-gray-900 dark:text-white">{stat.value}</div>
                 <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">{stat.label}</div>
                 <div className={`h-1 w-full bg-${stat.color}-100 dark:bg-${stat.color}-900/30 rounded-full mt-3`}>
-                  <div 
+                  <div
                     className={`h-1 rounded-full bg-${stat.color}-500`}
                     style={{ width: `${(stat.value / Math.max(1, history.length)) * 100}%` }}
                   ></div>
@@ -1318,17 +1671,15 @@ function LoginHistoryTab() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                          item.status === 'success' 
-                            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' :
-                          item.status === 'failed' 
+                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${item.status === 'success'
+                          ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' :
+                          item.status === 'failed'
                             ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300' :
                             'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300'
-                        }`}>
-                          <div className={`w-1.5 h-1.5 rounded-full mr-2 ${
-                            item.status === 'success' ? 'bg-green-500' :
+                          }`}>
+                          <div className={`w-1.5 h-1.5 rounded-full mr-2 ${item.status === 'success' ? 'bg-green-500' :
                             item.status === 'failed' ? 'bg-red-500' : 'bg-orange-500'
-                          }`}></div>
+                            }`}></div>
                           {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
                         </span>
                       </td>
@@ -1351,7 +1702,7 @@ function LoginHistoryTab() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <button 
+                        <button
                           className="p-2 text-gray-600 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                           title="View details"
                         >
@@ -1387,16 +1738,15 @@ function LoginHistoryTab() {
                     let pageNum = i + 1;
                     if (page > 3) pageNum = page - 2 + i;
                     if (pageNum > pagination.pages) return null;
-                    
+
                     return (
                       <button
                         key={pageNum}
                         onClick={() => setPage(pageNum)}
-                        className={`w-10 h-10 rounded-xl transition-colors ${
-                          page === pageNum
-                            ? 'bg-blue-600 text-white'
-                            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                        }`}
+                        className={`w-10 h-10 rounded-xl transition-colors ${page === pageNum
+                          ? 'bg-blue-600 text-white'
+                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                          }`}
                       >
                         {pageNum}
                       </button>

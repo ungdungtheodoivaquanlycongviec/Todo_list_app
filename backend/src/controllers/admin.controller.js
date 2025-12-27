@@ -44,9 +44,9 @@ const createUser = asyncHandler(async (req, res) => {
     );
     sendSuccess(res, { user }, 'User created successfully', 201);
   } catch (error) {
-    if (error.message.includes('required') || 
-        error.message.includes('Invalid') || 
-        error.message.includes('already exists')) {
+    if (error.message.includes('required') ||
+      error.message.includes('Invalid') ||
+      error.message.includes('already exists')) {
       return sendError(res, error.message, 400);
     }
     throw error;
@@ -72,11 +72,11 @@ const updateUser = asyncHandler(async (req, res) => {
     if (error.message === 'Invalid user ID' || error.message === 'User not found') {
       return sendError(res, error.message, 404);
     }
-    if (error.message.includes('required') || 
-        error.message.includes('Invalid') || 
-        error.message.includes('already') ||
-        error.message.includes('cannot') ||
-        error.message.includes('Only super_admin')) {
+    if (error.message.includes('required') ||
+      error.message.includes('Invalid') ||
+      error.message.includes('already') ||
+      error.message.includes('cannot') ||
+      error.message.includes('Only super_admin')) {
       return sendError(res, error.message, 400);
     }
     throw error;
@@ -147,9 +147,9 @@ const assignAdminRole = asyncHandler(async (req, res) => {
     if (error.message === 'Invalid user ID' || error.message === 'User not found') {
       return sendError(res, error.message, 404);
     }
-    if (error.message.includes('already') || 
-        error.message.includes('Cannot') ||
-        error.message.includes('not an admin')) {
+    if (error.message.includes('already') ||
+      error.message.includes('Cannot') ||
+      error.message.includes('not an admin')) {
       return sendError(res, error.message, 400);
     }
     throw error;
@@ -174,9 +174,9 @@ const removeAdminRole = asyncHandler(async (req, res) => {
     if (error.message === 'Invalid user ID' || error.message === 'User not found') {
       return sendError(res, error.message, 404);
     }
-    if (error.message.includes('already') || 
-        error.message.includes('Cannot') ||
-        error.message.includes('not an admin')) {
+    if (error.message.includes('already') ||
+      error.message.includes('Cannot') ||
+      error.message.includes('not an admin')) {
       return sendError(res, error.message, 400);
     }
     throw error;
@@ -198,11 +198,11 @@ const sendNotification = asyncHandler(async (req, res) => {
     );
     sendSuccess(res, result, `Notification sent to ${result.sentCount} user(s) successfully`);
   } catch (error) {
-    if (error.message.includes('required') || 
-        error.message.includes('Invalid') || 
-        error.message.includes('No valid') ||
-        error.message.includes('No recipients') ||
-        error.message.includes('Please specify')) {
+    if (error.message.includes('required') ||
+      error.message.includes('Invalid') ||
+      error.message.includes('No valid') ||
+      error.message.includes('No recipients') ||
+      error.message.includes('Please specify')) {
       return sendError(res, error.message, 400);
     }
     throw error;
@@ -239,6 +239,28 @@ const getDashboardStats = asyncHandler(async (req, res) => {
   sendSuccess(res, { stats }, 'Dashboard stats retrieved successfully');
 });
 
+/**
+ * @route   GET /api/admin/analytics
+ * @desc    Get user analytics data
+ * @access  Private (Admin/Super Admin)
+ */
+const getAnalytics = asyncHandler(async (req, res) => {
+  const analytics = await adminService.getAnalytics();
+  sendSuccess(res, { analytics }, 'Analytics data retrieved successfully');
+});
+
+/**
+ * @route   GET /api/admin/system-status
+ * @desc    Get system status metrics
+ * @access  Private (Admin/Super Admin)
+ */
+const getSystemStatus = asyncHandler(async (req, res) => {
+  // Get socket namespace from app if available
+  const socketNamespace = req.app.get('socketNamespace') || null;
+  const status = await adminService.getSystemStatus(socketNamespace);
+  sendSuccess(res, { status }, 'System status retrieved successfully');
+});
+
 module.exports = {
   getUsers,
   getUserById,
@@ -251,6 +273,8 @@ module.exports = {
   sendNotification,
   getLoginHistory,
   getActionLogs,
-  getDashboardStats
+  getDashboardStats,
+  getAnalytics,
+  getSystemStatus
 };
 

@@ -89,6 +89,19 @@ export interface DashboardStats {
   totalGroups: number;
   recentLogins: number;
   recentActions: number;
+  // Growth/Change percentages
+  userGrowth: number;
+  groupGrowth: number;
+  loginChange: number;
+  actionsChange: number;
+  // System Health
+  systemHealth: number;
+  healthDetails: {
+    dbConnected: boolean;
+    dbPingMs: number;
+    memoryPercent: number;
+    uptimeSeconds: number;
+  };
 }
 
 export interface SendNotificationRequest {
@@ -97,6 +110,65 @@ export interface SendNotificationRequest {
   recipients?: string[];
   groupId?: string;
   sendToAll?: boolean;
+}
+
+export interface Analytics {
+  activeUsersChart: { date: string; count: number }[];
+  mostActiveUsers: {
+    userId: string;
+    name: string;
+    email: string;
+    taskCount: number;
+    completedCount: number;
+    completionRate: number;
+  }[];
+  taskStats: {
+    total: number;
+    completed: number;
+    inProgress: number;
+    todo: number;
+    completionRate: number;
+  };
+  storageByUser: {
+    userId: string;
+    name: string;
+    fileCount: number;
+    totalSize: number;
+  }[];
+}
+
+export interface SystemStatus {
+  serverMetrics: {
+    uptime: string;
+    uptimeSeconds: number;
+    memoryUsed: number;
+    memoryTotal: number;
+    memoryPercent: number;
+    nodeVersion: string;
+    platform: string;
+  };
+  databaseStatus: {
+    state: string;
+    isConnected: boolean;
+    pingMs: number | null;
+    host: string;
+    name: string;
+  };
+  applicationMetrics: {
+    totalUsers: number;
+    totalTasks: number;
+    totalMessages: number;
+    loginsLastHour: number;
+    loginsLast24h: number;
+    tasksCreatedToday: number;
+    messagesCreatedToday: number;
+  };
+  realtimeActivity: {
+    activeConnections: number;
+    uniqueConnectedUsers: number;
+    socketServerActive: boolean;
+  };
+  timestamp: string;
 }
 
 class AdminService {
@@ -118,7 +190,7 @@ class AdminService {
         }
       });
     }
-    
+
     const response = await apiClient.get<ApiResponse<UsersResponse>>(
       `/admin/users?${params.toString()}`
     );
@@ -229,7 +301,7 @@ class AdminService {
         }
       });
     }
-    
+
     const response = await apiClient.get<ApiResponse<LoginHistoryResponse>>(
       `/admin/login-history?${params.toString()}`
     );
@@ -256,7 +328,7 @@ class AdminService {
         }
       });
     }
-    
+
     const response = await apiClient.get<ApiResponse<ActionLogsResponse>>(
       `/admin/action-logs?${params.toString()}`
     );
@@ -269,6 +341,22 @@ class AdminService {
       '/admin/dashboard/stats'
     );
     return response.data.stats;
+  }
+
+  // Get analytics
+  async getAnalytics(): Promise<Analytics> {
+    const response = await apiClient.get<ApiResponse<{ analytics: Analytics }>>(
+      '/admin/analytics'
+    );
+    return response.data.analytics;
+  }
+
+  // Get system status
+  async getSystemStatus(): Promise<SystemStatus> {
+    const response = await apiClient.get<ApiResponse<{ status: SystemStatus }>>(
+      '/admin/system-status'
+    );
+    return response.data.status;
   }
 }
 

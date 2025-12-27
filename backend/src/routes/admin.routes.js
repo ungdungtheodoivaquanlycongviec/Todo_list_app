@@ -16,6 +16,8 @@ router.use(requireAdmin);
 
 // Dashboard
 router.get('/dashboard/stats', adminController.getDashboardStats);
+router.get('/analytics', adminController.getAnalytics);
+router.get('/system-status', adminController.getSystemStatus);
 
 // User management
 router.get('/users', adminController.getUsers);
