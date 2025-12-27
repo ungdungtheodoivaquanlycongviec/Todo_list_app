@@ -99,6 +99,31 @@ export interface SendNotificationRequest {
   sendToAll?: boolean;
 }
 
+export interface Analytics {
+  activeUsersChart: { date: string; count: number }[];
+  mostActiveUsers: {
+    userId: string;
+    name: string;
+    email: string;
+    taskCount: number;
+    completedCount: number;
+    completionRate: number;
+  }[];
+  taskStats: {
+    total: number;
+    completed: number;
+    inProgress: number;
+    todo: number;
+    completionRate: number;
+  };
+  storageByUser: {
+    userId: string;
+    name: string;
+    fileCount: number;
+    totalSize: number;
+  }[];
+}
+
 class AdminService {
   // Get all users
   async getUsers(query?: {
@@ -118,7 +143,7 @@ class AdminService {
         }
       });
     }
-    
+
     const response = await apiClient.get<ApiResponse<UsersResponse>>(
       `/admin/users?${params.toString()}`
     );
@@ -229,7 +254,7 @@ class AdminService {
         }
       });
     }
-    
+
     const response = await apiClient.get<ApiResponse<LoginHistoryResponse>>(
       `/admin/login-history?${params.toString()}`
     );
@@ -256,7 +281,7 @@ class AdminService {
         }
       });
     }
-    
+
     const response = await apiClient.get<ApiResponse<ActionLogsResponse>>(
       `/admin/action-logs?${params.toString()}`
     );
@@ -269,6 +294,14 @@ class AdminService {
       '/admin/dashboard/stats'
     );
     return response.data.stats;
+  }
+
+  // Get analytics
+  async getAnalytics(): Promise<Analytics> {
+    const response = await apiClient.get<ApiResponse<{ analytics: Analytics }>>(
+      '/admin/analytics'
+    );
+    return response.data.analytics;
   }
 }
 
