@@ -340,8 +340,19 @@ const buildScopedFolderFilter = async ({
   groupId,
   folderId,
   requesterId,
-  role
+  role,
+  isPersonalOwner = false
 }) => {
+  // Personal workspace owners have full access to all folders - no filtering needed
+  if (isPersonalOwner) {
+    if (folderId) {
+      // If a specific folder is requested, filter by that folder only
+      const folder = await Folder.findOne({ _id: folderId, groupId });
+      return folder ? buildFolderClauses(folder) : [];
+    }
+    return [];
+  }
+
   if (folderId) {
     try {
       const { folder } = await enforceFolderAccess({
@@ -848,6 +859,11 @@ class TaskService {
       const { group } = await ensureGroupAccess(groupId, requesterId);
       const requester = await getRequesterContext(requesterId);
 
+      // Check if user is owner of personal workspace - grants full access
+      const isPersonalOwner =
+        Boolean(group.isPersonalWorkspace) &&
+        normalizeId(group.createdBy) === normalizeId(requesterId);
+
       queryFilters.push({ groupId });
 
       const folderClauses = await buildScopedFolderFilter({
@@ -855,7 +871,8 @@ class TaskService {
         groupId,
         folderId,
         requesterId,
-        role: requester.role
+        role: requester.role,
+        isPersonalOwner
       });
 
       if (folderClauses.length === 1) {

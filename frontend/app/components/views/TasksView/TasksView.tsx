@@ -1323,7 +1323,14 @@ export default function TasksView() {
           break;
 
         case "duplicate":
-          // Create a duplicate task
+          // Create a duplicate task - include folderId and groupId to keep in same folder
+          const originalFolderId = typeof task.folderId === 'object'
+            ? (task.folderId as any)?._id
+            : task.folderId;
+          const originalGroupId = typeof task.groupId === 'object'
+            ? (task.groupId as any)?._id
+            : task.groupId;
+
           const duplicateData = {
             title: `${task.title} (Copy)`,
             description: task.description,
@@ -1333,10 +1340,18 @@ export default function TasksView() {
             tags: task.tags,
             estimatedTime: task.estimatedTime,
             dueDate: task.dueDate,
+            folderId: originalFolderId || undefined,
+            groupId: originalGroupId || undefined,
           };
           const duplicatedTask = await taskService.createTask(duplicateData);
-          // Add the new task to todo list
-          setTodoTasks(prev => [duplicatedTask, ...prev]);
+          // Add the new task to todo list (check for duplicates to avoid race condition with realtime)
+          setTodoTasks(prev => {
+            // Don't add if already exists (added by realtime listener)
+            if (prev.some(t => t._id === duplicatedTask._id)) {
+              return prev;
+            }
+            return [duplicatedTask, ...prev];
+          });
           break;
 
         case "move_to_folder":
