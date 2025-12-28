@@ -93,6 +93,12 @@ const notificationSchema = new mongoose.Schema(
     expiresAt: {
       type: Date,
       default: null
+    },
+    // Count of consolidated messages (for grouping notifications from same source)
+    messageCount: {
+      type: Number,
+      default: 1,
+      min: 1
     }
   },
   {
@@ -104,6 +110,8 @@ notificationSchema.index({ recipient: 1, isRead: 1, createdAt: -1 });
 notificationSchema.index({ recipient: 1, categories: 1, archived: 1, createdAt: -1 });
 notificationSchema.index({ status: 1, expiresAt: 1 });
 notificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+// Index for consolidation lookups: find existing unread notifications for same type/source
+notificationSchema.index({ recipient: 1, type: 1, 'data.groupId': 1, 'data.conversationId': 1, 'data.taskId': 1, isRead: 1 });
 
 notificationSchema.virtual('isExpired').get(function () {
   return this.expiresAt && this.expiresAt < new Date();
