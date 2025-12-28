@@ -560,6 +560,7 @@ class TaskService {
     let groupMemberIds = null;
     let targetGroup = null;
     let requesterRole = null;
+    let isPersonalOwner = false;
 
     if (taskData.groupId) {
       const groupId = normalizeId(taskData.groupId);
@@ -570,7 +571,7 @@ class TaskService {
       const { group } = await ensureGroupAccess(groupId, creatorId);
       const requester = await getRequesterContext(creatorId);
 
-      const isPersonalOwner =
+      isPersonalOwner =
         Boolean(group.isPersonalWorkspace) &&
         normalizeId(group.createdBy) === normalizeId(creatorId);
 
@@ -614,12 +615,12 @@ class TaskService {
         .filter(Boolean);
     }
 
-    // Check if user can assign to others (only PM and Product Owner)
+    // Check if user can assign to others (PM, Product Owner, or personal workspace owner)
     const requesterContext = await getRequesterContext(creatorId);
-    const canAssignToOthers = targetGroup ? canAssignFolderMembers(requesterContext) : false;
+    const canAssignToOthers = isPersonalOwner || (targetGroup ? canAssignFolderMembers(requesterContext) : false);
 
     // Validate assignment permissions if assigning to others
-    if (assignedIds.length > 0 && canAssignToOthers && targetGroup) {
+    if (assignedIds.length > 0 && canAssignToOthers && targetGroup && !isPersonalOwner) {
       const permissionCheck = await validateAssignmentPermissions(
         requesterContext,
         assignedIds,
@@ -656,7 +657,8 @@ class TaskService {
     }
 
     // If task has a folder, check and auto-grant folder access for assigned users
-    if (taskData.folderId && targetGroup) {
+    // Personal workspace owners can freely assign tasks without folder access restrictions
+    if (taskData.folderId && targetGroup && !isPersonalOwner) {
       const folder = await Folder.findById(taskData.folderId);
       if (folder && !folder.isDefault) {
         const folderMemberAccess = new Set(

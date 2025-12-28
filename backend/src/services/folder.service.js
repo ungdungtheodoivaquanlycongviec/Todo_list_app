@@ -103,6 +103,11 @@ const resolveFolderContext = async ({
   const role = access?.role || getRequesterRole(group, requesterId);
   let accessResult = null;
 
+  // Check if user is owner of personal workspace - grants full access
+  const isPersonalOwner =
+    Boolean(group.isPersonalWorkspace) &&
+    normalizeId(group.createdBy) === normalizeId(requesterId);
+
   if (!folderId && !allowFallback) {
     return { group, folder: null, defaultFolder };
   }
@@ -115,7 +120,8 @@ const resolveFolderContext = async ({
         requesterId,
         role,
         requireWrite: Boolean(access?.requireWrite),
-        isLeader: Boolean(access?.isLeader)
+        isLeader: Boolean(access?.isLeader),
+        isPersonalOwner
       });
     }
     return { group, folder: defaultFolder, defaultFolder, permission: accessResult };
@@ -139,7 +145,8 @@ const resolveFolderContext = async ({
         requesterId,
         role,
         requireWrite: Boolean(access?.requireWrite),
-        isLeader: Boolean(access?.isLeader)
+        isLeader: Boolean(access?.isLeader),
+        isPersonalOwner
       });
     }
   }
@@ -177,7 +184,12 @@ const serializeMemberAccess = entries =>
     addedAt: entry.addedAt || null
   }));
 
-const assertFolderPermission = ({ groupDoc, folderDoc, requesterId, role, requireWrite = false, isLeader = false }) => {
+const assertFolderPermission = ({ groupDoc, folderDoc, requesterId, role, requireWrite = false, isLeader = false, isPersonalOwner = false }) => {
+  // Personal workspace owner has full access - bypass all permission checks
+  if (isPersonalOwner) {
+    return { effectiveRole: role || 'personal_owner', assigned: true };
+  }
+
   const effectiveRole = role || getRequesterRole(groupDoc, requesterId);
   const assigned = hasFolderAssignment(folderDoc, requesterId);
   // Leaders luôn có quyền xem mọi folder trong group
@@ -442,7 +454,7 @@ class FolderService {
     // Emit realtime event - only to users assigned to this folder (or admins)
     const folderData = updatedFolder.toObject ? updatedFolder.toObject() : updatedFolder;
     const canViewAll = isPersonalOwner ? true : canViewAllFolders(requester);
-    
+
     // Determine recipients: assigned users + admins
     let recipients = [];
     if (canViewAll) {
@@ -466,7 +478,7 @@ class FolderService {
         }
       });
     }
-    
+
     emitFolderEvent(FOLDER_EVENTS.updated, {
       folder: folderData,
       groupId: normalizeId(groupId),
@@ -505,7 +517,7 @@ class FolderService {
     // Product Owner can delete any folder, including folders with tasks/notes
     // For other roles with folder management, check if folder is empty
     const isProductOwner = requester.role === require('../config/constants').GROUP_ROLE_KEYS.PRODUCT_OWNER;
-    
+
     if (!isProductOwner) {
       const [taskCount, noteCount] = await Promise.all([
         Task.countDocuments({ groupId, folderId }),
@@ -525,7 +537,7 @@ class FolderService {
 
     const folderData = folder.toObject ? folder.toObject() : folder;
     const groupIdNormalized = normalizeId(groupId);
-    
+
     await Folder.deleteOne({ _id: folderId, groupId });
 
     // Emit realtime event
@@ -605,7 +617,7 @@ class FolderService {
       if (activeTasks.length > 0) {
         // Build a map of user -> their active tasks
         const usersWithActiveTasks = new Map();
-        
+
         for (const task of activeTasks) {
           for (const assignee of task.assignedTo) {
             const assigneeId = normalizeId(assignee.userId?._id || assignee.userId);
@@ -639,10 +651,10 @@ class FolderService {
       return existing
         ? existing
         : {
-            userId: id,
-            addedBy: requesterId,
-            addedAt: new Date()
-          };
+          userId: id,
+          addedBy: requesterId,
+          addedAt: new Date()
+        };
     });
 
     await folder.save();
@@ -652,7 +664,7 @@ class FolderService {
 
     // Emit realtime event - only to users assigned to this folder (hoặc admins)
     const canViewAll = canViewAllFolders(requester);
-    
+
     // Determine recipients: newly assigned users + admins
     let recipients = [];
     if (canViewAll) {
@@ -675,7 +687,7 @@ class FolderService {
         }
       });
     }
-    
+
     emitFolderEvent(FOLDER_EVENTS.membersUpdated, {
       folder: plainFolder,
       groupId: normalizeId(groupId),
