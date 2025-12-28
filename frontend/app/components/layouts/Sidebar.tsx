@@ -1275,28 +1275,29 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Personal Workspace */}
-      {personalWorkspace && (
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center space-x-2">
-              <FolderIcon className="w-4 h-4 text-blue-500" />
-              <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
-                {t('sidebar.personalWorkspace') || 'Personal Workspace'}
-              </span>
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {/* Personal Workspace */}
+        {personalWorkspace && (
+          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center space-x-2">
+                <FolderIcon className="w-4 h-4 text-blue-500" />
+                <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
+                  {t('sidebar.personalWorkspace') || 'Personal Workspace'}
+                </span>
+              </div>
             </div>
+            {personalWorkspace && (() => {
+              const personalWorkspaceRole = user ? getMemberRole(personalWorkspace, user._id) : null;
+              const effectiveRole = (businessRole || personalWorkspaceRole) as GroupRoleKey | null;
+              const canManageFoldersForPersonal = canManageFolders(effectiveRole, isLeader);
+              return renderGroupCard(personalWorkspace, { canManageFolders: canManageFoldersForPersonal });
+            })()}
           </div>
-          {personalWorkspace && (() => {
-            const personalWorkspaceRole = user ? getMemberRole(personalWorkspace, user._id) : null;
-            const effectiveRole = (businessRole || personalWorkspaceRole) as GroupRoleKey | null;
-            const canManageFoldersForPersonal = canManageFolders(effectiveRole, isLeader);
-            return renderGroupCard(personalWorkspace, { canManageFolders: canManageFoldersForPersonal });
-          })()}
-        </div>
-      )}
+        )}
 
-      {/* My Projects */}
-      <div className="flex-1 overflow-y-auto">
+        {/* My Projects */}
         <div className="p-4">
           <div className="flex items-center justify-between mb-4">
             <button

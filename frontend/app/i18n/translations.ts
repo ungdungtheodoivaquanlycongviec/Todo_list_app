@@ -30,6 +30,8 @@ export const translations = {
     'common.no': 'No',
     'common.clear': 'Clear',
     'common.done': 'Done',
+    'common.ok': 'OK',
+    'common.permissionDenied': 'Permission Denied',
 
     // Tasks
     'tasks.title': 'Tasks',
@@ -261,6 +263,8 @@ export const translations = {
     'folders.enterFolderName': 'Enter folder name',
     'folders.enterFolderDescription': 'Enter folder description (optional)',
     'folders.creating': 'Creating...',
+    'folders.permissionDeniedDelete': 'You do not have permission to delete this folder.',
+    'folders.permissionDeniedAssign': 'You do not have permission to assign members to this folder.',
 
     // Notifications
     'notifications.title': 'Notifications',
@@ -792,6 +796,8 @@ export const translations = {
     'common.no': 'Không',
     'common.clear': 'Xóa',
     'common.done': 'Xong',
+    'common.ok': 'OK',
+    'common.permissionDenied': 'Từ chối truy cập',
 
     // Tasks
     'tasks.title': 'Công việc',
@@ -1023,6 +1029,8 @@ export const translations = {
     'folders.enterFolderName': 'Nhập tên thư mục',
     'folders.enterFolderDescription': 'Nhập mô tả thư mục (tùy chọn)',
     'folders.creating': 'Đang tạo...',
+    'folders.permissionDeniedDelete': 'Bạn không có quyền xóa thư mục này.',
+    'folders.permissionDeniedAssign': 'Bạn không có quyền phân quyền thành viên cho thư mục này.',
 
     // Notifications
     'notifications.title': 'Thông báo',
