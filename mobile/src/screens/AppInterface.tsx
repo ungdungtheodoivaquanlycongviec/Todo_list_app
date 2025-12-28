@@ -1,125 +1,137 @@
 import React, { useState, useEffect } from 'react';
 import { View, ActivityIndicator, Text, Appearance, StyleSheet } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import MainLayout from '../components/layout/MainLayout';
-import TasksView from '../components/tasks/TaskScreen';
-import CalendarView from '../screens/CalendarScreen';
-import NotesView from '../screens/NotesScreen';
-// 🔑 ĐÃ THÊM: Import màn hình Chat
-import ChatView from '../screens/ChatScreen'; 
-import GroupMembersView from '../screens/GroupMembersScreen';
 import { useTheme } from '../context/ThemeContext';
 import type { Theme } from '../context/ThemeContext';
 
+// --- COMPONENTS ---
+import MainLayout from '../components/layout/MainLayout';
+import TasksView from '../components/tasks/TaskScreen'; // Kiểm tra lại đường dẫn thực tế của bạn
+// 🔄 THAY THẾ: CalendarView -> TimelineView
+import TimelineView from './TimelineView'; 
+import NotesView from '../screens/NotesScreen';
+import ChatView from '../screens/ChatScreen'; 
+import GroupMembersView from '../screens/GroupMembersScreen';
+
 export default function AppInterface({ navigation }: any) {
-  const [activeView, setActiveView] = useState('tasks');
-  const { user, logout, loading: authLoading, updateUserTheme } = useAuth();
-  const { theme: contextTheme, setTheme: setContextTheme } = useTheme();
+  const { user, logout, loading: authLoading, updateUserTheme } = useAuth();
+  const { theme: contextTheme, setTheme: setContextTheme } = useTheme();
 
-  // Sync theme from user with ThemeContext on mount and when user changes
-  useEffect(() => {
-    if (user?.theme && ['light', 'dark', 'auto'].includes(user.theme)) {
-      if (contextTheme !== user.theme) {
-        setContextTheme(user.theme as Theme);
-      }
-    }
-  }, [user?.theme, contextTheme, setContextTheme]);
+  // ✅ LOGIC ADMIN: Kiểm tra quyền
+  const isAdmin = user && (user.role === 'admin' || user.role === 'super_admin');
 
-  // Lắng nghe system theme changes nếu theme là 'auto' (Tương đương logic Web dùng Appearance API)
-  useEffect(() => {
-    if (!user || user.theme !== 'auto') return;
+  // ✅ STATE: Khởi tạo view dựa trên quyền Admin (Giống Web)
+  const [activeView, setActiveView] = useState(isAdmin ? 'chat' : 'tasks');
 
-    const subscription = Appearance.addChangeListener(({ colorScheme }) => {
-      // ThemeContext đã được cấu hình để tự động xử lý system theme changes
-    });
+  // Sync theme logic (Giữ nguyên)
+  useEffect(() => {
+    if (user?.theme && ['light', 'dark', 'auto'].includes(user.theme)) {
+      if (contextTheme !== user.theme) {
+        setContextTheme(user.theme as Theme);
+      }
+    }
+  }, [user?.theme, contextTheme, setContextTheme]);
 
-    return () => subscription.remove();
-  }, [user?.theme]);
+  // System theme listener (Giữ nguyên)
+  useEffect(() => {
+    if (!user || user.theme !== 'auto') return;
+    const subscription = Appearance.addChangeListener(({ colorScheme }) => {
+      // ThemeContext tự xử lý
+    });
+    return () => subscription.remove();
+  }, [user?.theme]);
 
-  // Redirect to login if not authenticated (Tương đương router.push trên Web)
-  useEffect(() => {
-    if (!authLoading && !user) {
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Auth' }], // Giả sử route đăng nhập là 'Auth' hoặc 'Login'
-      });
-    }
-  }, [user, authLoading, navigation]);
+  // Auth Redirect (Giữ nguyên)
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Auth' }],
+      });
+    }
+  }, [user, authLoading, navigation]);
 
-  // Handle theme change (Giống web: cập nhật service và Context)
-  const handleThemeChange = async (newTheme: string) => {
-    try {
-      if (['light', 'dark', 'auto'].includes(newTheme)) {
-        await updateUserTheme(newTheme as Theme);
-        setContextTheme(newTheme as Theme);
-      }
-    } catch (error) {
-      console.error('Failed to update theme:', error);
-    }
-  };
+  const handleThemeChange = async (newTheme: string) => {
+    try {
+      if (['light', 'dark', 'auto'].includes(newTheme)) {
+        await updateUserTheme(newTheme as Theme);
+        setContextTheme(newTheme as Theme);
+      }
+    } catch (error) {
+      console.error('Failed to update theme:', error);
+    }
+  };
 
-  // Helper function để lấy theme từ user (Giống web)
-  const getUserTheme = (): string => {
-    if (user?.theme && ['light', 'dark', 'auto'].includes(user.theme)) {
-      return user.theme;
-    }
-    return 'auto'; // default fallback
-  };
+  const getUserTheme = (): string => {
+    if (user?.theme && ['light', 'dark', 'auto'].includes(user.theme)) {
+      return user.theme;
+    }
+    return 'auto';
+  };
 
-  const renderActiveView = () => {
-    switch (activeView) {
-      case 'tasks':
-        return <TasksView />;
-      case 'calendar':
-        return <CalendarView />; // Tên View trên Mobile là CalendarView
-      case 'notes':
-        return <NotesView />;
-      case 'chat': // Đã fix lỗi Chat
-        return <ChatView />;
-      case 'members':
-        return <GroupMembersView />;
-      default:
-        return <TasksView />;
-    }
-  };
+  // ✅ RENDER VIEW: Đồng bộ logic với Web
+  const renderActiveView = () => {
+    // 1. Nếu là Admin -> Chỉ hiện Chat
+    if (isAdmin) {
+      return <ChatView />;
+    }
 
-  // Hiển thị loading trong khi check auth (Tương đương logic Web)
-  if (authLoading) {
-    return (
-      <View style={loadingStyles.container}>
-        <ActivityIndicator size="large" color="#3b82f6" />
-        <Text style={loadingStyles.text}>Loading...</Text>
-      </View>
-    );
-  }
+    // 2. User thường -> Switch case
+    switch (activeView) {
+      case 'tasks':
+        return <TasksView />;
+      case 'calendar':
+        // 🔄 Đã thay bằng TimelineView
+        return <TimelineView />; 
+      case 'notes':
+        return <NotesView />;
+      case 'chat':
+        return <ChatView />;
+      case 'members':
+        return <GroupMembersView />;
+      default:
+        return <TasksView />;
+    }
+  };
 
-  if (!user) {
-    return null;
-  }
+  if (authLoading) {
+    return (
+      <View style={loadingStyles.container}>
+        <ActivityIndicator size="large" color="#3b82f6" />
+        <Text style={loadingStyles.text}>Loading...</Text>
+      </View>
+    );
+  }
 
-  return (
-    <MainLayout 
-      activeView={activeView} 
-      onViewChange={setActiveView}
-      user={user}
-      onLogout={logout}
-      theme={getUserTheme()}
-      onThemeChange={handleThemeChange}
-    >
-      {renderActiveView()}
-    </MainLayout>
-  );
+  if (!user) {
+    return null;
+  }
+
+  return (
+    <MainLayout 
+      activeView={activeView} 
+      onViewChange={setActiveView}
+      user={user}
+      onLogout={logout}
+      theme={getUserTheme()}
+      onThemeChange={handleThemeChange}
+      // Có thể truyền thêm prop isAdmin vào MainLayout nếu cần ẩn menu
+      // isAdmin={isAdmin} 
+    >
+      {renderActiveView()}
+    </MainLayout>
+  );
 }
 
 const loadingStyles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    backgroundColor: '#f3f4f6' 
-  },
-  text: { 
-    marginTop: 12, 
-    color: '#6b7280' 
-  }
+  container: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    backgroundColor: '#f3f4f6' 
+  },
+  text: { 
+    marginTop: 12, 
+    color: '#6b7280' 
+  }
 });

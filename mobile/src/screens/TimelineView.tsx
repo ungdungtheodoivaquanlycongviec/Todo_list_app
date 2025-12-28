@@ -1,38 +1,29 @@
-"use client";
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
-  Plus,
-  ChevronLeft,
-  ChevronRight,
-  Search,
-  Filter,
-  MoreVertical,
-  User,
-  AlertTriangle,
-  CheckCircle2,
-  Circle,
-  Calendar as CalendarIcon,
-  Clock,
-  Folder,
-  Tag,
-  ZoomIn,
-  ZoomOut,
-  GripVertical
-} from 'lucide-react';
-import { taskService } from '../../services/task.service';
-import { Task } from '../../services/types/task.types';
-import { useAuth } from '../../contexts/AuthContext';
-import CreateTaskModal from './TasksView/CreateTaskModal';
-import TaskDetailModal from './TasksView/TaskDetailModal';
-import { useGroupChange } from '../../hooks/useGroupChange';
-import NoGroupState from '../common/NoGroupState';
-import NoFolderState from '../common/NoFolderState';
-import { useFolder } from '../../contexts/FolderContext';
-import { useLanguage } from '../../contexts/LanguageContext';
-import { useRegional } from '../../contexts/RegionalContext';
-import { monthNames, dayNamesShort } from '../../i18n/dateLocales';
-import { useToast } from '../../contexts/ToastContext';
+  View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions,
+  ActivityIndicator, TextInput, Modal, Alert, Platform
+} from 'react-native';
+import {
+  Plus, ChevronLeft, ChevronRight, Search, Filter, Folder, Tag,
+  ZoomIn, ZoomOut, X, Circle, GripVertical, User, Calendar
+} from 'lucide-react-native';
+
+import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
+import { taskService, Task } from '../services/task.service';
+import { groupService } from '../services/group.service';
+import { folderService } from '../services/folder.service'; 
+import { useFolder } from '../context/FolderContext';
+import { useLanguage } from '../context/LanguageContext';
+import { useRegional } from '../context/RegionalContext';
+import { GroupMember } from '../types/group.types';
+
+import CreateTaskModal from '../components/tasks/CreateTaskModal'; 
+import TaskDetailModal from '../components/tasks/TaskDetailModal';
+// ✅ Import NoFolderState
+import NoFolderState from '../components/common/NoFolderState';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 type ZoomLevel = 'days' | 'weeks' | 'months' | 'quarters';
 type GroupBy = 'none' | 'folder' | 'category' | 'assignee' | 'status';
@@ -43,1331 +34,435 @@ interface TimelineTask extends Omit<Task, 'startDate'> {
   left: number;
   width: number;
   row: number;
+  [key: string]: any;
 }
 
 export default function TimelineView() {
-  const { user: currentUser, currentGroup } = useAuth();
-  const { currentFolder } = useFolder();
+  const { user: currentUser } = useAuth();
+  const { isDark } = useTheme();
+  
+  const { currentFolder } = useFolder(); 
+  
   const { t, language } = useLanguage();
-  const { formatDate, getWeekStartDay } = useRegional();
-  const toast = useToast();
+  const { formatDate } = useRegional(); 
+
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // State local fallback ID
+  const [activeFolderId, setActiveFolderId] = useState<string | undefined>(currentFolder?._id);
+
+  // UI State
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [showTaskDetail, setShowTaskDetail] = useState(false);
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [selectedDateForCreate, setSelectedDateForCreate] = useState<Date | undefined>(undefined);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [groupBy, setGroupBy] = useState<GroupBy>('none');
   const [zoomLevel, setZoomLevel] = useState<ZoomLevel>('weeks');
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [draggedTask, setDraggedTask] = useState<string | null>(null);
-  const [dragOffset, setDragOffset] = useState(0);
-  const [originalTaskData, setOriginalTaskData] = useState<{ startTime: Date; dueDate: Date } | null>(null);
-  const [draggedTaskPosition, setDraggedTaskPosition] = useState<{ startTime: string; dueDate: string } | null>(null);
-  const [resizingTask, setResizingTask] = useState<string | null>(null);
-  const [resizeType, setResizeType] = useState<'start' | 'end' | null>(null);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
-  const timelineRef = useRef<HTMLDivElement>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const dragAnimationFrame = useRef<number | null>(null);
-  const resizeAnimationFrame = useRef<number | null>(null);
-  const [resizedTaskPosition, setResizedTaskPosition] = useState<{ startTime?: string; dueDate?: string } | null>(null);
-  const wasInteractingRef = useRef(false); // Track if we just finished dragging/resizing
+  const scrollViewRef = useRef<ScrollView>(null);
 
-  const getTaskColor = useCallback((taskId: string) => {
-    let hash = 0;
-    for (let i = 0; i < taskId.length; i++) {
-      hash = (hash << 5) - hash + taskId.charCodeAt(i);
-      hash |= 0;
-    }
-    const hue = Math.abs(hash) % 360;
-    return `hsl(${hue}, 65%, 55%)`;
-  }, []);
+  // --- 1. LẤY GROUP ID AN TOÀN ---
+  const currentGroupId = useMemo(() => {
+      if (!currentUser) return undefined;
+      const user = currentUser as any;
+      if (user.currentGroupId) return user.currentGroupId;
+      if (user.groupId) return user.groupId;
+      if (user.currentGroup && user.currentGroup._id) return user.currentGroup._id;
+      return undefined;
+  }, [currentUser]);
 
-  const daysPerColumn = useMemo(() => {
+  useEffect(() => {
+      if (currentFolder?._id) setActiveFolderId(currentFolder._id);
+  }, [currentFolder]);
+
+  // Constants
+  const PIXELS_PER_DAY = useMemo(() => {
     switch (zoomLevel) {
-      case 'weeks':
-        return 7;
-      case 'months':
-        return 30;
-      case 'quarters':
-        return 90;
-      default:
-        return 1;
+      case 'days': return 60; 
+      case 'weeks': return 30; 
+      case 'months': return 15; 
+      case 'quarters': return 8; 
+      default: return 30;
     }
   }, [zoomLevel]);
+  const DAYS_BUFFER = 45;
 
-  const pixelsPerDay = useMemo(() => {
-    switch (zoomLevel) {
-      case 'days':
-        return 80;
-      case 'weeks':
-        return 28;
-      case 'months':
-        return 18;
-      case 'quarters':
-        return 10;
-      default:
-        return 24;
-    }
-  }, [zoomLevel]);
-
-  const columnWidth = useMemo(() => pixelsPerDay * daysPerColumn, [pixelsPerDay, daysPerColumn]);
-  const headerHeight = useMemo(() => (zoomLevel === 'days' ? 60 : 90), [zoomLevel]);
-
-  const taskDateBounds = useMemo(() => {
-    if (!tasks.length) return null;
-
-    let minDate: Date | null = null;
-    let maxDate: Date | null = null;
-
-    const getStart = (task: Task) => {
-      // Use createdAt as start date for timeline display
-      if (task.createdAt) return new Date(task.createdAt);
-      if (task.dueDate) return new Date(task.dueDate);
-      return null;
-    };
-
-    const getEnd = (task: Task, start: Date | null) => {
-      // Use dueDate as end date, or createdAt + 1 day if no dueDate
-      if (task.dueDate) return new Date(task.dueDate);
-      if (start) return new Date(start.getTime() + 24 * 60 * 60 * 1000);
-      return null;
-    };
-
-    tasks.forEach(task => {
-      const start = getStart(task);
-      const end = getEnd(task, start);
-      if (start) {
-        if (!minDate || start < minDate) minDate = start;
-        if (!maxDate || start > maxDate) maxDate = start;
-      }
-      if (end) {
-        if (!minDate || end < minDate) minDate = end;
-        if (!maxDate || end > maxDate) maxDate = end;
-      }
-    });
-
-    return minDate && maxDate ? { min: minDate, max: maxDate } : null;
-  }, [tasks]);
-
-  // Calculate date range based on zoom level
-  const getDateRange = useCallback(() => {
-    const today = new Date(currentDate);
-    let start = new Date(today);
-    let end = new Date(today);
-
-    switch (zoomLevel) {
-      case 'days':
-        start.setDate(today.getDate() - 7);
-        end.setDate(today.getDate() + 14);
-        break;
-      case 'weeks':
-        start.setDate(today.getDate() - 14);
-        end.setDate(today.getDate() + 28);
-        break;
-      case 'months':
-        start.setMonth(today.getMonth() - 2);
-        end.setMonth(today.getMonth() + 4);
-        break;
-      case 'quarters':
-        start.setMonth(today.getMonth() - 6);
-        end.setMonth(today.getMonth() + 12);
-        break;
-    }
-
-    if (taskDateBounds) {
-      const buffer = daysPerColumn * 4 || 7;
-      const minWithBuffer = new Date(taskDateBounds.min);
-      minWithBuffer.setDate(minWithBuffer.getDate() - buffer);
-      const maxWithBuffer = new Date(taskDateBounds.max);
-      maxWithBuffer.setDate(maxWithBuffer.getDate() + buffer);
-
-      if (minWithBuffer < start) start = minWithBuffer;
-      if (maxWithBuffer > end) end = maxWithBuffer;
-    }
-
-    return { start, end };
-  }, [currentDate, zoomLevel, taskDateBounds, daysPerColumn]);
-
-  // Get daily dates in range (base unit)
-  const getDatesInRange = useCallback(() => {
-    const { start, end } = getDateRange();
-    const dates: Date[] = [];
-    const current = new Date(start);
-
-    while (current <= end) {
-      dates.push(new Date(current));
-      current.setDate(current.getDate() + 1);
-    }
-
-    return dates;
-  }, [getDateRange]);
-  const dates = useMemo(() => getDatesInRange(), [getDatesInRange]);
-  const zoomLevels: ZoomLevel[] = ['days', 'weeks', 'months', 'quarters'];
-  const zoomLabels: Record<ZoomLevel, string> = {
-    days: (t as any)?.('timeline.zoomDays') || 'Days',
-    weeks: (t as any)?.('timeline.zoomWeeks') || 'Weeks',
-    months: (t as any)?.('timeline.zoomMonths') || 'Months',
-    quarters: (t as any)?.('timeline.zoomQuarters') || 'Quarters'
+  const getTaskColor = (taskId: string) => {
+    let hash = 0; for (let i = 0; i < taskId.length; i++) { hash = (hash << 5) - hash + taskId.charCodeAt(i); hash |= 0; }
+    const hue = Math.abs(hash) % 360; return `hsl(${hue}, 65%, 55%)`;
   };
 
-  const changeZoom = (direction: 'in' | 'out') => {
-    const currentIdx = zoomLevels.indexOf(zoomLevel);
-    if (direction === 'in' && currentIdx > 0) {
-      setZoomLevel(zoomLevels[currentIdx - 1]);
-    } else if (direction === 'out' && currentIdx < zoomLevels.length - 1) {
-      setZoomLevel(zoomLevels[currentIdx + 1]);
-    }
-  };
-
-  const getStatusStyle = (status?: string) => {
-    switch (status) {
-      case 'todo':
-        return { bgClass: 'bg-gray-200 text-gray-700', dotClass: 'bg-gray-500', label: t('status.todo') || 'To do' };
-      case 'in_progress':
-        return { bgClass: 'bg-blue-100 text-blue-700', dotClass: 'bg-blue-500', label: (t as any)?.('status.in_progress') || 'In progress' };
-      case 'completed':
-        return { bgClass: 'bg-green-100 text-green-700', dotClass: 'bg-green-500', label: t('status.completed') || 'Completed' };
-      case 'incomplete':
-        return { bgClass: 'bg-amber-100 text-amber-700', dotClass: 'bg-amber-500', label: t('status.incomplete') || 'Incomplete' };
-      case 'archived':
-        return { bgClass: 'bg-slate-200 text-slate-700', dotClass: 'bg-slate-500', label: (t as any)?.('status.archived') || 'Archived' };
-      default:
-        return { bgClass: 'bg-gray-200 text-gray-700', dotClass: 'bg-gray-500', label: status || t('status.todo') || 'To do' };
-    }
-  };
-
-  const getRemainingDaysLabel = (task: TimelineTask) => {
-    if (!task.endDate) return null;
-
-    const end = new Date(task.endDate);
-    const today = new Date();
-
-    const endMidnight = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-    const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-
-    const diffMs = endMidnight.getTime() - todayMidnight.getTime();
-    const diffDays = Math.round(diffMs / (24 * 60 * 60 * 1000));
-
-    if (diffDays === 0) {
-      return 'Due today';
-    }
-    if (diffDays > 0) {
-      return `${diffDays} days remaining`;
-    }
-    const overdueDays = Math.abs(diffDays);
-    return `${overdueDays} days overdue`;
-  };
-
-  // Fetch tasks
-  const fetchTasks = useCallback(async () => {
-    if (!currentUser || !currentGroup) return;
-
+  // --- 2. FETCH DATA (ĐÃ SỬA LOGIC) ---
+  const fetchData = useCallback(async () => {
+    if (!currentUser) return;
     try {
       setLoading(true);
-      const response = await taskService.getAllTasks({
-        folderId: currentFolder?._id
-      });
-      setTasks(response.tasks || []);
-    } catch (error) {
-      console.error('Error fetching tasks:', error);
-      setTasks([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [currentUser, currentGroup, currentFolder?._id]);
-
-  useEffect(() => {
-    fetchTasks();
-  }, [fetchTasks]);
-
-  useGroupChange(() => {
-    fetchTasks();
-  });
-
-  // Filter tasks based on search
-  const filteredTasks = tasks.filter(task => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      task.title.toLowerCase().includes(query) ||
-      (task.description && task.description.toLowerCase().includes(query)) ||
-      (task.category && task.category.toLowerCase().includes(query))
-    );
-  });
-
-  // Group tasks
-  const groupedTasks = useCallback(() => {
-    if (groupBy === 'none') {
-      return { [t('timeline.allTasks')]: filteredTasks };
-    }
-
-    const groups: { [key: string]: Task[] } = {};
-
-    filteredTasks.forEach(task => {
-      let key = t('timeline.uncategorized');
-
-      switch (groupBy) {
-        case 'folder':
-          if (task.folderId && typeof task.folderId === 'object' && 'name' in task.folderId) {
-            key = task.folderId.name || t('timeline.unnamedFolder');
-          } else {
-            key = t('timeline.noFolder');
-          }
-          break;
-        case 'category':
-          // Use category as-is, capitalize first letter
-          if (task.category) {
-            key = task.category.charAt(0).toUpperCase() + task.category.slice(1);
-          } else {
-            key = t('timeline.noCategory');
-          }
-          break;
-        case 'assignee':
-          if (task.assignedTo && task.assignedTo.length > 0) {
-            const assignee = task.assignedTo[0];
-            if (typeof assignee.userId === 'object' && 'name' in assignee.userId) {
-              key = assignee.userId.name || t('timeline.unnamedUser');
-            } else {
-              key = t('timeline.assigned');
-            }
-          } else {
-            key = t('timeline.unassigned');
-          }
-          break;
-        case 'status':
-          key = task.status ? (t as any)(`status.${task.status}`) : t('status.todo');
-          break;
-      }
-
-      if (!groups[key]) {
-        groups[key] = [];
-      }
-      groups[key].push(task);
-    });
-
-    return groups;
-  }, [filteredTasks, groupBy, t]);
-
-  // Calculate task position on timeline
-  const calculateTaskPosition = useCallback((task: Task): TimelineTask | null => {
-    const { start } = getDateRange();
-    // Use dragged/resized position if task is being manipulated
-    let taskStart: Date;
-    let taskEnd: Date;
-
-    const getFallbackStart = () => {
-      // Use startDate (user-editable) with fallback to createdAt for timeline display
-      // if (task.startDate) return new Date(task.startDate);
-      if (task.createdAt) return new Date(task.createdAt);
-      if (task.dueDate) return new Date(task.dueDate);
-      return new Date();
-    };
-
-    const getFallbackEnd = (start: Date) => {
-      // Use dueDate as end date, or start + 1 day if no dueDate
-      if (task.dueDate) return new Date(task.dueDate);
-      return new Date(start.getTime() + 24 * 60 * 60 * 1000);
-    };
-
-    if (draggedTask === task._id && draggedTaskPosition) {
-      taskStart = new Date(draggedTaskPosition.startTime);
-      taskEnd = new Date(draggedTaskPosition.dueDate);
-    } else if (resizingTask === task._id && resizedTaskPosition) {
-      const baseStart = getFallbackStart();
-      taskStart = resizedTaskPosition.startTime
-        ? new Date(resizedTaskPosition.startTime)
-        : baseStart;
-      taskEnd = resizedTaskPosition.dueDate
-        ? new Date(resizedTaskPosition.dueDate)
-        : getFallbackEnd(taskStart);
-    } else {
-      taskStart = getFallbackStart();
-      taskEnd = getFallbackEnd(taskStart);
-    }
-
-    // Check if task is in range
-    if (dates.length > 0 && (taskEnd < start || taskStart > dates[dates.length - 1])) {
-      return null;
-    }
-
-    // Calculate left position - normalize dates to start of day to avoid timezone issues
-    const normalizedStart = new Date(taskStart.getFullYear(), taskStart.getMonth(), taskStart.getDate());
-    const normalizedRangeStart = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-    const daysDiff = Math.round((normalizedStart.getTime() - normalizedRangeStart.getTime()) / (1000 * 60 * 60 * 24));
-    const left = daysDiff * pixelsPerDay;
-
-    // Calculate width - normalize end date as well
-    const normalizedEnd = new Date(taskEnd.getFullYear(), taskEnd.getMonth(), taskEnd.getDate());
-    const duration = Math.max(1, Math.round((normalizedEnd.getTime() - normalizedStart.getTime()) / (1000 * 60 * 60 * 24)));
-    const width = duration * pixelsPerDay;
-
-    return {
-      ...task,
-      startDate: taskStart,
-      endDate: taskEnd,
-      left: Math.max(0, left),
-      width: Math.max(50, width),
-      row: 0 // Will be calculated later
-    };
-  }, [getDateRange, getDatesInRange, pixelsPerDay, draggedTask, draggedTaskPosition, resizingTask, resizedTaskPosition]);
-
-  // Calculate row positions for tasks (avoid overlapping)
-  const calculateRows = useCallback((timelineTasks: TimelineTask[]): TimelineTask[] => {
-    const rows: TimelineTask[][] = [];
-
-    // Sort tasks by start date
-    const sorted = [...timelineTasks].sort((a, b) =>
-      a.startDate.getTime() - b.startDate.getTime()
-    );
-
-    sorted.forEach(task => {
-      let placed = false;
-
-      // Try to place in existing row
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        const canPlace = row.every(existingTask =>
-          task.endDate <= existingTask.startDate ||
-          task.startDate >= existingTask.endDate
-        );
-
-        if (canPlace) {
-          row.push(task);
-          task.row = i;
-          placed = true;
-          break;
-        }
-      }
-
-      // If can't place, create new row
-      if (!placed) {
-        rows.push([task]);
-        task.row = rows.length - 1;
-      }
-    });
-
-    return sorted;
-  }, []);
-
-  // Get timeline tasks with positions
-  const timelineTasks = useCallback(() => {
-    const groups = groupedTasks();
-    const allTimelineTasks: TimelineTask[] = [];
-    let rowOffset = 0;
-
-    Object.entries(groups).forEach(([groupName, groupTasks]) => {
-      const tasksWithPositions = groupTasks
-        .map(calculateTaskPosition)
-        .filter((task): task is TimelineTask => task !== null);
-
-      const tasksWithRows = calculateRows(tasksWithPositions);
-
-      tasksWithRows.forEach(task => {
-        task.row += rowOffset;
-        allTimelineTasks.push(task);
-      });
-
-      rowOffset += Math.max(1, tasksWithRows.length > 0 ? Math.max(...tasksWithRows.map(t => t.row)) + 1 : 0);
-    });
-
-    return allTimelineTasks;
-  }, [groupedTasks, calculateTaskPosition, calculateRows]);
-
-  // Handle drag start
-  const handleDragStart = (e: React.MouseEvent, taskId: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const task = tasks.find(t => t._id === taskId);
-    if (task) {
-      // Use createdAt as start date, dueDate as end date
-      const baseStart = task.createdAt
-        ? new Date(task.createdAt)
-        : task.dueDate
-          ? new Date(task.dueDate)
-          : new Date();
-      const baseEnd = task.dueDate ? new Date(task.dueDate) : new Date(baseStart.getTime() + 24 * 60 * 60 * 1000);
-      setOriginalTaskData({ startTime: baseStart, dueDate: baseEnd });
-    }
-    setDraggedTask(taskId);
-    const timelineTask = timelineTasks().find(t => t._id === taskId);
-    if (timelineTask && timelineRef.current) {
-      const rect = timelineRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left - 200; // Subtract sidebar width
-      setDragOffset(x - timelineTask.left);
-    }
-  };
-
-  // Handle drag - optimized with requestAnimationFrame
-  const handleDrag = useCallback((e: MouseEvent) => {
-    if (!draggedTask || !timelineRef.current || !originalTaskData) return;
-
-    // Cancel previous animation frame
-    if (dragAnimationFrame.current) {
-      cancelAnimationFrame(dragAnimationFrame.current);
-    }
-
-    dragAnimationFrame.current = requestAnimationFrame(() => {
-      const rect = timelineRef.current!.getBoundingClientRect();
-      const x = e.clientX - rect.left - 200 - dragOffset; // Subtract sidebar width and offset
-      const { start } = getDateRange();
-
-      const days = Math.max(0, Math.round(x / pixelsPerDay));
-      const newStartDate = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
-
-      // Reset to start of day for cleaner alignment
-      newStartDate.setHours(0, 0, 0, 0);
-
-      const duration = originalTaskData.dueDate.getTime() - originalTaskData.startTime.getTime();
-      const newDueDate = new Date(newStartDate.getTime() + duration);
-      // Use start of day to avoid timezone issues when saving
-      newDueDate.setHours(0, 0, 0, 0);
-
-      // Only update visual position, don't update tasks state
-      setDraggedTaskPosition({
-        startTime: newStartDate.toISOString(),
-        dueDate: newDueDate.toISOString()
-      });
-    });
-  }, [draggedTask, dragOffset, getDateRange, pixelsPerDay, originalTaskData]);
-
-  // Handle drag end
-  const handleDragEnd = useCallback(async () => {
-    // Cancel any pending animation frame
-    if (dragAnimationFrame.current) {
-      cancelAnimationFrame(dragAnimationFrame.current);
-      dragAnimationFrame.current = null;
-    }
-
-    if (!draggedTask) {
-      setDraggedTask(null);
-      setDragOffset(0);
-      setOriginalTaskData(null);
-      setDraggedTaskPosition(null);
-      return;
-    }
-
-    const taskId = draggedTask;
-    const finalPosition = draggedTaskPosition;
-
-    // Reset drag state immediately
-    setDraggedTask(null);
-    setDragOffset(0);
-    setOriginalTaskData(null);
-    setDraggedTaskPosition(null);
-
-    // Set flag to prevent click from opening task detail
-    wasInteractingRef.current = true;
-    setTimeout(() => { wasInteractingRef.current = false; }, 100);
-
-    // Update task with final position
-    if (finalPosition) {
-      try {
-        await taskService.updateTask(taskId, {
-          dueDate: finalPosition.dueDate
-        });
-
-        // Update local state instead of refetching to preserve scroll position
-        setTasks(prev => prev.map(t =>
-          t._id === taskId
-            ? { ...t, dueDate: finalPosition.dueDate }
-            : t
-        ));
-      } catch (error) {
-        console.error('Error updating task:', error);
-        toast.showError(error instanceof Error ? error.message : 'Unknown error', 'Lỗi cập nhật task');
-      }
-    }
-  }, [draggedTask, draggedTaskPosition]);
-
-  // Handle resize start
-  const handleResizeStart = (e: React.MouseEvent, taskId: string, type: 'start' | 'end') => {
-    e.stopPropagation();
-    setResizingTask(taskId);
-    setResizeType(type);
-  };
-
-  // Handle resize - optimized with requestAnimationFrame
-  const handleResize = useCallback((e: MouseEvent) => {
-    if (!resizingTask || !resizeType || !timelineRef.current) return;
-
-    // Cancel previous animation frame
-    if (resizeAnimationFrame.current) {
-      cancelAnimationFrame(resizeAnimationFrame.current);
-    }
-
-    resizeAnimationFrame.current = requestAnimationFrame(() => {
-      const rect = timelineRef.current!.getBoundingClientRect();
-      const x = e.clientX - rect.left - 200; // Subtract sidebar width
-      const { start } = getDateRange();
-
-      const days = Math.max(0, Math.round(x / pixelsPerDay));
-      const newDate = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
-
-      // Use start of day to avoid timezone issues when saving
-      newDate.setHours(0, 0, 0, 0);
-
-      // Get original task to check constraints
-      const originalTask = tasks.find(t => t._id === resizingTask);
-      if (originalTask) {
-        // Use createdAt as start date, dueDate as end date
-        const fallbackStart = originalTask.createdAt
-          ? new Date(originalTask.createdAt)
-          : originalTask.dueDate
-            ? new Date(originalTask.dueDate)
-            : new Date();
-        const fallbackDue = originalTask.dueDate
-          ? new Date(originalTask.dueDate)
-          : new Date(fallbackStart.getTime() + 24 * 60 * 60 * 1000);
-
-        if (resizeType === 'start') {
-          // Only allow moving start date to the past (not future)
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          if (newDate <= fallbackDue && newDate <= today) {
-            setResizedTaskPosition(prev => ({
-              startTime: newDate.toISOString(),
-              dueDate: prev?.dueDate
-            }));
-          }
-        } else {
-          if (newDate >= fallbackStart) {
-            setResizedTaskPosition(prev => ({
-              startTime: prev?.startTime,
-              dueDate: newDate.toISOString()
-            }));
-          }
-        }
-      }
-    });
-  }, [resizingTask, resizeType, getDateRange, pixelsPerDay, tasks]);
-
-  // Handle resize end
-  const handleResizeEnd = useCallback(async () => {
-    // Cancel any pending animation frame
-    if (resizeAnimationFrame.current) {
-      cancelAnimationFrame(resizeAnimationFrame.current);
-      resizeAnimationFrame.current = null;
-    }
-
-    if (!resizingTask) {
-      setResizingTask(null);
-      setResizeType(null);
-      setResizedTaskPosition(null);
-      return;
-    }
-
-    const taskId = resizingTask;
-    const finalPosition = resizedTaskPosition;
-    const originalTask = tasks.find(t => t._id === taskId);
-
-    // Reset resize state immediately
-    setResizingTask(null);
-    setResizeType(null);
-    setResizedTaskPosition(null);
-
-    // Set flag to prevent click from opening task detail
-    wasInteractingRef.current = true;
-    setTimeout(() => { wasInteractingRef.current = false; }, 100);
-
-    // Update task with final position
-    if (finalPosition && originalTask) {
-      try {
-        const updateData: any = {};
-
-        // Update startDate if start was resized (only for past dates)
-        if (finalPosition.startTime) {
-          const newStartDate = new Date(finalPosition.startTime);
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          if (newStartDate <= today) {
-            updateData.startDate = finalPosition.startTime;
-          }
-        }
-
-        // Update dueDate if end was resized
-        if (finalPosition.dueDate) {
-          updateData.dueDate = finalPosition.dueDate;
-        }
-
-        if (Object.keys(updateData).length > 0) {
-          await taskService.updateTask(taskId, updateData);
-
-          // Update local state instead of refetching to preserve scroll position
-          setTasks(prev => prev.map(t =>
-            t._id === taskId
-              ? { ...t, ...(updateData.startDate && { startDate: updateData.startDate }), ...(updateData.dueDate && { dueDate: updateData.dueDate }) }
-              : t
-          ));
-        }
-      } catch (error) {
-        console.error('Error resizing task:', error);
-        toast.showError(error instanceof Error ? error.message : 'Unknown error', 'Lỗi thay đổi kích thước task');
-      }
-    }
-  }, [resizingTask, resizedTaskPosition, tasks]);
-
-  // Mouse event handlers
-  useEffect(() => {
-    if (draggedTask) {
-      document.addEventListener('mousemove', handleDrag);
-      document.addEventListener('mouseup', handleDragEnd);
-      return () => {
-        document.removeEventListener('mousemove', handleDrag);
-        document.removeEventListener('mouseup', handleDragEnd);
-      };
-    }
-  }, [draggedTask, handleDrag, handleDragEnd]);
-
-  useEffect(() => {
-    if (resizingTask) {
-      document.addEventListener('mousemove', handleResize);
-      document.addEventListener('mouseup', handleResizeEnd);
-      return () => {
-        document.removeEventListener('mousemove', handleResize);
-        document.removeEventListener('mouseup', handleResizeEnd);
-      };
-    }
-  }, [resizingTask, handleResize, handleResizeEnd]);
-
-  // Navigate timeline
-  const navigateTimeline = (direction: 'prev' | 'next') => {
-    setCurrentDate(prev => {
-      const newDate = new Date(prev);
-      switch (zoomLevel) {
-        case 'days':
-          newDate.setDate(prev.getDate() + (direction === 'next' ? 7 : -7));
-          break;
-        case 'weeks':
-          newDate.setDate(prev.getDate() + (direction === 'next' ? 14 : -14));
-          break;
-        case 'months':
-          newDate.setMonth(prev.getMonth() + (direction === 'next' ? 2 : -2));
-          break;
-        case 'quarters':
-          newDate.setMonth(prev.getMonth() + (direction === 'next' ? 3 : -3));
-          break;
-      }
-      return newDate;
-    });
-  };
-
-  const goToToday = () => {
-    setCurrentDate(new Date());
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollLeft = scrollContainerRef.current.scrollWidth / 2;
-    }
-  };
-
-  // Keep current date visible when zoom level changes (only on explicit navigation)
-  useEffect(() => {
-    if (!scrollContainerRef.current) return;
-    const { start } = getDateRange();
-    const dayMs = 24 * 60 * 60 * 1000;
-    const offsetDays = (currentDate.getTime() - start.getTime()) / dayMs;
-    const timelineOffset = Math.max(0, offsetDays * pixelsPerDay);
-    const centerAdjust = scrollContainerRef.current.clientWidth / 2;
-    scrollContainerRef.current.scrollLeft = Math.max(0, timelineOffset - centerAdjust);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zoomLevel, currentDate]);
-
-  // Get status color
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'bg-green-500';
-      case 'in-progress':
-        return 'bg-blue-500';
-      case 'todo':
-        return 'bg-gray-400';
-      default:
-        return 'bg-gray-400';
-    }
-  };
-
-  // Get priority color
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'urgent':
-        return 'bg-red-500';
-      case 'high':
-        return 'bg-orange-500';
-      case 'medium':
-        return 'bg-yellow-500';
-      case 'low':
-        return 'bg-blue-500';
-      default:
-        return 'bg-gray-400';
-    }
-  };
-  // Format day cell labels based on zoom
-  const getDayCellLabel = (date: Date, index: number) => {
-    const day = date.getDate();
-    const dayOfWeek = date.getDay();
-    const month = date.getMonth();
-    const monthShort = language === 'vi' ? `Th${month + 1}` : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][month];
-    const dayShort = dayNamesShort[language][dayOfWeek];
-
-    switch (zoomLevel) {
-      case 'days':
-        return `${dayShort} ${day}`;
-      case 'weeks':
-        // Show label on week start day (Monday=1 or Sunday=0 based on preference)
-        const weekStartDay = getWeekStartDay();
-        return dayOfWeek === weekStartDay
-          ? `${monthShort} ${day}`
-          : '';
-      case 'months':
-        return day % 5 === 0 ? String(day) : '';
-      case 'quarters':
-        if (day === 1) {
-          return monthShort;
-        }
-        return day % 10 === 0 ? String(day) : '';
-      default:
-        return formatDate(date);
-    }
-  };
-
-  const periodGroups = useMemo<{ label: string; span: number }[]>(() => {
-    if (dates.length === 0) return [];
-    if (zoomLevel === 'days') return [];
-
-    const groups: { label: string; span: number }[] = [];
-    let i = 0;
-
-    while (i < dates.length) {
-      const startDate = dates[i];
-      let span = 1;
-
-      if (zoomLevel === 'weeks') {
-        span = Math.min(7, dates.length - i);
-      } else if (zoomLevel === 'months') {
-        const month = startDate.getMonth();
-        while (i + span < dates.length && dates[i + span].getMonth() === month) {
-          span++;
-        }
-      } else if (zoomLevel === 'quarters') {
-        const quarter = Math.floor(startDate.getMonth() / 3);
-        while (
-          i + span < dates.length &&
-          Math.floor(dates[i + span].getMonth() / 3) === quarter
-        ) {
-          span++;
-        }
-      }
-
-      const endDate = dates[Math.min(i + span - 1, dates.length - 1)];
-      let label = '';
-
-      if (zoomLevel === 'weeks') {
-        const startMonthShort = language === 'vi' ? `Th${startDate.getMonth() + 1}` : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][startDate.getMonth()];
-        const endMonthShort = language === 'vi' ? `Th${endDate.getMonth() + 1}` : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][endDate.getMonth()];
-        label = `${startMonthShort} ${startDate.getDate()} - ${endMonthShort} ${endDate.getDate()}`;
-      } else if (zoomLevel === 'months') {
-        const monthName = monthNames[language][startDate.getMonth()];
-        label = `${monthName} ${startDate.getFullYear()}`;
-      } else if (zoomLevel === 'quarters') {
-        label = `Q${Math.floor(startDate.getMonth() / 3) + 1} ${startDate.getFullYear()}`;
-      }
-
-      groups.push({ label, span });
-      i += span;
-    }
-
-    return groups;
-  }, [dates, zoomLevel, language]);
-  const tasksWithPositions = timelineTasks();
-  const groups = groupedTasks();
-  const today = new Date();
-  const todayIndex = dates.findIndex(d =>
-    d.toDateString() === today.toDateString()
-  );
-
-  // Check if user has a current group
-  if (!currentGroup) {
-    return (
-      <NoGroupState
-        title={t('timeline.joinOrCreate')}
-        description={t('timeline.needGroup')}
-      />
-    );
-  }
-
-  // Check if user has a current folder
-  if (!currentFolder) {
-    return <NoFolderState />;
-  }
-
-  if (loading) {
-    return (
-      <div className="p-6 flex items-center justify-center h-full bg-gray-50">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">{t('timeline.loading')}</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="p-6 bg-gray-50 h-full overflow-y-auto">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-gray-900">{t('timeline.title')}</h1>
-          <p className="text-gray-600 mt-1">{t('timeline.planAndTrack')}</p>
-          {currentFolder && (
-            <p className="text-sm text-gray-500 mt-1 truncate">
-              {t('timeline.folder')}: <span className="font-medium text-gray-800 truncate inline-block align-middle max-w-full" title={currentFolder.name}>{currentFolder.name}</span>
-            </p>
-          )}
-        </div>
-
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full md:w-auto">
-          {/* Zoom Controls */}
-          <div className="flex bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm w-full sm:w-auto">
-            {(['days', 'weeks', 'months', 'quarters'] as ZoomLevel[]).map(level => (
-              <button
-                key={level}
-                className={`flex-1 px-3 py-2 text-sm capitalize transition-colors ${zoomLevel === level
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-white text-gray-700 hover:bg-gray-50'
-                  }`}
-                onClick={() => setZoomLevel(level)}
-              >
-                {t(`timeline.${level}`)}
-              </button>
-            ))}
-          </div>
-
-          {/* Add Task Button */}
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm font-medium justify-center w-full sm:w-auto"
-          >
-            <Plus className="w-4 h-4" />
-            {t('common.create')}
-          </button>
-        </div>
-      </div>
-
-      {/* Filters and Search */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mb-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
-          {/* Search */}
-          <div className="flex-1 w-full relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder={t('timeline.searchTimeline')}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-
-          {/* Group By */}
-          <div className="flex items-center gap-2 w-full lg:w-auto">
-            <Filter className="w-4 h-4 text-gray-400" />
-            <select
-              className="flex-1 lg:flex-none px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={groupBy}
-              onChange={(e) => setGroupBy(e.target.value as GroupBy)}
-            >
-              <option value="none">{t('timeline.noGrouping')}</option>
-              <option value="folder">{t('timeline.groupByFolder')}</option>
-              <option value="category">{t('timeline.groupByCategory')}</option>
-              <option value="assignee">{t('timeline.groupByAssignee')}</option>
-              <option value="status">{t('timeline.groupByStatus')}</option>
-            </select>
-          </div>
-
-          {/* Zoom controls */}
-          <div className="flex items-center gap-2 w-full lg:w-auto">
-            <div className="hidden lg:flex items-center text-sm text-gray-500 px-2">
-              {zoomLabels[zoomLevel]}
-            </div>
-            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1">
-              <button
-                className="p-2 hover:bg-white rounded-md transition-colors disabled:opacity-50"
-                onClick={() => changeZoom('in')}
-                disabled={zoomLevel === 'days'}
-                title={t('timeline.zoomIn') || 'Zoom in'}
-              >
-                <ZoomIn className="w-4 h-4" />
-              </button>
-              <div className="w-px h-6 bg-gray-200" />
-              <button
-                className="p-2 hover:bg-white rounded-md transition-colors disabled:opacity-50"
-                onClick={() => changeZoom('out')}
-                disabled={zoomLevel === 'quarters'}
-                title={t('timeline.zoomOut') || 'Zoom out'}
-              >
-                <ZoomOut className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Timeline */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        {/* Timeline Header */}
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between p-4 border-b border-gray-200 bg-gray-50">
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
-              onClick={() => navigateTimeline('prev')}
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-
-            <h2 className="text-lg font-semibold text-gray-900">
-              {monthNames[language][currentDate.getMonth()]} {currentDate.getFullYear()}
-            </h2>
-
-            <button
-              className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
-              onClick={() => navigateTimeline('next')}
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
-          </div>
-
-          <button
-            className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium w-full md:w-auto"
-            onClick={goToToday}
-          >
-            {t('timeline.today')}
-          </button>
-
-          {/* Legend */}
-          <div className="flex flex-wrap gap-2 text-xs text-gray-600">
-            {['todo', 'in_progress', 'completed', 'incomplete', 'archived'].map((status) => {
-              const style = getStatusStyle(status);
-              return (
-                <span
-                  key={status}
-                  className={`px-2 py-1 rounded-full flex items-center gap-1 ${style.bgClass}`}
-                >
-                  <span className={`w-2 h-2 rounded-full opacity-80 ${style.dotClass}`} />
-                  {style.label}
-                </span>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Timeline Grid */}
-        <div
-          ref={scrollContainerRef}
-          className="overflow-x-auto overflow-y-auto"
-          style={{ maxHeight: 'calc(100vh - 300px)' }}
-        >
-          <div
-            className="relative"
-            style={{
-              minHeight: '500px',
-              width: `${200 + dates.length * pixelsPerDay}px`
-            }}
-            onDoubleClick={(e) => {
-              if (timelineRef.current && !draggedTask && !resizingTask) {
-                const rect = timelineRef.current.getBoundingClientRect();
-                const x = e.clientX - rect.left - 200; // Subtract left sidebar width
-                if (x > 0) {
-                  const { start } = getDateRange();
-                  const days = Math.round(x / pixelsPerDay);
-                  const clickedDate = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
-                  setSelectedDate(clickedDate);
-                  setShowCreateModal(true);
-                }
+      let targetFolderId = currentFolder?._id || activeFolderId;
+
+      // ✅ FIX: Logic Auto-Select Folder thông minh hơn
+      // Hỗ trợ cả Group và Personal Workspace
+      if (!targetFolderId) {
+          try {
+              // 1. Xác định context ID (Group hoặc User)
+              const contextId = currentGroupId || currentUser._id;
+              // 2. Xác định cờ isPersonal (nếu không có group ID thì là personal)
+              const isPersonal = !currentGroupId;
+
+              if (contextId) {
+                  // 3. Gọi service với cờ isPersonal (để tránh lỗi Group Not Found)
+                  const res = await folderService.getFolders(contextId, isPersonal);
+                  const folders = Array.isArray(res) ? res : ((res as any).folders || (res as any).data || []);
+                  
+                  if (folders.length > 0) {
+                      const first = folders[0];
+                      targetFolderId = first._id || first.id;
+                      setActiveFolderId(targetFolderId);
+                  }
               }
-            }}
-          >
-            {/* Date Headers */}
-            <div
-              ref={timelineRef}
-              className="sticky top-0 z-20 bg-white border-b border-gray-200 flex"
-              style={{ height: `${headerHeight}px` }}
-            >
-              <div className="w-[200px] border-r border-gray-200 p-3 font-semibold text-gray-700 bg-gray-50 flex-shrink-0">
-                {t('timeline.work')}
-              </div>
-              <div className="flex-1 flex flex-col overflow-hidden">
-                {periodGroups.length > 0 && (
-                  <div className="flex h-8">
-                    {periodGroups.map((period, index) => (
-                      <div
-                        key={`period-${index}`}
-                        className="border-r border-gray-200 text-[11px] uppercase tracking-wide text-gray-500 flex items-center justify-center bg-gray-50 px-2 font-medium"
-                        style={{ width: `${period.span * pixelsPerDay}px` }}
-                      >
-                        {period.label}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="flex h-10 bg-white">
-                  {dates.map((date, index) => {
-                    const isToday = date.toDateString() === today.toDateString();
-                    const isWeekend = [0, 6].includes(date.getDay());
-                    const dayLabel = getDayCellLabel(date, index);
-                    return (
-                      <div
-                        key={index}
-                        className={`border-r border-gray-100 flex-shrink-0 flex flex-col items-center justify-end pb-1 ${isToday ? 'bg-blue-50 text-blue-700 font-semibold' : isWeekend ? 'bg-gray-50 text-gray-600' : 'text-gray-500'
-                          }`}
-                        style={{ width: `${pixelsPerDay}px` }}
-                      >
-                        {dayLabel && (
-                          <span className="text-[11px] leading-tight select-none">{dayLabel}</span>
-                        )}
-                        <div className="w-px h-3 bg-gray-200 mt-1" />
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-            <div style={{ height: `${headerHeight}px` }} />
+          } catch (err) { 
+              console.warn("Auto-select failed:", err); 
+          }
+      }
 
-            {/* Weekend Background Shading (under task rows) */}
-            {dates.map((date, index) => {
-              const isWeekend = [0, 6].includes(date.getDay());
-              if (!isWeekend) return null;
-              return (
-                <div
-                  key={`weekend-bg-${index}`}
-                  className="absolute top-0 bottom-0 bg-gray-50 pointer-events-none"
-                  style={{
-                    left: `${200 + index * pixelsPerDay}px`,
-                    width: `${pixelsPerDay}px`,
-                    top: `${headerHeight}px`,
-                    zIndex: 1
-                  }}
-                />
-              );
-            })}
+      // Chỉ fetch tasks nếu đã có folder ID hợp lệ
+      if (targetFolderId) {
+          const res = await taskService.getAllTasks({ folderId: targetFolderId });
+          setTasks((res.tasks || []) as Task[]);
+      } else {
+          // Nếu không có folder, clear tasks để tránh hiển thị rác
+          setTasks([]);
+      }
 
-            {/* Today Indicator */}
-            {todayIndex >= 0 && todayIndex < dates.length && (
-              <div
-                className="absolute top-0 bottom-0 w-0.5 bg-blue-500 z-10 pointer-events-none"
-                style={{
-                  left: `${200 + todayIndex * pixelsPerDay}px`
-                }}
+      if (currentGroupId && groupMembers.length === 0) {
+          try {
+             const res = await groupService.getGroupMembers(currentGroupId);
+             const members = Array.isArray(res) ? res : ((res as any).data || []);
+             setGroupMembers(members);
+          } catch (err) {}
+      }
+    } catch (error) { 
+        console.error('Error fetching:', error); 
+    } finally { 
+        setLoading(false); 
+    }
+  }, [currentUser, currentFolder, activeFolderId, currentGroupId, groupMembers.length]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const handleOpenCreateModal = (preDate?: Date) => {
+      const fid = currentFolder?._id || activeFolderId;
+      if (!fid) { Alert.alert("Notice", "Select a folder first."); return; }
+      setSelectedDateForCreate(preDate || new Date());
+      setShowCreateModal(true);
+  };
+
+  // --- 3. TIMELINE LOGIC ---
+  const dateRange = useMemo(() => {
+    const start = new Date(currentDate); start.setDate(start.getDate() - DAYS_BUFFER);
+    const end = new Date(currentDate); end.setDate(end.getDate() + DAYS_BUFFER);
+    const dates: Date[] = []; let curr = new Date(start); 
+    while (curr <= end) { dates.push(new Date(curr)); curr.setDate(curr.getDate() + 1); } 
+    return { start, end, dates };
+  }, [currentDate]);
+
+  const processedTasks = useMemo(() => {
+    let filtered = tasks.filter(task => {
+      if (!searchQuery) return true;
+      const q = searchQuery.toLowerCase();
+      return (task.title.toLowerCase().includes(q) || (task.description && task.description.toLowerCase().includes(q)));
+    });
+    const groups: { [key: string]: Task[] } = {};
+    if (groupBy === 'none') { groups[t('timeline.allTasks' as any) || 'All Tasks'] = filtered; } else {
+      filtered.forEach(task => {
+        let key = 'Uncategorized';
+        if (groupBy === 'status') key = task.status || 'todo';
+        else if (groupBy === 'folder' && task.folderId && typeof task.folderId === 'object') key = task.folderId.name;
+        else if (groupBy === 'category') key = task.category || 'General';
+        else if (groupBy === 'assignee') {
+             if (task.assignedTo && task.assignedTo.length > 0) {
+                 const u = task.assignedTo[0].userId; key = typeof u === 'object' ? (u as any).name : 'User';
+             } else { key = t('timeline.unassigned' as any) || 'Unassigned'; }
+        }
+        if (!groups[key]) groups[key] = []; groups[key].push(task);
+      });
+    }
+    return groups;
+  }, [tasks, searchQuery, groupBy, t]);
+
+  const timelineData = useMemo(() => {
+    const allRows: { groupName: string; tasks: TimelineTask[]; height: number }[] = [];
+    Object.entries(processedTasks).forEach(([groupName, groupTasks]) => {
+      const mappedTasks = groupTasks.map(task => {
+        const start = task.startDate ? new Date(task.startDate) : (task.createdAt ? new Date(task.createdAt) : new Date());
+        const end = task.dueDate ? new Date(task.dueDate) : new Date(start.getTime() + 86400000);
+        if (end < dateRange.start || start > dateRange.end) return null;
+        const diffStart = (start.getTime() - dateRange.start.getTime()) / (1000 * 3600 * 24);
+        const duration = Math.max(1, (end.getTime() - start.getTime()) / (1000 * 3600 * 24));
+        return { ...task, startDate: start, endDate: end, left: Math.max(0, diffStart * PIXELS_PER_DAY), width: duration * PIXELS_PER_DAY, row: 0 } as TimelineTask;
+      }).filter(Boolean) as TimelineTask[];
+
+      const rows: TimelineTask[][] = [];
+      const sorted = mappedTasks.sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
+      sorted.forEach(task => {
+        let placed = false;
+        for (let i = 0; i < rows.length; i++) {
+          const lastTask = rows[i][rows[i].length - 1];
+          if (task.left >= (lastTask.left + lastTask.width + 5)) { rows[i].push(task); task.row = i; placed = true; break; }
+        }
+        if (!placed) { rows.push([task]); task.row = rows.length - 1; }
+      });
+      const rowHeight = 40;
+      const totalHeight = Math.max(60, rows.length * (rowHeight + 10) + 40);
+      allRows.push({ groupName, tasks: sorted, height: totalHeight });
+    });
+    return allRows;
+  }, [processedTasks, dateRange, PIXELS_PER_DAY]);
+
+  const navigateDate = (direction: 'prev' | 'next') => { const delta = direction === 'next' ? 7 : -7; const newDate = new Date(currentDate); newDate.setDate(newDate.getDate() + delta); setCurrentDate(newDate); };
+  const goToToday = () => setCurrentDate(new Date());
+  useEffect(() => { if (scrollViewRef.current && dateRange.dates.length > 0) { const todayIndex = DAYS_BUFFER; const offset = (todayIndex * PIXELS_PER_DAY) - (SCREEN_WIDTH / 2) + 50; setTimeout(() => { scrollViewRef.current?.scrollTo({ x: Math.max(0, offset), animated: false }); }, 100); } }, [currentDate, PIXELS_PER_DAY]);
+  const locale = language === 'vi' ? 'vi-VN' : 'en-US';
+  
+  // ✅ Logic hiển thị Folder ID chính xác
+  const displayFolderId = currentFolder?._id || activeFolderId;
+
+  // --- RENDER ---
+
+  // 1. Loading
+  if (loading && !displayFolderId) {
+    return <View style={[styles.container, styles.centered, isDark && styles.darkContainer]}><ActivityIndicator size="large" color="#3b82f6" /></View>;
+  }
+
+  // ✅ 2. FIX: Hiển thị NoFolderState để tạo folder
+  if (!displayFolderId) {
+    return (
+        <NoFolderState />
+    );
+  }
+
+  // 3. Main View
+  return (
+    <View style={[styles.container, isDark && styles.darkContainer]}>
+      {/* HEADER */}
+      <View style={[styles.header, isDark && styles.darkHeader]}>
+        <View style={styles.headerTop}>
+          <View>
+            <Text style={[styles.title, isDark && styles.darkText]}>{t('timeline.title' as any) || 'Timeline'}</Text>
+            <Text style={{color: '#666', fontSize: 12}}>{currentFolder?.name || 'Loading...'}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+             <TouchableOpacity style={styles.iconButton} onPress={() => setShowFilterModal(true)}><Filter size={20} color={isDark ? '#fff' : '#666'} /></TouchableOpacity>
+             <TouchableOpacity style={styles.addButton} onPress={() => handleOpenCreateModal()}><Plus size={20} color="#fff" /></TouchableOpacity>
+          </View>
+        </View>
+        
+        <View style={[styles.controls, isDark && styles.darkControls]}>
+          <TouchableOpacity onPress={() => navigateDate('prev')} style={styles.navBtn}>
+              <ChevronLeft size={24} color={isDark ? '#fff' : '#333'} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={goToToday} style={styles.dateDisplay}>
+              <Calendar size={16} color={isDark ? '#fff' : '#333'} style={{marginRight: 6}} />
+              <Text style={[styles.dateText, isDark && styles.darkText]}>
+                  {currentDate.toLocaleDateString(locale, { month: 'short', year: 'numeric' })}
+              </Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigateDate('next')} style={styles.navBtn}>
+              <ChevronRight size={24} color={isDark ? '#fff' : '#333'} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* MAIN SCROLL */}
+      <ScrollView style={styles.mainScroll} contentContainerStyle={{flexGrow: 1}}>
+        <View style={styles.timelineWrapper}>
+          
+          <View style={[styles.sidebar, isDark && styles.darkSidebar]}>
+            <View style={[styles.sidebarHeader, { height: 40, borderRightWidth: 1, borderColor: isDark ? '#374151' : '#e5e7eb' }]} /> 
+            {timelineData.map((group, idx) => (
+              <View 
+                key={idx} 
+                style={[
+                    styles.groupLabelContainer, 
+                    isDark && styles.darkGroupLabelContainer,
+                    { height: group.height, borderBottomWidth: 1, borderBottomColor: isDark ? '#374151' : '#eee' }
+                ]}
               >
-                <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-3 h-3 bg-blue-500 rounded-full -mt-1.5"></div>
-              </div>
-            )}
-
-            {/* Task Rows */}
-            {Object.entries(groups).map(([groupName, groupTasks], groupIndex) => {
-              const groupTimelineTasks = tasksWithPositions.filter(t =>
-                groupTasks.some(gt => gt._id === t._id)
-              );
-
-              if (groupTimelineTasks.length === 0) return null;
-
-              const groupRowOffset = Math.min(...groupTimelineTasks.map(t => t.row));
-              const tasksForRender = groupTimelineTasks.map(task => ({
-                ...task,
-                rowWithinGroup: task.row - groupRowOffset
-              }));
-              const groupRowCount = Math.max(
-                1,
-                Math.max(...tasksForRender.map(t => t.rowWithinGroup)) + 1
-              );
-              const rowHeight = 40;
-              const rowGap = 10;
-              const groupPadding = groupBy !== 'none' ? 40 : 10;
-              const containerHeight = Math.max(60, groupRowCount * (rowHeight + rowGap) + groupPadding);
-
-              return (
-                <div
-                  key={groupName}
-                  className={`border-b border-gray-100 ${groupBy !== 'none' && groupIndex % 2 === 1 ? 'bg-gray-50/40' : ''}`}
-                >
-                  {/* Group Header */}
-                  {groupBy !== 'none' && (
-                    <div
-                      className="sticky z-10 bg-gray-50 border-b border-gray-200 px-4 py-2 font-medium text-gray-700 flex items-center gap-2 overflow-hidden"
-                      style={{ top: `${headerHeight}px` }}
+                <Text numberOfLines={2} style={[styles.groupLabel, isDark && styles.darkText]}>{group.groupName}</Text>
+                <Text style={styles.groupCount}>({group.tasks.length})</Text>
+              </View>
+            ))}
+          </View>
+          
+          {/* Grid */}
+          <ScrollView horizontal ref={scrollViewRef} showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
+            <View>
+              <View style={[styles.dateHeaderRow, isDark && { borderBottomColor: '#374151', backgroundColor: '#111827' }]}>
+                {dateRange.dates.map((date, idx) => {
+                  const isToday = date.toDateString() === new Date().toDateString();
+                  return (
+                    <TouchableOpacity 
+                        key={idx} 
+                        style={[styles.dateCell, { width: PIXELS_PER_DAY, borderRightColor: isDark ? '#374151' : '#f3f4f6' }, isToday && { backgroundColor: isDark ? '#1e3a8a' : '#eff6ff' }]}
+                        onPress={() => handleOpenCreateModal(date)}
                     >
-                      {groupBy === 'folder' && <Folder className="w-4 h-4" />}
-                      {groupBy === 'category' && <Tag className="w-4 h-4" />}
-                      {groupBy === 'assignee' && <User className="w-4 h-4" />}
-                      {groupBy === 'status' && <Circle className="w-4 h-4" />}
-                      <span className="truncate" title={groupName}>{groupName}</span>
-                      <span className="text-xs text-gray-500 flex-shrink-0 whitespace-nowrap">
-                        ({groupTimelineTasks.length})
-                      </span>
-                    </div>
-                  )}
+                      <Text style={[styles.dateDay, isDark && styles.darkText, isToday && { color: '#3b82f6' }]}>{date.getDate()}</Text>
+                      <Text style={[styles.dateMonth, isDark && styles.darkSubText]}>{date.toLocaleDateString(locale, { weekday: 'narrow' })}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
 
-                  {/* Task Bars */}
-                  <div className="relative" style={{ minHeight: `${containerHeight}px` }}>
-                    {tasksForRender.map((task) => {
-                      const top = task.rowWithinGroup * (rowHeight + rowGap) + groupPadding;
-                      const statusStyle = getStatusStyle(task.status);
-                      const remainingLabel = getRemainingDaysLabel(task);
+              <View style={styles.gridContainer}>
+                 {dateRange.dates.map((_, idx) => (
+                    <View key={`grid-${idx}`} style={[styles.gridLine, { left: idx * PIXELS_PER_DAY, width: 1, height: '100%', backgroundColor: isDark ? '#374151' : '#f0f0f0' }]} />
+                 ))}
+                 
+                 {timelineData.map((group, gIdx) => (
+                   <View key={gIdx} style={{ height: group.height, position: 'relative', borderBottomWidth: 1, borderBottomColor: 'transparent' }}>
+                     {group.tasks.map(task => (
+                       <TouchableOpacity 
+                            key={task._id} 
+                            style={[
+                                styles.taskBar, 
+                                { left: task.left, width: task.width, top: task.row * 50 + 10, backgroundColor: getTaskColor(task._id) }
+                            ]} 
+                            onPress={() => { setSelectedTaskId(task._id); setShowTaskDetail(true); }}
+                       >
+                         <Text numberOfLines={1} style={styles.taskTitle}>{task.title}</Text>
+                       </TouchableOpacity>
+                     ))}
+                   </View>
+                 ))}
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+      </ScrollView>
 
-                      return (
-                        <div
-                          key={task._id}
-                          className="absolute cursor-pointer group"
-                          style={{
-                            left: `${200 + task.left}px`,
-                            top: `${top}px`,
-                            width: `${Math.max(50, task.width)}px`,
-                            height: `${rowHeight}px`,
-                            zIndex: draggedTask === task._id ? 30 : (resizingTask === task._id ? 25 : 5)
-                          }}
-                          title={`${formatDate(task.startDate)} → ${formatDate(task.endDate)}`}
-                          onMouseDown={(e) => {
-                            // Don't start drag if clicking on resize handle
-                            if ((e.target as HTMLElement).closest('.resize-handle')) {
-                              return;
-                            }
-                            // Drag functionality disabled - only resize handles can be used
-                            // handleDragStart(e, task._id);
-                          }}
-                          onClick={(e) => {
-                            // Only open detail if we didn't drag or resize
-                            if (!draggedTask && !resizingTask && !wasInteractingRef.current && !(e.target as HTMLElement).closest('.resize-handle')) {
-                              setSelectedTaskId(task._id);
-                              setShowTaskDetail(true);
-                            }
-                          }}
-                        >
-                          {/* Task Bar */}
-                          <div
-                            className={`h-full rounded-md px-3 py-1 flex items-center justify-between shadow-sm hover:shadow-md transition-all task-bar-content ${draggedTask === task._id ? 'opacity-75 ring-2 ring-blue-400' : ''
-                              } ${resizingTask === task._id ? 'ring-2 ring-yellow-400' : ''}`}
-                            style={{
-                              backgroundColor: getTaskColor(task._id),
-                              color: '#ffffff'
-                            }}
-                          >
-                            <div className="flex items-center gap-2 flex-1 min-w-0">
-                              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusStyle.dotClass}`} />
-                              <GripVertical className="w-4 h-4 text-white opacity-50 flex-shrink-0" />
-                              <span className="text-white text-sm font-medium truncate">
-                                {task.title}
-                              </span>
-                            </div>
+      {/* FILTER MODAL */}
+      <Modal visible={showFilterModal} animationType="slide" transparent onRequestClose={() => setShowFilterModal(false)}>
+        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowFilterModal(false)} activeOpacity={1}>
+          <View style={[styles.modalContent, isDark && styles.darkPanel]}>
+            <Text style={[styles.sectionTitle, isDark && styles.darkText]}>Display Settings</Text>
+            
+            <Text style={[styles.label, isDark && styles.darkText, {marginTop: 10}]}>Zoom</Text>
+            <View style={styles.optionRow}>
+              {(['days', 'weeks', 'months'] as ZoomLevel[]).map(lvl => (
+                <TouchableOpacity key={lvl} style={[styles.optionBtn, zoomLevel === lvl && styles.optionBtnActive]} onPress={() => setZoomLevel(lvl)}>
+                  <Text style={[styles.optionText, zoomLevel === lvl && styles.optionTextActive]}>{lvl}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
-                            {remainingLabel && (
-                              <span className="ml-3 text-sm font-medium text-white whitespace-nowrap">
-                                {remainingLabel}
-                              </span>
-                            )}
+            <Text style={[styles.label, isDark && styles.darkText, {marginTop: 15}]}>Group By</Text>
+            <View style={styles.optionRowWrap}>
+              {(['none', 'status', 'folder', 'assignee'] as GroupBy[]).map(grp => (
+                <TouchableOpacity key={grp} style={[styles.optionBtn, groupBy === grp && styles.optionBtnActive]} onPress={() => setGroupBy(grp)}>
+                  <Text style={[styles.optionText, groupBy === grp && styles.optionTextActive]}>{grp}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            
+            <TouchableOpacity style={[styles.closeBtn, {marginTop: 20}]} onPress={() => setShowFilterModal(false)}>
+                <Text style={{color:'#fff', fontWeight:'bold'}}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
-                            {/* Resize Handle - Only for end date (right side) */}
-                            {/* Left resize handle removed to prevent changing start/createdAt date */}
-                            <div
-                              className="resize-handle absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-white opacity-0 group-hover:opacity-30 hover:opacity-50 rounded-r-md"
-                              onMouseDown={(e) => {
-                                e.stopPropagation();
-                                handleResizeStart(e, task._id, 'end');
-                              }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Spacer to prevent clipping of last rows */}
-            <div className="h-32" />
-
-            {/* Empty State */}
-            {tasksWithPositions.length === 0 && (
-              <div className="flex items-center justify-center py-20">
-                <div className="text-center">
-                  <CalendarIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500 text-lg mb-2">{t('timeline.noTasksInTimeline')}</p>
-                  <p className="text-gray-400 text-sm mb-4">
-                    {t('timeline.tasksWithDates')}
-                  </p>
-                  <button
-                    onClick={() => setShowCreateModal(true)}
-                    className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
-                  >
-                    {t('timeline.createTask')}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Create Task Modal */}
+      {/* MODALS */}
       {showCreateModal && (
         <CreateTaskModal
-          isOpen={showCreateModal}
+          key={displayFolderId || 'init'}
+          visible={showCreateModal}
           onClose={() => setShowCreateModal(false)}
-          onCreateTask={async (taskData) => {
-            try {
-              const assignedTo = currentUser ? [{ userId: currentUser._id }] : [];
-              const startDate = selectedDate || (taskData.startTime ? new Date(taskData.startTime) : new Date());
-              const dueDate = taskData.dueDate ? new Date(taskData.dueDate) : new Date(startDate.getTime() + 7 * 24 * 60 * 60 * 1000);
-
-              const backendTaskData = {
-                title: taskData.title || t('timeline.untitledTask'),
-                description: taskData.description || "",
-                category: taskData.category || "general",
-                status: "todo",
-                priority: taskData.priority === 'None' ? 'low' : taskData.priority.toLowerCase(),
-                dueDate: dueDate,
-                startTime: startDate,
-                tags: taskData.tags || [],
-                assignedTo: assignedTo,
-                estimatedTime: taskData.estimatedTime || "",
-                folderId: currentFolder?._id || undefined
-              };
-
-              await taskService.createTask(backendTaskData);
-              setShowCreateModal(false);
-              setSelectedDate(null);
-              await fetchTasks();
-            } catch (error) {
-              console.error("Error creating task:", error);
-              toast.showError(error instanceof Error ? error.message : 'Unknown error', 'Lỗi tạo task');
-            }
-          }}
+          onSuccess={() => fetchData()} 
+          initialDueDate={selectedDateForCreate || currentDate}
           currentUser={currentUser}
-          initialDueDate={selectedDate || undefined}
+          groupMembers={groupMembers}
+          folderId={displayFolderId}
+          groupId={currentGroupId}
         />
       )}
 
-      {/* Task Detail Modal */}
       {showTaskDetail && selectedTaskId && (
         <TaskDetailModal
+          visible={showTaskDetail}
           taskId={selectedTaskId}
-          isOpen={showTaskDetail}
-          onClose={() => {
-            setShowTaskDetail(false);
-            setSelectedTaskId(null);
-          }}
-          onTaskUpdate={async (updatedTask) => {
-            await fetchTasks();
-          }}
-          onTaskDelete={async (taskId) => {
-            await fetchTasks();
-            setShowTaskDetail(false);
-            setSelectedTaskId(null);
-          }}
+          onClose={() => { setShowTaskDetail(false); setSelectedTaskId(null); }}
+          onTaskUpdate={fetchData} 
+          onTaskDelete={fetchData} 
+          groupMembers={groupMembers}
         />
       )}
-    </div>
+    </View>
   );
 }
 
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#f9fafb' },
+  darkContainer: { backgroundColor: '#111827' },
+  centered: { justifyContent: 'center', alignItems: 'center', flex: 1 },
+  header: { padding: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
+  darkHeader: { backgroundColor: '#1f2937', borderBottomColor: '#374151' },
+  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  title: { fontSize: 20, fontWeight: 'bold', color: '#111827' },
+  addButton: { backgroundColor: '#3b82f6', padding: 8, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  iconButton: { padding: 8, backgroundColor: '#f3f4f6', borderRadius: 8 },
+  
+  // Controls
+  controls: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f3f4f6', borderRadius: 10, padding: 4 },
+  darkControls: { backgroundColor: '#374151' }, 
+  
+  navBtn: { padding: 8 },
+  dateDisplay: { flexDirection: 'row', alignItems: 'center' },
+  dateText: { fontSize: 14, fontWeight: '600', color: '#374151' },
+  
+  mainScroll: { flex: 1 },
+  timelineWrapper: { flexDirection: 'row', minHeight: '100%' },
+  
+  // Sidebar
+  sidebar: { width: 100, backgroundColor: '#fff', zIndex: 10 },
+  darkSidebar: { backgroundColor: '#1f2937' },
+  sidebarHeader: { borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
+  
+  // Group Label
+  groupLabelContainer: { justifyContent: 'center', paddingHorizontal: 8, backgroundColor: '#fff' },
+  darkGroupLabelContainer: { backgroundColor: '#1f2937', borderRightWidth: 1, borderRightColor: '#374151' }, 
+  
+  groupLabel: { fontSize: 12, fontWeight: '600', color: '#374151' },
+  groupCount: { fontSize: 10, color: '#9ca3af' },
+  dateHeaderRow: { flexDirection: 'row', height: 40, borderBottomWidth: 1, borderBottomColor: '#e5e7eb', backgroundColor: '#fff' },
+  dateCell: { justifyContent: 'center', alignItems: 'center', borderRightWidth: 1, borderRightColor: '#f3f4f6' },
+  dateDay: { fontSize: 14, fontWeight: '600', color: '#374151' },
+  dateMonth: { fontSize: 10, color: '#6b7280', textTransform: 'uppercase' },
+  gridContainer: { position: 'relative', flex: 1 },
+  gridLine: { position: 'absolute', top: 0 },
+  taskBar: { position: 'absolute', height: 32, borderRadius: 6, justifyContent: 'center', paddingHorizontal: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 1.41, elevation: 2 },
+  taskTitle: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  text: { color: '#374151' },
+  darkText: { color: '#f9fafb' },
+  darkSubText: { color: '#9ca3af' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '80%' },
+  darkPanel: { backgroundColor: '#1f2937' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold' },
+  sectionTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
+  label: { fontSize: 14, fontWeight:'600', color:'#333' },
+  optionRow: { flexDirection: 'row', gap: 10 },
+  optionRowWrap: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
+  optionBtn: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, backgroundColor: '#f3f4f6', borderWidth: 1, borderColor: 'transparent' },
+  optionBtnActive: { backgroundColor: '#eff6ff', borderColor: '#3b82f6' },
+  optionText: { fontSize: 14, color: '#6b7280' },
+  optionTextActive: { color: '#3b82f6', fontWeight: '600' },
+  input: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, padding: 12, marginBottom: 8, color: '#333' },
+  darkInput: { borderColor: '#4b5563', color: '#fff', backgroundColor: '#374151' },
+  closeBtn: { backgroundColor: '#ef4444', padding: 12, borderRadius: 8, alignItems: 'center' }
+});

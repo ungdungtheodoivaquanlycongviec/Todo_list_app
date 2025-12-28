@@ -6,91 +6,97 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Alert
 } from 'react-native';
-import Ionicons from 'react-native-vector-icons/Ionicons';
+import { FolderPlus, Loader2 } from 'lucide-react-native'; 
 import { useFolder } from '../../context/FolderContext';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext'; 
-// 1. THÊM import useLanguage để đồng bộ i18n
-import { useLanguage } from '../../context/LanguageContext'; // Giả định có LanguageContext
+import { useLanguage } from '../../context/LanguageContext';
 
-export default function NoFolderState() {
+interface NoFolderStateProps {
+  title?: string;
+  description?: string;
+}
+
+export default function NoFolderState({ title, description }: NoFolderStateProps) {
   const { createFolder } = useFolder();
   const { currentGroup } = useAuth();
   const { isDark } = useTheme();
-  // 1. THÊM t (translation function)
   const { t } = useLanguage(); 
   
   const [folderName, setFolderName] = useState('');
+  const [folderDescription, setFolderDescription] = useState(''); 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     if (!folderName.trim() || loading) return;
 
+    // ✅ FIX: Đã XÓA đoạn check (!currentGroup).
+    // Bây giờ Context sẽ tự động dùng User ID nếu không có Group (Personal Workspace)
+
     setLoading(true);
     setError(null);
 
     try {
-      await createFolder(folderName.trim());
+      await createFolder(folderName.trim(), folderDescription.trim() || undefined);
       setFolderName('');
+      setFolderDescription('');
     } catch (err) {
-      // 2. ĐỒNG BỘ XỬ LÝ LỖI (Sử dụng t())
-      setError(err instanceof Error ? err.message : t('error.generic')); 
+      setError(err instanceof Error ? err.message : t('error.generic' as any)); 
     } finally {
       setLoading(false);
     }
   };
 
   const styles = getStyles(isDark);
-  
-  // 3. ĐỒNG BỘ ICON - SỬ DỤNG 'folder-add' hoặc 'add-circle' để thay thế FolderPlus
-  const folderIcon = 'add-circle-outline'; // Sử dụng icon thêm mới folder rõ ràng hơn
 
   return (
     <View style={styles.container}>
       <View style={styles.contentWrapper}>
-        {/* Icon Area */}
         <View style={styles.iconContainer}>
-          {/* Thay thế folder-open-outline bằng icon thêm folder */}
-          <Ionicons name={folderIcon} size={40} color={isDark ? '#93c5fd' : '#2563eb'} />
+          <FolderPlus size={40} color={isDark ? '#93c5fd' : '#2563eb'} />
         </View>
 
-        {/* Title */}
         <Text style={styles.title}>
-          {/* 4. ĐỒNG BỘ TEXT */}
-          {t('folders.noFolders')}
+          {title || (t('folders.noFolders' as any) || 'No Folders')}
         </Text>
 
-        {/* Description */}
         <Text style={styles.description}>
-          {/* 4. ĐỒNG BỘ TEXT */}
-          {currentGroup
-            ? t('folders.createFirstFolder', { groupName: currentGroup.name })
-            : t('folders.createFirstFolderNoGroup')}
+          {description || (currentGroup
+            ? (t('folders.createFirstFolder' as any, { groupName: currentGroup.name }) || `Create a folder for ${currentGroup.name}`)
+            // Hiển thị text cho Personal Workspace nếu không có group
+            : (t('folders.createFirstFolderNoGroup' as any) || 'Create a folder in your Personal Workspace'))}
         </Text>
 
-        {/* Form */}
         <View style={styles.formContainer}>
-          {/* Input */}
           <TextInput
             value={folderName}
             onChangeText={setFolderName}
-            // 4. ĐỒNG BỘ TEXT
-            placeholder={t('folders.enterFolderName')}
+            placeholder={t('folders.enterFolderName' as any) || 'Folder name'}
             placeholderTextColor={isDark ? '#9ca3af' : '#6b7280'}
             style={styles.input}
             editable={!loading}
           />
+          <TextInput
+            value={folderDescription}
+            onChangeText={setFolderDescription}
+            placeholder={t('folders.enterFolderDescription' as any) || 'Description (optional)'}
+            placeholderTextColor={isDark ? '#9ca3af' : '#6b7280'}
+            style={[styles.input, styles.textArea]}
+            editable={!loading}
+            multiline
+            numberOfLines={3}
+            textAlignVertical="top"
+          />
           
-          {/* Error Message */}
           {error && (
             <View style={styles.errorBox}>
               <Text style={styles.errorText}>{error}</Text>
             </View>
           )}
 
-          {/* Submit Button */}
           <TouchableOpacity
             onPress={handleSubmit}
             disabled={!folderName.trim() || loading}
@@ -101,16 +107,13 @@ export default function NoFolderState() {
           >
             {loading ? (
               <View style={styles.buttonContent}>
-                <ActivityIndicator color="#ffffff" size="small" />
-                {/* 4. ĐỒNG BỘ TEXT */}
-                <Text style={styles.buttonText}>{t('folders.creating')}</Text>
+                <Loader2 color="#ffffff" size={20} />
+                <Text style={styles.buttonText}>{t('folders.creating' as any) || 'Creating...'}</Text>
               </View>
             ) : (
               <View style={styles.buttonContent}>
-                {/* ĐỔI ICON sang icon Thêm */}
-                <Ionicons name={folderIcon} size={16} color="#ffffff" />
-                {/* 4. ĐỒNG BỘ TEXT */}
-                <Text style={styles.buttonText}>{t('folders.createFolder')}</Text>
+                <FolderPlus size={20} color="#ffffff" />
+                <Text style={styles.buttonText}>{t('folders.createFolder' as any) || 'Create Folder'}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -121,75 +124,78 @@ export default function NoFolderState() {
 }
 
 const getStyles = (isDark: boolean) => StyleSheet.create({
-  // ... Styles giữ nguyên ...
   container: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: isDark ? '#111827' : '#f9fafb', // dark:bg-gray-900 vs bg-gray-50
+    backgroundColor: isDark ? '#111827' : '#f9fafb',
     paddingHorizontal: 24,
   },
   contentWrapper: {
     alignItems: 'center',
     width: '100%',
-    maxWidth: 384, // max-w-md
+    maxWidth: 384,
   },
   iconContainer: {
     width: 80,
     height: 80,
-    backgroundColor: isDark ? 'rgba(37, 99, 235, 0.3)' : '#dbeafe', // dark:bg-blue-900/30 vs bg-blue-100
+    backgroundColor: isDark ? 'rgba(37, 99, 235, 0.3)' : '#dbeafe',
     borderRadius: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24, // mb-6
+    marginBottom: 24,
   },
   title: {
-    fontSize: 24, // text-2xl
+    fontSize: 24,
     fontWeight: 'bold',
-    color: isDark ? '#ffffff' : '#111827', // dark:text-white vs text-gray-900
-    marginBottom: 8, // mb-2
+    color: isDark ? '#ffffff' : '#111827',
+    marginBottom: 8,
+    textAlign: 'center',
   },
   description: {
     fontSize: 16,
-    color: isDark ? '#9ca3af' : '#4b5563', // dark:text-gray-400 vs text-gray-600
-    marginBottom: 32, // mb-8
+    color: isDark ? '#9ca3af' : '#4b5563',
+    marginBottom: 32,
     textAlign: 'center',
   },
   formContainer: {
     width: '100%',
-    gap: 16, // space-y-4
+    gap: 16,
   },
   input: {
     width: '100%',
-    backgroundColor: isDark ? '#2E2E2E' : '#ffffff', // dark:bg-[#2E2E2E] vs bg-white
-    color: isDark ? '#ffffff' : '#111827', // dark:text-white vs text-gray-900
-    paddingHorizontal: 16, // px-4
-    paddingVertical: 12, // py-3
-    borderRadius: 12, // rounded-xl
+    backgroundColor: isDark ? '#2E2E2E' : '#ffffff',
+    color: isDark ? '#ffffff' : '#111827',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: isDark ? '#4b5563' : '#d1d5db', // dark:border-gray-600 vs border-gray-300
+    borderColor: isDark ? '#4b5563' : '#d1d5db',
     fontSize: 16,
   },
+  textArea: {
+    minHeight: 80,
+  },
   errorBox: {
-    backgroundColor: isDark ? 'rgba(185, 28, 28, 0.2)' : '#fef2f2', // dark:bg-red-900/20 vs bg-red-50
-    borderColor: isDark ? '#991b1b' : '#fecaca', // dark:border-red-800 vs border-red-200
+    backgroundColor: isDark ? 'rgba(185, 28, 28, 0.2)' : '#fef2f2',
+    borderColor: isDark ? '#991b1b' : '#fecaca',
     borderWidth: 1,
-    borderRadius: 12, // rounded-xl
-    padding: 12, // p-3
+    borderRadius: 12,
+    padding: 12,
   },
   errorText: {
-    color: isDark ? '#f87171' : '#dc2626', // dark:text-red-400 vs text-red-600
-    fontSize: 14, // text-sm
+    color: isDark ? '#f87171' : '#dc2626',
+    fontSize: 14,
     textAlign: 'center',
   },
   button: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#2563eb', // base color blue-600
-    paddingVertical: 12, // py-3
-    paddingHorizontal: 16, // px-4
-    borderRadius: 12, // rounded-xl
+    backgroundColor: '#2563eb',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
   },
   buttonDisabled: {
     opacity: 0.5,
@@ -202,6 +208,6 @@ const getStyles = (isDark: boolean) => StyleSheet.create({
   buttonText: {
     color: '#ffffff',
     fontSize: 16,
-    fontWeight: '500', // font-medium
+    fontWeight: '500',
   },
 });

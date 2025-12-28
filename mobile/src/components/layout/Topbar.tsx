@@ -5,15 +5,14 @@ import {
   StyleSheet,
   SafeAreaView,
   Platform,
-  TouchableOpacity
+  StatusBar
 } from 'react-native';
 
-// ⚠️ ĐIỀU CHỈNH ĐƯỜNG DẪN IMPORT CHO MOBILE
-import { useTheme } from '../../context/ThemeContext'; // Nếu có dùng
+// --- Imports ---
 import UserMenu from '../common/UserMenu';
 import NotificationDropdown from '../../screens/NotificationDropdown';
 import { User } from '../../types/auth.types';
-import { getRoleLabel } from '../constants/groupRoles'; // Import hàm này từ logic chung
+import { getRoleLabel } from '../constants/groupRoles';
 
 interface TopBarProps {
   user: User;
@@ -21,7 +20,7 @@ interface TopBarProps {
   theme: string;
   onThemeChange: (theme: string) => void;
   onProfileClick?: () => void;
-  onViewChange: (view: string) => void; // Đã thêm lại prop này để khớp logic Notification
+  onViewChange: (view: string) => void;
 }
 
 export default function TopBar({
@@ -33,42 +32,55 @@ export default function TopBar({
   onViewChange
 }: TopBarProps) {
   
-  // Logic lấy role giống hệt bản Web
+  // Logic lấy role
   const businessRole = (user as any)?.groupRole as string | null | undefined;
   const isLeader = Boolean((user as any)?.isLeader);
+  
+  // Logic check Theme
+  const isDark = theme === 'dark';
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
+    <SafeAreaView style={[styles.safeArea, isDark && styles.safeAreaDark]}>
+      {/* Cập nhật StatusBar theo theme */}
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+      
+      <View style={[styles.container, isDark && styles.containerDark]}>
         <View style={styles.content}>
           
-          {/* --- LEFT SIDE: User Info (Đã thêm lại) --- */}
+          {/* --- LEFT: User Info --- */}
           <View style={styles.userInfoContainer}>
-            <Text style={styles.userName} numberOfLines={1} ellipsizeMode="tail">
+            <Text 
+              style={[styles.userName, isDark && styles.textWhite]} 
+              numberOfLines={1} 
+              ellipsizeMode="tail"
+            >
               {user.name}
             </Text>
             
             <View style={styles.roleRow}>
-              <Text style={styles.roleText}>
+              <Text style={[styles.roleText, isDark && styles.textGray200]}>
                 {businessRole ? getRoleLabel(businessRole) : 'No role'}
               </Text>
 
               {isLeader && (
                 <>
-                  <Text style={styles.dotSeparator}>•</Text>
-                  <View style={styles.leadBadge}>
-                    <Text style={styles.leadText}>Lead</Text>
+                  <Text style={[styles.dotSeparator, isDark && styles.textGray400]}>•</Text>
+                  <View style={[styles.leadBadge, isDark && styles.leadBadgeDark]}>
+                    <Text style={[styles.leadText, isDark && styles.leadTextDark]}>Lead</Text>
                   </View>
                 </>
               )}
             </View>
           </View>
 
-          {/* --- RIGHT SIDE: Controls --- */}
+          {/* --- RIGHT: Controls --- */}
           <View style={styles.rightContainer}>
-            {/* Truyền prop onNavigate/onViewChange cho Notification nếu cần */}
+            {/* Đã xóa LanguageSwitcher ở đây */}
+
+            {/* ✅ Notification Dropdown */}
             <NotificationDropdown onNavigate={onViewChange} />
             
+            {/* ✅ User Menu */}
             <UserMenu 
               currentUser={user} 
               onLogout={onLogout}
@@ -86,38 +98,54 @@ export default function TopBar({
 
 // --- Stylesheet ---
 const styles = StyleSheet.create({
+  // Container Styles
   safeArea: {
     backgroundColor: '#ffffff',
-    // Shadow nhẹ thay vì border cứng để đẹp hơn trên mobile
+    zIndex: 10,
+    // Shadow cho iOS
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
-    elevation: 2, // Cho Android
-    zIndex: 10, // Đảm bảo nổi lên trên nội dung khác
+    // Elevation cho Android
+    elevation: 2, 
+  },
+  safeAreaDark: {
+    backgroundColor: '#1f2937', // gray-800
+    shadowColor: '#ffffff', 
+    shadowOpacity: 0.0,
+    elevation: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: '#374151', // gray-700
   },
   container: {
     width: '100%',
     backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb', // gray-200
+  },
+  containerDark: {
+    backgroundColor: '#1f2937', // gray-800
+    borderBottomColor: '#374151', // gray-700
   },
   content: {
     paddingHorizontal: 16,
     paddingVertical: 12,
     flexDirection: 'row',
-    justifyContent: 'space-between', // QUAN TRỌNG: Đẩy 2 phần sang 2 bên
+    justifyContent: 'space-between',
     alignItems: 'center',
-    minHeight: 60, // Tăng nhẹ chiều cao chuẩn
+    minHeight: 60,
   },
-  
-  // Styles cho User Info (Bên trái)
+
+  // User Info Styles
   userInfoContainer: {
-    flex: 1, // Để text có thể truncate nếu quá dài
+    flex: 1,
     paddingRight: 10,
     justifyContent: 'center',
   },
   userName: {
     fontSize: 16,
-    fontWeight: '700', // font-semibold -> bold
+    fontWeight: '700',
     color: '#111827', // text-gray-900
     marginBottom: 2,
   },
@@ -127,7 +155,7 @@ const styles = StyleSheet.create({
   },
   roleText: {
     fontSize: 12,
-    color: '#4B5563', // text-gray-700
+    color: '#374151', // text-gray-700
     fontWeight: '500',
   },
   dotSeparator: {
@@ -135,22 +163,41 @@ const styles = StyleSheet.create({
     color: '#9CA3AF', // text-gray-400
     fontSize: 10,
   },
+  
+  // Badge Styles
   leadBadge: {
     backgroundColor: '#EFF6FF', // bg-blue-50
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
   },
+  leadBadgeDark: {
+    backgroundColor: 'rgba(59, 130, 246, 0.2)', // Dark mode blue bg transparent
+  },
   leadText: {
     fontSize: 10,
     fontWeight: '700',
     color: '#2563EB', // text-blue-600
   },
+  leadTextDark: {
+    color: '#93c5fd', // text-blue-300
+  },
 
-  // Styles cho Controls (Bên phải)
+  // Right Side Styles
   rightContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12, // Khoảng cách giữa các nút
+    gap: 8, 
+  },
+
+  // Common Dark Mode Utils
+  textWhite: {
+    color: '#ffffff',
+  },
+  textGray200: {
+    color: '#e5e7eb',
+  },
+  textGray400: {
+    color: '#9ca3af',
   },
 });

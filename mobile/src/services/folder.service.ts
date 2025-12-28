@@ -1,114 +1,119 @@
-// File: services/folder.service.ts (React Native Version)
-
 import { authService } from './auth.service';
 import { Folder, FolderListResponse } from '../types/folder.types';
-// 💡 ĐÃ SỬA: Import API_URL đã được cấu hình đúng IP từ file cấu hình
 import { API_URL } from '../config/api.config'; 
-// XÓA: const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:8080/api'; 
 
-
-// 1. CHUYỂN THÀNH ASYNC và SỬ DỤNG AWAIT
+// Hàm build headers (Giữ nguyên)
 const buildHeaders = async (contentType: 'json' | 'none' = 'json'): Promise<HeadersInit> => {
-  const headers: HeadersInit = {};
-  if (contentType === 'json') {
-    headers['Content-Type'] = 'application/json';
-  }
-
-  // Lấy token BẤT ĐỒNG BỘ từ authService
-  const token = await authService.getAuthToken(); 
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  return headers;
+  const headers: HeadersInit = {};
+  if (contentType === 'json') {
+    headers['Content-Type'] = 'application/json';
+  }
+  const token = await authService.getAuthToken(); 
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
 };
 
-// Hàm xử lý phản hồi (giữ nguyên)
+// Hàm handleResponse (Giữ nguyên)
 const handleResponse = async (response: Response) => {
-// ... (Hàm này giữ nguyên)
-  if (!response.ok) {
-    const errorText = await response.text();
-    let errorMessage = `Request failed: ${response.status}`;
-    try {
-      const data = JSON.parse(errorText);
-      errorMessage = data.message || errorMessage;
-    } catch {
-      errorMessage = errorText || errorMessage;
-    }
-    throw new Error(errorMessage);
-  }
-  return response.json(); 
+  if (!response.ok) {
+    const errorText = await response.text();
+    let errorMessage = `Request failed: ${response.status}`;
+    try {
+      const data = JSON.parse(errorText);
+      errorMessage = data.message || errorMessage;
+    } catch {
+      errorMessage = errorText || errorMessage;
+    }
+    throw new Error(errorMessage);
+  }
+  return response.json(); 
 };
 
 export const folderService = {
-  // --- GET FOLDERS ---
-  async getFolders(groupId: string): Promise<FolderListResponse> {
-    if (!groupId) {
-      throw new Error('Group ID is required to fetch folders');
-    }
+  // --- GET FOLDERS ---
+  // ✅ Thêm tham số isPersonal
+  async getFolders(targetId: string, isPersonal: boolean = false): Promise<FolderListResponse> {
+    if (!targetId) throw new Error('Target ID is required');
 
-    // 💡 ĐÃ SỬA: Dùng API_URL
-    const response = await fetch(`${API_URL}/groups/${groupId}/folders`, {
-      method: 'GET',
-      headers: await buildHeaders('none'),
-      // XÓA credentials: 'include' (Nếu có)
-    });
+    // ✅ Logic chuyển đổi URL: Nếu là Personal -> /folders, ngược lại -> /groups/...
+    const url = isPersonal 
+      ? `${API_URL}/folders` 
+      : `${API_URL}/groups/${targetId}/folders`;
 
-    const data = await handleResponse(response);
-    return data.data || data;
-  },
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: await buildHeaders('none'),
+    });
 
-  // --- CREATE FOLDER ---
-  async createFolder(groupId: string, payload: { name: string; description?: string }): Promise<Folder> {
-    if (!groupId) {
-      throw new Error('Group ID is required to create folder');
-    }
+    const data = await handleResponse(response);
+    return data.data || data;
+  },
 
-    // 💡 ĐÃ SỬA: Dùng API_URL
-    const response = await fetch(`${API_URL}/groups/${groupId}/folders`, {
-      method: 'POST',
-      headers: await buildHeaders(), 
-      body: JSON.stringify(payload)
-    });
+  // --- CREATE FOLDER ---
+  // ✅ Thêm tham số isPersonal
+  async createFolder(targetId: string, payload: { name: string; description?: string }, isPersonal: boolean = false): Promise<Folder> {
+    if (!targetId) throw new Error('Target ID is required');
 
-    const data = await handleResponse(response);
-    return data.data || data;
-  },
+    const url = isPersonal 
+      ? `${API_URL}/folders` 
+      : `${API_URL}/groups/${targetId}/folders`;
 
-  // --- UPDATE FOLDER ---
-  async updateFolder(groupId: string, folderId: string, payload: Partial<Folder>): Promise<Folder> {
-    // 💡 ĐÃ SỬA: Dùng API_URL
-    const response = await fetch(`${API_URL}/groups/${groupId}/folders/${folderId}`, {
-      method: 'PATCH',
-      headers: await buildHeaders(), 
-      body: JSON.stringify(payload)
-    });
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: await buildHeaders(), 
+      body: JSON.stringify(payload)
+    });
 
-    const data = await handleResponse(response);
-    return data.data || data;
-  },
+    const data = await handleResponse(response);
+    return data.data || data;
+  },
 
-  // --- DELETE FOLDER ---
-  async deleteFolder(groupId: string, folderId: string): Promise<void> {
-    // 💡 ĐÃ SỬA: Dùng API_URL
-    const response = await fetch(`${API_URL}/groups/${groupId}/folders/${folderId}`, {
-      method: 'DELETE',
-      headers: await buildHeaders('none'), 
-    });
+  // --- UPDATE FOLDER (ĐÃ SỬA: Thêm logic isPersonal) ---
+  async updateFolder(targetId: string, folderId: string, payload: Partial<Folder>, isPersonal: boolean = false): Promise<Folder> {
+    // Logic: Nếu là Personal thì gọi /folders/:id, nếu là Group thì gọi /groups/:groupId/folders/:id
+    const url = isPersonal
+      ? `${API_URL}/folders/${folderId}`
+      : `${API_URL}/groups/${targetId}/folders/${folderId}`;
 
-    await handleResponse(response);
-  },
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: await buildHeaders(), 
+      body: JSON.stringify(payload)
+    });
 
-  // --- SET FOLDER MEMBERS (ASSIGN MEMBERS) ---
-  async setFolderMembers(groupId: string, folderId: string, memberIds: string[]): Promise<Folder> {
-    // 💡 ĐÃ SỬA: Dùng API_URL
-    const response = await fetch(`${API_URL}/groups/${groupId}/folders/${folderId}/members`, {
-      method: 'PUT',
-      headers: await buildHeaders(), 
-      body: JSON.stringify({ memberIds })
-    });
+    const data = await handleResponse(response);
+    return data.data || data;
+  },
 
-    const data = await handleResponse(response);
-    return data.data || data;
-  }
+  // --- DELETE FOLDER ---
+  async deleteFolder(targetId: string, folderId: string, isPersonal: boolean = false): Promise<void> {
+    const url = isPersonal
+        ? `${API_URL}/folders/${folderId}`
+        : `${API_URL}/groups/${targetId}/folders/${folderId}`;
+    
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: await buildHeaders('none'), 
+    });
+
+    await handleResponse(response);
+  },
+
+  // --- SET FOLDER MEMBERS (ĐÃ SỬA: Thêm logic isPersonal) ---
+  async setFolderMembers(targetId: string, folderId: string, memberIds: string[], isPersonal: boolean = false): Promise<Folder> {
+    const url = isPersonal
+        ? `${API_URL}/folders/${folderId}/members`
+        : `${API_URL}/groups/${targetId}/folders/${folderId}/members`;
+
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: await buildHeaders(), 
+      body: JSON.stringify({ memberIds })
+    });
+
+    const data = await handleResponse(response);
+    return data.data || data;
+  }
 };

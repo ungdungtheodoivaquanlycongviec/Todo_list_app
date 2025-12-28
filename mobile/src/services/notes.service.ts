@@ -1,7 +1,6 @@
 import apiClient from '../api/apiClient';
 import type { ApiResponse } from '../types/auth.types';
 
-
 export interface Note {
   _id?: string;
   title: string;
@@ -11,22 +10,29 @@ export interface Note {
   createdAt?: string;
   updatedAt?: string;
   formattedLastEdited?: string;
+  folderId?: string | null; // ✅ Đã thêm: Đồng bộ với Web
 }
 
 class NotesService {
   // Lấy tất cả notes của user
-  async getAllNotes(search?: string, page = 1, limit = 50): Promise<Note[]> {
+  // ✅ Đã thêm: tham số folderId
+  async getAllNotes(search?: string, page = 1, limit = 50, folderId?: string): Promise<Note[]> {
     try {
       const params = new URLSearchParams();
       if (search) params.append('search', search);
       params.append('page', page.toString());
       params.append('limit', limit.toString());
       
+      // ✅ Đã thêm: Logic lọc theo folderId
+      if (folderId) params.append('folderId', folderId);
+      
       const response = await apiClient.get<ApiResponse<{ notes: Note[] }>>(`/notes?${params.toString()}`);
-      return response.data?.data.notes || [];
+      
+      // ⚠️ LƯU Ý: Kiểm tra lại cấu trúc trả về của Backend.
+      // Nếu Web chạy đúng, có thể bạn cần đổi thành: return response.data?.notes || [];
+      return response.data?.data?.notes || []; 
     } catch (error) {
       console.error('Error fetching notes:', error);
-      // Re-throw the error to be handled by the calling component
       throw error;
     }
   }
@@ -35,7 +41,8 @@ class NotesService {
   async getNoteById(noteId: string): Promise<Note> {
     try {
       const response = await apiClient.get<ApiResponse<{ note: Note }>>(`/notes/${noteId}`);
-      return response.data.data.note;
+      // ⚠️ LƯU Ý: Kiểm tra lại cấu trúc trả về
+      return response.data?.data?.note;
     } catch (error) {
       console.error('Error fetching note:', error);
       throw error;
@@ -46,7 +53,8 @@ class NotesService {
   async createNote(noteData: Partial<Note>): Promise<Note> {
     try {
       const response = await apiClient.post<ApiResponse<{ note: Note }>>('/notes', noteData);
-      return response.data.data.note;
+      // ⚠️ LƯU Ý: Kiểm tra lại cấu trúc trả về
+      return response.data?.data?.note;
     } catch (error) {
       console.error('Error creating note:', error);
       throw error;
@@ -57,7 +65,8 @@ class NotesService {
   async updateNote(noteId: string, noteData: Partial<Note>): Promise<Note> {
     try {
       const response = await apiClient.put<ApiResponse<{ note: Note }>>(`/notes/${noteId}`, noteData);
-      return response.data.data.note;
+      // ⚠️ LƯU Ý: Kiểm tra lại cấu trúc trả về
+      return response.data?.data?.note;
     } catch (error) {
       console.error('Error updating note:', error);
       throw error;

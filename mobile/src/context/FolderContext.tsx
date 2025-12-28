@@ -1,5 +1,3 @@
-// File: contexts/FolderContext.tsx (React Native Version)
-
 import React, {
   createContext,
   useCallback,
@@ -8,13 +6,12 @@ import React, {
   useMemo,
   useState
 } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage'; // ⚠️ Thay thế localStorage bằng AsyncStorage
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Folder } from '../types/folder.types';
-import { folderService } from '../services/folder.service'; // Giả định service đã sẵn sàng
-import { useAuth } from './AuthContext'; // Giả định AuthContext đã sẵn sàng
-import { useSocket } from '../hooks/useSocket'; // Giả định useSocket hook đã sẵn sàng
-
-// --- Interfaces (Giữ nguyên) ---
+import { folderService } from '../services/folder.service';
+import { groupService } from '../services/group.service'; // ✅ Import groupService
+import { useAuth } from './AuthContext';
+import { useSocket } from '../hooks/useSocket';
 
 interface FolderContextValue {
   folders: Folder[];
@@ -25,28 +22,87 @@ interface FolderContextValue {
   selectFolder: (folderId: string) => void;
   createFolder: (name: string, description?: string) => Promise<void>;
   deleteFolder: (folderId: string) => Promise<void>;
+  updateFolder: (folderId: string, data: Partial<Folder>) => Promise<void>;
 }
 
 const FolderContext = createContext<FolderContextValue | undefined>(undefined);
 
-// --- Provider Component (Sửa đổi logic lưu trữ) ---
-
 export function FolderProvider({ children }: { children: React.ReactNode }) {
   const { currentGroup, user } = useAuth();
   const { socket } = useSocket();
+  
   const [folders, setFolders] = useState<Folder[]>([]);
   const [currentFolder, setCurrentFolder] = useState<Folder | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const storageKey = useMemo(() => {
-    if (!currentGroup?._id) return null;
-    return `folder-selection:${currentGroup._id}`;
-  }, [currentGroup?._id]);
+  // ✅ AUTO SELECT STATE: Lưu ID của nhóm mặc định (Personal Workspace)
+  const [defaultGroupId, setDefaultGroupId] = useState<string | null>(null);
 
+  // Context ID: Group được chọn HOẶC Group mặc định tự tìm thấy
+  const contextId = currentGroup?._id || defaultGroupId;
+
+  const storageKey = useMemo(() => {
+    if (!contextId) return null;
+    return `folder-selection:${contextId}`;
+  }, [contextId]);
+
+  // --- 🔥 MAGIC FUNCTION: Tự động tìm & Auto-select Group ---
+  const getEffectiveGroupId = useCallback(async () => {
+    // 1. Nếu đang chọn group (Manual Select) -> Dùng luôn
+    if (currentGroup?._id) return currentGroup._id;
+
+    // 2. Nếu đã Auto-select được trước đó -> Dùng luôn
+    if (defaultGroupId) return defaultGroupId;
+
+    try {
+      // 3. Gọi API lấy danh sách group
+      const response = await groupService.getAllGroups();
+      
+      const groups = Array.isArray(response) 
+        ? response 
+        : (response as any).data || (response as any).groups || [];
+      
+      if (groups.length > 0) {
+        // ✅ AUTO SELECT: Lấy group đầu tiên và lưu vào state
+        const firstGroupId = groups[0]._id;
+        setDefaultGroupId(firstGroupId); // Cache lại để dùng cho UI
+        return firstGroupId;
+      }
+      
+      // 4. Nếu chưa có group nào -> Tự tạo "Personal Workspace"
+      console.log("Creating default Personal Workspace...");
+      const newGroupResponse = await groupService.createGroup({
+        name: "Personal Workspace",
+        description: "My private notes"
+      });
+      
+      const rawGroup = newGroupResponse as any;
+      const newGroupId = rawGroup._id || rawGroup.id || rawGroup.data?._id;
+
+      if (newGroupId) {
+          setDefaultGroupId(newGroupId); // Cache lại
+          return newGroupId;
+      }
+      
+      // Fallback cuối cùng nếu tạo thất bại nhưng không throw
+      throw new Error("Failed to resolve Group ID");
+
+    } catch (err: any) {
+      console.error("Cannot resolve group ID:", err);
+      
+      // Fallback: Nếu lỗi Permission, thử dùng User ID (cho 1 số backend đặc thù)
+      if (err.message && (err.message.includes('permission') || err.message.includes('403'))) {
+         if (user?._id) return user._id;
+      }
+      throw err;
+    }
+  }, [currentGroup, defaultGroupId, user]);
+
+  // --- 1. REFRESH FOLDERS ---
   const refreshFolders = useCallback(
     async (preferredFolderId?: string) => {
-      if (!currentGroup?._id) {
+      if (!user) {
         setFolders([]);
         setCurrentFolder(null);
         return;
@@ -55,25 +111,30 @@ export function FolderProvider({ children }: { children: React.ReactNode }) {
       try {
         setLoading(true);
         setError(null);
-        const response = await folderService.getFolders(currentGroup._id);
-        const folderList = response.folders || [];
+        
+        // ✅ Tự động kích hoạt Auto-Select Group tại đây
+        const targetId = await getEffectiveGroupId();
+
+        // Gọi service lấy folder
+        const response = await folderService.getFolders(targetId);
+        
+        const rawList = Array.isArray(response) ? response : (response as any).folders || (response as any).data || [];
+        const folderList: Folder[] = rawList;
+        
         setFolders(folderList);
 
-        // ⚠️ Thay thế localStorage.getItem bằng AsyncStorage.getItem
         const storedFolderId = preferredFolderId || (storageKey ? await AsyncStorage.getItem(storageKey) : null);
 
-        // Logic tự động chọn folder (giữ nguyên)
         const nextFolder =
           folderList.length > 0
-            ? (folderList.find(folder => folder._id === storedFolderId) ||
-                folderList.find(folder => folder.isDefault) ||
-                folderList[0] ||
-                null)
+            ? (folderList.find((folder) => folder._id === storedFolderId) ||
+               folderList.find((folder) => folder.isDefault) ||
+               folderList[0] ||
+               null)
             : null;
 
         setCurrentFolder(nextFolder);
 
-        // ⚠️ Thay thế localStorage.setItem bằng AsyncStorage.setItem
         if (nextFolder && storageKey) {
           await AsyncStorage.setItem(storageKey, nextFolder._id);
         } else if (!nextFolder && storageKey) {
@@ -81,78 +142,51 @@ export function FolderProvider({ children }: { children: React.ReactNode }) {
         }
 
       } catch (err) {
-        console.error('Failed to load folders:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load folders');
+        console.log('Failed to load folders (silent):', err);
         setFolders([]);
         setCurrentFolder(null);
       } finally {
         setLoading(false);
       }
     },
-    [currentGroup?._id, storageKey]
+    [user, getEffectiveGroupId, storageKey]
   );
 
   useEffect(() => {
-    // Gọi refreshFolders khi group thay đổi hoặc lần đầu mount
     refreshFolders();
   }, [refreshFolders]);
 
-  // Listen for real-time folder updates (Giữ nguyên logic Socket)
+  // --- 2. SOCKET ---
   useEffect(() => {
-    if (!socket || !currentGroup?._id) return;
+    if (!socket) return;
 
-    const handleFolderUpdate = (data: {
+    const handleFolderUpdate = async (data: {
       eventKey: string;
       folder: Folder;
-      groupId: string;
+      groupId?: string;
     }) => {
-      // Chỉ refresh nếu update là cho group hiện tại
-      if (data.groupId !== currentGroup._id) {
-        return;
-      }
-
-      const eventKey = data.eventKey;
-      const folder = data.folder;
-
-      // Group-level events: created, deleted, updated (refresh cho tất cả)
-      if (eventKey === 'folder:created' || eventKey === 'folder:deleted') {
-        console.log('[FolderContext] Received group-level folder update:', eventKey);
-        // Không cần truyền preferredFolderId để tránh ghi đè logic chọn folder mặc định
-        refreshFolders(); 
-        return;
-      }
-
-      // Folder-specific events: updated, membersUpdated
-      if (eventKey === 'folder:updated' || eventKey === 'folder:members:updated') {
-        if (!folder || !folder.memberAccess) {
-          return;
-        }
-
-        // Kiểm tra người dùng hiện tại có được gán vào folder này không
-        const isAssigned = folder.memberAccess.some(
-          (access: { userId: string }) => access.userId === user?._id
-        );
-        
-        // Nếu folder hiện tại bị cập nhật tên/quyền, hoặc người dùng được gán/bỏ gán
-        if (isAssigned || (currentFolder?._id === folder._id)) { 
-          console.log('[FolderContext] Received folder update for assigned folder or current folder:', eventKey);
-          refreshFolders(currentFolder?._id); // Giữ folder hiện tại được chọn nếu có thể
-        }
+      // Logic: Refresh nếu update thuộc về group đang active (tay hoặc auto)
+      const activeId = currentGroup?._id || defaultGroupId;
+      
+      if (data.groupId && data.groupId === activeId) {
+         await refreshFolders(currentFolder?._id);
+      } else if (!activeId) {
+         await refreshFolders(currentFolder?._id);
       }
     };
 
     socket.on('folders:update', handleFolderUpdate);
-
     return () => {
       socket.off('folders:update', handleFolderUpdate);
     };
-  }, [socket, currentGroup?._id, user?._id, refreshFolders, currentFolder?._id]);
+  }, [socket, currentGroup?._id, defaultGroupId, refreshFolders, currentFolder?._id]);
+
+  // --- 3. ACTIONS ---
 
   const selectFolder = useCallback(
     async (folderId: string) => {
       const folder = folders.find(item => item._id === folderId) || null;
       setCurrentFolder(folder);
-      // ⚠️ Thay thế localStorage.setItem bằng AsyncStorage.setItem
       if (folder && storageKey) {
         await AsyncStorage.setItem(storageKey, folder._id);
       }
@@ -160,27 +194,51 @@ export function FolderProvider({ children }: { children: React.ReactNode }) {
     [folders, storageKey]
   );
 
+  // ✅ CREATE FOLDER
   const createFolder = useCallback(
     async (name: string, description?: string) => {
-      if (!currentGroup?._id) throw new Error('No active group selected.');
-      const folder = await folderService.createFolder(currentGroup._id, { name, description });
-      // Refresh và cố gắng chọn folder mới tạo
-      await refreshFolders(folder?._id);
+      // Lấy ID (Auto select nếu cần)
+      const targetId = await getEffectiveGroupId();
+      
+      const folder = await folderService.createFolder(targetId, { name, description });
+      
+      // Refresh list
+      // Nếu đang ở đúng group đó thì chỉ cần refresh folder
+      if (currentGroup?._id === targetId || defaultGroupId === targetId) {
+          await refreshFolders(folder?._id);
+      } else {
+          // Trường hợp hiếm: vừa tạo group mới xong
+          // Delay nhẹ để backend index
+          setTimeout(async () => {
+             const response = await folderService.getFolders(targetId);
+             const list = Array.isArray(response) ? response : (response as any).folders || [];
+             setFolders(list);
+             if (list.length > 0) setCurrentFolder(list[0]);
+          }, 500);
+      }
     },
-    [currentGroup?._id, refreshFolders]
+    [getEffectiveGroupId, currentGroup?._id, defaultGroupId, refreshFolders]
   );
 
+  // ✅ UPDATE FOLDER
+  const updateFolder = useCallback(
+    async (folderId: string, data: Partial<Folder>) => {
+      const targetId = await getEffectiveGroupId();
+      await folderService.updateFolder(targetId, folderId, data);
+      await refreshFolders(currentFolder?._id);
+    },
+    [getEffectiveGroupId, refreshFolders, currentFolder?._id]
+  );
+
+  // ✅ DELETE FOLDER
   const deleteFolder = useCallback(
     async (folderId: string) => {
-      if (!currentGroup?._id) throw new Error('No active group selected.');
-      await folderService.deleteFolder(currentGroup._id, folderId);
-      // Refresh và tự động chọn folder tiếp theo
+      const targetId = await getEffectiveGroupId();
+      await folderService.deleteFolder(targetId, folderId);
       await refreshFolders();
     },
-    [currentGroup?._id, refreshFolders]
+    [getEffectiveGroupId, refreshFolders]
   );
-
-  // --- Giá trị Context (Giữ nguyên) ---
 
   const value: FolderContextValue = {
     folders,
@@ -190,7 +248,8 @@ export function FolderProvider({ children }: { children: React.ReactNode }) {
     refreshFolders,
     selectFolder,
     createFolder,
-    deleteFolder
+    deleteFolder,
+    updateFolder
   };
 
   return <FolderContext.Provider value={value}>{children}</FolderContext.Provider>;

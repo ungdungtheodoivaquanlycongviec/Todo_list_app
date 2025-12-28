@@ -36,6 +36,7 @@ import Clipboard from '@react-native-clipboard/clipboard';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useRegional } from '../context/RegionalContext';
+import { useTheme } from '../context/ThemeContext';
 import { chatService, ChatMessage, DirectConversationSummary } from '../services/chat.service'; 
 import { useSocket } from '../hooks/useSocket';
 import { MeetingConfig, meetingService } from '../services/meeting.service';
@@ -49,8 +50,9 @@ import MentionHighlight from '../components/common/MentionHighlight';
 const { width, height } = Dimensions.get('window');
 const SIDEBAR_WIDTH = Math.min(width * 0.85, 320);
 
-// --- TYPES ---
-interface ExtendedChatMessage extends ChatMessage {
+// --- TYPES (✅ FIX 1: Dùng Omit để định nghĩa lại messageType) ---
+interface ExtendedChatMessage extends Omit<ChatMessage, 'messageType'> {
+  messageType?: 'text' | 'call' | 'system'; // Định nghĩa lại cho phép 'system'
   callData?: {
     status: 'active' | 'ended';
     meetingId: string;
@@ -58,13 +60,12 @@ interface ExtendedChatMessage extends ChatMessage {
     endedAt?: string;
     callType: 'group' | 'direct';
   };
-  messageType?: 'text' | 'call' | 'system';
   mentions?: { users: string[] };
 }
 
 // --- SUB COMPONENTS ---
 
-const TypingIndicator = ({ typingUsers, t }: { typingUsers: Set<string>, t: any }) => {
+const TypingIndicator = ({ typingUsers, t, isDark }: { typingUsers: Set<string>, t: any, isDark: boolean }) => {
   if (typingUsers.size === 0) return null;
   const count = Array.from(typingUsers).length;
   const text = count === 1 
@@ -73,12 +74,12 @@ const TypingIndicator = ({ typingUsers, t }: { typingUsers: Set<string>, t: any 
   
   return (
     <View style={styles.typingContainer}>
-      <Text style={styles.typingText}>{text}</Text>
+      <Text style={[styles.typingText, isDark && styles.darkSubText]}>{text}</Text>
     </View>
   );
 };
 
-const CallMessageItem = ({ message, onJoin, t }: { message: ExtendedChatMessage, onJoin: () => void, t: any }) => {
+const CallMessageItem = ({ message, onJoin, t, isDark }: { message: ExtendedChatMessage, onJoin: () => void, t: any, isDark: boolean }) => {
   const isActive = message.callData?.status === 'active';
   const duration = message.callData?.endedAt && message.callData?.startedAt
     ? Math.round((new Date(message.callData.endedAt).getTime() - new Date(message.callData.startedAt).getTime()) / 1000)
@@ -91,15 +92,15 @@ const CallMessageItem = ({ message, onJoin, t }: { message: ExtendedChatMessage,
   };
 
   return (
-    <View style={styles.callMessageContainer}>
+    <View style={[styles.callMessageContainer, isDark && styles.darkCallContainer, isActive && (isDark ? styles.darkCallActive : styles.callIconActiveBorder)]}>
       <View style={[styles.callIconContainer, isActive && styles.callIconActive]}>
         <Phone size={20} color="#FFF" />
       </View>
       <View style={{flex: 1}}>
-        <Text style={styles.callTitle}>
+        <Text style={[styles.callTitle, isDark && styles.darkText]}>
           {message.senderId.name} {isActive ? (t('chat.startedCall' as any) || 'started a call') : (t('chat.callEnded' as any) || 'call ended')}
         </Text>
-        <Text style={styles.callSubtitle}>
+        <Text style={[styles.callSubtitle, isDark && styles.darkSubText]}>
           {isActive ? (t('chat.ongoingCall' as any) || 'Ongoing call') : (duration ? `${t('chat.duration' as any) || 'Duration'}: ${formatDuration(duration)}` : (t('chat.callEnded' as any) || 'Ended'))}
         </Text>
       </View>
@@ -119,6 +120,7 @@ export default function ChatScreen({ navigation }: any) {
     const { user, currentGroup } = useAuth();
     const { t } = useLanguage();
     const { formatTime } = useRegional();
+    const { isDark } = useTheme();
     const { socket, isConnected } = useSocket();
 
     // Data State
@@ -135,10 +137,10 @@ export default function ChatScreen({ navigation }: any) {
     const [activeDirectConversation, setActiveDirectConversation] = useState<DirectConversationSummary | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     
-    // Message Actions State
-    const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
-    const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
-    const [forwardingMessage, setForwardingMessage] = useState<ChatMessage | null>(null); 
+    // Message Actions State (✅ FIX 2: Cập nhật kiểu state để khớp với ExtendedChatMessage)
+    const [replyingTo, setReplyingTo] = useState<ExtendedChatMessage | null>(null);
+    const [editingMessage, setEditingMessage] = useState<ExtendedChatMessage | null>(null);
+    const [forwardingMessage, setForwardingMessage] = useState<ExtendedChatMessage | null>(null); 
     const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
     
     // Attachments State
@@ -187,7 +189,6 @@ export default function ChatScreen({ navigation }: any) {
         loadDirectConversations();
     }, []);
 
-    // --- FIX SOCKET ---
     useEffect(() => {
         if (socket && isConnected) {
             meetingService.setSocket(socket);
@@ -244,7 +245,6 @@ export default function ChatScreen({ navigation }: any) {
         setPendingAttachment(null);
     }, [activeContext, currentGroup?._id, activeDirectConversation?._id]);
 
-    // --- SOCKET HANDLERS ---
     useEffect(() => {
         if (!socket || !isConnected) return;
 
@@ -334,7 +334,6 @@ export default function ChatScreen({ navigation }: any) {
         setShowActionSheet(false);
     };
 
-    // ✅ FIX TYPESCRIPT: Sửa lỗi sendMessage và sendDirectMessage
     const handleSend = async () => {
         if (!message.trim() && !pendingAttachment) return;
         
@@ -372,8 +371,6 @@ export default function ChatScreen({ navigation }: any) {
                 const payload = { content, replyTo: replyingTo?._id, attachments };
                 
                 if (activeContext === 'group' && currentGroup?._id) {
-                    // ✅ FIX: Gửi object { content } nếu service yêu cầu, hoặc giữ nguyên payload nếu service tự xử lý
-                    // Giả sử server lắng nghe sự kiện socket trực tiếp
                     await socket?.emit('chat:send', { groupId: currentGroup._id, ...payload });
                 } 
                 else if (activeContext === 'direct' && activeDirectConversation?._id) {
@@ -416,10 +413,11 @@ export default function ChatScreen({ navigation }: any) {
     };
 
     // --- RENDER ---
-    const renderMessage = ({ item }: { item: ExtendedChatMessage }) => {
+    const renderMessage = useCallback(({ item }: { item: ExtendedChatMessage }) => {
         if (item.messageType === 'call') {
             return <CallMessageItem 
                 message={item} 
+                isDark={isDark}
                 onJoin={() => {
                     if (item.callData) {
                         setActiveMeetingConfig({
@@ -453,11 +451,18 @@ export default function ChatScreen({ navigation }: any) {
                 )}
                 <View style={{maxWidth: '75%'}}>
                     {!isOwn && activeContext === 'group' && <Text style={styles.senderName}>{item.senderId.name}</Text>}
-                    <View style={[styles.bubble, isOwn ? styles.bubbleOwn : styles.bubbleOther]}>
+                    <View style={[
+                        styles.bubble, 
+                        isOwn ? styles.bubbleOwn : (isDark ? styles.bubbleOtherDark : styles.bubbleOther),
+                        isDark && !isOwn && { borderColor: '#374151' }
+                    ]}>
                         {item.attachments && item.attachments.map((att, idx) => (
                             <TouchableOpacity key={idx} onPress={() => att.type === 'image' ? setLightboxImage(att.url) : Alert.alert('File', 'Download logic here')} style={styles.attachmentThumb}>
                                 {att.type === 'image' ? <Image source={{ uri: att.url }} style={styles.imageThumb} /> : 
-                                <View style={styles.fileThumb}><FileText size={24} color="#6B7280" /><Text numberOfLines={1} style={styles.fileName}>{att.filename}</Text></View>}
+                                <View style={[styles.fileThumb, isDark && styles.darkFileThumb]}>
+                                    <FileText size={24} color={isDark ? "#9CA3AF" : "#6B7280"} />
+                                    <Text numberOfLines={1} style={[styles.fileName, isDark && styles.darkText]}>{att.filename}</Text>
+                                </View>}
                             </TouchableOpacity>
                         ))}
                         {item.content ? (
@@ -466,7 +471,7 @@ export default function ChatScreen({ navigation }: any) {
                                 mentions={item.mentions?.users || []} 
                                 currentUserId={user?._id || ''}
                                 isOwnMessage={isOwn}
-                                style={[styles.msgText, isOwn ? styles.textOwn : styles.textOther]} 
+                                style={[styles.msgText, isOwn ? styles.textOwn : (isDark ? styles.darkText : styles.textOther)]} 
                             />
                         ) : null}
                         <Text style={[styles.timeText, isOwn ? { color: 'rgba(255,255,255,0.7)' } : { color: '#9CA3AF' }]}>{formatTime(new Date(item.createdAt))}</Text>
@@ -474,27 +479,35 @@ export default function ChatScreen({ navigation }: any) {
                     {reactions && Object.keys(reactions).length > 0 && (
                         <View style={[styles.reactionsRow, isOwn ? { alignSelf: 'flex-end' } : { alignSelf: 'flex-start' }]}>
                             {Object.entries(reactions).map(([emoji, count]: any) => (
-                                <View key={emoji} style={styles.reactionBadge}><Text style={{fontSize: 10}}>{emoji} {count}</Text></View>
+                                <View key={emoji} style={[styles.reactionBadge, isDark && styles.darkReactionBadge]}><Text style={[styles.reactionText, isDark && styles.darkText]}>{emoji} {count}</Text></View>
                             ))}
                         </View>
                     )}
                 </View>
             </TouchableOpacity>
         );
-    };
+    }, [isDark, user?._id, activeContext, currentGroup?._id, activeDirectConversation?._id, t]);
 
     const title = activeContext === 'group' ? currentGroup?.name : activeDirectConversation?.targetUser?.name;
     const subTitle = activeContext === 'group' ? `${currentGroup?.members?.length || 0} ${t('nav.members' as any)}` : activeDirectConversation?.targetUser?.email;
 
+    // ✅ Colors cho Dark Mode
+    const iconColor = isDark ? "#E5E7EB" : "#1F2937";
+    const subTextColor = isDark ? "#9CA3AF" : "#6B7280";
+    const bgColor = isDark ? "#111827" : "#FFF";
+
     return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
+        <SafeAreaView style={[styles.container, isDark && styles.darkContainer]}>
+            {/* ✅ Cập nhật StatusBar */}
+            <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={bgColor} />
             
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => setIsSidebarOpen(true)} style={styles.iconBtn}><Menu size={24} color="#1F2937" /></TouchableOpacity>
+            <View style={[styles.header, isDark && styles.darkHeader]}>
+                <TouchableOpacity onPress={() => setIsSidebarOpen(true)} style={styles.iconBtn}>
+                    <Menu size={24} color={iconColor} />
+                </TouchableOpacity>
                 <View style={styles.headerCenter}>
-                    <Text style={styles.headerTitle}>{title || (t('chat.chat' as any) || 'Chat')}</Text>
-                    <Text style={styles.headerSub}>{subTitle}</Text>
+                    <Text style={[styles.headerTitle, isDark && styles.darkText]}>{title || (t('chat.chat' as any) || 'Chat')}</Text>
+                    <Text style={[styles.headerSub, isDark && styles.darkSubText]}>{subTitle}</Text>
                 </View>
                 <View style={{flexDirection:'row', gap:10}}>
                     <TouchableOpacity style={styles.iconBtn} onPress={() => {
@@ -518,40 +531,42 @@ export default function ChatScreen({ navigation }: any) {
                         data={messages}
                         renderItem={renderMessage}
                         keyExtractor={item => item._id}
-                        style={styles.list}
+                        style={[styles.list, isDark && styles.darkList]}
                         contentContainerStyle={{ padding: 16, paddingBottom: 20 }}
                         onRefresh={() => loadMessages(false)}
                         refreshing={loadingMore}
                     />
                 )}
 
-                <View style={styles.footer}>
-                    <TypingIndicator typingUsers={typingUsers} t={t} />
+                <View style={[styles.footer, isDark && styles.darkFooter]}>
+                    <TypingIndicator typingUsers={typingUsers} t={t} isDark={isDark} />
                     {(replyingTo || editingMessage || pendingAttachment) && (
-                        <View style={styles.previewBar}>
+                        <View style={[styles.previewBar, isDark && styles.darkPreviewBar]}>
                             <View style={styles.previewContent}>
                                 {pendingAttachment ? (
-                                    <View style={{flexDirection:'row', alignItems:'center'}}><Paperclip size={16} color="#3B82F6" /><Text style={styles.previewTitle} numberOfLines={1}>{pendingAttachment.name}</Text></View>
+                                    <View style={{flexDirection:'row', alignItems:'center'}}><Paperclip size={16} color="#3B82F6" /><Text style={[styles.previewTitle, isDark && styles.darkText]} numberOfLines={1}>{pendingAttachment.name}</Text></View>
                                 ) : (
-                                    <><Text style={styles.previewTitle}>{editingMessage ? t('common.edit' as any) : `${t('chat.replyingTo' as any)} ${replyingTo?.senderId.name}`}</Text><Text numberOfLines={1} style={styles.previewText}>{editingMessage?.content || replyingTo?.content}</Text></>
+                                    <><Text style={styles.previewTitle}>{editingMessage ? t('common.edit' as any) : `${t('chat.replyingTo' as any)} ${replyingTo?.senderId.name}`}</Text><Text numberOfLines={1} style={[styles.previewText, isDark && styles.darkSubText]}>{editingMessage?.content || replyingTo?.content}</Text></>
                                 )}
                             </View>
-                            <TouchableOpacity onPress={() => { setReplyingTo(null); setEditingMessage(null); setPendingAttachment(null); }}><X size={20} color="#6B7280" /></TouchableOpacity>
+                            <TouchableOpacity onPress={() => { setReplyingTo(null); setEditingMessage(null); setPendingAttachment(null); }}><X size={20} color={subTextColor} /></TouchableOpacity>
                         </View>
                     )}
                     <View style={styles.inputRow}>
-                        <TouchableOpacity style={styles.attachBtn} onPress={handlePickImage}><ImageIcon size={22} color="#6B7280" /></TouchableOpacity>
-                        <TouchableOpacity style={styles.attachBtn} onPress={handlePickDocument}><Paperclip size={22} color="#6B7280" /></TouchableOpacity>
+                        <TouchableOpacity style={styles.attachBtn} onPress={handlePickImage}><ImageIcon size={22} color={subTextColor} /></TouchableOpacity>
+                        <TouchableOpacity style={styles.attachBtn} onPress={handlePickDocument}><Paperclip size={22} color={subTextColor} /></TouchableOpacity>
+                        {/* ✅ FIX 3: Xóa placeholderTextColor, dùng props isDark */}
                         <MentionInput 
                             value={message}
                             onChange={(val) => { setMessage(val); }}
                             onSubmit={handleSend}
                             placeholder={t('chat.placeholder' as any)}
                             mentionableUsers={getMentionableUsers()}
-                            style={styles.input}
+                            style={[styles.input, isDark && styles.darkInput]}
+                            isDark={isDark} 
                         />
-                        <TouchableOpacity onPress={handleSend} disabled={(!message.trim() && !pendingAttachment) || uploading} style={[styles.sendBtn, (!message.trim() && !pendingAttachment) && { backgroundColor: '#E5E7EB' }]}>
-                            {uploading ? <ActivityIndicator size="small" color="#FFF" /> : <Send size={20} color="#FFF" />}
+                        <TouchableOpacity onPress={handleSend} disabled={(!message.trim() && !pendingAttachment) || uploading} style={[styles.sendBtn, (!message.trim() && !pendingAttachment) && { backgroundColor: isDark ? '#374151' : '#E5E7EB' }]}>
+                            {uploading ? <ActivityIndicator size="small" color="#FFF" /> : <Send size={20} color={(!message.trim() && !pendingAttachment) ? (isDark ? "#9CA3AF" : "#6B7280") : "#FFF"} />}
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -561,7 +576,6 @@ export default function ChatScreen({ navigation }: any) {
             <Modal 
                 visible={!!activeMeetingConfig} 
                 animationType="slide" 
-                // Quan trọng: Không set null ở đây để tránh unmount MeetingView đột ngột khi bấm Back
                 onRequestClose={() => { return; }}
                 presentationStyle="fullScreen"
             >
@@ -594,27 +608,27 @@ export default function ChatScreen({ navigation }: any) {
                 />
             )}
 
-            {/* Sidebar & Other Modals (Giữ nguyên) */}
+            {/* Sidebar & Other Modals */}
             <Modal visible={isSidebarOpen} transparent animationType="fade" onRequestClose={() => setIsSidebarOpen(false)}>
                 <TouchableOpacity style={styles.sidebarOverlay} onPress={() => setIsSidebarOpen(false)}>
                     <TouchableWithoutFeedback>
-                        <View style={styles.sidebar}>
+                        <View style={[styles.sidebar, isDark && styles.darkSidebar]}>
                             <View style={styles.sidebarHeader}>
-                                <Text style={styles.sidebarTitle}>{t('nav.chat' as any)}</Text>
+                                <Text style={[styles.sidebarTitle, isDark && styles.darkText]}>{t('nav.chat' as any)}</Text>
                                 <TouchableOpacity onPress={() => setShowNewChatModal(true)}><Edit2 size={20} color="#3B82F6" /></TouchableOpacity>
                             </View>
-                            <View style={styles.sidebarSearch}><Search size={16} color="#9CA3AF" /><TextInput placeholder="Search..." style={styles.sidebarSearchInput} value={sidebarSearch} onChangeText={setSidebarSearch} /></View>
-                            <TouchableOpacity style={[styles.sidebarItem, activeContext === 'group' && styles.sidebarItemActive]} onPress={() => { setActiveContext('group'); setIsSidebarOpen(false); }}>
-                                <View style={[styles.sidebarAvatar, {backgroundColor:'#10B981'}]}><MessageSquare size={18} color="#FFF"/></View><Text style={styles.sidebarName}>{currentGroup?.name || 'Group Chat'}</Text>
+                            <View style={[styles.sidebarSearch, isDark && styles.darkInputBg]}><Search size={16} color="#9CA3AF" /><TextInput placeholder="Search..." placeholderTextColor="#9CA3AF" style={[styles.sidebarSearchInput, isDark && styles.darkText]} value={sidebarSearch} onChangeText={setSidebarSearch} /></View>
+                            <TouchableOpacity style={[styles.sidebarItem, activeContext === 'group' && (isDark ? styles.darkSidebarActive : styles.sidebarItemActive)]} onPress={() => { setActiveContext('group'); setIsSidebarOpen(false); }}>
+                                <View style={[styles.sidebarAvatar, {backgroundColor:'#10B981'}]}><MessageSquare size={18} color="#FFF"/></View><Text style={[styles.sidebarName, isDark && styles.darkText]}>{currentGroup?.name || 'Group Chat'}</Text>
                             </TouchableOpacity>
                             <Text style={styles.sidebarSection}>Direct Messages</Text>
                             <FlatList 
                                 data={directConversations.filter(c => c.targetUser?.name.toLowerCase().includes(sidebarSearch.toLowerCase()))}
                                 keyExtractor={item => item._id}
                                 renderItem={({ item }) => (
-                                    <TouchableOpacity style={[styles.sidebarItem, activeContext === 'direct' && activeDirectConversation?._id === item._id && styles.sidebarItemActive]} onPress={() => { setActiveContext('direct'); setActiveDirectConversation(item); setIsSidebarOpen(false); }}>
+                                    <TouchableOpacity style={[styles.sidebarItem, activeContext === 'direct' && activeDirectConversation?._id === item._id && (isDark ? styles.darkSidebarActive : styles.sidebarItemActive)]} onPress={() => { setActiveContext('direct'); setActiveDirectConversation(item); setIsSidebarOpen(false); }}>
                                         <Image source={{uri: item.targetUser?.avatar}} style={styles.sidebarAvatarImg} />
-                                        <View><Text style={styles.sidebarName}>{item.targetUser?.name}</Text><Text style={styles.sidebarSub} numberOfLines={1}>{item.lastMessagePreview || 'Start a chat'}</Text></View>
+                                        <View><Text style={[styles.sidebarName, isDark && styles.darkText]}>{item.targetUser?.name}</Text><Text style={styles.sidebarSub} numberOfLines={1}>{item.lastMessagePreview || 'Start a chat'}</Text></View>
                                     </TouchableOpacity>
                                 )}
                             />
@@ -625,27 +639,51 @@ export default function ChatScreen({ navigation }: any) {
 
             <Modal visible={showActionSheet} transparent animationType="slide" onRequestClose={() => setShowActionSheet(false)}>
                  <TouchableOpacity style={styles.bottomSheetOverlay} onPress={() => setShowActionSheet(false)}>
-                    <View style={styles.bottomSheetContent}>
+                    <View style={[styles.bottomSheetContent, isDark && styles.darkBottomSheet]}>
                         <View style={styles.emojiRow}>{['👍','❤️','😂','😮','😢','🔥'].map(emoji => (<TouchableOpacity key={emoji} onPress={() => { if (selectedMessage) handleReaction(selectedMessage._id, emoji); setShowActionSheet(false); }}><Text style={{fontSize: 24}}>{emoji}</Text></TouchableOpacity>))}</View>
                         <View style={styles.actionGrid}>
-                            <TouchableOpacity style={styles.actionBtn} onPress={() => { if(selectedMessage) setReplyingTo(selectedMessage); setShowActionSheet(false); }}><Reply size={20} color="#374151" /><Text style={styles.actionText}>Reply</Text></TouchableOpacity>
-                            <TouchableOpacity style={styles.actionBtn} onPress={() => { if(selectedMessage) handleCopy(selectedMessage.content); }}><Copy size={20} color="#374151" /><Text style={styles.actionText}>Copy</Text></TouchableOpacity>
-                            <TouchableOpacity style={styles.actionBtn} onPress={() => { if(selectedMessage) { setForwardingMessage(selectedMessage); setShowForwardModal(true); setShowActionSheet(false); }}}><Forward size={20} color="#374151" /><Text style={styles.actionText}>Forward</Text></TouchableOpacity>
+                            <TouchableOpacity style={styles.actionBtn} onPress={() => { if(selectedMessage) setReplyingTo(selectedMessage); setShowActionSheet(false); }}><Reply size={20} color={iconColor} /><Text style={[styles.actionText, isDark && styles.darkText]}>Reply</Text></TouchableOpacity>
+                            <TouchableOpacity style={styles.actionBtn} onPress={() => { if(selectedMessage) handleCopy(selectedMessage.content); }}><Copy size={20} color={iconColor} /><Text style={[styles.actionText, isDark && styles.darkText]}>Copy</Text></TouchableOpacity>
+                            <TouchableOpacity style={styles.actionBtn} onPress={() => { if(selectedMessage) { setForwardingMessage(selectedMessage); setShowForwardModal(true); setShowActionSheet(false); }}}><Forward size={20} color={iconColor} /><Text style={[styles.actionText, isDark && styles.darkText]}>Forward</Text></TouchableOpacity>
                             {selectedMessage?.senderId._id === user?._id && (<TouchableOpacity style={styles.actionBtn} onPress={() => { if (selectedMessage) { Alert.alert('Delete', 'Delete this message?', [{ text: 'Cancel' }, { text: 'Delete', style: 'destructive', onPress: () => { const event = activeContext === 'group' ? 'chat:delete' : 'direct:delete'; socket?.emit(event, { messageId: selectedMessage._id }); setShowActionSheet(false); }}]); }}}><Trash2 size={20} color="#EF4444" /><Text style={[styles.actionText, {color: '#EF4444'}]}>Delete</Text></TouchableOpacity>)}
                         </View>
                     </View>
                  </TouchableOpacity>
             </Modal>
 
+            {/* FORWARD MODAL */}
             <Modal visible={showForwardModal} transparent animationType="fade" onRequestClose={() => setShowForwardModal(false)}>
-                <View style={styles.modalOverlay}><View style={styles.modalContent}><Text style={styles.modalTitle}>Forward to...</Text><FlatList data={directConversations} keyExtractor={item => item._id} renderItem={({item}) => (<TouchableOpacity style={styles.sidebarItem} onPress={() => handleForwardMessage(item._id, 'direct')}><Image source={{uri: item.targetUser?.avatar}} style={styles.sidebarAvatarImg} /><Text style={styles.sidebarName}>{item.targetUser?.name}</Text></TouchableOpacity>)} /><TouchableOpacity onPress={() => setShowForwardModal(false)} style={styles.modalCloseBtn}><Text style={{color:'#6B7280'}}>Cancel</Text></TouchableOpacity></View></View>
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, isDark && styles.darkModal]}>
+                        <Text style={[styles.modalTitle, isDark && styles.darkText]}>Forward to...</Text>
+                        <FlatList 
+                            data={directConversations} 
+                            keyExtractor={item => item._id} 
+                            renderItem={({item}) => (
+                                <TouchableOpacity style={styles.sidebarItem} onPress={() => handleForwardMessage(item._id, 'direct')}>
+                                    <Image source={{uri: item.targetUser?.avatar}} style={styles.sidebarAvatarImg} />
+                                    <Text style={[styles.sidebarName, isDark && styles.darkText]}>{item.targetUser?.name}</Text>
+                                </TouchableOpacity>
+                            )} 
+                        />
+                        <TouchableOpacity onPress={() => setShowForwardModal(false)} style={styles.modalCloseBtn}><Text style={{color:'#6B7280'}}>Cancel</Text></TouchableOpacity>
+                    </View>
+                </View>
             </Modal>
 
+            {/* NEW CHAT MODAL */}
             <Modal visible={showNewChatModal} transparent animationType="fade" onRequestClose={() => setShowNewChatModal(false)}>
                 <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>New Direct Chat</Text>
-                        <TextInput placeholder="Enter email address" style={styles.modalInput} value={newChatEmail} onChangeText={setNewChatEmail} autoCapitalize="none" />
+                    <View style={[styles.modalContent, isDark && styles.darkModal]}>
+                        <Text style={[styles.modalTitle, isDark && styles.darkText]}>New Direct Chat</Text>
+                        <TextInput 
+                            placeholder="Enter email address" 
+                            placeholderTextColor="#9CA3AF"
+                            style={[styles.modalInput, isDark && styles.darkInput]} 
+                            value={newChatEmail} 
+                            onChangeText={setNewChatEmail} 
+                            autoCapitalize="none" 
+                        />
                         <View style={{flexDirection:'row', justifyContent:'flex-end', gap: 10, marginTop: 15}}>
                             <TouchableOpacity onPress={() => setShowNewChatModal(false)}><Text style={{color:'#6B7280', padding: 10}}>Cancel</Text></TouchableOpacity>
                             <TouchableOpacity style={{backgroundColor:'#3B82F6', padding: 10, borderRadius: 8}} onPress={async () => { try { const res = await chatService.startDirectConversation({ email: newChatEmail }); setDirectConversations(prev => [res, ...prev]); setActiveContext('direct'); setActiveDirectConversation(res); setShowNewChatModal(false); setIsSidebarOpen(false); } catch (e: any) { Alert.alert('Error', e.message); } }}><Text style={{color:'#FFF'}}>Start Chat</Text></TouchableOpacity>
@@ -661,13 +699,16 @@ export default function ChatScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#FFF' },
+    darkContainer: { backgroundColor: '#111827' },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderBottomWidth: 1, borderColor: '#F3F4F6', backgroundColor: '#FFF' },
+    darkHeader: { backgroundColor: '#1F2937', borderColor: '#374151' },
     headerCenter: { alignItems: 'center' },
     headerTitle: { fontSize: 16, fontWeight: '700', color: '#111827' },
     headerSub: { fontSize: 12, color: '#6B7280' },
     iconBtn: { padding: 8 },
     list: { flex: 1, backgroundColor: '#F9FAFB' },
+    darkList: { backgroundColor: '#000' }, // Hoặc #111827 tùy thiết kế
     msgRow: { flexDirection: 'row', marginBottom: 16, alignItems: 'flex-end', maxWidth: '85%' },
     rowOwn: { alignSelf: 'flex-end', flexDirection: 'row-reverse' },
     rowOther: { alignSelf: 'flex-start' },
@@ -676,38 +717,50 @@ const styles = StyleSheet.create({
     bubble: { padding: 12, borderRadius: 16, minWidth: 100 },
     bubbleOwn: { backgroundColor: '#3B82F6', borderBottomRightRadius: 2 },
     bubbleOther: { backgroundColor: '#FFF', borderBottomLeftRadius: 2, borderWidth: 1, borderColor: '#E5E7EB' },
+    bubbleOtherDark: { backgroundColor: '#1F2937', borderColor: '#374151' },
     senderName: { fontSize: 11, color: '#6B7280', marginBottom: 2, marginLeft: 4 },
     msgText: { fontSize: 15, lineHeight: 22 },
     textOwn: { color: '#FFF' },
     textOther: { color: '#1F2937' },
+    darkText: { color: '#F9FAFB' },
+    darkSubText: { color: '#9CA3AF' },
     timeText: { fontSize: 10, alignSelf: 'flex-end', marginTop: 4 },
     footer: { borderTopWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF', padding: 10 },
+    darkFooter: { backgroundColor: '#1F2937', borderColor: '#374151' },
     inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    input: { flex: 1, maxHeight: 100, backgroundColor: '#F3F4F6', borderRadius: 20, paddingHorizontal: 15 },
+    input: { flex: 1, maxHeight: 100, backgroundColor: '#F3F4F6', borderRadius: 20, paddingHorizontal: 15, color: '#000' },
+    darkInput: { backgroundColor: '#374151', color: '#FFF' },
     sendBtn: { padding: 10, backgroundColor: '#3B82F6', borderRadius: 20 },
     attachBtn: { padding: 8 },
     previewBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', padding: 8, borderRadius: 8, marginBottom: 8 },
+    darkPreviewBar: { backgroundColor: '#374151' },
     previewContent: { flex: 1, marginLeft: 8 },
     previewTitle: { fontSize: 12, fontWeight: 'bold', color: '#3B82F6', marginBottom: 2 },
     previewText: { fontSize: 12, color: '#4B5563' },
     typingContainer: { paddingHorizontal: 12, marginBottom: 4 },
     typingText: { fontSize: 11, color: '#6B7280', fontStyle: 'italic' },
     callMessageContainer: { flexDirection: 'row', backgroundColor: '#EFF6FF', padding: 12, borderRadius: 12, marginVertical: 8, alignItems: 'center', alignSelf: 'center', width: '80%', borderWidth: 1, borderColor: '#DBEAFE' },
+    darkCallContainer: { backgroundColor: '#1E3A8A', borderColor: '#1E40AF' },
     callIconContainer: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#9CA3AF', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
     callIconActive: { backgroundColor: '#10B981' },
+    callIconActiveBorder: { borderColor: '#10B981' },
+    darkCallActive: { borderColor: '#059669' },
     callTitle: { fontSize: 14, fontWeight: '600', color: '#1F2937' },
     callSubtitle: { fontSize: 12, color: '#6B7280' },
     joinButton: { backgroundColor: '#10B981', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginLeft: 8 },
     joinButtonText: { color: '#FFF', fontSize: 12, fontWeight: '600', marginLeft: 4 },
     sidebarOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', flexDirection: 'row' },
     sidebar: { width: SIDEBAR_WIDTH, backgroundColor: '#FFF', height: '100%', padding: 20, paddingTop: 50 },
+    darkSidebar: { backgroundColor: '#111827' },
     sidebarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
     sidebarTitle: { fontSize: 24, fontWeight: 'bold', color: '#111827' },
     sidebarSearch: { flexDirection: 'row', backgroundColor: '#F3F4F6', padding: 8, borderRadius: 8, alignItems: 'center', marginBottom: 15 },
-    sidebarSearchInput: { flex: 1, marginLeft: 8, fontSize: 14 },
+    darkInputBg: { backgroundColor: '#374151' },
+    sidebarSearchInput: { flex: 1, marginLeft: 8, fontSize: 14, color: '#000' },
     sidebarSection: { fontSize: 12, fontWeight: '600', color: '#9CA3AF', marginBottom: 8, marginTop: 15, textTransform: 'uppercase' },
     sidebarItem: { flexDirection: 'row', alignItems: 'center', padding: 10, borderRadius: 8, marginBottom: 2 },
     sidebarItemActive: { backgroundColor: '#EFF6FF' },
+    darkSidebarActive: { backgroundColor: '#1E3A8A' },
     sidebarAvatar: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
     sidebarAvatarImg: { width: 36, height: 36, borderRadius: 18, marginRight: 10, backgroundColor: '#E5E7EB' },
     sidebarName: { fontSize: 15, fontWeight: '500', color: '#1F2937' },
@@ -715,19 +768,24 @@ const styles = StyleSheet.create({
     attachmentThumb: { marginTop: 5 },
     imageThumb: { width: 200, height: 150, borderRadius: 8, backgroundColor: '#E5E7EB' },
     fileThumb: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', padding: 10, borderRadius: 8, width: 200 },
+    darkFileThumb: { backgroundColor: '#374151' },
     fileName: { marginLeft: 8, flex: 1, fontSize: 13, color: '#374151' },
     reactionsRow: { flexDirection: 'row', gap: 4, marginTop: 4, flexWrap: 'wrap' },
     reactionBadge: { backgroundColor: '#F3F4F6', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, borderWidth: 1, borderColor: '#FFF' },
+    darkReactionBadge: { backgroundColor: '#374151', borderColor: '#4B5563' },
+    reactionText: { fontSize: 10, color: '#000' },
     bottomSheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
     bottomSheetContent: { backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40 },
+    darkBottomSheet: { backgroundColor: '#1F2937' },
     emojiRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20, paddingHorizontal: 10 },
     actionGrid: { flexDirection: 'row', justifyContent: 'space-around' },
     actionBtn: { alignItems: 'center', gap: 5 },
     actionText: { fontSize: 12, color: '#374151' },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
     modalContent: { width: '85%', backgroundColor: '#FFF', borderRadius: 12, padding: 20 },
+    darkModal: { backgroundColor: '#1F2937' },
     modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
-    modalInput: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 8, padding: 12, fontSize: 16 },
+    modalInput: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 8, padding: 12, fontSize: 16, color: '#000' },
     modalCloseBtn: { alignSelf: 'center', marginTop: 15 },
     lightboxContainer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center' },
     lightboxImg: { width: width, height: height * 0.8 },

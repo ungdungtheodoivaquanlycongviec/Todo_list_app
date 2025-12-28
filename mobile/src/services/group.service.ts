@@ -1,21 +1,7 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authService } from './auth.service';
 import { API_URL } from '../config/api.config';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Group } from '../types/group.types'; // Đảm bảo bạn đã có file type này
-
-// Helper để normalize response (Giữ nguyên logic từ web)
-const normalizeGroupResponse = (data: any): Group => {
-  if (data.data?.group) {
-    return data.data.group;
-  }
-  if (data.group) {
-    return data.group;
-  }
-  if (data.data && !data.group) {
-    return data.data;
-  }
-  return data;
-};
+import { Group, GroupMember } from '../types/group.types';
 
 // Interface response
 interface GroupsResponse {
@@ -24,6 +10,14 @@ interface GroupsResponse {
   allGroups: Group[];
   pagination: any;
 }
+
+// Helper để normalize response
+const normalizeGroupResponse = (data: any): Group => {
+  if (data.data?.group) return data.data.group;
+  if (data.group) return data.group;
+  if (data.data && !data.group) return data.data;
+  return data;
+};
 
 // --- HELPER FUNCTION (Tối ưu hóa code lặp) ---
 const fetchWithAuth = async (endpoint: string, options: RequestInit = {}, returnFullResponse = false) => {
@@ -51,7 +45,6 @@ const fetchWithAuth = async (endpoint: string, options: RequestInit = {}, return
   if (!response.ok) {
     if (response.status === 401) {
       await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
-      // await authService.logout(); // Gọi logout nếu có
       throw new Error('Authentication failed. Please login again.');
     }
 
@@ -69,13 +62,12 @@ const fetchWithAuth = async (endpoint: string, options: RequestInit = {}, return
   if (response.status === 204) return null;
 
   const data = await response.json();
-  return data; // Trả về toàn bộ body để các hàm tự xử lý data.data hay data
+  return data; 
 };
 
 export const groupService = {
   // Tạo group mới
   createGroup: async (groupData: any): Promise<Group> => {
-    // Gọi API
     const data = await fetchWithAuth('/groups', {
       method: 'POST',
       body: JSON.stringify(groupData),
@@ -83,7 +75,6 @@ export const groupService = {
 
     const group = normalizeGroupResponse(data);
 
-    // ⚠️ Mobile Logic: Cập nhật user vào AsyncStorage
     if (data.updatedUser) {
       await AsyncStorage.setItem('user', JSON.stringify(data.updatedUser));
     }
@@ -95,7 +86,6 @@ export const groupService = {
   getAllGroups: async (filters?: any, options?: any): Promise<GroupsResponse> => {
     const queryParams = new URLSearchParams();
 
-    // Merge filters và options vào queryParams
     const mergeParams = { ...filters, ...options };
     Object.keys(mergeParams).forEach(key => {
       if (mergeParams[key] !== undefined && mergeParams[key] !== null && mergeParams[key] !== '') {
@@ -106,7 +96,6 @@ export const groupService = {
     const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
     const responseData = await fetchWithAuth(`/groups${queryString}`);
 
-    // Logic normalize giống hệt Web
     let myGroups: Group[] = [];
     let sharedGroups: Group[] = [];
     let allGroups: Group[] = [];
@@ -133,9 +122,8 @@ export const groupService = {
     };
   },
 
-  // Lấy chi tiết group (Xử lý logic 403/404)
+  // Lấy chi tiết group
   getGroupById: async (id: string): Promise<Group | null> => {
-    // Dùng flag true để lấy full response object
     const response = await fetchWithAuth(`/groups/${id}`, {}, true) as Response;
 
     if (!response.ok) {
@@ -144,7 +132,6 @@ export const groupService = {
         throw new Error('Authentication failed. Please login again.');
       }
       
-      // ✅ Giữ nguyên logic quan trọng: Trả về null nếu bị chặn hoặc không tìm thấy
       if (response.status === 403 || response.status === 404) {
         console.warn(`Group ${id} not accessible (${response.status}).`);
         return null;
@@ -158,10 +145,30 @@ export const groupService = {
     return normalizeGroupResponse(data);
   },
 
+  // ✅ HÀM BẠN ĐANG THIẾU: Lấy danh sách thành viên
+  getGroupMembers: async (groupId: string): Promise<GroupMember[]> => {
+    try {
+      // Gọi API lấy members trực tiếp
+      const data = await fetchWithAuth(`/groups/${groupId}/members`);
+      
+      // Xử lý các dạng trả về khác nhau của Backend
+      if (Array.isArray(data)) return data;
+      if (data.data && Array.isArray(data.data)) return data.data;
+      if (data.members && Array.isArray(data.members)) return data.members;
+      
+      return [];
+    } catch (error) {
+      console.warn('Fallback getting members from group details', error);
+      // Fallback: Gọi getGroupById nếu API members lỗi
+      const group = await groupService.getGroupById(groupId);
+      return group?.members || [];
+    }
+  },
+
   // Cập nhật group
   updateGroup: async (id: string, updateData: any): Promise<Group> => {
     const data = await fetchWithAuth(`/groups/${id}`, {
-      method: 'PATCH',
+      method: 'PATCH', // Hoặc PUT tùy backend
       body: JSON.stringify(updateData),
     });
     return normalizeGroupResponse(data);
@@ -182,11 +189,9 @@ export const groupService = {
   switchToGroup: async (id: string): Promise<{ user: any; group: Group }> => {
     const data = await fetchWithAuth(`/groups/${id}/switch`, { method: 'POST' });
 
-    // ⚠️ Mobile Logic: Cập nhật user vào AsyncStorage
     if (data.data?.user) {
       await AsyncStorage.setItem('user', JSON.stringify(data.data.user));
     } else if (data.user) {
-       // Fallback nếu cấu trúc trả về khác
        await AsyncStorage.setItem('user', JSON.stringify(data.user));
     }
 
