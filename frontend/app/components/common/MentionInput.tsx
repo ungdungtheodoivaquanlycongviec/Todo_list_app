@@ -131,7 +131,12 @@ export default function MentionInput({
 
     // Build all suggestions (users + roles + @everyone)
     const getAllSuggestions = useCallback((): MentionSuggestion[] => {
-        // Add @everyone as the first option
+        // If no mentionable users, return empty - this disables mentions in direct chat
+        if (mentionableUsers.length === 0 && mentionableRoles.length === 0) {
+            return []
+        }
+
+        // Add @everyone as the first option (only when there are mentionable users)
         const everyoneSuggestion: MentionSuggestion = {
             type: 'role',
             id: 'everyone',
@@ -222,9 +227,9 @@ export default function MentionInput({
         const before = value.slice(0, mentionStartIndex)
         const after = value.slice(cursorPos)
 
-        // Format: Just @name for cleaner display
-        // The mention ID is tracked separately via parseMentions matching mentionableUsers
-        const mention = `@${suggestion.display} `
+        // Format: @[name](id) for backend parsing
+        // This allows the backend to extract user IDs from the content
+        const mention = `@[${suggestion.display}](${suggestion.id}) `
         const newValue = before + mention + after
 
         onChange(newValue)
