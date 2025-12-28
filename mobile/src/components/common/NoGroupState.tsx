@@ -5,55 +5,66 @@ import {
   StyleSheet,
   TouchableOpacity
 } from 'react-native';
+// ✅ 1. Switch to Lucide Icons
+import { Users, Plus, ArrowRight } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
-import Ionicons from 'react-native-vector-icons/Ionicons';
-
+// ✅ 2. Import Language Context
+import { useLanguage } from '../../context/LanguageContext';
 
 interface NoGroupStateProps {
   title?: string;
   description?: string;
   showGroupSelector?: boolean;
+  // Mobile specific navigation callbacks
   onCreateGroup?: () => void;
   onJoinGroup?: () => void;
 }
 
 export default function NoGroupState({ 
-  title = "Join or Create a Group",
-  description = "You need to join or create a group to manage tasks and collaborate with your team.",
+  title,
+  description,
   showGroupSelector = true,
   onCreateGroup,
   onJoinGroup
 }: NoGroupStateProps) {
   const { isDark } = useTheme();
+  const { t } = useLanguage(); // ✅ Use translation hook
+
+  // ✅ Use translated defaults if props are missing
+  const displayTitle = title || t('groups.joinOrCreate');
+  const displayDescription = description || t('groups.joinOrCreateDesc');
 
   return (
     <View style={[styles.container, isDark && styles.darkContainer]}>
       <View style={styles.content}>
+        {/* Icon Circle */}
         <View style={[styles.iconContainer, isDark && styles.darkIconContainer]}>
-          <Ionicons name="people" size={32} color={isDark ? '#60a5fa' : '#2563eb'} />
+          <Users size={32} color={isDark ? '#60a5fa' : '#2563eb'} />
         </View>
         
+        {/* Title & Description */}
         <Text style={[styles.title, isDark && styles.darkText]}>
-          {title}
+          {displayTitle}
         </Text>
         <Text style={[styles.description, isDark && styles.darkSubtitle]}>
-          {description}
+          {displayDescription}
         </Text>
         
         {showGroupSelector && (
           <View style={styles.actionsContainer}>
+            {/* Quick Actions Box */}
             <View style={[styles.quickActions, isDark && styles.darkQuickActions]}>
               <Text style={[styles.actionsTitle, isDark && styles.darkText]}>
-                Quick Actions
+                {t('groups.quickActions')}
               </Text>
               
               <TouchableOpacity 
                 style={styles.actionItem}
                 onPress={onCreateGroup}
               >
-                <Ionicons name="add-circle" size={20} color="#10b981" />
+                <Plus size={20} color="#10b981" />
                 <Text style={[styles.actionText, isDark && styles.darkSubtitle]}>
-                  Create a new group to get started
+                  {t('groups.createToStart')}
                 </Text>
               </TouchableOpacity>
               
@@ -61,29 +72,30 @@ export default function NoGroupState({
                 style={styles.actionItem}
                 onPress={onJoinGroup}
               >
-                <Ionicons name="arrow-forward" size={20} color="#3b82f6" />
+                <ArrowRight size={20} color="#3b82f6" />
                 <Text style={[styles.actionText, isDark && styles.darkSubtitle]}>
-                  Join an existing group with an invite code
+                  {t('groups.joinWithCode')}
                 </Text>
               </TouchableOpacity>
             </View>
             
+            {/* Benefits List */}
             <View style={styles.features}>
               <Text style={[styles.featuresTitle, isDark && styles.darkSubtitle]}>
-                Once you're in a group, you'll be able to:
+                {t('groups.onceInGroup')}
               </Text>
               <View style={styles.featuresList}>
                 <Text style={[styles.featureItem, isDark && styles.darkSubtitle]}>
-                  • Create and manage tasks
+                  • {t('groups.manageTasksBenefit')}
                 </Text>
                 <Text style={[styles.featureItem, isDark && styles.darkSubtitle]}>
-                  • Collaborate with team members
+                  • {t('groups.collaborateBenefit')}
                 </Text>
                 <Text style={[styles.featureItem, isDark && styles.darkSubtitle]}>
-                  • Track project progress
+                  • {t('groups.trackProgressBenefit')}
                 </Text>
                 <Text style={[styles.featureItem, isDark && styles.darkSubtitle]}>
-                  • Share notes and files
+                  • {t('groups.shareFilesBenefit')}
                 </Text>
               </View>
             </View>
@@ -137,6 +149,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 24,
     lineHeight: 22,
+    paddingHorizontal: 20,
   },
   darkSubtitle: {
     color: '#a0aec0',
@@ -167,7 +180,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
   },
   actionText: {
     fontSize: 14,
@@ -189,6 +202,7 @@ const styles = StyleSheet.create({
   featureItem: {
     fontSize: 13,
     color: '#6b7280',
-    textAlign: 'center',
+    textAlign: 'left',
+    paddingLeft: 10,
   },
 });
