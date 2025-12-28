@@ -102,21 +102,23 @@ class GroupService {
     }
 
     const users = await User.find({ _id: { $in: membersArray.map(([id]) => id) }, isActive: true })
-      .select('_id name email avatar')
+      .select('_id name email avatar groupRole')
       .lean();
     const validMemberIds = new Set(users.map(user => user._id.toString()));
+    // Create a map of userId to groupRole for initial members
+    const memberRoleMap = new Map(users.map(user => [user._id.toString(), user.groupRole || null]));
 
     const group = await Group.create({
       name: sanitizedName,
       description: sanitizedDescription,
       createdBy: creatorId,
       members: [
-        { userId: creatorId, role: null, joinedAt: new Date() },
+        { userId: creatorId, role: creatorContext.role || null, joinedAt: new Date() },
         ...membersArray
           .filter(([id]) => validMemberIds.has(id))
           .map(([id, payload]) => ({
             userId: id,
-            role: null,
+            role: memberRoleMap.get(id) || null,
             joinedAt: new Date()
           }))
       ]
@@ -651,9 +653,11 @@ class GroupService {
     }
 
     const users = await User.find({ _id: { $in: newEntries.map(entry => entry.userId) }, isActive: true })
-      .select('_id name email avatar')
+      .select('_id name email avatar groupRole')
       .lean();
 
+    // Create a map of userId to groupRole for easy lookup
+    const userRoleMap = new Map(users.map(user => [user._id.toString(), user.groupRole || null]));
     const activeIds = new Set(users.map(user => user._id.toString()));
     const validEntries = newEntries.filter(entry => activeIds.has(entry.userId));
 
@@ -672,7 +676,7 @@ class GroupService {
           members: {
             $each: validEntries.map(entry => ({
               userId: entry.userId,
-              role: null,
+              role: userRoleMap.get(entry.userId) || null,
               joinedAt: new Date()
             }))
           }
@@ -992,13 +996,17 @@ class GroupService {
       };
     }
 
+    // Fetch joining user's groupRole
+    const joiningUser = await User.findById(userId).select('groupRole').lean();
+    const userGroupRole = joiningUser?.groupRole || null;
+
     const updatedGroup = await Group.findByIdAndUpdate(
       groupId,
       {
         $push: {
           members: {
             userId: userId,
-            role: null,
+            role: userGroupRole,
             joinedAt: new Date()
           }
         }

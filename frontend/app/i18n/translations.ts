@@ -30,6 +30,8 @@ export const translations = {
     'common.no': 'No',
     'common.clear': 'Clear',
     'common.done': 'Done',
+    'common.ok': 'OK',
+    'common.permissionDenied': 'Permission Denied',
 
     // Tasks
     'tasks.title': 'Tasks',
@@ -83,10 +85,12 @@ export const translations = {
     // Status
     'status.todo': 'To Do',
     'status.inProgress': 'In Progress',
+    'status.in_progress': 'In Progress',
     'status.completed': 'Completed',
     'status.incomplete': 'Incomplete',
     'status.pending': 'Pending',
     'status.cancelled': 'Cancelled',
+    'status.archived': 'Archived',
 
     // Custom Status Modal
     'customStatus.title': 'Add Custom Status',
@@ -109,6 +113,10 @@ export const translations = {
     'timeline.title': 'Timeline',
     'timeline.zoomIn': 'Zoom In',
     'timeline.zoomOut': 'Zoom Out',
+    'timeline.zoomDays': 'Days',
+    'timeline.zoomWeeks': 'Weeks',
+    'timeline.zoomMonths': 'Months',
+    'timeline.zoomQuarters': 'Quarters',
     'timeline.days': 'Days',
     'timeline.weeks': 'Weeks',
     'timeline.months': 'Months',
@@ -255,6 +263,8 @@ export const translations = {
     'folders.enterFolderName': 'Enter folder name',
     'folders.enterFolderDescription': 'Enter folder description (optional)',
     'folders.creating': 'Creating...',
+    'folders.permissionDeniedDelete': 'You do not have permission to delete this folder.',
+    'folders.permissionDeniedAssign': 'You do not have permission to assign members to this folder.',
 
     // Notifications
     'notifications.title': 'Notifications',
@@ -786,6 +796,8 @@ export const translations = {
     'common.no': 'Không',
     'common.clear': 'Xóa',
     'common.done': 'Xong',
+    'common.ok': 'OK',
+    'common.permissionDenied': 'Từ chối truy cập',
 
     // Tasks
     'tasks.title': 'Công việc',
@@ -839,10 +851,12 @@ export const translations = {
     // Status
     'status.todo': 'Cần làm',
     'status.inProgress': 'Đang thực hiện',
+    'status.in_progress': 'Đang thực hiện',
     'status.completed': 'Hoàn thành',
     'status.incomplete': 'Chưa hoàn thành',
     'status.pending': 'Đang chờ',
     'status.cancelled': 'Đã hủy',
+    'status.archived': 'Đã lưu trữ',
 
     // Custom Status Modal
     'customStatus.title': 'Thêm Trạng Thái Tùy Chỉnh',
@@ -865,6 +879,10 @@ export const translations = {
     'timeline.title': 'Dòng thời gian',
     'timeline.zoomIn': 'Phóng to',
     'timeline.zoomOut': 'Thu nhỏ',
+    'timeline.zoomDays': 'Ngày',
+    'timeline.zoomWeeks': 'Tuần',
+    'timeline.zoomMonths': 'Tháng',
+    'timeline.zoomQuarters': 'Quý',
     'timeline.days': 'Ngày',
     'timeline.weeks': 'Tuần',
     'timeline.months': 'Tháng',
@@ -1011,6 +1029,8 @@ export const translations = {
     'folders.enterFolderName': 'Nhập tên thư mục',
     'folders.enterFolderDescription': 'Nhập mô tả thư mục (tùy chọn)',
     'folders.creating': 'Đang tạo...',
+    'folders.permissionDeniedDelete': 'Bạn không có quyền xóa thư mục này.',
+    'folders.permissionDeniedAssign': 'Bạn không có quyền phân quyền thành viên cho thư mục này.',
 
     // Notifications
     'notifications.title': 'Thông báo',

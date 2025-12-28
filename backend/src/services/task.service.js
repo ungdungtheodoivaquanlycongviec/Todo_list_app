@@ -220,7 +220,7 @@ const validateAssignmentPermissions = async (assignerContext, targetUserIds, ass
 
   targetUserIds.forEach(userId => {
     const normalizedUserId = normalizeId(userId);
-    
+
     // Luôn cho phép gán chính mình (self-assignment)
     if (normalizedUserId === normalizedAssignerId) {
       validIds.push(userId);
@@ -340,8 +340,19 @@ const buildScopedFolderFilter = async ({
   groupId,
   folderId,
   requesterId,
-  role
+  role,
+  isPersonalOwner = false
 }) => {
+  // Personal workspace owners have full access to all folders - no filtering needed
+  if (isPersonalOwner) {
+    if (folderId) {
+      // If a specific folder is requested, filter by that folder only
+      const folder = await Folder.findOne({ _id: folderId, groupId });
+      return folder ? buildFolderClauses(folder) : [];
+    }
+    return [];
+  }
+
   if (folderId) {
     try {
       const { folder } = await enforceFolderAccess({
@@ -560,6 +571,7 @@ class TaskService {
     let groupMemberIds = null;
     let targetGroup = null;
     let requesterRole = null;
+    let isPersonalOwner = false;
 
     if (taskData.groupId) {
       const groupId = normalizeId(taskData.groupId);
@@ -570,7 +582,7 @@ class TaskService {
       const { group } = await ensureGroupAccess(groupId, creatorId);
       const requester = await getRequesterContext(creatorId);
 
-      const isPersonalOwner =
+      isPersonalOwner =
         Boolean(group.isPersonalWorkspace) &&
         normalizeId(group.createdBy) === normalizeId(creatorId);
 
@@ -614,12 +626,12 @@ class TaskService {
         .filter(Boolean);
     }
 
-    // Check if user can assign to others (only PM and Product Owner)
+    // Check if user can assign to others (PM, Product Owner, or personal workspace owner)
     const requesterContext = await getRequesterContext(creatorId);
-    const canAssignToOthers = targetGroup ? canAssignFolderMembers(requesterContext) : false;
+    const canAssignToOthers = isPersonalOwner || (targetGroup ? canAssignFolderMembers(requesterContext) : false);
 
     // Validate assignment permissions if assigning to others
-    if (assignedIds.length > 0 && canAssignToOthers && targetGroup) {
+    if (assignedIds.length > 0 && canAssignToOthers && targetGroup && !isPersonalOwner) {
       const permissionCheck = await validateAssignmentPermissions(
         requesterContext,
         assignedIds,
@@ -656,7 +668,8 @@ class TaskService {
     }
 
     // If task has a folder, check and auto-grant folder access for assigned users
-    if (taskData.folderId && targetGroup) {
+    // Personal workspace owners can freely assign tasks without folder access restrictions
+    if (taskData.folderId && targetGroup && !isPersonalOwner) {
       const folder = await Folder.findById(taskData.folderId);
       if (folder && !folder.isDefault) {
         const folderMemberAccess = new Set(
@@ -846,6 +859,11 @@ class TaskService {
       const { group } = await ensureGroupAccess(groupId, requesterId);
       const requester = await getRequesterContext(requesterId);
 
+      // Check if user is owner of personal workspace - grants full access
+      const isPersonalOwner =
+        Boolean(group.isPersonalWorkspace) &&
+        normalizeId(group.createdBy) === normalizeId(requesterId);
+
       queryFilters.push({ groupId });
 
       const folderClauses = await buildScopedFolderFilter({
@@ -853,7 +871,8 @@ class TaskService {
         groupId,
         folderId,
         requesterId,
-        role: requester.role
+        role: requester.role,
+        isPersonalOwner
       });
 
       if (folderClauses.length === 1) {
@@ -1032,7 +1051,7 @@ class TaskService {
 
         // Kiểm tra quyền xóa: tìm những user bị loại bỏ
         const removedUserIds = currentAssignedIds.filter(id => !finalAssignedIds.includes(id));
-        
+
         if (removedUserIds.length > 0) {
           // Kiểm tra từng user bị xóa có được phép xóa không
           const requesterIdStr = normalizeId(requesterId);
@@ -1362,17 +1381,17 @@ class TaskService {
         raiseError('Invalid groupId format');
       }
 
-    const { group } = await ensureGroupAccess(groupId, requesterId);
-    const requester = await getRequesterContext(requesterId);
+      const { group } = await ensureGroupAccess(groupId, requesterId);
+      const requester = await getRequesterContext(requesterId);
 
       queryFilters.push({ groupId });
 
-    const folderClauses = await buildScopedFolderFilter({
+      const folderClauses = await buildScopedFolderFilter({
         group,
         groupId,
         folderId,
         requesterId,
-      role: requester.role
+        role: requester.role
       });
 
       if (folderClauses.length === 1) {
@@ -2342,8 +2361,19 @@ class TaskService {
         const User = require('../models/User.model');
         const commenter = await User.findById(commenterIdStr).select('name');
 
+        // Parse mentions from content - supports @[name](id) format
+        const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
+        const mentionedUserIds = [];
+        let match;
+        while ((match = mentionRegex.exec(content)) !== null) {
+          const mentionedId = match[2];
+          if (mentionedId && isValidObjectId(mentionedId) && mentionedId !== commenterIdStr) {
+            mentionedUserIds.push(mentionedId);
+          }
+        }
+
         // Get all assignees and creator (excluding commenter)
-        const recipientIds = [
+        const allRecipientIds = [
           ...task.assignedTo.map(a => normalizeId(a.userId)),
           normalizeId(task.createdBy)
         ].filter(id => id && id !== commenterIdStr);
@@ -2353,17 +2383,40 @@ class TaskService {
           ? task.groupId.name
           : null;
 
-        await notificationService.createCommentAddedNotification({
-          taskId: task._id,
-          commenterId: commenterIdStr,
-          commentId: latestComment?._id,
-          taskTitle: task.title,
-          groupId: groupIdStr,
-          groupName: groupName,
-          commenterName: commenter?.name || null,
-          commentPreview: content.trim(),
-          recipientIds: Array.from(new Set(recipientIds))
-        });
+        // Filter out mentioned users from regular comment notification
+        const mentionedSet = new Set(mentionedUserIds);
+        const nonMentionedRecipients = allRecipientIds.filter(id => !mentionedSet.has(id));
+
+        // Send mention notifications to mentioned users
+        if (mentionedUserIds.length > 0) {
+          await notificationService.createMentionNotification({
+            senderId: commenterIdStr,
+            mentionerName: commenter?.name || null,
+            contextType: 'task_comment',
+            taskId: task._id,
+            taskTitle: task.title,
+            groupId: groupIdStr,
+            groupName: groupName,
+            commentId: latestComment?._id,
+            preview: content.trim(),
+            recipientIds: Array.from(new Set(mentionedUserIds))
+          });
+        }
+
+        // Send regular comment notifications to non-mentioned recipients
+        if (nonMentionedRecipients.length > 0) {
+          await notificationService.createCommentAddedNotification({
+            taskId: task._id,
+            commenterId: commenterIdStr,
+            commentId: latestComment?._id,
+            taskTitle: task.title,
+            groupId: groupIdStr,
+            groupName: groupName,
+            commenterName: commenter?.name || null,
+            commentPreview: content.trim(),
+            recipientIds: Array.from(new Set(nonMentionedRecipients))
+          });
+        }
       } catch (notificationError) {
         console.error('Failed to dispatch comment notification:', notificationError);
       }

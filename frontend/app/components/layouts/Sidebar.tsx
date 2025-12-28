@@ -21,7 +21,7 @@ import { useFolder } from '../../contexts/FolderContext';
 import { folderService } from '../../services/folder.service';
 import { Folder } from '../../services/types/folder.types';
 import { GROUP_ROLE_KEYS, GroupRoleKey } from '../../constants/groupRoles';
-import { getMemberRole, canManageFolders, canAssignFolderMembers, canAddMembers } from '../../utils/groupRoleUtils';
+import { getMemberRole, canManageFolders, canAssignFolderMembers, canAddMembers, isPersonalWorkspaceOwner } from '../../utils/groupRoleUtils';
 import FolderContextMenu from '../folders/FolderContextMenu';
 import GroupContextMenu from '../groups/GroupContextMenu';
 import { FolderAccessModal } from '../folders/FolderAccessModal';
@@ -613,7 +613,9 @@ export default function Sidebar() {
     if (group && user) {
       const groupUserRole = getMemberRole(group, user._id);
       const effectiveRole = (businessRole || groupUserRole) as GroupRoleKey | null;
-      const canManageThisGroupFolders = canManageFolders(effectiveRole, isLeader);
+      // Check if user owns personal workspace - grants full control
+      const isPersonalOwner = isPersonalWorkspaceOwner(group, user._id);
+      const canManageThisGroupFolders = canManageFolders(effectiveRole, isLeader, isPersonalOwner);
       if (!canManageThisGroupFolders) {
         setPermissionDialog({
           message:
@@ -768,7 +770,9 @@ export default function Sidebar() {
     if (group && user) {
       const groupUserRole = getMemberRole(group, user._id);
       const effectiveRole = (businessRole || groupUserRole) as GroupRoleKey | null;
-      const canManageThisGroupFolders = canManageFolders(effectiveRole, isLeader);
+      // Check if user owns personal workspace - grants full control
+      const isPersonalOwner = isPersonalWorkspaceOwner(group, user._id);
+      const canManageThisGroupFolders = canManageFolders(effectiveRole, isLeader, isPersonalOwner);
       if (!canManageThisGroupFolders) {
         setPermissionDialog({
           message:
@@ -818,10 +822,7 @@ export default function Sidebar() {
     e.preventDefault();
     e.stopPropagation();
 
-    if (!canEditFolders && !canDeleteFolders && !canAssignFolders) {
-      return;
-    }
-
+    // Always show context menu - individual menu items check their own permissions
     setContextMenu({
       x: e.clientX,
       y: e.clientY,
@@ -874,7 +875,9 @@ export default function Sidebar() {
     if (group && user) {
       const groupUserRole = getMemberRole(group, user._id);
       const effectiveRole = (businessRole || groupUserRole) as GroupRoleKey | null;
-      const canAssignThisGroupFolders = canAssignFolderMembers(effectiveRole, isLeader);
+      // Check if user owns personal workspace - grants full control
+      const isPersonalOwner = isPersonalWorkspaceOwner(group, user._id);
+      const canAssignThisGroupFolders = canAssignFolderMembers(effectiveRole, isLeader, isPersonalOwner);
       if (!canAssignThisGroupFolders) {
         setPermissionDialog({
           message:
@@ -1275,28 +1278,31 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Personal Workspace */}
-      {personalWorkspace && (
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center space-x-2">
-              <FolderIcon className="w-4 h-4 text-blue-500" />
-              <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
-                {t('sidebar.personalWorkspace') || 'Personal Workspace'}
-              </span>
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {/* Personal Workspace */}
+        {personalWorkspace && (
+          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center space-x-2">
+                <FolderIcon className="w-4 h-4 text-blue-500" />
+                <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
+                  {t('sidebar.personalWorkspace') || 'Personal Workspace'}
+                </span>
+              </div>
             </div>
+            {personalWorkspace && (() => {
+              const personalWorkspaceRole = user ? getMemberRole(personalWorkspace, user._id) : null;
+              const effectiveRole = (businessRole || personalWorkspaceRole) as GroupRoleKey | null;
+              // User owns their personal workspace - always grant full control
+              const isPersonalOwner = user ? isPersonalWorkspaceOwner(personalWorkspace, user._id) : false;
+              const canManageFoldersForPersonal = canManageFolders(effectiveRole, isLeader, isPersonalOwner);
+              return renderGroupCard(personalWorkspace, { canManageFolders: canManageFoldersForPersonal });
+            })()}
           </div>
-          {personalWorkspace && (() => {
-            const personalWorkspaceRole = user ? getMemberRole(personalWorkspace, user._id) : null;
-            const effectiveRole = (businessRole || personalWorkspaceRole) as GroupRoleKey | null;
-            const canManageFoldersForPersonal = canManageFolders(effectiveRole, isLeader);
-            return renderGroupCard(personalWorkspace, { canManageFolders: canManageFoldersForPersonal });
-          })()}
-        </div>
-      )}
+        )}
 
-      {/* My Projects */}
-      <div className="flex-1 overflow-y-auto">
+        {/* My Projects */}
         <div className="p-4">
           <div className="flex items-center justify-between mb-4">
             <button
@@ -1409,19 +1415,34 @@ export default function Sidebar() {
       )}
 
       {/* Folder Context Menu */}
-      {contextMenu && (
-        <FolderContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          onClose={() => setContextMenu(null)}
-          onEdit={handleContextMenuEdit}
-          onDelete={handleContextMenuDelete}
-          onAssign={handleContextMenuAssign}
-          canEdit={canEditFolders}
-          canDelete={canDeleteFolders}
-          canAssign={canAssignFolders}
-        />
-      )}
+      {contextMenu && (() => {
+        // Compute permissions based on the folder's group, not the current group
+        const folderGroup =
+          myGroups.find(g => g._id === contextMenu.groupId) ||
+          sharedGroups.find(g => g._id === contextMenu.groupId) ||
+          (personalWorkspace && personalWorkspace._id === contextMenu.groupId ? personalWorkspace : null);
+        const groupUserRole = folderGroup && user ? getMemberRole(folderGroup, user._id) : null;
+        const effectiveRole = (businessRole || groupUserRole) as GroupRoleKey | null;
+        // Check if user is owner of personal workspace - grants full control
+        const isPersonalOwner = folderGroup && user ? isPersonalWorkspaceOwner(folderGroup, user._id) : false;
+        const canEditThisFolder = canManageFolders(effectiveRole, isLeader, isPersonalOwner);
+        const canDeleteThisFolder = canManageFolders(effectiveRole, isLeader, isPersonalOwner);
+        const canAssignThisFolder = canAssignFolderMembers(effectiveRole, isLeader, isPersonalOwner);
+
+        return (
+          <FolderContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            onClose={() => setContextMenu(null)}
+            onEdit={handleContextMenuEdit}
+            onDelete={handleContextMenuDelete}
+            onAssign={handleContextMenuAssign}
+            canEdit={canEditThisFolder}
+            canDelete={canDeleteThisFolder}
+            canAssign={canAssignThisFolder}
+          />
+        );
+      })()}
 
       {/* Group Context Menu */}
       {groupContextMenu && (

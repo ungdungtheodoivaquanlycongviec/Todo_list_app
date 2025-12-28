@@ -53,22 +53,22 @@ export default function FolderContextMenu({
   // Adjust position to keep menu within viewport
   const [adjustedX, adjustedY] = React.useMemo(() => {
     if (typeof window === 'undefined') return [x, y];
-    
+
     const menuWidth = 200;
     const menuHeight = 150;
     const padding = 10;
-    
+
     let finalX = x;
     let finalY = y;
-    
+
     if (x + menuWidth > window.innerWidth) {
       finalX = window.innerWidth - menuWidth - padding;
     }
-    
+
     if (y + menuHeight > window.innerHeight) {
       finalY = window.innerHeight - menuHeight - padding;
     }
-    
+
     return [finalX, finalY];
   }, [x, y]);
 
@@ -87,41 +87,29 @@ export default function FolderContextMenu({
       }}
       onClick={(e) => e.stopPropagation()}
     >
-      {canEdit && (
-        <button
-          onClick={() => handleAction(onEdit)}
-          className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#3E3E3E] transition-colors"
-        >
-          <Pencil className="w-4 h-4" />
-          <span>Chỉnh sửa tên</span>
-        </button>
-      )}
-      
-      {canAssign && (
-        <button
-          onClick={() => handleAction(onAssign)}
-          className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#3E3E3E] transition-colors"
-        >
-          <Users className="w-4 h-4" />
-          <span>Gán folder</span>
-        </button>
-      )}
-      
-      {canDelete && (
-        <button
-          onClick={() => handleAction(onDelete)}
-          className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-        >
-          <Trash2 className="w-4 h-4" />
-          <span>Xóa folder</span>
-        </button>
-      )}
-      
-      {!canEdit && !canDelete && !canAssign && (
-        <div className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400">
-          Không có quyền thực hiện
-        </div>
-      )}
+      <button
+        onClick={() => handleAction(onEdit)}
+        className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#3E3E3E] transition-colors"
+      >
+        <Pencil className="w-4 h-4" />
+        <span>Chỉnh sửa tên</span>
+      </button>
+
+      <button
+        onClick={() => handleAction(onAssign)}
+        className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#3E3E3E] transition-colors"
+      >
+        <Users className="w-4 h-4" />
+        <span>Gán folder</span>
+      </button>
+
+      <button
+        onClick={() => handleAction(onDelete)}
+        className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+      >
+        <Trash2 className="w-4 h-4" />
+        <span>Xóa folder</span>
+      </button>
     </div>
   );
 }

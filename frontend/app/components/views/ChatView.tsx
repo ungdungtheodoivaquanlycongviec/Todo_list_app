@@ -1093,12 +1093,15 @@ export default function ChatView() {
           const memberId = typeof member.userId === 'object' ? member.userId?._id : member.userId;
           return memberId && memberId !== user?._id;
         })
-        .map((member: any) => {
+        .map((member: any): MentionableUser | null => {
           // Handle populated userId object
           if (member.userId && typeof member.userId === 'object' && member.userId._id) {
+            const _id = member.userId._id;
+            const name = member.userId.name || member.name || '';
+            if (!_id || !name) return null;
             return {
-              _id: member.userId._id,
-              name: member.userId.name || member.name || '',
+              _id,
+              name,
               email: member.userId.email || member.email || '',
               avatar: member.userId.avatar || member.avatar,
               role: member.role
@@ -1106,15 +1109,17 @@ export default function ChatView() {
           }
           // Handle userId as string ID - use member's name/avatar directly
           const userId = member.userId as string;
+          const name = member.name || '';
+          if (!userId || !name) return null;
           return {
             _id: userId,
-            name: member.name || '',
+            name,
             email: member.email || '',
             avatar: member.avatar,
             role: member.role
           };
         })
-        .filter((user): user is MentionableUser => !!user._id && !!user.name);
+        .filter((user): user is MentionableUser => user !== null);
     } else if (activeContext === 'direct' && activeDirectConversation) {
       // For direct chat: only the conversation partner
       const partnerId = activeDirectConversation.participants.find(p => p._id !== user?._id);
@@ -1312,11 +1317,10 @@ export default function ChatView() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
-                        <p className={`text-sm truncate ${
-                          hasUnread 
-                            ? 'font-bold text-gray-900 dark:text-gray-100' 
-                            : 'font-medium text-gray-800 dark:text-gray-100'
-                        }`}>
+                        <p className={`text-sm truncate ${hasUnread
+                          ? 'font-bold text-gray-900 dark:text-gray-100'
+                          : 'font-medium text-gray-800 dark:text-gray-100'
+                          }`}>
                           {conversation.targetUser?.name || t('chat.member')}
                         </p>
                         <span className="text-xs text-gray-400">
@@ -1524,7 +1528,7 @@ export default function ChatView() {
                         ? t('chat.messageToGroup')
                         : t('chat.messageToDirect')
                     }
-                    mentionableUsers={getMentionableUsers()}
+                    mentionableUsers={activeContext === 'group' ? getMentionableUsers() : []}
                     mentionableRoles={activeContext === 'group' ? getMentionableRoles() : undefined}
                     disabled={uploading}
                     className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
