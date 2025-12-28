@@ -54,7 +54,70 @@ const buildCategorySummary = async (userId) => {
   }, {});
 };
 
+// Types that should be consolidated (grouped) when multiple notifications come from the same source
+const CONSOLIDATABLE_TYPES = ['chat_message', 'comment_added'];
+
+/**
+ * Persist a notification, consolidating with existing unread notification from the same source if applicable.
+ * For chat messages and comments, this updates the existing notification instead of creating duplicates.
+ * Uses indexed fields for O(log n) lookup performance even with millions of notifications.
+ */
 const persistNotificationFromEvent = async (eventPayload, eventKey) => {
+  const type = eventPayload.type || eventPayload.eventKey || 'system_event';
+  const recipientId = eventPayload.recipient;
+  const data = eventPayload.data || {};
+
+  // Check if this notification type should be consolidated
+  if (CONSOLIDATABLE_TYPES.includes(type) && recipientId) {
+    // Build query to find existing unread notification from same source
+    // Uses the composite index: recipient + type + data.groupId/conversationId/taskId + isRead
+    const consolidationQuery = {
+      recipient: recipientId,
+      type: type,
+      isRead: false,
+      archived: false
+    };
+
+    // Add source-specific filters based on notification type
+    if (data.groupId) {
+      consolidationQuery['data.groupId'] = data.groupId;
+    }
+    if (data.conversationId) {
+      consolidationQuery['data.conversationId'] = data.conversationId;
+    }
+    if (data.taskId && type === 'comment_added') {
+      consolidationQuery['data.taskId'] = data.taskId;
+    }
+
+    // Try to find and update existing notification
+    const existingNotification = await Notification.findOneAndUpdate(
+      consolidationQuery,
+      {
+        $set: {
+          message: eventPayload.message,
+          sender: eventPayload.sender ?? null,
+          'data.messageId': data.messageId,
+          'data.preview': data.preview,
+          deliveredAt: new Date()
+        },
+        $inc: { messageCount: 1 }
+      },
+      { new: true, sort: { createdAt: -1 } }
+    );
+
+    if (existingNotification) {
+      const persisted = existingNotification.toObject();
+
+      if (env.enableRealtimeNotifications) {
+        const dispatchedKey = eventKey || persisted.eventKey || eventPayload?.eventKey || null;
+        emitNotification(dispatchedKey, persisted);
+      }
+
+      return persisted;
+    }
+  }
+
+  // No existing notification to consolidate with - create new one
   const document = Notification.buildFromEvent(eventPayload);
   const saved = await document.save();
   const persisted = saved.toObject();

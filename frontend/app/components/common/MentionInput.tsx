@@ -166,7 +166,8 @@ export default function MentionInput({
     const filterSuggestions = useCallback((query: string) => {
         const all = getAllSuggestions()
         if (!query) {
-            setSuggestions(all.slice(0, 8))
+            // Show up to 30 suggestions to accommodate users + roles
+            setSuggestions(all.slice(0, 30))
             return
         }
 
@@ -174,7 +175,7 @@ export default function MentionInput({
         const filtered = all.filter(suggestion =>
             suggestion.display.toLowerCase().includes(lowQuery) ||
             (suggestion.subtext && suggestion.subtext.toLowerCase().includes(lowQuery))
-        ).slice(0, 8)
+        ).slice(0, 30)
 
         setSuggestions(filtered)
         setSelectedIndex(0)

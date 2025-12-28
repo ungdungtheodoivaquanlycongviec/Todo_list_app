@@ -12,12 +12,14 @@ export interface Notification {
     avatar?: string;
   } | null;
   type:
-    | 'group_invitation'
-    | 'task_assignment'
-    | 'group_update'
-    | 'group_name_change'
-    | 'new_task'
-    | 'chat_message';
+  | 'group_invitation'
+  | 'task_assignment'
+  | 'group_update'
+  | 'group_name_change'
+  | 'new_task'
+  | 'chat_message'
+  | 'comment_added'
+  | 'mention';
   title: string;
   message: string;
   data: {
@@ -36,6 +38,8 @@ export interface Notification {
   expiresAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  // Count of consolidated messages (for grouped notifications)
+  messageCount?: number;
 }
 
 export interface NotificationsResponse {

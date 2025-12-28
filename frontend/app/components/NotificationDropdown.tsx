@@ -43,24 +43,31 @@ export default function NotificationDropdown({ className = '', onNavigate }: Not
       notification: Notification;
     }) => {
       console.log('[NotificationDropdown] Received new notification:', data.eventKey);
-      
+
       const newNotification = data.notification;
-      
-      // Add new notification to the top of the list
+
+      // Update notification list - either update existing or add new
       setNotifications(prev => {
-        // Check if notification already exists (avoid duplicates)
-        const exists = prev.some(n => n._id === newNotification._id);
-        if (exists) {
-          return prev;
+        // Check if notification already exists (consolidated notification was updated)
+        const existingIndex = prev.findIndex(n => n._id === newNotification._id);
+        if (existingIndex >= 0) {
+          // Update existing notification in place (consolidation case)
+          const updated = [...prev];
+          updated[existingIndex] = newNotification;
+          // Move to top since it has new activity
+          updated.unshift(updated.splice(existingIndex, 1)[0]);
+          return updated;
         }
+        // New notification - add to top
         return [newNotification, ...prev].slice(0, 10); // Keep only latest 10
       });
-      
-      // Update unread count
-      if (!newNotification.isRead) {
+
+      // Update unread count - only increment for truly new notifications
+      // (consolidated updates don't change unread count)
+      if (!newNotification.isRead && !notifications.some(n => n._id === newNotification._id)) {
         setUnreadCount(prev => prev + 1);
       }
-      
+
       // Also refresh from server to ensure consistency
       loadNotifications();
       loadUnreadCount();
@@ -109,19 +116,19 @@ export default function NotificationDropdown({ className = '', onNavigate }: Not
   const handleAcceptInvitation = async (notification: Notification) => {
     try {
       const result = await notificationService.acceptGroupInvitation(notification._id);
-      
+
       // Update user's current group if provided
       if (result.user) {
         setUser(result.user);
       }
-      
+
       // Reload notifications and unread count
       await loadNotifications();
       await loadUnreadCount();
-      
+
       // Trigger group list refresh in Sidebar
       triggerGroupChange();
-      
+
       // Show success message
       console.log('Group invitation accepted successfully');
     } catch (error) {
@@ -132,11 +139,11 @@ export default function NotificationDropdown({ className = '', onNavigate }: Not
   const handleDeclineInvitation = async (notification: Notification) => {
     try {
       await notificationService.declineGroupInvitation(notification._id);
-      
+
       // Reload notifications and unread count
       await loadNotifications();
       await loadUnreadCount();
-      
+
       console.log('Group invitation declined');
     } catch (error) {
       console.error('Failed to decline invitation:', error);
@@ -145,13 +152,13 @@ export default function NotificationDropdown({ className = '', onNavigate }: Not
 
   const handleMarkAsRead = async (notification: Notification) => {
     if (notification.isRead) return;
-    
+
     try {
       await notificationService.markAsRead(notification._id);
       await loadUnreadCount();
-      
+
       // Update local state
-      setNotifications(prev => 
+      setNotifications(prev =>
         prev.map(n => n._id === notification._id ? { ...n, isRead: true } : n)
       );
     } catch (error) {
@@ -211,7 +218,7 @@ export default function NotificationDropdown({ className = '', onNavigate }: Not
     const { type, data } = notification;
 
     // If this is a task-related notification and we have taskId, store it for TasksView
-    if ((type === 'task_assignment' || type === 'new_task' || type === 'task') && data?.taskId) {
+    if ((type === 'task_assignment' || type === 'new_task' || type === 'comment_added') && data?.taskId) {
       setPendingTaskIdFromNotification(String(data.taskId));
     }
 
@@ -295,9 +302,8 @@ export default function NotificationDropdown({ className = '', onNavigate }: Not
               notifications.map((notification) => (
                 <div
                   key={notification._id}
-                  className={`p-4 border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${
-                    !notification.isRead ? 'bg-blue-50' : ''
-                  }`}
+                  className={`p-4 border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${!notification.isRead ? 'bg-blue-50' : ''
+                    }`}
                   onClick={() => handleNotificationClick(notification)}
                 >
                   <div className="flex items-start space-x-3">
@@ -306,10 +312,16 @@ export default function NotificationDropdown({ className = '', onNavigate }: Not
                       <div className="flex items-center justify-between">
                         <p className="text-sm font-medium text-gray-900">
                           {notification.title}
+                          {/* Show message count for consolidated notifications */}
+                          {notification.messageCount && notification.messageCount > 1 && (
+                            <span className="ml-2 text-xs font-normal text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">
+                              {notification.messageCount} messages
+                            </span>
+                          )}
                         </p>
                         <div className="flex items-center space-x-1">
                           <span className="text-xs text-gray-500">
-                            {formatTimeAgo(notification.createdAt)}
+                            {formatTimeAgo(notification.updatedAt || notification.createdAt)}
                           </span>
                           <button
                             onClick={(e) => {
@@ -325,7 +337,7 @@ export default function NotificationDropdown({ className = '', onNavigate }: Not
                       <p className="text-sm text-gray-600 mt-1">
                         {notification.message}
                       </p>
-                      
+
                       {/* Group Invitation Actions */}
                       {notification.type === 'group_invitation' && notification.status === 'pending' && (
                         <div className="flex items-center space-x-2 mt-3">
@@ -351,7 +363,7 @@ export default function NotificationDropdown({ className = '', onNavigate }: Not
                           </button>
                         </div>
                       )}
-                      
+
                       {/* Mark as read for other notifications */}
                       {notification.type !== 'group_invitation' && !notification.isRead && (
                         <button
