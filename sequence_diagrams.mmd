@@ -1,0 +1,557 @@
+```mermaid
+sequenceDiagram
+    autonumber
+    title UC-01: Tạo công việc mới (Create New Task)
+    
+    participant User
+    participant Frontend
+    participant TaskController
+    participant TaskService
+    participant TaskModel
+    participant GroupModel
+    participant NotificationService
+    
+    User->>Frontend: Enter task details
+    Frontend->>TaskController: POST /api/tasks
+    TaskController->>TaskService: createTask(taskData, userId)
+    TaskService->>GroupModel: verifyMembership(userId, groupId)
+    GroupModel-->>TaskService: membership confirmed
+    TaskService->>TaskModel: create(newTask)
+    TaskModel-->>TaskService: created task
+    TaskService->>NotificationService: notifyAssignedUsers(task)
+    NotificationService-->>TaskService: notifications sent
+    TaskService-->>TaskController: task created
+    TaskController-->>Frontend: 201 Created + task data
+    Frontend-->>User: Display success + new task
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    title UC-02: Chỉnh sửa và xóa công việc (Edit and Delete Task)
+    
+    participant User
+    participant Frontend
+    participant TaskController
+    participant TaskService
+    participant TaskModel
+    participant NotificationService
+    
+    User->>Frontend: Select task to edit/delete
+    Frontend->>TaskController: PUT /api/tasks/:id (edit) or DELETE /api/tasks/:id
+    TaskController->>TaskService: updateTask(id, updates) or deleteTask(id)
+    TaskService->>TaskModel: findById(id)
+    TaskModel-->>TaskService: task found
+    TaskService->>TaskService: checkPermissions(userId, task)
+    alt Has permission
+        TaskService->>TaskModel: update(task) or softDelete(task)
+        TaskModel-->>TaskService: task updated/deleted
+        TaskService->>NotificationService: notifyTaskChange(task)
+        NotificationService-->>TaskService: notifications sent
+        TaskService-->>TaskController: success
+        TaskController-->>Frontend: 200 OK
+    else No permission
+        TaskService-->>TaskController: 403 Forbidden
+        TaskController-->>Frontend: Error message
+    end
+    Frontend-->>User: Display updated task or confirmation
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    title UC-03: Xem công việc (View Task)
+    
+    participant User
+    participant Frontend
+    participant TaskController
+    participant TaskService
+    participant TaskModel
+    participant UserModel
+    
+    User->>Frontend: Request task list or details
+    Frontend->>TaskController: GET /api/tasks or GET /api/tasks/:id
+    TaskController->>TaskService: getTasks(filters) or getTaskById(id)
+    TaskService->>TaskModel: find(filters) or findById(id)
+    TaskModel-->>TaskService: tasks found
+    TaskService->>UserModel: populateUserInfo(tasks)
+    UserModel-->>TaskService: tasks with user info
+    TaskService-->>TaskController: formatted tasks
+    TaskController-->>Frontend: 200 OK + tasks data
+    Frontend-->>User: Display task list/details
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    title UC-04: Nhận thông báo (Receive Notification)
+    
+    participant System
+    participant NotificationService
+    participant NotificationModel
+    participant User
+    participant Frontend
+    participant WebSocket
+    
+    System->>NotificationService: Event triggered (task assigned, etc.)
+    NotificationService->>NotificationModel: create(notificationData)
+    NotificationModel-->>NotificationService: notification created
+    NotificationService->>WebSocket: emit('notification', notification)
+    WebSocket->>Frontend: Push notification
+    Frontend->>User: Display notification
+    User->>Frontend: Click notification
+    Frontend->>NotificationService: markAsRead(notificationId)
+    NotificationService->>NotificationModel: update({isRead: true})
+    NotificationModel-->>NotificationService: updated
+    NotificationService-->>Frontend: 200 OK
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    title UC-05: Tạo nhóm, phân công và theo dõi tiến độ (Create Group, Assign & Track Progress)
+    
+    participant User
+    participant Frontend
+    participant GroupController
+    participant GroupService
+    participant GroupModel
+    participant TaskService
+    participant TaskModel
+    participant NotificationService
+    
+    User->>Frontend: Create group or assign task
+    Frontend->>GroupController: POST /api/groups or POST /api/tasks/:id/assign
+    GroupController->>GroupService: createGroup(groupData) or assignTask(taskId, userIds)
+    
+    alt Create Group
+        GroupService->>GroupModel: create(newGroup)
+        GroupModel-->>GroupService: group created
+        GroupService->>GroupModel: addMember(groupId, creatorId)
+        GroupModel-->>GroupService: member added
+    else Assign Task
+        GroupService->>TaskService: assignUsers(taskId, userIds)
+        TaskService->>TaskModel: update({assignedTo: userIds})
+        TaskModel-->>TaskService: task updated
+        TaskService->>NotificationService: notifyAssignedUsers(task)
+        NotificationService-->>TaskService: notifications sent
+    end
+    
+    GroupService->>TaskService: calculateProgress(groupId)
+    TaskService->>TaskModel: aggregate([status counts])
+    TaskModel-->>TaskService: progress data
+    TaskService-->>GroupService: progress calculated
+    GroupService-->>GroupController: group/assignment + progress
+    GroupController-->>Frontend: 201/200 OK + data
+    Frontend-->>User: Display group/progress
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    title UC-06 & UC-07: Đăng ký và Đăng nhập (Register & Login)
+    
+    participant User
+    participant Frontend
+    participant AuthController
+    participant AuthService
+    participant UserModel
+    participant LoginHistoryModel
+    
+    alt UC-06: Register
+        User->>Frontend: Enter registration details
+        Frontend->>AuthController: POST /api/auth/register
+        AuthController->>AuthService: register(userData)
+        AuthService->>UserModel: findOne({email})
+        UserModel-->>AuthService: email not found
+        AuthService->>AuthService: hashPassword(password)
+        AuthService->>UserModel: create(newUser)
+        UserModel-->>AuthService: user created
+        AuthService->>AuthService: generateTokens(user)
+        AuthService-->>AuthController: user + tokens
+        AuthController-->>Frontend: 201 Created + tokens
+    else UC-07: Login
+        User->>Frontend: Enter credentials
+        Frontend->>AuthController: POST /api/auth/login
+        AuthController->>AuthService: login(email, password)
+        AuthService->>UserModel: findOne({email})
+        UserModel-->>AuthService: user found
+        AuthService->>UserModel: comparePassword(password)
+        UserModel-->>AuthService: password valid
+        AuthService->>LoginHistoryModel: create({user, status: 'success'})
+        LoginHistoryModel-->>AuthService: logged
+        AuthService->>UserModel: update({lastLogin: now})
+        AuthService->>AuthService: generateTokens(user)
+        AuthService-->>AuthController: user + tokens
+        AuthController-->>Frontend: 200 OK + tokens
+    end
+    Frontend-->>User: Redirect to dashboard
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    title UC-08: Chỉnh sửa thông tin cá nhân (Edit Personal Information)
+    
+    participant User
+    participant Frontend
+    participant UserController
+    participant UserService
+    participant UserModel
+    participant Cloudinary
+    
+    User->>Frontend: Update profile information
+    Frontend->>UserController: PUT /api/users/profile
+    UserController->>UserService: updateProfile(userId, updates)
+    UserService->>UserModel: findById(userId)
+    UserModel-->>UserService: user found
+    
+    alt Avatar upload
+        UserService->>Cloudinary: uploadImage(avatar)
+        Cloudinary-->>UserService: image URL
+        UserService->>UserModel: update({avatar: url, ...updates})
+    else Other updates
+        UserService->>UserModel: update({...updates})
+    end
+    
+    UserModel-->>UserService: user updated
+    UserService-->>UserController: updated user
+    UserController-->>Frontend: 200 OK + user data
+    Frontend-->>User: Display updated profile
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    title UC-09: Gắn nhãn hoặc danh mục cho công việc (Add Label/Category to Task)
+    
+    participant User
+    participant Frontend
+    participant TaskController
+    participant TaskService
+    participant TaskModel
+    
+    User->>Frontend: Select task, add label/category
+    Frontend->>TaskController: PUT /api/tasks/:id
+    TaskController->>TaskService: updateTask(id, {tags, category})
+    TaskService->>TaskModel: findById(id)
+    TaskModel-->>TaskService: task found
+    TaskService->>TaskService: validateTags(tags)
+    TaskService->>TaskModel: update({tags, category})
+    TaskModel-->>TaskService: task updated
+    TaskService-->>TaskController: updated task
+    TaskController-->>Frontend: 200 OK + task data
+    Frontend-->>User: Display task with new label/category
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    title UC-10: Tìm kiếm và lọc công việc (Search and Filter Tasks)
+    
+    participant User
+    participant Frontend
+    participant TaskController
+    participant TaskService
+    participant TaskModel
+    
+    User->>Frontend: Enter search query / apply filters
+    Frontend->>TaskController: GET /api/tasks?search=...&status=...&priority=...
+    TaskController->>TaskService: searchTasks(filters, userId)
+    TaskService->>TaskService: buildQuery(filters, userId)
+    TaskService->>TaskModel: find(query).sort().limit()
+    TaskModel-->>TaskService: tasks found
+    TaskService->>TaskService: formatResults(tasks)
+    TaskService-->>TaskController: filtered tasks
+    TaskController-->>Frontend: 200 OK + tasks array
+    Frontend-->>User: Display filtered task list
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    title UC-11: Phân quyền (Permissions)
+    
+    participant Admin
+    participant Frontend
+    participant GroupController
+    participant GroupService
+    participant GroupModel
+    participant UserModel
+    
+    Admin->>Frontend: Assign role to member
+    Frontend->>GroupController: PUT /api/groups/:id/members/:userId/role
+    GroupController->>GroupService: updateMemberRole(groupId, userId, role)
+    GroupService->>GroupModel: findById(groupId)
+    GroupModel-->>GroupService: group found
+    GroupService->>GroupService: checkAdminPermission(adminId, group)
+    GroupService->>GroupModel: updateMemberRole(userId, role)
+    GroupModel-->>GroupService: role updated
+    GroupService->>UserModel: update({groupRole: role})
+    UserModel-->>GroupService: user updated
+    GroupService-->>GroupController: success
+    GroupController-->>Frontend: 200 OK
+    Frontend-->>Admin: Display updated member list
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    title UC-12: Ghi chú (Notes)
+    
+    participant User
+    participant Frontend
+    participant NoteController
+    participant NoteService
+    participant NoteModel
+    participant GroupModel
+    
+    User->>Frontend: Create/edit note
+    Frontend->>NoteController: POST /api/notes or PUT /api/notes/:id
+    NoteController->>NoteService: createNote(noteData) or updateNote(id, updates)
+    NoteService->>GroupModel: verifyMembership(userId, groupId)
+    GroupModel-->>NoteService: membership confirmed
+    NoteService->>NoteModel: create(newNote) or update({...updates, lastEdited: now})
+    NoteModel-->>NoteService: note created/updated
+    NoteService-->>NoteController: note data
+    NoteController-->>Frontend: 201/200 OK + note
+    Frontend-->>User: Display note
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    title UC-13: Gán/Hủy gán thành viên vào công việc (Assign/Unassign Members to Task)
+    
+    participant User
+    participant Frontend
+    participant TaskController
+    participant TaskService
+    participant TaskModel
+    participant NotificationService
+    
+    User->>Frontend: Assign/unassign members to task
+    Frontend->>TaskController: PUT /api/tasks/:id/assign
+    TaskController->>TaskService: updateTaskAssignments(taskId, assignedUserIds)
+    TaskService->>TaskModel: findById(taskId)
+    TaskModel-->>TaskService: task found
+    TaskService->>TaskService: checkPermissions(userId, task)
+    TaskService->>TaskModel: update({assignedTo: assignedUserIds})
+    TaskModel-->>TaskService: task updated
+    TaskService->>NotificationService: notifyAssignedUsers(task, assignedUserIds)
+    NotificationService-->>TaskService: notifications sent
+    TaskService-->>TaskController: updated task
+    TaskController-->>Frontend: 200 OK + task data
+    Frontend-->>User: Display task with updated assignments
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    title UC-14: Admin quản lý người dùng (Admin Manage Users)
+    
+    participant Admin
+    participant Frontend
+    participant AdminController
+    participant AdminService
+    participant UserModel
+    participant AdminActionLogModel
+    
+    Admin->>Frontend: Manage user (create/update/delete/lock)
+    Frontend->>AdminController: POST/PUT/DELETE /api/admin/users/:id
+    AdminController->>AdminService: manageUser(action, userId, data)
+    AdminService->>AdminService: verifyAdminRole(adminId)
+    AdminService->>UserModel: findById(userId)
+    UserModel-->>AdminService: user found
+    
+    alt Create/Update User
+        AdminService->>UserModel: create/update(userData)
+        UserModel-->>AdminService: user created/updated
+    else Delete/Lock User
+        AdminService->>UserModel: update({isActive: false}) or delete()
+        UserModel-->>AdminService: user updated/deleted
+    end
+    
+    AdminService->>AdminActionLogModel: create({action, targetType: 'user', ...})
+    AdminActionLogModel-->>AdminService: logged
+    AdminService-->>AdminController: success
+    AdminController-->>Frontend: 200 OK
+    Frontend-->>Admin: Display updated user list
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    title UC-15: Admin gửi thông báo đến người dùng (Admin Send Notification to Users)
+    
+    participant Admin
+    participant Frontend
+    participant AdminController
+    participant AdminService
+    participant NotificationService
+    participant NotificationModel
+    participant UserModel
+    participant AdminActionLogModel
+    
+    Admin->>Frontend: Compose notification
+    Frontend->>AdminController: POST /api/admin/notifications/send
+    AdminController->>AdminService: sendNotification(notificationData, targetUsers)
+    AdminService->>AdminService: verifyAdminRole(adminId)
+    AdminService->>UserModel: find({_id: {$in: targetUsers}})
+    UserModel-->>AdminService: users found
+    AdminService->>NotificationService: createNotifications(users, notificationData)
+    loop For each user
+        NotificationService->>NotificationModel: create({recipient: userId, ...})
+        NotificationModel-->>NotificationService: notification created
+    end
+    NotificationService-->>AdminService: notifications sent
+    AdminService->>AdminActionLogModel: create({action: 'notification_send', ...})
+    AdminActionLogModel-->>AdminService: logged
+    AdminService-->>AdminController: success
+    AdminController-->>Frontend: 200 OK
+    Frontend-->>Admin: Display confirmation
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    title UC-16: Admin log và kiểm tra lịch sử đăng nhập (Admin Check Login History)
+    
+    participant Admin
+    participant Frontend
+    participant AdminController
+    participant AdminService
+    participant LoginHistoryModel
+    participant AdminActionLogModel
+    
+    Admin->>Frontend: Request login history / action logs
+    Frontend->>AdminController: GET /api/admin/login-history or GET /api/admin/action-logs
+    AdminController->>AdminService: getLoginHistory(filters) or getActionLogs(filters)
+    AdminService->>AdminService: verifyAdminRole(adminId)
+    
+    alt Login History
+        AdminService->>LoginHistoryModel: find(filters).sort({loginAt: -1})
+        LoginHistoryModel-->>AdminService: history records
+    else Action Logs
+        AdminService->>AdminActionLogModel: find(filters).sort({createdAt: -1})
+        AdminActionLogModel-->>AdminService: action logs
+    end
+    
+    AdminService-->>AdminController: logs data
+    AdminController-->>Frontend: 200 OK + logs array
+    Frontend-->>Admin: Display logs table
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    title UC-17: Chat (Group & Direct Messaging)
+    
+    participant User
+    participant Frontend
+    participant MessageController
+    participant MessageService
+    participant GroupMessageModel
+    participant DirectMessageModel
+    participant DirectConversationModel
+    participant WebSocket
+    
+    User->>Frontend: Send message
+    Frontend->>MessageController: POST /api/messages/group or POST /api/messages/direct
+    MessageController->>MessageService: sendMessage(messageData, type)
+    
+    alt Group Message
+        MessageService->>GroupMessageModel: create({groupId, senderId, content, ...})
+        GroupMessageModel-->>MessageService: message created
+        MessageService->>WebSocket: emit('group_message', message)
+    else Direct Message
+        MessageService->>DirectConversationModel: findOrCreate(participants)
+        DirectConversationModel-->>MessageService: conversation found/created
+        MessageService->>DirectMessageModel: create({conversationId, senderId, content, ...})
+        DirectMessageModel-->>MessageService: message created
+        MessageService->>DirectConversationModel: update({lastMessageAt, lastMessagePreview})
+        MessageService->>WebSocket: emit('direct_message', message)
+    end
+    
+    WebSocket->>Frontend: Real-time message update
+    MessageService-->>MessageController: message created
+    MessageController-->>Frontend: 201 Created + message
+    Frontend-->>User: Display message in chat
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    title UC-18: Call & Meeting (Voice/Video Call)
+    
+    participant User
+    participant Frontend
+    participant CallController
+    participant CallService
+    participant GroupMessageModel
+    participant DirectMessageModel
+    participant WebSocket
+    participant ExternalCallService
+    
+    User->>Frontend: Initiate call/meeting
+    Frontend->>CallController: POST /api/calls/start
+    CallController->>CallService: startCall(callData)
+    CallService->>CallService: generateMeetingId()
+    CallService->>CallService: createCallMessage(callData)
+    
+    alt Group Call
+        CallService->>GroupMessageModel: create({messageType: 'call', callData: {...}})
+        GroupMessageModel-->>CallService: call message created
+    else Direct Call
+        CallService->>DirectMessageModel: create({messageType: 'call', callData: {...}})
+        DirectMessageModel-->>CallService: call message created
+    end
+    
+    CallService->>WebSocket: emit('call_started', callData)
+    WebSocket->>Frontend: Notify participants
+    CallService->>ExternalCallService: Initialize call session
+    ExternalCallService-->>CallService: call session ready
+    CallService-->>CallController: call started
+    CallController-->>Frontend: 200 OK + call info
+    Frontend-->>User: Display call interface
+    
+    User->>Frontend: End call
+    Frontend->>CallController: POST /api/calls/:id/end
+    CallController->>CallService: endCall(callId)
+    CallService->>GroupMessageModel/DirectMessageModel: update({callData: {status: 'ended', endedAt: now}})
+    CallService->>WebSocket: emit('call_ended', callId)
+    WebSocket->>Frontend: Notify call ended
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    title UC-19: Amanda Agent (AI Chatbot)
+    
+    participant User
+    participant Frontend
+    participant ChatbotController
+    participant ChatbotService
+    participant ChatbotStateModel
+    participant TaskService
+    participant TaskModel
+    participant AIService as External AI Service
+    
+    User->>Frontend: Interact with Amanda chatbot
+    Frontend->>ChatbotController: POST /api/chatbot/message
+    ChatbotController->>ChatbotService: processMessage(userId, groupId, message)
+    ChatbotService->>ChatbotStateModel: findOne({userId, groupId})
+    ChatbotStateModel-->>ChatbotService: chatbot state found/created
+    ChatbotService->>TaskService: getUserTasks(userId, groupId)
+    TaskService->>TaskModel: find({groupId, assignedTo: {$in: [userId]}})
+    TaskModel-->>TaskService: user tasks
+    TaskService-->>ChatbotService: tasks data
+    ChatbotService->>AIService: analyzeRequest(message, tasks, context)
+    AIService-->>ChatbotService: AI response + recommendations
+    ChatbotService->>ChatbotStateModel: update({recommendedTaskIds: recommendations})
+    ChatbotStateModel-->>ChatbotService: state updated
+    ChatbotService-->>ChatbotController: chatbot response
+    ChatbotController-->>Frontend: 200 OK + response
+    Frontend-->>User: Display Amanda's response
+```
+

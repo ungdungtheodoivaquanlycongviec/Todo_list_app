@@ -1,0 +1,348 @@
+%% ============================================
+%% BIỂU ĐỒ LỚP PHA PHÂN TÍCH CÁC SERVICE
+%% ============================================
+
+%% 1. Biểu đồ lớp pha phân tích User-service
+classDiagram
+    class User {
+        -email: String
+        -password: String
+        -name: String
+        -avatar: String
+        -role: String
+        -groupRole: String
+        -isLeader: Boolean
+        -theme: String
+        -language: String
+        -isActive: Boolean
+        -currentGroupId: ObjectId
+        -createdAt: Date
+        -updatedAt: Date
+    }
+
+%% 2. Biểu đồ lớp pha phân tích Auth-service
+classDiagram
+    class User {
+        -email: String
+        -password: String
+        -refreshToken: String
+        -lastLogin: Date
+    }
+    
+    class Group {
+        -name: String
+        -isPersonalWorkspace: Boolean
+        -description: String
+        -createdBy: ObjectId
+        -members: Array
+        -createdAt: Date
+        -updatedAt: Date
+    }
+    
+    class LoginHistory {
+        -user: ObjectId
+        -email: String
+        -status: String
+        -ipAddress: String
+        -userAgent: String
+        -loginAt: Date
+        -createdAt: Date
+        -updatedAt: Date
+    }
+    
+    User --> LoginHistory : has
+
+%% 3. Biểu đồ lớp pha phân tích Task-service
+classDiagram
+    class Task {
+        -title: String
+        -description: String
+        -status: String
+        -priority: String
+        -dueDate: Date
+        -completedAt: Date
+        -createdBy: ObjectId
+        -assignedTo: Array
+        -groupId: ObjectId
+        -folderId: ObjectId
+        -attachments: Array
+        -comments: Array
+        -timeEntries: Array
+        -createdAt: Date
+        -updatedAt: Date
+    }
+    
+    class User {
+        -userId: ObjectId
+        -name: String
+        -email: String
+    }
+    
+    class Group {
+        -groupId: ObjectId
+        -name: String
+    }
+    
+    class Folder {
+        -folderId: ObjectId
+        -name: String
+    }
+    
+    Task --> User : createdBy
+    Task --> User : assignedTo
+    Task --> Group : belongs to
+    Task --> Folder : organized in
+
+%% 4. Biểu đồ lớp pha phân tích Note-service
+classDiagram
+    class Note {
+        -title: String
+        -content: String
+        -userId: ObjectId
+        -groupId: ObjectId
+        -folderId: ObjectId
+        -lastEdited: Date
+        -createdAt: Date
+        -updatedAt: Date
+    }
+    
+    class User {
+        -userId: ObjectId
+        -name: String
+    }
+    
+    class Group {
+        -groupId: ObjectId
+        -name: String
+    }
+    
+    class Folder {
+        -folderId: ObjectId
+        -name: String
+    }
+    
+    Note --> User : created by
+    Note --> Group : belongs to
+    Note --> Folder : organized in
+
+%% 5. Biểu đồ lớp pha phân tích Group-service
+classDiagram
+    class Group {
+        -name: String
+        -description: String
+        -isPersonalWorkspace: Boolean
+        -createdBy: ObjectId
+        -members: Array
+        -metadata: Object
+        -createdAt: Date
+        -updatedAt: Date
+    }
+    
+    class GroupMember {
+        -userId: ObjectId
+        -role: String
+        -joinedAt: Date
+    }
+    
+    class User {
+        -userId: ObjectId
+        -name: String
+        -email: String
+    }
+    
+    Group "1" *-- "many" GroupMember : has
+    GroupMember --> User : references
+    Group --> User : createdBy
+
+%% 6. Biểu đồ lớp pha phân tích Notification-service
+classDiagram
+    class Notification {
+        -recipient: ObjectId
+        -sender: ObjectId
+        -type: String
+        -eventKey: String
+        -title: String
+        -message: String
+        -data: Object
+        -categories: Array
+        -channels: Array
+        -isRead: Boolean
+        -status: String
+        -readAt: Date
+        -createdAt: Date
+        -updatedAt: Date
+    }
+    
+    class User {
+        -userId: ObjectId
+        -name: String
+        -email: String
+    }
+    
+    Notification --> User : recipient
+    Notification --> User : sender
+
+%% 7. Biểu đồ lớp pha phân tích Chat-service
+classDiagram
+    class GroupMessage {
+        -groupId: ObjectId
+        -senderId: ObjectId
+        -content: String
+        -attachments: Array
+        -reactions: Array
+        -replyTo: ObjectId
+        -mentions: Object
+        -editedAt: Date
+        -deletedAt: Date
+        -createdAt: Date
+        -updatedAt: Date
+    }
+    
+    class Group {
+        -groupId: ObjectId
+        -name: String
+    }
+    
+    class User {
+        -userId: ObjectId
+        -name: String
+    }
+    
+    GroupMessage --> Group : belongs to
+    GroupMessage --> User : sent by
+    GroupMessage --> GroupMessage : replyTo
+
+%% 8. Biểu đồ lớp pha phân tích DirectChat-service
+classDiagram
+    class DirectConversation {
+        -participants: Array
+        -participantHash: String
+        -lastMessagePreview: String
+        -lastMessageAt: Date
+        -lastMessageSender: ObjectId
+        -unreadCounts: Map
+        -createdAt: Date
+        -updatedAt: Date
+    }
+    
+    class DirectMessage {
+        -conversationId: ObjectId
+        -senderId: ObjectId
+        -content: String
+        -attachments: Array
+        -reactions: Array
+        -replyTo: ObjectId
+        -mentions: Array
+        -editedAt: Date
+        -deletedAt: Date
+        -createdAt: Date
+        -updatedAt: Date
+    }
+    
+    class User {
+        -userId: ObjectId
+        -name: String
+    }
+    
+    DirectConversation "1" *-- "many" DirectMessage : contains
+    DirectConversation --> User : participants
+    DirectMessage --> User : sent by
+    DirectMessage --> DirectMessage : replyTo
+
+%% 9. Biểu đồ lớp pha phân tích Folder-service
+classDiagram
+    class Folder {
+        -name: String
+        -description: String
+        -groupId: ObjectId
+        -createdBy: ObjectId
+        -isDefault: Boolean
+        -order: Number
+        -metadata: Object
+        -memberAccess: Array
+        -createdAt: Date
+        -updatedAt: Date
+    }
+    
+    class FolderMemberAccess {
+        -userId: ObjectId
+        -addedBy: ObjectId
+        -addedAt: Date
+    }
+    
+    class Group {
+        -groupId: ObjectId
+        -name: String
+    }
+    
+    class User {
+        -userId: ObjectId
+        -name: String
+    }
+    
+    Folder "1" *-- "many" FolderMemberAccess : has
+    FolderMemberAccess --> User : references
+    Folder --> Group : belongs to
+    Folder --> User : createdBy
+
+%% 10. Biểu đồ lớp pha phân tích File-service
+classDiagram
+    class File {
+        -filename: String
+        -url: String
+        -publicId: String
+        -size: Number
+        -mimetype: String
+        -resourceType: String
+        -originalName: String
+    }
+
+%% 11. Biểu đồ lớp pha phân tích Admin-service
+classDiagram
+    class User {
+        -email: String
+        -name: String
+        -role: String
+        -groupRole: String
+        -isLeader: Boolean
+        -isActive: Boolean
+        -createdAt: Date
+        -updatedAt: Date
+    }
+    
+    class LoginHistory {
+        -user: ObjectId
+        -email: String
+        -status: String
+        -ipAddress: String
+        -userAgent: String
+        -loginAt: Date
+        -createdAt: Date
+        -updatedAt: Date
+    }
+    
+    class AdminActionLog {
+        -admin: ObjectId
+        -adminEmail: String
+        -action: String
+        -targetType: String
+        -description: String
+        -changes: Object
+        -ipAddress: String
+        -userAgent: String
+        -createdAt: Date
+        -updatedAt: Date
+    }
+    
+    class Notification {
+        -recipient: ObjectId
+        -sender: ObjectId
+        -type: String
+        -title: String
+        -message: String
+    }
+    
+    User --> LoginHistory : has
+    AdminActionLog --> User : references
+    Notification --> User : recipient
+    Notification --> User : sender

@@ -1,0 +1,128 @@
+@startuml
+
+skinparam style strictuml
+
+skinparam classAttributeIconSize 0
+
+class TaskService <<control>> {
+  +createTask()
+  +getTaskById()
+  +updateOverdueTasks()
+  +getAllTasks()
+  +updateTask()
+  +deleteTask()
+  +getCalendarView()
+  +getKanbanView()
+  +taskExists()
+  +assignUsersToTask()
+  +unassignUserFromTask()
+  +getTasksAssignedToUser()
+  +getTaskAssignees()
+  +isUserAssigned()
+  +getTaskCountByStatus()
+  +getTasksDueSoon()
+  +getOverdueTasks()
+  +markAsCompleted()
+  +archiveTask()
+  +bulkUpdateTasks()
+  +bulkDeleteTasks()
+  +addComment()
+  +updateComment()
+  +deleteComment()
+  +getComments()
+  +uploadAttachments()
+  +deleteAttachment()
+  +addCommentWithFile()
+  +startTimer()
+  +stopTimer()
+  +setCustomStatus()
+  +setTaskRepetition()
+}
+
+class Task <<entity>> {
+  taskId
+  title
+  description
+  status
+  priority
+  dueDate
+  completedAt
+  createdBy
+  assignedTo
+  tags
+  category
+  groupId
+  folderId
+  attachments
+  comments
+  timeEntries
+  scheduledWork
+  repetition
+  activeTimers
+  customStatus
+}
+
+class Folder <<entity>> {
+  folderId
+  name
+  description
+  groupId
+  createdBy
+  isDefault
+  order
+  memberAccess
+}
+
+class Group <<entity>> {
+  groupId
+  name
+  description
+  isPersonalWorkspace
+  createdBy
+}
+
+class User <<entity>> {
+  userId
+  email
+  password
+  name
+  avatar
+  isActive
+  refreshToken
+  currentGroupId
+}
+
+class FileService <<service>> {
+  +uploadFile()
+  +uploadMultipleFiles()
+  +deleteFile()
+}
+
+class NotificationService <<service>> {
+  +createNewTaskNotification()
+  +createTaskAssignedNotification()
+  +createTaskUnassignmentNotification()
+  +createTaskCompletedNotification()
+  +createCommentAddedNotification()
+}
+
+class TaskRealtimeGateway <<service>> {
+  +emitTaskEvent()
+}
+
+TaskService --> Task : manages
+TaskService --> Group : checks access
+TaskService --> Folder : checks folder access
+TaskService --> User : gets user context
+TaskService --> FileService : uploads/deletes files
+TaskService --> NotificationService : sends notifications
+TaskService --> TaskRealtimeGateway : emits realtime events
+
+Task "*" --> "1" User : createdBy
+Task "*" -- "*" User : assignedTo
+Task "*" --> "1" Group : belongs to
+Task "*" --> "1" Folder : belongs to
+Folder "*" --> "1" Group : belongs to
+
+@enduml
+

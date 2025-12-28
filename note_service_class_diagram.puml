@@ -1,0 +1,71 @@
+@startuml
+
+skinparam style strictuml
+
+skinparam classAttributeIconSize 0
+
+class NoteService <<control>> {
+  +getAllNotes()
+  +getNoteById()
+  +createNote()
+  +updateNote()
+  +deleteNote()
+}
+
+class Note <<entity>> {
+  noteId
+  title
+  content
+  userId
+  groupId
+  folderId
+  lastEdited
+}
+
+class Folder <<entity>> {
+  folderId
+  name
+  description
+  groupId
+  createdBy
+  isDefault
+  order
+  memberAccess
+}
+
+class FolderService <<service>> {
+  +resolveFolderContext()
+}
+
+class Group <<entity>> {
+  groupId
+  name
+  description
+  isPersonalWorkspace
+  createdBy
+}
+
+class User <<entity>> {
+  userId
+  email
+  password
+  name
+  avatar
+  isActive
+  refreshToken
+  currentGroupId
+}
+
+NoteService --> Note : manages
+NoteService --> FolderService : resolves folder context
+NoteService --> Group : checks group access
+NoteService --> User : gets user context
+
+Note "*" --> "1" User : belongs to
+Note "*" --> "1" Group : belongs to
+Note "*" --> "1" Folder : belongs to
+Folder "*" --> "1" Group : belongs to
+
+@enduml
+
+

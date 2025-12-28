@@ -1,0 +1,290 @@
+```mermaid
+classDiagram
+    class User {
+        +ObjectId _id
+        +String email
+        +String password
+        +String name
+        +String avatar
+        +String role
+        +String groupRole
+        +Boolean isLeader
+        +String theme
+        +String language
+        +Object regionalPreferences
+        +Boolean isActive
+        +Boolean isEmailVerified
+        +Date lastLogin
+        +String refreshToken
+        +ObjectId currentGroupId
+        +Date createdAt
+        +Date updatedAt
+        +comparePassword(candidatePassword) Boolean
+        +generateAccessToken() String
+        +generateRefreshToken() String
+        +toSafeObject() Object
+    }
+
+    class Task {
+        +ObjectId _id
+        +String title
+        +String description
+        +String status
+        +String priority
+        +Date dueDate
+        +Date completedAt
+        +ObjectId createdBy
+        +Array assignedTo
+        +Array tags
+        +String category
+        +String type
+        +ObjectId groupId
+        +ObjectId folderId
+        +Array attachments
+        +String estimatedTime
+        +Array timeEntries
+        +Array scheduledWork
+        +Object repetition
+        +Array activeTimers
+        +Object customStatus
+        +Array comments
+        +Date createdAt
+        +Date updatedAt
+        +populateUserInfo() Promise
+        +getFormattedTotalTime() String
+        #totalLoggedTime Number
+    }
+
+    class Group {
+        +ObjectId _id
+        +String name
+        +Boolean isPersonalWorkspace
+        +String description
+        +ObjectId createdBy
+        +Array members
+        +Object metadata
+        +ObjectId defaultFolderId
+        +Date createdAt
+        +Date updatedAt
+        +isMember(userId) Boolean
+        +getMemberRole(userId) String
+        +hasRole(userId, roles) Boolean
+        +isProductOwner(userId) Boolean
+        +isAdmin(userId) Boolean
+        #memberCount Number
+    }
+
+    class Folder {
+        +ObjectId _id
+        +String name
+        +String description
+        +ObjectId groupId
+        +ObjectId createdBy
+        +Boolean isDefault
+        +Number order
+        +Object metadata
+        +Array memberAccess
+        +Date createdAt
+        +Date updatedAt
+    }
+
+    class Note {
+        +ObjectId _id
+        +String title
+        +String content
+        +ObjectId userId
+        +ObjectId groupId
+        +ObjectId folderId
+        +Date lastEdited
+        +Date createdAt
+        +Date updatedAt
+        #formattedLastEdited String
+    }
+
+    class Notification {
+        +ObjectId _id
+        +ObjectId recipient
+        +ObjectId sender
+        +String type
+        +String eventKey
+        +String title
+        +String message
+        +Mixed data
+        +Map metadata
+        +Array categories
+        +Array channels
+        +Boolean isRead
+        +Date readAt
+        +Date deliveredAt
+        +Boolean archived
+        +String status
+        +Date expiresAt
+        +Date createdAt
+        +Date updatedAt
+        +markAsRead() Promise
+        +accept() Promise
+        +decline() Promise
+        +{static}buildFromEvent(eventPayload) Notification
+        +{static}archiveMany(ids, userId) Promise
+        +{static}createGroupInvitation(recipientId, senderId, groupId, groupName) Promise
+        #isExpired Boolean
+    }
+
+    class GroupMessage {
+        +ObjectId _id
+        +ObjectId groupId
+        +ObjectId senderId
+        +String content
+        +Array attachments
+        +Array reactions
+        +ObjectId replyTo
+        +Object mentions
+        +Date editedAt
+        +Date deletedAt
+        +String messageType
+        +Object callData
+        +Date createdAt
+        +Date updatedAt
+        +addReaction(emoji, userId) Promise
+        +removeReaction(emoji, userId) Promise
+        +toggleReaction(emoji, userId) Promise
+        +softDelete() Promise
+        #reactionCounts Array
+    }
+
+    class DirectMessage {
+        +ObjectId _id
+        +ObjectId conversationId
+        +ObjectId senderId
+        +String content
+        +Array attachments
+        +Array reactions
+        +ObjectId replyTo
+        +Array mentions
+        +Date editedAt
+        +Date deletedAt
+        +String messageType
+        +Object callData
+        +Date createdAt
+        +Date updatedAt
+        +addReaction(emoji, userId) Promise
+        +removeReaction(emoji, userId) Promise
+        +toggleReaction(emoji, userId) Promise
+        +softDelete() Promise
+        #reactionCounts Array
+    }
+
+    class DirectConversation {
+        +ObjectId _id
+        +Array participants
+        +String participantHash
+        +String lastMessagePreview
+        +Date lastMessageAt
+        +ObjectId lastMessageSender
+        +Map unreadCounts
+        +Array mutedBy
+        +Date createdAt
+        +Date updatedAt
+        +getOtherParticipantId(userId) ObjectId
+    }
+
+    class LoginHistory {
+        +ObjectId _id
+        +ObjectId user
+        +String email
+        +String ipAddress
+        +String userAgent
+        +String status
+        +String failureReason
+        +Date loginAt
+        +Date createdAt
+        +Date updatedAt
+    }
+
+    class AdminActionLog {
+        +ObjectId _id
+        +ObjectId admin
+        +String adminEmail
+        +String action
+        +String targetType
+        +Mixed targetId
+        +String description
+        +Mixed changes
+        +String ipAddress
+        +String userAgent
+        +Mixed metadata
+        +Date createdAt
+        +Date updatedAt
+    }
+
+    class ChatbotState {
+        +ObjectId _id
+        +ObjectId userId
+        +ObjectId groupId
+        +Array recommendedTaskIds
+        +Date createdAt
+        +Date updatedAt
+    }
+
+    %% Quan hệ 1-Nhiều
+    User "1" --> "*" Task : creates
+    User "1" --> "*" Group : creates
+    User "1" --> "*" Note : creates
+    User "1" --> "*" Notification : receives
+    User "1" --> "*" LoginHistory : has
+    User "1" --> "*" AdminActionLog : performs
+    User "1" --> "*" GroupMessage : sends
+    User "1" --> "*" DirectMessage : sends
+    User "1" --> "*" ChatbotState : has
+
+    Group "1" --> "*" Task : contains
+    Group "1" --> "*" Folder : contains
+    Group "1" --> "*" Note : contains
+    Group "1" --> "*" GroupMessage : has
+    Group "1" --> "*" ChatbotState : has
+
+    Folder "1" --> "*" Task : contains
+    Folder "1" --> "*" Note : contains
+
+    DirectConversation "1" --> "*" DirectMessage : contains
+
+    %% Quan hệ Nhiều-1
+    Task "*" --> "1" User : createdBy
+    Task "*" --> "1" Group : belongs to
+    Task "*" --> "1" Folder : belongs to
+    Task "*" --> "1" User : assigned to
+
+    Folder "*" --> "1" Group : belongs to
+    Folder "*" --> "1" User : createdBy
+
+    Note "*" --> "1" User : createdBy
+    Note "*" --> "1" Group : belongs to
+    Note "*" --> "1" Folder : belongs to
+
+    Notification "*" --> "1" User : recipient
+    Notification "*" --> "1" User : sender
+
+    GroupMessage "*" --> "1" Group : belongs to
+    GroupMessage "*" --> "1" User : sender
+    GroupMessage "*" --> "1" GroupMessage : replies to
+
+    DirectMessage "*" --> "1" DirectConversation : belongs to
+    DirectMessage "*" --> "1" User : sender
+    DirectMessage "*" --> "1" DirectMessage : replies to
+
+    LoginHistory "*" --> "1" User : belongs to
+
+    AdminActionLog "*" --> "1" User : admin
+
+    ChatbotState "*" --> "1" User : belongs to
+    ChatbotState "*" --> "1" Group : belongs to
+
+    %% Quan hệ Nhiều-Nhiều
+    User "*" --> "*" Group : members
+    User "*" --> "*" DirectConversation : participants
+    User "*" --> "*" Task : assigned to
+
+    %% Quan hệ đặc biệt
+    Group "1" --> "1" Folder : defaultFolder
+    User "1" --> "1" Group : currentGroup
+```
