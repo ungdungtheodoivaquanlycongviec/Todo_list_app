@@ -19,8 +19,16 @@ const ALLOWED_DOCUMENT_TYPES = [
   'application/zip',
   'application/x-rar-compressed'
 ];
+const ALLOWED_AUDIO_TYPES = [
+  'audio/webm',
+  'audio/mp3',
+  'audio/mpeg',
+  'audio/wav',
+  'audio/ogg',
+  'audio/mp4'
+];
 
-const ALLOWED_FILE_TYPES = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_DOCUMENT_TYPES];
+const ALLOWED_FILE_TYPES = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_DOCUMENT_TYPES, ...ALLOWED_AUDIO_TYPES];
 
 // Configure memory storage (file will be in req.file.buffer)
 const storage = multer.memoryStorage();
@@ -31,7 +39,7 @@ const fileFilter = (req, file, cb) => {
   if (ALLOWED_FILE_TYPES.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error(`File type ${file.mimetype} is not allowed. Allowed types: images, PDF, Word, Excel, Text, ZIP`), false);
+    cb(new Error(`File type ${file.mimetype} is not allowed. Allowed types: images, PDF, Word, Excel, Text, ZIP, Audio`), false);
   }
 };
 
@@ -79,14 +87,14 @@ const handleMulterError = (err, req, res, next) => {
       });
     }
   }
-  
+
   if (err) {
     return res.status(400).json({
       success: false,
       message: err.message || 'Lỗi upload file'
     });
   }
-  
+
   next();
 };
 
@@ -114,9 +122,15 @@ const getFileExtension = (mimetype) => {
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
     'text/plain': 'txt',
     'application/zip': 'zip',
-    'application/x-rar-compressed': 'rar'
+    'application/x-rar-compressed': 'rar',
+    'audio/webm': 'webm',
+    'audio/mp3': 'mp3',
+    'audio/mpeg': 'mp3',
+    'audio/wav': 'wav',
+    'audio/ogg': 'ogg',
+    'audio/mp4': 'm4a'
   };
-  
+
   return extensions[mimetype] || 'file';
 };
 

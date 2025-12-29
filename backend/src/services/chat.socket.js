@@ -654,6 +654,151 @@ const setupChatHandlers = (namespace) => {
       }
     });
 
+    // Pin/Unpin group message
+    socket.on('chat:pin', async (data, callback) => {
+      try {
+        const { messageId, isPinned } = data;
+
+        if (!messageId) {
+          if (callback) callback({ success: false, error: 'Message ID is required' });
+          return;
+        }
+
+        const message = await GroupMessage.findById(messageId);
+        if (!message) {
+          if (callback) callback({ success: false, error: 'Message not found' });
+          return;
+        }
+
+        // Update pin status
+        message.isPinned = isPinned;
+        message.pinnedAt = isPinned ? new Date() : null;
+        message.pinnedBy = isPinned ? userId : null;
+        await message.save();
+
+        // Populate sender info
+        await message.populate('senderId', 'name email avatar');
+        if (isPinned) {
+          await message.populate('pinnedBy', 'name');
+        }
+
+        const normalizedGroupId = normalizeId(message.groupId);
+        const roomName = `${GROUP_ROOM_PREFIX}${normalizedGroupId}`;
+        const messageData = message.toObject ? message.toObject({ virtuals: true }) : message;
+
+        namespace.in(roomName).emit('chat:pinned', {
+          type: isPinned ? 'pinned' : 'unpinned',
+          messageId,
+          message: messageData
+        });
+
+        if (callback) callback({ success: true, message: messageData });
+      } catch (error) {
+        console.error('[Chat] Error pinning message:', error);
+        if (callback) callback({ success: false, error: error.message });
+      }
+    });
+
+    // Get pinned group messages
+    socket.on('chat:getPinned', async (data, callback) => {
+      try {
+        const { groupId } = data;
+
+        if (!groupId) {
+          if (callback) callback({ success: false, error: 'Group ID is required' });
+          return;
+        }
+
+        const messages = await GroupMessage.find({
+          groupId,
+          isPinned: true,
+          deletedAt: null
+        })
+          .sort({ pinnedAt: -1 })
+          .populate('senderId', 'name email avatar')
+          .populate('pinnedBy', 'name')
+          .lean();
+
+        if (callback) callback({ success: true, messages });
+      } catch (error) {
+        console.error('[Chat] Error getting pinned messages:', error);
+        if (callback) callback({ success: false, error: error.message });
+      }
+    });
+
+    // Pin/Unpin direct message
+    socket.on('direct:pin', async (data, callback) => {
+      try {
+        const { messageId, isPinned } = data;
+
+        if (!messageId) {
+          if (callback) callback({ success: false, error: 'Message ID is required' });
+          return;
+        }
+
+        const message = await DirectMessage.findById(messageId);
+        if (!message) {
+          if (callback) callback({ success: false, error: 'Message not found' });
+          return;
+        }
+
+        // Update pin status
+        message.isPinned = isPinned;
+        message.pinnedAt = isPinned ? new Date() : null;
+        message.pinnedBy = isPinned ? userId : null;
+        await message.save();
+
+        // Populate sender info
+        await message.populate('senderId', 'name email avatar');
+        if (isPinned) {
+          await message.populate('pinnedBy', 'name');
+        }
+
+        const normalizedConversationId = normalizeId(message.conversationId);
+        const roomName = `${DIRECT_ROOM_PREFIX}${normalizedConversationId}`;
+        const messageData = message.toObject ? message.toObject({ virtuals: true }) : message;
+
+        namespace.in(roomName).emit('direct:pinned', {
+          type: isPinned ? 'pinned' : 'unpinned',
+          conversationId: normalizedConversationId,
+          messageId,
+          message: messageData
+        });
+
+        if (callback) callback({ success: true, message: messageData });
+      } catch (error) {
+        console.error('[Chat] Error pinning direct message:', error);
+        if (callback) callback({ success: false, error: error.message });
+      }
+    });
+
+    // Get pinned direct messages
+    socket.on('direct:getPinned', async (data, callback) => {
+      try {
+        const { conversationId } = data;
+
+        if (!conversationId) {
+          if (callback) callback({ success: false, error: 'Conversation ID is required' });
+          return;
+        }
+
+        const messages = await DirectMessage.find({
+          conversationId,
+          isPinned: true,
+          deletedAt: null
+        })
+          .sort({ pinnedAt: -1 })
+          .populate('senderId', 'name email avatar')
+          .populate('pinnedBy', 'name')
+          .lean();
+
+        if (callback) callback({ success: true, messages });
+      } catch (error) {
+        console.error('[Chat] Error getting pinned direct messages:', error);
+        if (callback) callback({ success: false, error: error.message });
+      }
+    });
+
     // Handle disconnect
     socket.on('disconnect', () => {
       console.log(`[Chat] User ${userId} disconnected from chat`);
