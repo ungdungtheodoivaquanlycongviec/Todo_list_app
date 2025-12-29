@@ -1,11 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { View, ActivityIndicator } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage'; // 🆕 Import AsyncStorage
+import { View, ActivityIndicator, Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { GoogleSignin } from '@react-native-google-signin/google-signin'; // ✅ Import Google Signin
 
 import { authService } from '../services/auth.service';
 import { userService } from '../services/user.service';
-// Import groupService bằng require hoặc import dynamic để tránh cycle dependency nếu có
-import { groupService } from '../services/group.service'; 
+import { groupService } from '../services/group.service';
 import { User, LoginRequest, RegisterRequest, AuthResponse } from '../types/auth.types';
 import { Group } from '../types/group.types';
 import { triggerGroupChange } from '../hooks/useGroupChange';
@@ -32,7 +32,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [currentGroup, setCurrentGroup] = useState<Group | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Helper: Lưu user vào Storage để persistence
+  // ✅ Cấu hình Google Signin khi App khởi động
+  useEffect(() => {
+    GoogleSignin.configure({
+      // Thay bằng Web Client ID từ Google Cloud Console (Dùng chung cho cả Android/iOS)
+      // KHÔNG DÙNG Android Client ID ở đây
+      webClientId: '1095262788931-15k2...apps.googleusercontent.com', 
+      offlineAccess: true, 
+    });
+  }, []);
+
   const persistUser = async (userData: User | null) => {
     try {
       if (userData) {
@@ -45,13 +54,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Helper: Theme logic (Mobile thường dùng ThemeContext riêng, ở đây chỉ update user pref)
   const applyTheme = (theme: string) => {
-    // Logic theme thực tế sẽ nằm ở ThemeProvider, ở đây chỉ log
-    // console.log('User theme preference:', theme);
+    // Logic theme context sẽ xử lý việc này
   };
 
-  // --- CHECK AUTH & LOAD INITIAL DATA (Full Web Logic) ---
   const checkAuth = async () => {
     try {
       const { accessToken } = await authService.getStoredTokens();
@@ -61,33 +67,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           const userData = await authService.getCurrentUser();
           setUser(userData);
-          await persistUser(userData); // 🆕 Sync storage
+          await persistUser(userData);
 
           if (userData.theme) applyTheme(userData.theme);
 
-          // === LOGIC LOAD GROUP (Ported from Web) ===
+          // Load Group Logic
           if (userData.currentGroupId) {
             try {
               const group = await groupService.getGroupById(userData.currentGroupId);
               if (group) {
                 setCurrentGroup(group);
               } else {
-                throw new Error('Group not found'); // Kích hoạt logic fallback
+                throw new Error('Group not found');
               }
             } catch (groupError) {
-              console.log('Current group not accessible, finding fallback...');
               await handleFallbackGroup(userData);
             }
           } else {
-            // Chưa có nhóm nào được chọn
             await handleFallbackGroup(userData);
           }
         } catch (userError) {
           console.error('Failed to get current user:', userError);
-          await logout(); // Token lỗi -> Logout luôn
+          await logout();
         }
       } else {
-        await logout(); // Không có token -> Logout
+        await logout();
       }
     } catch (error) {
       console.error('Auth check failed:', error);
@@ -97,7 +101,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // 🆕 Hàm xử lý Fallback Group (Tách ra để tái sử dụng)
   const handleFallbackGroup = async (userData: User) => {
     try {
       const response = await groupService.getAllGroups();
@@ -111,22 +114,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setCurrentGroup(fallbackGroup);
 
-      // Cập nhật lại currentGroupId chuẩn cho User
       const newGroupId = fallbackGroup?._id;
       
-      // 1. Update Server
       try {
         await userService.updateProfile({ currentGroupId: newGroupId });
       } catch (e) {
         console.warn('Failed to update group on server', e);
       }
 
-      // 2. Update Local State & Storage
       const updatedUser = { ...userData, currentGroupId: newGroupId };
       setUser(updatedUser);
       await persistUser(updatedUser);
       
-      triggerGroupChange(); // Báo hiệu cho app reload view
+      triggerGroupChange();
     } catch (error) {
       console.error('Failed to load fallback groups:', error);
       setCurrentGroup(null);
@@ -143,25 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       const authData: AuthResponse = await authService.login(credentials);
-
-      await authService.saveTokens(authData.accessToken, authData.refreshToken);
-      setUser(authData.user);
-      await persistUser(authData.user);
-      
-      if (authData.user.theme) applyTheme(authData.user.theme);
-
-      // Sau khi login, check group luôn
-      if (authData.user.currentGroupId) {
-        try {
-          const group = await groupService.getGroupById(authData.user.currentGroupId);
-          setCurrentGroup(group);
-        } catch {
-          await handleFallbackGroup(authData.user);
-        }
-      } else {
-        await handleFallbackGroup(authData.user);
-      }
-
+      await handleAuthSuccess(authData);
     } catch (error) {
       console.error('Login failed:', error);
       throw error;
@@ -174,14 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       const authData: AuthResponse = await authService.register(userData);
-
-      await authService.saveTokens(authData.accessToken, authData.refreshToken);
-      setUser(authData.user);
-      await persistUser(authData.user);
-      
-      if (authData.user.theme) applyTheme(authData.user.theme);
-      
-      // User mới thường chưa có nhóm, có thể gọi logic tạo nhóm mặc định ở đây nếu cần
+      await handleAuthSuccess(authData);
     } catch (error) {
       console.error('Registration failed:', error);
       throw error;
@@ -190,17 +165,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const loginWithGoogle = async () => {
-    try {
-      setLoading(true);
-      // TODO: Tích hợp @react-native-google-signin/google-signin ở đây
-      const idToken = 'MOCK_TOKEN_NEED_IMPLEMENTATION'; 
-      const authData: AuthResponse = await authService.loginWithGoogle(idToken);
+  // ✅ SỬA LỖI: Login Google thật
+  // ✅ SỬA LỖI: Login Google thật
+const loginWithGoogle = async () => {
+  try {
+    setLoading(true);
 
+    // 1. Kiểm tra Google Play Services
+    await GoogleSignin.hasPlayServices();
+
+    // 2. Mở popup đăng nhập
+    const response = await GoogleSignin.signIn(); // Đặt tên biến là response cho dễ hiểu
+
+    // Trong phiên bản mới, dữ liệu user nằm trong response.data
+    // Kiểm tra xem user có hủy đăng nhập không (nếu response.data là null)
+    if (!response.data) {
+       throw new Error('User cancelled the login flow');
+    }
+
+    // Lấy idToken từ trong data
+    const idToken = response.data.idToken;
+
+    if (!idToken) {
+      throw new Error('No ID token found');
+    }
+
+    // 3. Gửi token lên backend
+    const authData: AuthResponse = await authService.loginWithGoogle(idToken);
+
+    // 4. Xử lý thành công
+    await handleAuthSuccess(authData);
+
+  } catch (error: any) {
+    console.error('Google login failed:', error);
+    
+    // Check lỗi user hủy (code có thể thay đổi tùy version, nhưng logic cơ bản là vậy)
+    if (error.code === '12501' || error.message === 'User cancelled the login flow') {
+       // User cancelled (không cần alert)
+    } else {
+       Alert.alert("Google Login Error", error.message);
+       throw error;
+    }
+  } finally {
+    setLoading(false);
+  }
+};
+
+  // Helper xử lý sau khi login thành công (dùng chung cho cả 3 cách)
+  const handleAuthSuccess = async (authData: AuthResponse) => {
       await authService.saveTokens(authData.accessToken, authData.refreshToken);
       setUser(authData.user);
       await persistUser(authData.user);
       
+      if (authData.user.theme) applyTheme(authData.user.theme);
+
       if (authData.user.currentGroupId) {
          try {
             const group = await groupService.getGroupById(authData.user.currentGroupId);
@@ -211,12 +229,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
          await handleFallbackGroup(authData.user);
       }
-    } catch (error) {
-      console.error('Google login failed:', error);
-      throw error;
-    } finally {
-      setLoading(false);
-    }
   };
 
   const updateUser = async (userData: Partial<User>): Promise<void> => {
@@ -224,7 +236,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const updatedUser = await userService.updateProfile(userData);
       setUser(updatedUser);
-      await persistUser(updatedUser); // 🆕 Sync storage
+      await persistUser(updatedUser);
     } catch (error) {
       console.error('Failed to update user:', error);
       throw error;
@@ -236,7 +248,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const updatedUser = await userService.updateTheme(theme);
       setUser(updatedUser);
-      await persistUser(updatedUser); // 🆕 Sync storage
+      await persistUser(updatedUser);
       applyTheme(theme);
     } catch (error) {
       console.error('Failed to update theme:', error);
@@ -247,11 +259,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     try {
       setLoading(true);
-      // Cố gắng gọi API logout, nhưng không chặn nếu lỗi
-      try { await authService.logout(); } catch (e) { console.warn(e); }
+      try { 
+          await authService.logout(); 
+          await GoogleSignin.signOut(); // Logout Google luôn nếu có
+      } catch (e) { console.warn(e); }
     } finally {
       await authService.removeTokens();
-      await AsyncStorage.removeItem('user'); // 🆕 Clear user storage
+      await AsyncStorage.removeItem('user');
       setUser(null);
       setCurrentGroup(null);
       setLoading(false);
@@ -260,21 +274,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const handleSetCurrentGroup = async (group: Group | null) => {
     setCurrentGroup(group);
-    
-    // Update local state & storage & server
     if (user) {
       const newGroupId = group?._id;
       const updatedUser = { ...user, currentGroupId: newGroupId };
       setUser(updatedUser);
       await persistUser(updatedUser);
-
       try {
         await userService.updateProfile({ currentGroupId: newGroupId });
       } catch (e) {
         console.warn('Failed to update group on server', e);
       }
     }
-    
     triggerGroupChange();
   };
 
