@@ -104,6 +104,12 @@ export default function ChatView() {
   const [loadingMoreMessages, setLoadingMoreMessages] = useState(false);
   const isInitialLoadRef = useRef(true);
   const isLoadingOlderRef = useRef(false);  // Track when loading older messages to skip auto-scroll
+  const justJumpedToMessageRef = useRef(false);  // Track when we just jumped to a message to prevent immediate scroll load
+
+  // Historical view state (for jump to message feature)
+  const [isViewingHistory, setIsViewingHistory] = useState(false);
+  const [hasNewerMessages, setHasNewerMessages] = useState(false);
+  const [loadingNewerMessages, setLoadingNewerMessages] = useState(false);
 
   // Scroll to bottom
   const scrollToBottom = useCallback(() => {
@@ -241,14 +247,105 @@ export default function ChatView() {
     }
   }, [loadingMoreMessages, hasMoreMessages, messages, activeContext, currentGroup?._id, activeDirectConversation?._id]);
 
-  // Handle scroll to detect when user scrolls near top
+  // Load newer messages (for when viewing history and scrolling down)
+  const loadNewerMessages = useCallback(async () => {
+    if (loadingNewerMessages || !hasNewerMessages || messages.length === 0) return;
+
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const newestMessage = messages[messages.length - 1];
+    if (!newestMessage) return;
+
+    const previousScrollTop = container.scrollTop;
+
+    setLoadingNewerMessages(true);
+
+    try {
+      let result;
+
+      if (activeContext === 'group' && currentGroup?._id) {
+        result = await chatService.getMessages(currentGroup._id, {
+          limit: 15,
+          after: newestMessage.createdAt
+        });
+      } else if (activeContext === 'direct' && activeDirectConversation?._id) {
+        result = await chatService.getDirectMessages(activeDirectConversation._id, {
+          limit: 15,
+          after: newestMessage.createdAt
+        });
+      } else {
+        return;
+      }
+
+      if (result.messages.length > 0) {
+        setMessages(prev => [...prev, ...result.messages]);
+        const hasMore = result.pagination?.hasMore ?? result.messages.length >= 15;
+        setHasNewerMessages(hasMore);
+
+        // If no more newer messages, we're at present
+        if (!hasMore) {
+          setIsViewingHistory(false);
+        }
+
+        // Preserve scroll position after appending
+        requestAnimationFrame(() => {
+          if (container) {
+            container.scrollTop = previousScrollTop;
+          }
+        });
+      } else {
+        setHasNewerMessages(false);
+        setIsViewingHistory(false);
+      }
+    } catch (error) {
+      console.error('Error loading newer messages:', error);
+    } finally {
+      setLoadingNewerMessages(false);
+    }
+  }, [loadingNewerMessages, hasNewerMessages, messages, activeContext, currentGroup?._id, activeDirectConversation?._id]);
+
+  // Jump to present (return to most recent messages)
+  const jumpToPresent = useCallback(async () => {
+    setIsViewingHistory(false);
+    setHasNewerMessages(false);
+
+    // Reload messages from the beginning (most recent)
+    if (activeContext === 'group' && currentGroup?._id) {
+      await loadGroupMessages(true);
+    } else if (activeContext === 'direct' && activeDirectConversation?._id) {
+      await loadDirectMessages(activeDirectConversation._id, true);
+    }
+
+    // Scroll to bottom after loading
+    setTimeout(() => {
+      scrollToBottom();
+    }, 100);
+  }, [activeContext, currentGroup?._id, activeDirectConversation?._id, loadGroupMessages, loadDirectMessages, scrollToBottom]);
+
+  // Handle scroll to detect when user scrolls near top or bottom
   const handleMessagesScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const target = e.target as HTMLDivElement;
-    // Load more when scrolled within 100px of top
-    if (target.scrollTop < 100 && hasMoreMessages && !loadingMoreMessages) {
+    const { scrollTop, scrollHeight, clientHeight } = target;
+
+    // Skip scroll handling right after jumping to a message
+    if (justJumpedToMessageRef.current) {
+      return;
+    }
+
+    // Load older messages when scrolled within 100px of top
+    if (scrollTop < 100 && hasMoreMessages && !loadingMoreMessages) {
       loadMoreMessages();
     }
-  }, [hasMoreMessages, loadingMoreMessages, loadMoreMessages]);
+
+    // Load newer messages when scrolled within 100px of bottom (only in history mode)
+    if (isViewingHistory && hasNewerMessages && !loadingNewerMessages) {
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+      if (distanceFromBottom < 100) {
+        loadNewerMessages();
+      }
+    }
+  }, [hasMoreMessages, loadingMoreMessages, loadMoreMessages, isViewingHistory, hasNewerMessages, loadingNewerMessages, loadNewerMessages]);
 
   const loadDirectConversations = useCallback(async () => {
     try {
@@ -844,6 +941,17 @@ export default function ChatView() {
       return;
     }
 
+    // Skip scroll when we just jumped to a message (viewing history)
+    if (justJumpedToMessageRef.current) {
+      justJumpedToMessageRef.current = false;
+      return;
+    }
+
+    // Skip auto-scroll when viewing history - user is browsing old messages
+    if (isViewingHistory) {
+      return;
+    }
+
     if (isInitialLoadRef.current) {
       // On initial load, scroll to bottom immediately without animation
       messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
@@ -852,7 +960,7 @@ export default function ChatView() {
       // For new incoming messages, smooth scroll to bottom
       scrollToBottom();
     }
-  }, [messages, scrollToBottom]);
+  }, [messages, scrollToBottom, isViewingHistory]);
 
   // Handle attachment selection (preview before sending)
   const handleAttachmentSelect = (file: File) => {
@@ -1669,7 +1777,30 @@ export default function ChatView() {
                 ))
               )}
               <div ref={messagesEndRef} />
+
+              {/* Loading newer messages indicator */}
+              {loadingNewerMessages && (
+                <div className="flex items-center justify-center py-2">
+                  <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                  <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">{t('chat.loadingMore') || 'Loading...'}</span>
+                </div>
+              )}
             </div>
+
+            {/* Jump to Present floating button - shows when viewing history */}
+            {isViewingHistory && (
+              <div className="absolute bottom-36 left-1/2 transform -translate-x-1/2 z-10 animate-in fade-in slide-in-from-bottom-2">
+                <button
+                  onClick={jumpToPresent}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-full shadow-lg transition-all hover:scale-105"
+                >
+                  <span>{t('chat.viewingOlderMessages') || "You're Viewing Older Messages"}</span>
+                  <span className="bg-white/20 px-2 py-0.5 rounded-full text-xs">
+                    {t('chat.jumpToPresent') || 'Jump to Present'}
+                  </span>
+                </button>
+              </div>
+            )}
 
             {replyingTo && (
               <div className="border-t border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-800 flex items-center justify-between">
@@ -1977,16 +2108,71 @@ export default function ChatView() {
             });
           }
         }}
-        onScrollToMessage={(messageId) => {
-          // Find the message element and scroll to it
-          const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
-          if (messageElement) {
-            messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            // Highlight briefly
-            messageElement.classList.add('bg-yellow-100', 'dark:bg-yellow-900/30');
-            setTimeout(() => {
-              messageElement.classList.remove('bg-yellow-100', 'dark:bg-yellow-900/30');
-            }, 2000);
+        onScrollToMessage={async (messageId, createdAt) => {
+          // Check if message is already loaded
+          const isMessageLoaded = messages.some(m => m._id === messageId);
+
+          if (isMessageLoaded) {
+            // Message is loaded, just scroll to it
+            const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+            if (messageElement) {
+              messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              messageElement.classList.add('bg-yellow-100', 'dark:bg-yellow-900/30');
+              setTimeout(() => {
+                messageElement.classList.remove('bg-yellow-100', 'dark:bg-yellow-900/30');
+              }, 2000);
+            }
+          } else {
+            // Message not loaded - Discord-like behavior:
+            // Replace current messages with messages around the target message
+            const beforeTime = new Date(new Date(createdAt).getTime() + 1000).toISOString();
+            try {
+              let newMessages: ChatMessage[] = [];
+              let hasMoreOlder = true;
+
+              if (activeContext === 'group' && currentGroup?._id) {
+                const response = await chatService.getMessages(currentGroup._id, {
+                  before: beforeTime,
+                  limit: 30
+                });
+                newMessages = response.messages || [];
+                hasMoreOlder = response.pagination?.hasMore ?? newMessages.length >= 30;
+              } else if (activeContext === 'direct' && activeDirectConversation?._id) {
+                const response = await chatService.getDirectMessages(activeDirectConversation._id, {
+                  before: beforeTime,
+                  limit: 30
+                });
+                newMessages = response.messages || [];
+                hasMoreOlder = response.pagination?.hasMore ?? newMessages.length >= 30;
+              }
+
+              if (newMessages.length > 0) {
+                // Set flag BEFORE updating messages to prevent auto-scroll
+                justJumpedToMessageRef.current = true;
+                
+                // REPLACE messages instead of merging (Discord-like behavior)
+                setMessages(newMessages);
+                setHasMoreMessages(hasMoreOlder);
+
+                // Enable history mode - we're viewing old messages
+                setIsViewingHistory(true);
+                setHasNewerMessages(true);
+
+                // Wait for DOM to update, then scroll to the target message
+                setTimeout(() => {
+                  const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+                  if (messageElement) {
+                    messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    messageElement.classList.add('bg-yellow-100', 'dark:bg-yellow-900/30');
+                    setTimeout(() => {
+                      messageElement.classList.remove('bg-yellow-100', 'dark:bg-yellow-900/30');
+                    }, 2000);
+                  }
+                }, 300);
+              }
+            } catch (error) {
+              console.error('Error loading message:', error);
+            }
           }
         }}
       />

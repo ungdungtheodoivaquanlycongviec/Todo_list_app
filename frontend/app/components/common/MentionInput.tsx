@@ -139,7 +139,7 @@ export default function MentionInput({
         // Add @everyone as the first option (only when there are mentionable users)
         const everyoneSuggestion: MentionSuggestion = {
             type: 'role',
-            id: 'everyone',
+            id: 'role:everyone',
             display: 'everyone',
             subtext: 'Notify all members'
         }

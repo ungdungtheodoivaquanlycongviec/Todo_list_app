@@ -370,6 +370,8 @@ export const translations = {
     'chat.pinnedBy': 'Pinned by',
     'chat.jumpToMessage': 'Jump to message',
     'chat.viewPinnedMessages': 'View pinned messages',
+    'chat.viewingOlderMessages': "You're Viewing Older Messages",
+    'chat.jumpToPresent': 'Jump to Present',
 
     // Mentions
     'mention.typeToMention': 'Type @ to mention someone',
@@ -1152,6 +1154,8 @@ export const translations = {
     'chat.pinnedBy': 'Ghim bởi',
     'chat.jumpToMessage': 'Đi đến tin nhắn',
     'chat.viewPinnedMessages': 'Xem tin nhắn đã ghim',
+    'chat.viewingOlderMessages': 'Bạn đang xem tin nhắn cũ',
+    'chat.jumpToPresent': 'Về tin mới nhất',
 
     // Mentions
     'mention.typeToMention': 'Gõ @ để đề cập ai đó',

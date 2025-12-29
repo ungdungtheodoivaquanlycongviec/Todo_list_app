@@ -29,7 +29,7 @@ interface PinnedMessagesModalProps {
     onClose: () => void;
     messages: PinnedMessage[];
     onUnpin: (messageId: string) => void;
-    onScrollToMessage?: (messageId: string) => void;
+    onScrollToMessage?: (messageId: string, createdAt: string) => void;
 }
 
 export default function PinnedMessagesModal({
@@ -133,7 +133,7 @@ export default function PinnedMessagesModal({
                                     {onScrollToMessage && (
                                         <button
                                             onClick={() => {
-                                                onScrollToMessage(message._id);
+                                                onScrollToMessage(message._id, message.createdAt);
                                                 onClose();
                                             }}
                                             className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 transition-colors"

@@ -11,8 +11,9 @@ const User = require('../models/User.model');
 const parseMentionsFromContent = (content) => {
   const userIds = [];
   const roleNames = [];
+  let everyone = false;
 
-  if (!content) return { userIds, roleNames };
+  if (!content) return { userIds, roleNames, everyone };
 
   // Match @[display name](id) pattern
   const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
@@ -21,27 +22,37 @@ const parseMentionsFromContent = (content) => {
   while ((match = mentionRegex.exec(content)) !== null) {
     const id = match[2];
     if (id.startsWith('role:')) {
-      roleNames.push(id.replace('role:', ''));
+      const roleName = id.replace('role:', '');
+      // Handle @everyone as a special case
+      if (roleName === 'everyone') {
+        everyone = true;
+      } else {
+        roleNames.push(roleName);
+      }
+    } else if (id === 'everyone') {
+      // Handle legacy @[everyone](everyone) format
+      everyone = true;
     } else {
       userIds.push(id);
     }
   }
 
-  return { userIds, roleNames };
+  return { userIds, roleNames, everyone };
 };
 
 // Helper to parse @name mentions by matching against members list
 const parseMentionsFromContentWithMembers = (content, members, roles = []) => {
   if (!content) return { userIds: [], roleNames: [], everyone: false };
 
-  // Check for @everyone
+  // Check for @everyone in plain text format
   const everyoneRegex = /@everyone(?:\s|$|,|\.|!|\?)/gi;
-  const hasEveryone = everyoneRegex.test(content);
+  const hasEveryonePlainText = everyoneRegex.test(content);
 
   // First try legacy @[name](id) format
   const legacyResult = parseMentionsFromContent(content);
-  if (legacyResult.userIds.length > 0 || legacyResult.roleNames.length > 0) {
-    return { ...legacyResult, everyone: hasEveryone };
+  if (legacyResult.userIds.length > 0 || legacyResult.roleNames.length > 0 || legacyResult.everyone) {
+    // Combine everyone from both legacy format and plain text
+    return { ...legacyResult, everyone: legacyResult.everyone || hasEveryonePlainText };
   }
 
   const userIds = [];
@@ -72,7 +83,7 @@ const parseMentionsFromContentWithMembers = (content, members, roles = []) => {
     }
   }
 
-  return { userIds, roleNames, everyone: hasEveryone };
+  return { userIds, roleNames, everyone: hasEveryonePlainText };
 };
 
 
