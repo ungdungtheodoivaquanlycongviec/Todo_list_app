@@ -54,6 +54,13 @@ export interface ChatMessage {
     endedAt?: string;
     participants?: string[];
   };
+  // Pin message fields
+  isPinned?: boolean;
+  pinnedAt?: string;
+  pinnedBy?: {
+    _id: string;
+    name: string;
+  };
 }
 
 export interface MessagesResponse {

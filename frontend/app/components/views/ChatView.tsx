@@ -11,7 +11,10 @@ import MeetingView from './MeetingView';
 import IncomingCallNotification from './IncomingCallNotification';
 import {
   Send,
-  Paperclip,
+  Mic,
+  Square,
+  Play,
+  Pause,
   Image as ImageIcon,
   Smile,
   X,
@@ -28,10 +31,14 @@ import {
   Copy,
   Check,
   Video,
-  Phone
+  Phone,
+  Upload,
+  Pin
 } from 'lucide-react';
 import MentionInput, { MentionableUser, parseMentions } from '../common/MentionInput';
 import MentionHighlight from '../common/MentionHighlight';
+import VoiceMessagePlayer from '../common/VoiceMessagePlayer';
+import PinnedMessagesModal from '../common/PinnedMessagesModal';
 import { useToast } from '../../contexts/ToastContext';
 import { useConfirm } from '../../contexts/ConfirmContext';
 import { useUIState } from '../../contexts/UIStateContext';
@@ -73,6 +80,18 @@ export default function ChatView() {
     conversationId?: string;
   } | null>(null);
   const [pendingStoredMeeting, setPendingStoredMeeting] = useState<StoredMeetingState | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  // Voice recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Pinned messages state
+  const [pinnedMessages, setPinnedMessages] = useState<ChatMessage[]>([]);
+  const [showPinnedModal, setShowPinnedModal] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -85,6 +104,12 @@ export default function ChatView() {
   const [loadingMoreMessages, setLoadingMoreMessages] = useState(false);
   const isInitialLoadRef = useRef(true);
   const isLoadingOlderRef = useRef(false);  // Track when loading older messages to skip auto-scroll
+  const justJumpedToMessageRef = useRef(false);  // Track when we just jumped to a message to prevent immediate scroll load
+
+  // Historical view state (for jump to message feature)
+  const [isViewingHistory, setIsViewingHistory] = useState(false);
+  const [hasNewerMessages, setHasNewerMessages] = useState(false);
+  const [loadingNewerMessages, setLoadingNewerMessages] = useState(false);
 
   // Scroll to bottom
   const scrollToBottom = useCallback(() => {
@@ -222,14 +247,105 @@ export default function ChatView() {
     }
   }, [loadingMoreMessages, hasMoreMessages, messages, activeContext, currentGroup?._id, activeDirectConversation?._id]);
 
-  // Handle scroll to detect when user scrolls near top
+  // Load newer messages (for when viewing history and scrolling down)
+  const loadNewerMessages = useCallback(async () => {
+    if (loadingNewerMessages || !hasNewerMessages || messages.length === 0) return;
+
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const newestMessage = messages[messages.length - 1];
+    if (!newestMessage) return;
+
+    const previousScrollTop = container.scrollTop;
+
+    setLoadingNewerMessages(true);
+
+    try {
+      let result;
+
+      if (activeContext === 'group' && currentGroup?._id) {
+        result = await chatService.getMessages(currentGroup._id, {
+          limit: 15,
+          after: newestMessage.createdAt
+        });
+      } else if (activeContext === 'direct' && activeDirectConversation?._id) {
+        result = await chatService.getDirectMessages(activeDirectConversation._id, {
+          limit: 15,
+          after: newestMessage.createdAt
+        });
+      } else {
+        return;
+      }
+
+      if (result.messages.length > 0) {
+        setMessages(prev => [...prev, ...result.messages]);
+        const hasMore = result.pagination?.hasMore ?? result.messages.length >= 15;
+        setHasNewerMessages(hasMore);
+
+        // If no more newer messages, we're at present
+        if (!hasMore) {
+          setIsViewingHistory(false);
+        }
+
+        // Preserve scroll position after appending
+        requestAnimationFrame(() => {
+          if (container) {
+            container.scrollTop = previousScrollTop;
+          }
+        });
+      } else {
+        setHasNewerMessages(false);
+        setIsViewingHistory(false);
+      }
+    } catch (error) {
+      console.error('Error loading newer messages:', error);
+    } finally {
+      setLoadingNewerMessages(false);
+    }
+  }, [loadingNewerMessages, hasNewerMessages, messages, activeContext, currentGroup?._id, activeDirectConversation?._id]);
+
+  // Jump to present (return to most recent messages)
+  const jumpToPresent = useCallback(async () => {
+    setIsViewingHistory(false);
+    setHasNewerMessages(false);
+
+    // Reload messages from the beginning (most recent)
+    if (activeContext === 'group' && currentGroup?._id) {
+      await loadGroupMessages(true);
+    } else if (activeContext === 'direct' && activeDirectConversation?._id) {
+      await loadDirectMessages(activeDirectConversation._id, true);
+    }
+
+    // Scroll to bottom after loading
+    setTimeout(() => {
+      scrollToBottom();
+    }, 100);
+  }, [activeContext, currentGroup?._id, activeDirectConversation?._id, loadGroupMessages, loadDirectMessages, scrollToBottom]);
+
+  // Handle scroll to detect when user scrolls near top or bottom
   const handleMessagesScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const target = e.target as HTMLDivElement;
-    // Load more when scrolled within 100px of top
-    if (target.scrollTop < 100 && hasMoreMessages && !loadingMoreMessages) {
+    const { scrollTop, scrollHeight, clientHeight } = target;
+
+    // Skip scroll handling right after jumping to a message
+    if (justJumpedToMessageRef.current) {
+      return;
+    }
+
+    // Load older messages when scrolled within 100px of top
+    if (scrollTop < 100 && hasMoreMessages && !loadingMoreMessages) {
       loadMoreMessages();
     }
-  }, [hasMoreMessages, loadingMoreMessages, loadMoreMessages]);
+
+    // Load newer messages when scrolled within 100px of bottom (only in history mode)
+    if (isViewingHistory && hasNewerMessages && !loadingNewerMessages) {
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+      if (distanceFromBottom < 100) {
+        loadNewerMessages();
+      }
+    }
+  }, [hasMoreMessages, loadingMoreMessages, loadMoreMessages, isViewingHistory, hasNewerMessages, loadingNewerMessages, loadNewerMessages]);
 
   const loadDirectConversations = useCallback(async () => {
     try {
@@ -825,6 +941,17 @@ export default function ChatView() {
       return;
     }
 
+    // Skip scroll when we just jumped to a message (viewing history)
+    if (justJumpedToMessageRef.current) {
+      justJumpedToMessageRef.current = false;
+      return;
+    }
+
+    // Skip auto-scroll when viewing history - user is browsing old messages
+    if (isViewingHistory) {
+      return;
+    }
+
     if (isInitialLoadRef.current) {
       // On initial load, scroll to bottom immediately without animation
       messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
@@ -833,7 +960,7 @@ export default function ChatView() {
       // For new incoming messages, smooth scroll to bottom
       scrollToBottom();
     }
-  }, [messages, scrollToBottom]);
+  }, [messages, scrollToBottom, isViewingHistory]);
 
   // Handle attachment selection (preview before sending)
   const handleAttachmentSelect = (file: File) => {
@@ -859,6 +986,46 @@ export default function ChatView() {
     if (imageInputRef.current) imageInputRef.current.value = '';
   };
 
+  // Drag counter to handle nested elements
+  const dragCounterRef = useRef(0);
+
+  // Drag and drop handlers
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDragging(true);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) {
+      setIsDragging(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      // Take the first file (single file at a time for consistency with existing behavior)
+      handleAttachmentSelect(files[0]);
+    }
+  }, [handleAttachmentSelect]);
+
   // Format file size
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
@@ -867,6 +1034,94 @@ export default function ChatView() {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
+
+  // Format recording duration
+  const formatRecordingDuration = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Start voice recording
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const audioFile = new File([audioBlob], `voice-message-${Date.now()}.webm`, { type: 'audio/webm' });
+        handleAttachmentSelect(audioFile);
+
+        // Stop all tracks
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingDuration(0);
+
+      // Start duration timer
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      toast.showError(t('chat.microphoneAccessDenied') || 'Microphone access denied', 'Error');
+    }
+  };
+
+  // Stop voice recording
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+
+      // Clear duration timer
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+        recordingIntervalRef.current = null;
+      }
+    }
+  };
+
+  // Cancel recording
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      // Stop without triggering onstop handler by stopping tracks first
+      const tracks = mediaRecorderRef.current.stream?.getTracks();
+      tracks?.forEach(track => track.stop());
+      mediaRecorderRef.current = null;
+      audioChunksRef.current = [];
+      setIsRecording(false);
+      setRecordingDuration(0);
+
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+        recordingIntervalRef.current = null;
+      }
+    }
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+      }
+      if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.stream?.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
 
   // Send message
   const handleSend = async () => {
@@ -1344,7 +1599,29 @@ export default function ChatView() {
         </div>
       </aside>
 
-      <section className="flex-1 flex flex-col min-h-0 h-full overflow-hidden">
+      <section
+        className="flex-1 flex flex-col min-h-0 h-full overflow-hidden relative"
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {/* Drag-and-drop overlay */}
+        {isDragging && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-blue-500/10 dark:bg-blue-500/20 backdrop-blur-sm border-2 border-dashed border-blue-500 rounded-lg m-2 pointer-events-none">
+            <div className="text-center">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-500/20 dark:bg-blue-500/30 flex items-center justify-center">
+                <Upload className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+              </div>
+              <p className="text-lg font-semibold text-blue-600 dark:text-blue-400">
+                {t('chat.dropFilesHere') || 'Drop files here to send'}
+              </p>
+              <p className="text-sm text-blue-500 dark:text-blue-300 mt-1">
+                {t('chat.dropFilesDescription') || 'Images and documents are supported'}
+              </p>
+            </div>
+          </div>
+        )}
         <div className="border-b border-gray-200 dark:border-gray-700 p-4">
           <div className="flex items-center justify-between">
             <div className="flex-1">
@@ -1403,6 +1680,28 @@ export default function ChatView() {
                   >
                     <Phone className="w-5 h-5" />
                   </button>
+                  <button
+                    onClick={() => {
+                      // Fetch pinned messages and open modal
+                      if (socket && isConnected) {
+                        const event = activeContext === 'group' ? 'chat:getPinned' : 'direct:getPinned';
+                        const payload = activeContext === 'group'
+                          ? { groupId: currentGroup?._id }
+                          : { conversationId: activeDirectConversation?._id };
+
+                        socket.emit(event, payload, (response: { success: boolean; messages?: ChatMessage[] }) => {
+                          if (response.success && response.messages) {
+                            setPinnedMessages(response.messages);
+                          }
+                        });
+                      }
+                      setShowPinnedModal(true);
+                    }}
+                    className="p-2 text-gray-600 dark:text-gray-400 hover:text-yellow-600 dark:hover:text-yellow-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                    title={t('chat.viewPinnedMessages') || 'View pinned messages'}
+                  >
+                    <Pin className="w-5 h-5" />
+                  </button>
                 </>
               )}
             </div>
@@ -1455,11 +1754,53 @@ export default function ChatView() {
                         ...(callType === 'direct' && conversationId ? { conversationId } : {})
                       });
                     }}
+                    onPinMessage={(messageId, isPinned) => {
+                      if (socket && isConnected) {
+                        const event = activeContext === 'group' ? 'chat:pin' : 'direct:pin';
+                        socket.emit(event, { messageId, isPinned }, (response: { success: boolean; message?: ChatMessage }) => {
+                          if (response.success && response.message) {
+                            // Update local messages state
+                            setMessages(prev => prev.map(m =>
+                              m._id === messageId ? { ...m, isPinned, pinnedAt: response.message?.pinnedAt, pinnedBy: response.message?.pinnedBy } : m
+                            ));
+                            // Update pinned messages list
+                            if (isPinned) {
+                              setPinnedMessages(prev => [response.message!, ...prev]);
+                            } else {
+                              setPinnedMessages(prev => prev.filter(m => m._id !== messageId));
+                            }
+                          }
+                        });
+                      }
+                    }}
                   />
                 ))
               )}
               <div ref={messagesEndRef} />
+
+              {/* Loading newer messages indicator */}
+              {loadingNewerMessages && (
+                <div className="flex items-center justify-center py-2">
+                  <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                  <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">{t('chat.loadingMore') || 'Loading...'}</span>
+                </div>
+              )}
             </div>
+
+            {/* Jump to Present floating button - shows when viewing history */}
+            {isViewingHistory && (
+              <div className="absolute bottom-36 left-1/2 transform -translate-x-1/2 z-10 animate-in fade-in slide-in-from-bottom-2">
+                <button
+                  onClick={jumpToPresent}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-full shadow-lg transition-all hover:scale-105"
+                >
+                  <span>{t('chat.viewingOlderMessages') || "You're Viewing Older Messages"}</span>
+                  <span className="bg-white/20 px-2 py-0.5 rounded-full text-xs">
+                    {t('chat.jumpToPresent') || 'Jump to Present'}
+                  </span>
+                </button>
+              </div>
+            )}
 
             {replyingTo && (
               <div className="border-t border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-800 flex items-center justify-between">
@@ -1514,100 +1855,142 @@ export default function ChatView() {
             )}
 
             <div className="border-t border-gray-200 dark:border-gray-700 p-4">
-              <div className="flex items-center gap-2">
-                <div className="flex-1 relative min-w-0">
-                  <MentionInput
-                    value={message}
-                    onChange={(value) => {
-                      setMessage(value);
-                      handleTyping();
-                    }}
-                    onSubmit={handleSend}
-                    placeholder={
-                      activeContext === 'group'
-                        ? t('chat.messageToGroup')
-                        : t('chat.messageToDirect')
-                    }
-                    mentionableUsers={activeContext === 'group' ? getMentionableUsers() : []}
-                    mentionableRoles={activeContext === 'group' ? getMentionableRoles() : undefined}
-                    disabled={uploading}
-                    className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                  />
-                  {showEmojiPicker && (
-                    <div className="absolute bottom-full mb-2 left-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-2 shadow-lg">
-                      <div className="flex gap-2 flex-wrap w-64">
-                        {commonEmojis.map((emoji) => (
-                          <button
-                            key={emoji}
-                            onClick={() => {
-                              setMessage(prev => prev + emoji);
-                              setShowEmojiPicker(false);
-                            }}
-                            className="text-2xl hover:bg-gray-100 dark:hover:bg-gray-700 rounded p-1"
-                          >
-                            {emoji}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
+              {isRecording ? (
+                /* Recording UI */
+                <div className="flex items-center gap-4 bg-red-50 dark:bg-red-900/20 rounded-lg p-4">
+                  {/* Animated recording indicator */}
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
+                    <span className="text-red-600 dark:text-red-400 font-medium">
+                      {t('chat.recording') || 'Recording'}
+                    </span>
+                  </div>
 
+                  {/* Duration timer */}
+                  <span className="text-red-600 dark:text-red-400 font-mono text-lg">
+                    {formatRecordingDuration(recordingDuration)}
+                  </span>
+
+                  <div className="flex-1" />
+
+                  {/* Cancel button */}
+                  <button
+                    onClick={cancelRecording}
+                    className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                    title={t('common.cancel') || 'Cancel'}
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+
+                  {/* Stop recording button */}
+                  <button
+                    onClick={stopRecording}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                    title={t('chat.stopRecording') || 'Stop recording'}
+                  >
+                    <Square className="w-4 h-4 fill-current" />
+                    <span>{t('chat.stop') || 'Stop'}</span>
+                  </button>
+                </div>
+              ) : (
+                /* Normal message input UI */
                 <div className="flex items-center gap-2">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleAttachmentSelect(file);
-                    }}
-                  />
-                  <input
-                    ref={imageInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleAttachmentSelect(file);
-                    }}
-                  />
-
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-                  >
-                    <Paperclip className="w-5 h-5" />
-                  </button>
-
-                  <button
-                    onClick={() => imageInputRef.current?.click()}
-                    className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-                  >
-                    <ImageIcon className="w-5 h-5" />
-                  </button>
-
-                  <button
-                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                    className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-                  >
-                    <Smile className="w-5 h-5" />
-                  </button>
-
-                  <button
-                    onClick={handleSend}
-                    disabled={(!message.trim() && !pendingAttachment) || uploading}
-                    className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {uploading ? (
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <Send className="w-5 h-5" />
+                  <div className="flex-1 relative min-w-0">
+                    <MentionInput
+                      value={message}
+                      onChange={(value) => {
+                        setMessage(value);
+                        handleTyping();
+                      }}
+                      onSubmit={handleSend}
+                      placeholder={
+                        activeContext === 'group'
+                          ? t('chat.messageToGroup')
+                          : t('chat.messageToDirect')
+                      }
+                      mentionableUsers={activeContext === 'group' ? getMentionableUsers() : []}
+                      mentionableRoles={activeContext === 'group' ? getMentionableRoles() : undefined}
+                      disabled={uploading}
+                      className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                    />
+                    {showEmojiPicker && (
+                      <div className="absolute bottom-full mb-2 left-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-2 shadow-lg">
+                        <div className="flex gap-2 flex-wrap w-64">
+                          {commonEmojis.map((emoji) => (
+                            <button
+                              key={emoji}
+                              onClick={() => {
+                                setMessage(prev => prev + emoji);
+                                setShowEmojiPicker(false);
+                              }}
+                              className="text-2xl hover:bg-gray-100 dark:hover:bg-gray-700 rounded p-1"
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     )}
-                  </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleAttachmentSelect(file);
+                      }}
+                    />
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleAttachmentSelect(file);
+                      }}
+                    />
+
+                    {/* Microphone button for voice recording */}
+                    <button
+                      onClick={startRecording}
+                      className="p-2 text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                      title={t('chat.recordVoice') || 'Record voice message'}
+                    >
+                      <Mic className="w-5 h-5" />
+                    </button>
+
+                    <button
+                      onClick={() => imageInputRef.current?.click()}
+                      className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                    >
+                      <ImageIcon className="w-5 h-5" />
+                    </button>
+
+                    <button
+                      onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                      className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                    >
+                      <Smile className="w-5 h-5" />
+                    </button>
+
+                    <button
+                      onClick={handleSend}
+                      disabled={(!message.trim() && !pendingAttachment) || uploading}
+                      className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {uploading ? (
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Send className="w-5 h-5" />
+                      )}
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </>
         ) : (
@@ -1706,6 +2089,93 @@ export default function ChatView() {
           </div>
         </div>
       )}
+
+      {/* Pinned Messages Modal */}
+      <PinnedMessagesModal
+        isOpen={showPinnedModal}
+        onClose={() => setShowPinnedModal(false)}
+        messages={pinnedMessages}
+        onUnpin={(messageId) => {
+          if (socket && isConnected) {
+            const event = activeContext === 'group' ? 'chat:pin' : 'direct:pin';
+            socket.emit(event, { messageId, isPinned: false }, (response: { success: boolean }) => {
+              if (response.success) {
+                setPinnedMessages(prev => prev.filter(m => m._id !== messageId));
+                setMessages(prev => prev.map(m =>
+                  m._id === messageId ? { ...m, isPinned: false, pinnedAt: undefined, pinnedBy: undefined } : m
+                ));
+              }
+            });
+          }
+        }}
+        onScrollToMessage={async (messageId, createdAt) => {
+          // Check if message is already loaded
+          const isMessageLoaded = messages.some(m => m._id === messageId);
+
+          if (isMessageLoaded) {
+            // Message is loaded, just scroll to it
+            const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+            if (messageElement) {
+              messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              messageElement.classList.add('bg-yellow-100', 'dark:bg-yellow-900/30');
+              setTimeout(() => {
+                messageElement.classList.remove('bg-yellow-100', 'dark:bg-yellow-900/30');
+              }, 2000);
+            }
+          } else {
+            // Message not loaded - Discord-like behavior:
+            // Replace current messages with messages around the target message
+            const beforeTime = new Date(new Date(createdAt).getTime() + 1000).toISOString();
+            try {
+              let newMessages: ChatMessage[] = [];
+              let hasMoreOlder = true;
+
+              if (activeContext === 'group' && currentGroup?._id) {
+                const response = await chatService.getMessages(currentGroup._id, {
+                  before: beforeTime,
+                  limit: 30
+                });
+                newMessages = response.messages || [];
+                hasMoreOlder = response.pagination?.hasMore ?? newMessages.length >= 30;
+              } else if (activeContext === 'direct' && activeDirectConversation?._id) {
+                const response = await chatService.getDirectMessages(activeDirectConversation._id, {
+                  before: beforeTime,
+                  limit: 30
+                });
+                newMessages = response.messages || [];
+                hasMoreOlder = response.pagination?.hasMore ?? newMessages.length >= 30;
+              }
+
+              if (newMessages.length > 0) {
+                // Set flag BEFORE updating messages to prevent auto-scroll
+                justJumpedToMessageRef.current = true;
+                
+                // REPLACE messages instead of merging (Discord-like behavior)
+                setMessages(newMessages);
+                setHasMoreMessages(hasMoreOlder);
+
+                // Enable history mode - we're viewing old messages
+                setIsViewingHistory(true);
+                setHasNewerMessages(true);
+
+                // Wait for DOM to update, then scroll to the target message
+                setTimeout(() => {
+                  const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+                  if (messageElement) {
+                    messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    messageElement.classList.add('bg-yellow-100', 'dark:bg-yellow-900/30');
+                    setTimeout(() => {
+                      messageElement.classList.remove('bg-yellow-100', 'dark:bg-yellow-900/30');
+                    }, 2000);
+                  }
+                }, 300);
+              }
+            } catch (error) {
+              console.error('Error loading message:', error);
+            }
+          }
+        }}
+      />
     </div>
   );
 }
@@ -1718,7 +2188,8 @@ function MessageItem({
   onDelete,
   onReaction,
   onEditMessage,
-  onJoinCall
+  onJoinCall,
+  onPinMessage
 }: {
   message: ChatMessage;
   currentUserId: string;
@@ -1727,6 +2198,7 @@ function MessageItem({
   onReaction: (messageId: string, emoji: string) => void;
   onEditMessage: (messageId: string, newContent: string) => void;
   onJoinCall?: (meetingId: string, callType: 'group' | 'direct', groupId?: string, conversationId?: string) => void;
+  onPinMessage: (messageId: string, isPinned: boolean) => void;
 }) {
   const { t } = useLanguage();
   const { formatTime } = useRegional();
@@ -1843,7 +2315,7 @@ function MessageItem({
   }
 
   return (
-    <div className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : ''} group`}>
+    <div data-message-id={message._id} className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : ''} group transition-colors duration-500`}>
       {/* Avatar */}
       <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm flex-shrink-0">
         {message.senderId.avatar ? (
@@ -1902,6 +2374,9 @@ function MessageItem({
                                 className="max-w-full rounded-lg max-h-64 object-cover hover:opacity-90 transition-opacity"
                               />
                             </button>
+                          ) : attachment.filename?.endsWith('.webm') || attachment.filename?.endsWith('.mp3') || attachment.filename?.endsWith('.wav') || attachment.filename?.endsWith('.ogg') || attachment.filename?.endsWith('.m4a') ? (
+                            /* Custom Voice Message Player */
+                            <VoiceMessagePlayer src={attachment.url} isOwn={isOwn} />
                           ) : (
                             <a
                               href={attachment.url}
@@ -2093,6 +2568,17 @@ function MessageItem({
                           {copied ? t('chat.copied') : t('chat.copy')}
                         </button>
                       )}
+                      {/* Pin/Unpin button */}
+                      <button
+                        onClick={() => {
+                          onPinMessage(message._id, !message.isPinned);
+                          setShowMenu(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                      >
+                        <Pin className={`w-4 h-4 ${message.isPinned ? 'text-yellow-500' : ''}`} />
+                        {message.isPinned ? (t('chat.unpin') || 'Unpin') : (t('chat.pin') || 'Pin')}
+                      </button>
                       {isOwn && (
                         <>
                           <button
