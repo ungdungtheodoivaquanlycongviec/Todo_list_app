@@ -1,4 +1,3 @@
-// Sidebar.tsx - Fixed version with no vertical overscroll
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
@@ -61,6 +60,7 @@ import {
   canManageFolders,
   canAssignFolderMembers,
   canAddMembers,
+  isPersonalWorkspaceOwner, // ✅ Đã có hàm này từ file utils bạn cập nhật trước đó
 } from '../../utils/groupRoleUtils';
 
 // Component imports
@@ -136,6 +136,7 @@ const getSidebarStyles = (isDark: boolean) => {
       paddingVertical: 2,
       borderRadius: 12,
       marginTop: 4,
+      alignSelf: 'flex-start',
     },
     userRoleText: {
       fontSize: 11,
@@ -206,7 +207,7 @@ const getSidebarStyles = (isDark: boolean) => {
     },
     scrollContainer: {
       flex: 1,
-      maxHeight: screenHeight - 300, // Approximate height calculation
+      maxHeight: screenHeight - 250, 
       overflow: 'hidden',
     },
     emptyState: {
@@ -265,6 +266,7 @@ const getSidebarStyles = (isDark: boolean) => {
 // --- MODAL COMPONENTS ---
 // ====================================================================
 
+// --- 1. Create Group Modal ---
 interface CreateGroupModalProps {
   visible: boolean;
   onClose: () => void;
@@ -311,12 +313,7 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   if (!visible) return null;
 
   return (
-    <Modal
-      animationType="fade"
-      transparent={true}
-      visible={visible}
-      onRequestClose={onClose}
-    >
+    <Modal animationType="fade" transparent={true} visible={visible} onRequestClose={onClose}>
       <View style={styles.centeredView}>
         <View style={styles.modalView}>
           <View style={styles.modalHeader}>
@@ -324,21 +321,15 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
               <FolderIcon size={24} color="#ffffff" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.modalTitle}>
-                {t('sidebar.createProject')}
-              </Text>
-              <Text style={styles.modalSubtitle}>
-                {t('sidebar.createProjectDesc')}
-              </Text>
+              <Text style={styles.modalTitle}>{t('sidebar.createProject')}</Text>
+              <Text style={styles.modalSubtitle}>{t('sidebar.createProjectDesc')}</Text>
             </View>
             <TouchableOpacity onPress={onClose}>
               <X size={24} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.inputLabel}>
-            {t('sidebar.projectName')} *
-          </Text>
+          <Text style={styles.inputLabel}>{t('sidebar.projectName')} *</Text>
           <TextInput
             placeholder={t('sidebar.projectNamePlaceholder')}
             placeholderTextColor={colors.textSecondary}
@@ -349,9 +340,7 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
             autoFocus
           />
 
-          <Text style={styles.inputLabel}>
-            {t('sidebar.projectDescription')}
-          </Text>
+          <Text style={styles.inputLabel}>{t('sidebar.projectDescription')}</Text>
           <TextInput
             placeholder={t('sidebar.projectDescPlaceholder')}
             placeholderTextColor={colors.textSecondary}
@@ -372,31 +361,11 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
           )}
 
           <View style={styles.buttonContainer}>
-            <TouchableOpacity
-              onPress={onClose}
-              disabled={loading}
-              style={[styles.button, styles.cancelButton]}
-            >
-              <Text style={styles.cancelButtonText}>
-                {t('common.cancel')}
-              </Text>
+            <TouchableOpacity onPress={onClose} disabled={loading} style={[styles.button, styles.cancelButton]}>
+              <Text style={styles.cancelButtonText}>{t('common.cancel')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleSubmit}
-              disabled={!name.trim() || loading}
-              style={[
-                styles.button,
-                styles.submitButton,
-                (!name.trim() || loading) && styles.submitButtonDisabled,
-              ]}
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color="#ffffff" />
-              ) : (
-                <Text style={styles.submitButtonText}>
-                  {t('sidebar.createProjectBtn')}
-                </Text>
-              )}
+            <TouchableOpacity onPress={handleSubmit} disabled={!name.trim() || loading} style={[styles.button, styles.submitButton, (!name.trim() || loading) && styles.submitButtonDisabled]}>
+              {loading ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.submitButtonText}>{t('sidebar.createProjectBtn')}</Text>}
             </TouchableOpacity>
           </View>
         </View>
@@ -405,6 +374,7 @@ const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   );
 };
 
+// --- 2. Invite User Modal ---
 interface InviteUserModalProps {
   visible: boolean;
   groupName: string;
@@ -432,13 +402,11 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({
       setError('Email address is required');
       return;
     }
-
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email.trim())) {
       setError('Please enter a valid email address');
       return;
     }
-
     setLoading(true);
     setError('');
     try {
@@ -454,12 +422,7 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({
   if (!visible) return null;
 
   return (
-    <Modal
-      animationType="fade"
-      transparent={true}
-      visible={visible}
-      onRequestClose={onClose}
-    >
+    <Modal animationType="fade" transparent={true} visible={visible} onRequestClose={onClose}>
       <View style={styles.centeredView}>
         <View style={styles.modalView}>
           <View style={styles.modalHeader}>
@@ -467,12 +430,8 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({
               <Users size={24} color="#ffffff" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.modalTitle}>
-                {t('sidebar.inviteTeamMember')}
-              </Text>
-              <Text style={styles.modalSubtitle}>
-                {t('sidebar.inviteDesc')}
-              </Text>
+              <Text style={styles.modalTitle}>{t('sidebar.inviteTeamMember')}</Text>
+              <Text style={styles.modalSubtitle}>{t('sidebar.inviteDesc')}</Text>
             </View>
             <TouchableOpacity onPress={onClose}>
               <X size={24} color={colors.textSecondary} />
@@ -480,15 +439,10 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({
           </View>
 
           <View style={styles.groupInfo}>
-            <Text style={styles.groupInfoText}>
-              {t('sidebar.invitingTo')}:
-              <Text style={styles.groupName}> {groupName}</Text>
-            </Text>
+            <Text style={styles.groupInfoText}>{t('sidebar.invitingTo')}: <Text style={styles.groupName}> {groupName}</Text></Text>
           </View>
 
-          <Text style={styles.inputLabel}>
-            {t('sidebar.emailAddress')} *
-          </Text>
+          <Text style={styles.inputLabel}>{t('sidebar.emailAddress')} *</Text>
           <TextInput
             placeholder={t('sidebar.emailPlaceholder')}
             placeholderTextColor={colors.textSecondary}
@@ -510,31 +464,11 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({
           ) : null}
 
           <View style={styles.buttonContainer}>
-            <TouchableOpacity
-              onPress={onClose}
-              disabled={loading}
-              style={[styles.button, styles.cancelButton]}
-            >
-              <Text style={styles.cancelButtonText}>
-                {t('common.cancel')}
-              </Text>
+            <TouchableOpacity onPress={onClose} disabled={loading} style={[styles.button, styles.cancelButton]}>
+              <Text style={styles.cancelButtonText}>{t('common.cancel')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleSubmit}
-              disabled={!email.trim() || loading}
-              style={[
-                styles.button,
-                styles.submitButton,
-                (!email.trim() || loading) && styles.submitButtonDisabled,
-              ]}
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color="#ffffff" />
-              ) : (
-                <Text style={styles.submitButtonText}>
-                  {t('sidebar.sendInvitation')}
-                </Text>
-              )}
+            <TouchableOpacity onPress={handleSubmit} disabled={!email.trim() || loading} style={[styles.button, styles.submitButton, (!email.trim() || loading) && styles.submitButtonDisabled]}>
+              {loading ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.submitButtonText}>{t('sidebar.sendInvitation')}</Text>}
             </TouchableOpacity>
           </View>
         </View>
@@ -543,10 +477,79 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({
   );
 };
 
-// ====================================================================
-// --- STYLES FOR MODALS ---
-// ====================================================================
+// --- 3. Rename Group Modal (NEW) ---
+interface RenameGroupModalProps {
+  visible: boolean;
+  initialName: string;
+  onClose: () => void;
+  onSubmit: (newName: string) => Promise<void>;
+  theme: 'light' | 'dark';
+}
 
+const RenameGroupModal: React.FC<RenameGroupModalProps> = ({
+  visible,
+  initialName,
+  onClose,
+  onSubmit,
+  theme,
+}) => {
+  const { t } = useLanguage();
+  const [name, setName] = useState(initialName);
+  const [loading, setLoading] = useState(false);
+  const isDark = theme === 'dark';
+  const colors = getColors(isDark);
+
+  useEffect(() => {
+    if (visible) setName(initialName);
+  }, [visible, initialName]);
+
+  const handleSubmit = async () => {
+    if (!name.trim() || name.trim() === initialName) {
+      onClose();
+      return;
+    }
+    setLoading(true);
+    try {
+      await onSubmit(name.trim());
+      onClose();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!visible) return null;
+
+  return (
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+      <View style={styles.centeredView}>
+        <View style={styles.modalView}>
+          <Text style={styles.modalTitle}>Rename Project</Text>
+          <TextInput
+            style={styles.input}
+            value={name}
+            onChangeText={setName}
+            placeholder="Enter new name"
+            placeholderTextColor={colors.textSecondary}
+            autoFocus
+            editable={!loading}
+          />
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity style={[styles.button, styles.cancelButton]} onPress={onClose} disabled={loading}>
+              <Text style={styles.cancelButtonText}>{t('common.cancel')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.button, styles.submitButton]} onPress={handleSubmit} disabled={loading || !name.trim()}>
+              {loading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.submitButtonText}>Save</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// --- Styles for Modals ---
 const styles = StyleSheet.create({
   centeredView: {
     flex: 1,
@@ -739,23 +742,14 @@ const PermissionDialogComponent = ({
   if (!visible) return null;
 
   return (
-    <Modal
-      transparent={true}
-      animationType="fade"
-      visible={visible}
-      onRequestClose={onClose}
-    >
+    <Modal transparent={true} animationType="fade" visible={visible} onRequestClose={onClose}>
       <View style={permissionStyles.overlay}>
         <View style={permissionStyles.dialog}>
           <AlertCircle size={32} color="#EF4444" />
-          <Text style={permissionStyles.title}>
-            Permission Denied
-          </Text>
+          <Text style={permissionStyles.title}>Permission Denied</Text>
           <Text style={permissionStyles.message}>{message}</Text>
           <TouchableOpacity style={permissionStyles.button} onPress={onClose}>
-            <Text style={permissionStyles.buttonText}>
-              OK
-            </Text>
+            <Text style={permissionStyles.buttonText}>OK</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -865,16 +859,8 @@ const FolderItem: React.FC<FolderItemProps> = ({
             autoFocus
             editable={!renamingLoading}
           />
-          <TouchableOpacity
-            onPress={onRenameSubmit}
-            disabled={renamingLoading}
-            style={folderItemStyles.actionButton}
-          >
-            {renamingLoading ? (
-              <Loader2 size={16} color={colors.green} />
-            ) : (
-              <Check size={16} color={colors.green} />
-            )}
+          <TouchableOpacity onPress={onRenameSubmit} disabled={renamingLoading} style={folderItemStyles.actionButton}>
+            {renamingLoading ? <Loader2 size={16} color={colors.green} /> : <Check size={16} color={colors.green} />}
           </TouchableOpacity>
           <TouchableOpacity onPress={onRenameCancel} style={folderItemStyles.actionButton}>
             <X size={16} color={colors.textSecondary} />
@@ -885,22 +871,12 @@ const FolderItem: React.FC<FolderItemProps> = ({
   }
 
   return (
-    <TouchableOpacity
-      style={folderItemStyles.container}
-      onPress={onPress}
-      onLongPress={onLongPress}
-      delayLongPress={500}
-    >
+    <TouchableOpacity style={folderItemStyles.container} onPress={onPress} onLongPress={onLongPress} delayLongPress={500}>
       <View style={folderItemStyles.content}>
         <View style={folderItemStyles.indicator} />
         <View style={folderItemStyles.textContainer}>
-          <Text style={folderItemStyles.name} numberOfLines={1}>
-            {folder.name}
-            {folder.isDefault && ' • Default'}
-          </Text>
-          <Text style={folderItemStyles.meta}>
-            {folder.taskCount ?? 0} tasks • {folder.noteCount ?? 0} notes
-          </Text>
+          <Text style={folderItemStyles.name} numberOfLines={1}>{folder.name}{folder.isDefault && ' • Default'}</Text>
+          <Text style={folderItemStyles.meta}>{folder.taskCount ?? 0} tasks • {folder.noteCount ?? 0} notes</Text>
         </View>
       </View>
     </TouchableOpacity>
@@ -1006,22 +982,14 @@ const GroupCard: React.FC<GroupCardProps> = ({
     <View style={groupCardStyles.container}>
       <TouchableOpacity style={groupCardStyles.header} onLongPress={onLongPress} delayLongPress={500}>
         <TouchableOpacity onPress={onToggle} style={groupCardStyles.toggleButton}>
-          {isExpanded ? (
-            <ChevronDown size={18} color={colors.textSecondary} />
-          ) : (
-            <ChevronRight size={18} color={colors.textSecondary} />
-          )}
+          {isExpanded ? <ChevronDown size={18} color={colors.textSecondary} /> : <ChevronRight size={18} color={colors.textSecondary} />}
         </TouchableOpacity>
 
         <TouchableOpacity style={groupCardStyles.content} onPress={onClick}>
           <View style={groupCardStyles.indicator} />
           <View style={groupCardStyles.textContainer}>
-            <Text style={groupCardStyles.name} numberOfLines={1}>
-              {group.name}
-            </Text>
-            <Text style={groupCardStyles.meta}>
-              {group.members?.length || 0} members
-            </Text>
+            <Text style={groupCardStyles.name} numberOfLines={1}>{group.name}</Text>
+            <Text style={groupCardStyles.meta}>{group.members?.length || 0} members</Text>
           </View>
         </TouchableOpacity>
 
@@ -1107,6 +1075,12 @@ export default function Sidebar({ theme = 'light', onClose }: { theme?: 'light' 
     error: null
   });
 
+  // ✅ New State for Rename Group Modal
+  const [renameGroupState, setRenameGroupState] = useState<{ visible: boolean; group: Group | null }>({
+    visible: false,
+    group: null
+  });
+
   const [pendingFolderSelection, setPendingFolderSelection] = useState<{
     groupId: string;
     folderId: string;
@@ -1151,38 +1125,25 @@ export default function Sidebar({ theme = 'light', onClose }: { theme?: 'light' 
     message: string;
   } | null>(null);
 
-  // State để kiểm soát scroll
   const [scrollEnabled, setScrollEnabled] = useState(true);
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // PanResponder để xử lý vuốt ngang đóng sidebar
   const [panResponderEnabled, setPanResponderEnabled] = useState(true);
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => panResponderEnabled,
       onMoveShouldSetPanResponder: (_, gestureState) => {
-        // Chỉ bắt sự kiện khi vuốt ngang nhiều hơn dọc (tỉ lệ 2:1)
         const isHorizontalSwipe = Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2;
         return isHorizontalSwipe && panResponderEnabled;
       },
-      onPanResponderGrant: () => {
-        // Tạm thời disable scroll dọc khi bắt đầu vuốt ngang
-        setScrollEnabled(false);
-      },
-      onPanResponderMove: (_, gestureState) => {
-        // Có thể thêm hiệu ứng kéo sidebar nếu cần
-      },
+      onPanResponderGrant: () => setScrollEnabled(false),
       onPanResponderRelease: (_, gestureState) => {
-        // Kích hoạt lại scroll dọc
         setScrollEnabled(true);
-        
-        // Vuốt ngang phải đủ mạnh -> đóng sidebar
         if (Math.abs(gestureState.dx) > 50 && Math.abs(gestureState.vx) > 0.3) {
           onClose?.();
         }
       },
       onPanResponderTerminate: () => {
-        // Kích hoạt lại scroll dọc khi kết thúc
         setScrollEnabled(true);
         setPanResponderEnabled(true);
       },
@@ -1462,7 +1423,10 @@ export default function Sidebar({ theme = 'light', onClose }: { theme?: 'light' 
     if (group && user) {
       const groupUserRole = getMemberRole(group, user._id);
       const effectiveRole = (businessRole || groupUserRole) as GroupRoleKey | null;
-      const canManageThisGroupFolders = canManageFolders(effectiveRole, isLeader);
+      // ✅ Use Personal Workspace logic
+      const isPersonalOwner = isPersonalWorkspaceOwner(group, user._id);
+      const canManageThisGroupFolders = canManageFolders(effectiveRole, isLeader, isPersonalOwner);
+      
       if (!canManageThisGroupFolders) {
         setPermissionDialog({
           message: 'You do not have permission to create folders in this group. Only Product Owners or Leaders are allowed.'
@@ -1551,23 +1515,41 @@ export default function Sidebar({ theme = 'light', onClose }: { theme?: 'light' 
   };
 
   const handleFolderLongPress = (folder: Folder, groupId: string) => {
-    if (!canEditFolders && !canDeleteFolders && !canAssignFolders) {
-      return;
+    // Check permissions before showing actions
+    const group =
+      myGroups.find(g => g._id === groupId) ||
+      sharedGroups.find(g => g._id === groupId) ||
+      (personalWorkspace && personalWorkspace._id === groupId ? personalWorkspace : null);
+
+    let canEdit = canEditFolders;
+    let canDel = canDeleteFolders;
+    let canAssign = canAssignFolders;
+
+    if (group && user) {
+        const groupUserRole = getMemberRole(group, user._id);
+        const effectiveRole = (businessRole || groupUserRole) as GroupRoleKey | null;
+        const isPersonalOwner = isPersonalWorkspaceOwner(group, user._id);
+        
+        canEdit = canManageFolders(effectiveRole, isLeader, isPersonalOwner);
+        canDel = canManageFolders(effectiveRole, isLeader, isPersonalOwner);
+        canAssign = canAssignFolderMembers(effectiveRole, isLeader, isPersonalOwner);
     }
+
+    if (!canEdit && !canDel && !canAssign) return;
 
     Alert.alert(
       'Folder Actions',
       'Choose an action',
       [
-        canEditFolders && {
+        canEdit && {
           text: 'Rename',
           onPress: () => startRenamingFolder(groupId, folder),
         },
-        canAssignFolders && {
+        canAssign && {
           text: 'Assign Members',
           onPress: () => handleContextMenuAssign(folder, groupId),
         },
-        canDeleteFolders && {
+        canDel && {
           text: 'Delete',
           style: 'destructive' as const,
           onPress: () => handleDeleteFolder(groupId, folder._id),
@@ -1663,23 +1645,9 @@ export default function Sidebar({ theme = 'light', onClose }: { theme?: 'light' 
   };
 
   const handleDeleteFolder = async (groupId: string, folderId: string) => {
-    const group =
-      myGroups.find(g => g._id === groupId) ||
-      sharedGroups.find(g => g._id === groupId) ||
-      (personalWorkspace && personalWorkspace._id === groupId ? personalWorkspace : null);
-
-    if (group && user) {
-      const groupUserRole = getMemberRole(group, user._id);
-      const effectiveRole = (businessRole || groupUserRole) as GroupRoleKey | null;
-      const canManageThisGroupFolders = canManageFolders(effectiveRole, isLeader);
-      if (!canManageThisGroupFolders) {
-        setPermissionDialog({
-          message: 'You do not have permission to delete folders in this group. Only Product Owners or Leaders are allowed.'
-        });
-        return;
-      }
-    }
-
+    // Permission check inside handleFolderLongPress handles the UI logic,
+    // but good to double check here or in service.
+    
     const confirmed = await confirmDialog.confirm({
       title: 'Delete Folder',
       message: 'Are you sure you want to delete this folder? All tasks and notes in this folder will also be deleted.',
@@ -1717,23 +1685,6 @@ export default function Sidebar({ theme = 'light', onClose }: { theme?: 'light' 
   };
 
   const handleContextMenuAssign = async (folder: Folder, groupId: string) => {
-    const group =
-      myGroups.find(g => g._id === groupId) ||
-      sharedGroups.find(g => g._id === groupId) ||
-      (personalWorkspace && personalWorkspace._id === groupId ? personalWorkspace : null);
-
-    if (group && user) {
-      const groupUserRole = getMemberRole(group, user._id);
-      const effectiveRole = (businessRole || groupUserRole) as GroupRoleKey | null;
-      const canAssignThisGroupFolders = canAssignFolderMembers(effectiveRole, isLeader);
-      if (!canAssignThisGroupFolders) {
-        setPermissionDialog({
-          message: 'You do not have permission to assign members to this folder. Only Product Owners or Leaders are allowed.'
-        });
-        return;
-      }
-    }
-
     if (!groupMembersMap[groupId]) {
       try {
         const group = await groupService.getGroupById(groupId);
@@ -1796,33 +1747,23 @@ export default function Sidebar({ theme = 'light', onClose }: { theme?: 'light' 
     }
   };
 
-  const handleGroupRename = async (group: Group) => {
-    Alert.prompt(
-      'Rename Group',
-      'Enter new name for the group',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Save',
-          onPress: async (newName) => {
-            if (!newName || newName.trim() === '' || newName === group.name) return;
-            try {
-              await groupService.updateGroup(group._id, { name: newName.trim() });
-              await loadGroups();
-              toast.showSuccess('Group renamed successfully', 'Success');
-            } catch (error) {
-              console.error('Failed to rename group:', error);
-              toast.showError('Failed to rename group', 'Error');
-            }
-          },
-        },
-      ],
-      'plain-text',
-      group.name
-    );
+  // ✅ FIX: Thay thế logic Alert.prompt bằng Modal
+  const handleGroupRename = (group: Group) => {
+    setRenameGroupState({ visible: true, group });
+  };
+
+  const handleRenameGroupSubmit = async (newName: string) => {
+    const group = renameGroupState.group;
+    if (!group) return;
+
+    try {
+      await groupService.updateGroup(group._id, { name: newName });
+      await loadGroups();
+      toast.showSuccess('Group renamed successfully', 'Success');
+    } catch (error) {
+      console.error('Failed to rename group:', error);
+      toast.showError('Failed to rename group', 'Error');
+    }
   };
 
   const handleGroupDelete = async (group: Group) => {
@@ -2090,7 +2031,9 @@ export default function Sidebar({ theme = 'light', onClose }: { theme?: 'light' 
           {filteredPersonal.map((group) => {
             const groupUserRole = user ? getMemberRole(group, user._id) : null;
             const effectiveRole = (businessRole || groupUserRole) as GroupRoleKey | null;
-            const canManageFoldersForPersonal = canManageFolders(effectiveRole, isLeader);
+            // ✅ Fix Personal Owner logic
+            const isPersonalOwner = isPersonalWorkspaceOwner(group, user?._id);
+            const canManageFoldersForPersonal = canManageFolders(effectiveRole, isLeader, isPersonalOwner);
             return renderGroupCard(group, {
               canManageFolders: canManageFoldersForPersonal,
               canManageGroup: false,
@@ -2305,7 +2248,7 @@ export default function Sidebar({ theme = 'light', onClose }: { theme?: 'light' 
         </View>
       </View>
 
-      {/* FIXED: Scrollable Content với container giới hạn */}
+      {/* Scrollable Content with PanResponder */}
       <View 
         style={sidebarStyles.scrollContainer}
         {...panResponder.panHandlers}
@@ -2315,20 +2258,14 @@ export default function Sidebar({ theme = 'light', onClose }: { theme?: 'light' 
           style={sidebarStyles.scrollContent}
           showsVerticalScrollIndicator={true}
           scrollEnabled={scrollEnabled}
-          // Ngăn overscroll vertical
           overScrollMode="never"
-          // Ngăn nested scrolling issues
           nestedScrollEnabled={true}
-          // Scroll boundaries
           maximumZoomScale={1}
           minimumZoomScale={1}
-          // Event handlers để kiểm soát pan responder
           onScrollBeginDrag={() => {
-            // Khi bắt đầu scroll dọc, disable pan responder
             setPanResponderEnabled(false);
           }}
           onScrollEndDrag={() => {
-            // Khi kết thúc scroll, kích hoạt lại pan responder sau delay
             setTimeout(() => {
               setPanResponderEnabled(true);
             }, 100);
@@ -2337,13 +2274,11 @@ export default function Sidebar({ theme = 'light', onClose }: { theme?: 'light' 
             setPanResponderEnabled(true);
           }}
           scrollEventThrottle={16}
-          // Kiểm tra scroll boundaries
           onScroll={(event) => {
             const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
             const isAtTop = contentOffset.y <= 10;
             const isAtBottom = contentOffset.y >= contentSize.height - layoutMeasurement.height - 10;
             
-            // Nếu ở biên trên hoặc dưới, có thể kích hoạt pan responder
             if (isAtTop || isAtBottom) {
               setPanResponderEnabled(true);
             }
@@ -2369,6 +2304,15 @@ export default function Sidebar({ theme = 'light', onClose }: { theme?: 'light' 
           setSelectedGroup(null);
         }}
         onSubmit={handleInviteSubmit}
+        theme={theme}
+      />
+
+      {/* ✅ FIX: Rename Group Modal (Thay cho Alert.prompt) */}
+      <RenameGroupModal
+        visible={renameGroupState.visible}
+        initialName={renameGroupState.group?.name || ''}
+        onClose={() => setRenameGroupState({ visible: false, group: null })}
+        onSubmit={handleRenameGroupSubmit}
         theme={theme}
       />
 

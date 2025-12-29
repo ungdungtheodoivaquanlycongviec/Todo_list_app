@@ -8,9 +8,12 @@ import {
   X, Calendar, Flag, Clock, User, 
   Trash2, Send, Paperclip, Check, PlayCircle, 
   Plus, RefreshCw, Timer, StopCircle, 
-  Briefcase, File, ChevronDown, Download, Image as ImageIcon, AlignLeft
+  Briefcase, File, ChevronDown, Download, Image as ImageIcon, AlignLeft,
+  Users
 } from 'lucide-react-native';
 import * as ImagePicker from 'react-native-image-picker'; 
+import DocumentPicker from 'react-native-document-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage'; 
 
 import { taskService, Task } from '../../services/task.service';
 import { useAuth } from '../../context/AuthContext';
@@ -18,6 +21,15 @@ import { useTheme } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { useRegional } from '../../context/RegionalContext';
 import { GroupMember } from '../../types/group.types';
+import { API_URL, BASE_URL } from '../../config/api.config';
+
+// --- Helper fix URL ảnh ---
+const getValidUrl = (url: string | undefined) => {
+    if (!url) return null;
+    if (url.startsWith('http')) return url;
+    const cleanPath = url.replace(/\\/g, '/');
+    return `${BASE_URL}/${cleanPath.replace(/^\//, '')}`;
+};
 
 // --- CONSTANTS ---
 const STATUS_OPTIONS = [
@@ -25,7 +37,7 @@ const STATUS_OPTIONS = [
   { value: 'in_progress', label: 'status.inProgress', color: '#3B82F6' },
   { value: 'completed', label: 'status.completed', color: '#10B981' },
   { value: 'incomplete', label: 'status.incomplete', color: '#EF4444' },
-  { value: 'archived', label: 'status.archived', color: '#6B7280' } // Fallback key
+  { value: 'archived', label: 'status.archived', color: '#6B7280' }
 ];
 
 const PRIORITY_OPTIONS = [
@@ -43,7 +55,6 @@ const CATEGORY_OPTIONS = [
   { value: 'Other', label: 'category.other' }
 ];
 
-// ✅ FIX: Dùng key taskDetail.* có trong file dịch
 const SCHEDULE_STATUS_OPTIONS = [
     { value: 'scheduled', label: 'taskDetail.scheduled', color: '#3B82F6' },
     { value: 'in-progress', label: 'taskDetail.inProgress', color: '#EAB308' },
@@ -63,7 +74,7 @@ interface TaskDetailModalProps {
 export default function TaskDetailModal({ 
   visible, taskId, onClose, onTaskUpdate, onTaskDelete, groupMembers = []
 }: TaskDetailModalProps) {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, currentGroup } = useAuth();
   const { isDark } = useTheme();
   const { t } = useLanguage();
   const { formatDate, convertFromUserTimezone } = useRegional();
@@ -108,6 +119,46 @@ export default function TaskDetailModal({
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [sendingComment, setSendingComment] = useState(false);
 
+  // Computed Members List
+  const membersList = useMemo(() => {
+    if (groupMembers && groupMembers.length > 0) return groupMembers;
+    if (currentGroup && currentGroup.members) return currentGroup.members;
+    return [];
+  }, [groupMembers, currentGroup]);
+
+  // --- HELPER: Safe Date ---
+  const safeDate = (dateString: string | undefined) => {
+    if (!dateString) return '---';
+    try {
+        const d = new Date(dateString);
+        if (isNaN(d.getTime())) return 'Invalid Date';
+        return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+    } catch { return '---'; }
+  };
+
+  const getStatusColor = (val: string) => STATUS_OPTIONS.find(o => o.value === val)?.color || '#9CA3AF';
+  const getStatusLabel = (val: string) => {
+      const opt = STATUS_OPTIONS.find(o => o.value === val);
+      return opt ? (t(opt.label as any) || opt.label) : val;
+  };
+  const getPriorityColor = (val: string) => PRIORITY_OPTIONS.find(o => o.value === val)?.color || '#10B981';
+  const getScheduleStatusLabel = (val: string) => {
+      const opt = SCHEDULE_STATUS_OPTIONS.find(o => o.value === val);
+      return opt ? (t(opt.label as any) || opt.label) : val;
+  };
+
+  const getTotalLoggedTime = () => {
+    if (!task || !(task as any).timeEntries) return '0h 0m';
+    const entries = (task as any).timeEntries;
+    let totalMinutes = 0;
+    entries.forEach((e: any) => {
+      totalMinutes += (e.hours || 0) * 60 + (e.minutes || 0);
+    });
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return `${h}h ${m}m`;
+  };
+
   // --- LOAD DATA ---
   useEffect(() => {
     if (visible && taskId) loadTaskDetails();
@@ -135,40 +186,25 @@ export default function TaskDetailModal({
     onTaskUpdate(updatedTask);
   };
 
-  // --- HELPERS UI ---
-  const getStatusColor = (val: string) => STATUS_OPTIONS.find(o => o.value === val)?.color || '#9CA3AF';
-  const getStatusLabel = (val: string) => {
-      const opt = STATUS_OPTIONS.find(o => o.value === val);
-      return opt ? (t(opt.label as any) || opt.label) : val;
-  };
-  const getPriorityColor = (val: string) => PRIORITY_OPTIONS.find(o => o.value === val)?.color || '#10B981';
-  
-  const getScheduleStatusLabel = (val: string) => {
-      const opt = SCHEDULE_STATUS_OPTIONS.find(o => o.value === val);
-      return opt ? (t(opt.label as any) || opt.label) : val;
-  };
-
-  const getTotalLoggedTime = () => {
-    if (!task || !(task as any).timeEntries) return '0h 0m';
-    const entries = (task as any).timeEntries;
-    let totalMinutes = 0;
-    entries.forEach((e: any) => {
-      totalMinutes += (e.hours || 0) * 60 + (e.minutes || 0);
-    });
-    const h = Math.floor(totalMinutes / 60);
-    const m = totalMinutes % 60;
-    return `${h}h ${m}m`;
-  };
-
-  // --- ACTIONS: UPDATE PROPERTIES ---
+  // --- ACTIONS ---
   const handleUpdateField = async (field: string, value: any) => {
     if (!task) return;
     try {
       let updateValue = value;
       if (field === 'dueDate' && value) {
-         const d = new Date(value); 
+         let d;
+         if (value.includes('/')) {
+             const [day, month, year] = value.split('/');
+             d = new Date(`${year}-${month}-${day}`);
+         } else {
+             d = new Date(value);
+         }
+         if (isNaN(d.getTime())) {
+             Alert.alert("Lỗi", "Định dạng ngày sai (DD/MM/YYYY)");
+             return;
+         }
          d.setHours(23,59,59,999);
-         updateValue = convertFromUserTimezone(d).toISOString();
+         updateValue = d.toISOString();
       }
       const updatedTask = await taskService.updateTask(taskId, { [field]: updateValue });
       syncTask(updatedTask);
@@ -183,7 +219,7 @@ export default function TaskDetailModal({
     if (!task) return;
     try {
       const isAssigned = task.assignedTo?.some((a:any) => {
-         const aId = typeof a.userId === 'object' ? a.userId._id : a.userId;
+         const aId = (a.userId && typeof a.userId === 'object') ? a.userId._id : a.userId;
          return aId === userId;
       });
       if (isAssigned) await taskService.unassignUserFromTask(taskId, userId);
@@ -194,7 +230,137 @@ export default function TaskDetailModal({
     } catch (e:any) { Alert.alert('Error', e.message); }
   };
 
-  // --- FORM SUBMITS ---
+  const handleDeleteAttachment = async (attachmentId: string) => {
+      if (!task) return;
+      Alert.alert(t('common.delete' as any), "Bạn có chắc muốn xóa tệp này?", [
+          {text: t('common.cancel' as any), style: 'cancel'},
+          {text: t('common.delete' as any), style: 'destructive', onPress: async () => {
+              try {
+                  // Gọi API xóa attachment (Cần implement API này ở service nếu chưa có)
+                  // Đây là giả lập cập nhật local để UI phản hồi
+                  const newAttachments = task.attachments?.filter((a: any) => a._id !== attachmentId);
+                  // Nếu backend hỗ trợ update attachments qua put task:
+                  // const updatedTask = await taskService.updateTask(taskId, { attachments: newAttachments });
+                  // Nếu chưa có, tạm thời ẩn khỏi UI hoặc gọi API delete specific
+                  // await taskService.deleteAttachment(taskId, attachmentId); 
+                  
+                  // Tạm thời reload task để lấy dữ liệu mới nhất từ server
+                  const updatedTask = await taskService.getTaskById(taskId);
+                  syncTask(updatedTask);
+              } catch (e: any) {
+                  Alert.alert('Error', e.message);
+              }
+          }}
+      ]);
+  };
+
+  // --- COMMENTS & FILES ---
+  const handlePickImageForComment = () => {
+      const options: ImagePicker.ImageLibraryOptions = { 
+          mediaType: 'photo', 
+          includeBase64: false,
+          quality: 0.8
+      };
+      ImagePicker.launchImageLibrary(options, (response) => {
+          if (!response.didCancel && !response.errorCode && response.assets) {
+              setCommentAttachment(response.assets[0]);
+          }
+      });
+  };
+
+  const handleSendComment = async () => {
+    if (!newComment.trim() && !commentAttachment) return;
+    try {
+      setSendingComment(true);
+      if (commentAttachment) {
+          const fileToUpload = {
+              uri: Platform.OS === 'android' ? commentAttachment.uri : commentAttachment.uri?.replace('file://', ''),
+              type: commentAttachment.type || 'image/jpeg',
+              name: commentAttachment.fileName || `comment_img_${Date.now()}.jpg`
+          };
+          await taskService.addCommentWithFile(taskId, newComment.trim(), fileToUpload);
+      } else {
+          await taskService.addComment(taskId, newComment.trim());
+      }
+      const commentsData = await taskService.getComments(taskId, { page: 1, limit: 20 });
+      setComments(commentsData.comments.reverse());
+      setNewComment('');
+      setCommentAttachment(null);
+    } catch (error) { 
+        Alert.alert('Error', 'Failed to send comment'); 
+    } finally { 
+        setSendingComment(false); 
+    }
+  };
+
+  const handleUploadFile = async () => {
+      try {
+          const res = await DocumentPicker.pickSingle({
+            type: [DocumentPicker.types.allFiles],
+          });
+
+          const formData = new FormData();
+          const filePayload = {
+            uri: res.uri,
+            type: res.type,
+            name: res.name,
+          };
+
+          formData.append('files', filePayload as any); 
+
+          const token = await AsyncStorage.getItem('accessToken');
+          if (!token) {
+              Alert.alert("Lỗi", "Bạn chưa đăng nhập");
+              return;
+          }
+
+          const response = await fetch(`${API_URL}/tasks/${taskId}/attachments`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'multipart/form-data',
+                'Authorization': `Bearer ${token}`
+            },
+            body: formData
+          });
+
+          const responseText = await response.text();
+          try {
+             const result = JSON.parse(responseText);
+             if (!response.ok) throw new Error(result.message || 'Upload failed');
+             syncTask(result.data);
+             Alert.alert("Thành công", "Đã tải tệp lên");
+          } catch (jsonError) {
+             throw new Error("Server Error: " + responseText);
+          }
+
+      } catch (err: any) {
+          if (!DocumentPicker.isCancel(err)) {
+            console.error("Upload Error:", err);
+            Alert.alert('Upload Failed', err.message || 'Network request failed');
+          }
+      }
+  };
+
+  const handleDownloadFile = (url: string) => {
+      if (!url) return;
+      const validUrl = getValidUrl(url);
+      if (validUrl) Linking.openURL(validUrl).catch(err => Alert.alert('Error', 'Cannot open file'));
+  };
+
+  const toggleTimer = async () => {
+      try {
+          let updatedTask;
+          if (isTimerRunning) {
+              updatedTask = await taskService.stopTimer(taskId);
+              setIsTimerRunning(false); 
+          } else {
+              updatedTask = await taskService.startTimer(taskId);
+              setIsTimerRunning(true);
+          }
+          syncTask(updatedTask);
+      } catch (e:any) { Alert.alert('Timer Error', e.message); }
+  };
+
   const submitTimeLog = async () => {
     if (!task || !currentUser) return;
     try {
@@ -207,9 +373,7 @@ export default function TaskDetailModal({
             user: currentUser._id
         };
         const currentLog = (task as any).timeEntries || [];
-        const updatedTask = await taskService.updateTask(taskId, { 
-            timeEntries: [...currentLog, payload]
-        });
+        const updatedTask = await taskService.updateTask(taskId, { timeEntries: [...currentLog, payload] });
         syncTask(updatedTask);
         setShowTimeForm(false);
         setNewTime({date: new Date().toISOString().split('T')[0], hours:'', minutes:'', description:''});
@@ -256,10 +420,7 @@ export default function TaskDetailModal({
         const updatedTask = await taskService.updateTask(taskId, { scheduledWork: [...currentWork, payload] });
         syncTask(updatedTask);
         setShowScheduleForm(false);
-        setNewSchedule({ 
-            date: new Date().toISOString().split('T')[0], 
-            hours: '0', minutes: '0', status: 'scheduled', desc: '' 
-        });
+        setNewSchedule({ date: new Date().toISOString().split('T')[0], hours: '0', minutes: '0', status: 'scheduled', desc: '' });
     } catch (e:any) { Alert.alert('Error', e.message); }
   };
 
@@ -274,64 +435,6 @@ export default function TaskDetailModal({
               syncTask(updatedTask);
           }}
       ]);
-  };
-
-  // --- COMMENTS & FILES ---
-  const handlePickImageForComment = () => {
-      const options: ImagePicker.ImageLibraryOptions = { mediaType: 'photo', includeBase64: false };
-      ImagePicker.launchImageLibrary(options, (response) => {
-          if (!response.didCancel && !response.errorCode && response.assets) {
-              setCommentAttachment(response.assets[0]);
-          }
-      });
-  };
-
-  const handleSendComment = async () => {
-    if (!newComment.trim() && !commentAttachment) return;
-    try {
-      setSendingComment(true);
-      if (commentAttachment) {
-          await taskService.addCommentWithFile(taskId, newComment.trim(), commentAttachment);
-      } else {
-          await taskService.addComment(taskId, newComment.trim());
-      }
-      const commentsData = await taskService.getComments(taskId, { page: 1, limit: 20 });
-      setComments(commentsData.comments.reverse());
-      setNewComment('');
-      setCommentAttachment(null);
-    } catch (error) { Alert.alert('Error', 'Failed to send comment'); }
-    finally { setSendingComment(false); }
-  };
-
-  const handleUploadFile = async () => {
-      const options: ImagePicker.ImageLibraryOptions = { mediaType: 'mixed', includeBase64: false };
-      ImagePicker.launchImageLibrary(options, async (response) => {
-        if (!response.didCancel && !response.errorCode && response.assets) {
-            try {
-                const updatedTask = await taskService.uploadAttachment(taskId, response.assets[0]);
-                syncTask(updatedTask);
-            } catch (e:any) { Alert.alert('Upload Failed', e.message); }
-        }
-      });
-  };
-
-  const handleDownloadFile = (url: string) => {
-      if (!url) return;
-      Linking.openURL(url).catch(err => Alert.alert('Error', 'Cannot open file'));
-  };
-
-  const toggleTimer = async () => {
-      try {
-          let updatedTask;
-          if (isTimerRunning) {
-              updatedTask = await taskService.stopTimer(taskId);
-              setIsTimerRunning(false); 
-          } else {
-              updatedTask = await taskService.startTimer(taskId);
-              setIsTimerRunning(true);
-          }
-          syncTask(updatedTask);
-      } catch (e:any) { Alert.alert('Timer Error', e.message); }
   };
 
   const handleDelete = () => {
@@ -376,7 +479,6 @@ export default function TaskDetailModal({
 
                 {/* --- PROPERTIES --- */}
                 <View style={styles.section}>
-                    {/* Status */}
                     <View style={styles.propRow}>
                         <View style={styles.propLabelContainer}>
                             <View style={[styles.dot, {backgroundColor: getStatusColor(task.status)}]} />
@@ -388,22 +490,54 @@ export default function TaskDetailModal({
                         </TouchableOpacity>
                     </View>
 
-                    {/* Date */}
+                    {/* Assignees */}
+                    <View style={styles.propRow}>
+                        <View style={styles.propLabelContainer}>
+                            <User size={16} color="#666" />
+                            <Text style={[styles.propLabel, isDark && styles.darkText]}>{t('tasks.assignee' as any) || 'Assignee'}</Text>
+                        </View>
+                        <TouchableOpacity onPress={() => setShowAssignModal(true)} style={styles.propValueContainer}>
+                            <Text style={{color:'#3B82F6', fontSize:12, fontWeight: '600'}}>+ {t('common.add' as any) || 'Add'}</Text>
+                        </TouchableOpacity>
+                    </View>
+                    <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16, paddingLeft: 24}}>
+                        {task.assignedTo?.map((a:any, idx) => {
+                            const u = typeof a.userId === 'object' ? a.userId : null;
+                            const uName = u ? u.name : 'Unknown';
+                            const uAvatar = u ? getValidUrl(u.avatar) : null;
+                            return (
+                                <View key={idx} style={[styles.assigneeChip, isDark && styles.darkChip]}>
+                                    {uAvatar ? (
+                                        <Image source={{uri: uAvatar}} style={styles.avatarImgSmall} />
+                                    ) : (
+                                        <View style={[styles.avatarSmall, {backgroundColor:'#3B82F6'}]}>
+                                            <Text style={{fontSize:10, color:'#FFF', fontWeight:'bold'}}>{uName.charAt(0).toUpperCase()}</Text>
+                                        </View>
+                                    )}
+                                    <Text style={[styles.assigneeName, isDark && styles.darkText]}>{uName}</Text>
+                                    <TouchableOpacity onPress={() => handleToggleAssignee(u?._id || a.userId)}>
+                                        <X size={14} color="#EF4444" style={{marginLeft: 4}} />
+                                    </TouchableOpacity>
+                                </View>
+                            )
+                        })}
+                    </View>
+
+                    {/* Due Date */}
                     <View style={styles.propRow}>
                         <View style={styles.propLabelContainer}>
                             <Calendar size={16} color="#666" />
                             <Text style={[styles.propLabel, isDark && styles.darkText]}>{t('tasks.dueDate' as any) || 'Due Date'}</Text>
                         </View>
                         {editingField === 'dueDate' ? (
-                            <TextInput style={[styles.miniInput, isDark && styles.darkInput]} value={tempValue} onChangeText={setTempValue} placeholder="YYYY-MM-DD" onBlur={() => handleUpdateField('dueDate', tempValue)} />
+                            <TextInput style={[styles.miniInput, isDark && styles.darkInput]} value={tempValue} onChangeText={setTempValue} placeholder="DD/MM/YYYY" onBlur={() => handleUpdateField('dueDate', tempValue)} />
                         ) : (
-                            <TouchableOpacity onPress={() => {setEditingField('dueDate'); setTempValue(task.dueDate?.split('T')[0] || '')}} style={styles.propValueContainer}>
-                                <Text style={[styles.propValue, isDark && styles.darkSubText]}>{task.dueDate ? formatDate(task.dueDate) : '---'}</Text>
+                            <TouchableOpacity onPress={() => {setEditingField('dueDate'); setTempValue(safeDate(task.dueDate))}} style={styles.propValueContainer}>
+                                <Text style={[styles.propValue, isDark && styles.darkSubText]}>{safeDate(task.dueDate)}</Text>
                             </TouchableOpacity>
                         )}
                     </View>
 
-                    {/* Estimated Time */}
                     <View style={styles.propRow}>
                         <View style={styles.propLabelContainer}>
                             <Clock size={16} color="#666" />
@@ -418,7 +552,16 @@ export default function TaskDetailModal({
                         )}
                     </View>
 
-                    {/* Type */}
+                    {/* Type & Priority */}
+                    <View style={styles.propRow}>
+                        <View style={styles.propLabelContainer}>
+                            <Flag size={16} color="#666" />
+                            <Text style={[styles.propLabel, isDark && styles.darkText]}>{t('tasks.priority' as any) || 'Priority'}</Text>
+                        </View>
+                        <TouchableOpacity style={[styles.priorityBadge, {backgroundColor: getPriorityColor(task.priority)+'20'}]} onPress={() => setShowPriorityPicker(true)}>
+                            <Text style={{color: getPriorityColor(task.priority), fontSize:12, fontWeight:'bold'}}>{task.priority.toUpperCase()}</Text>
+                        </TouchableOpacity>
+                    </View>
                     <View style={styles.propRow}>
                         <View style={styles.propLabelContainer}>
                             <Briefcase size={16} color="#666" />
@@ -427,41 +570,6 @@ export default function TaskDetailModal({
                         <TouchableOpacity style={styles.propValueContainer} onPress={() => setShowCategoryPicker(true)}>
                             <Text style={[styles.propValue, isDark && styles.darkSubText]}>{task.category || 'Other'}</Text>
                             <ChevronDown size={16} color="#999" />
-                        </TouchableOpacity>
-                    </View>
-
-                    {/* Assignees */}
-                    <View style={styles.propRow}>
-                        <View style={styles.propLabelContainer}>
-                            <User size={16} color="#666" />
-                            <Text style={[styles.propLabel, isDark && styles.darkText]}>{t('tasks.assignee' as any) || 'Assignee'}</Text>
-                        </View>
-                        <TouchableOpacity onPress={() => setShowAssignModal(true)} style={styles.propValueContainer}>
-                            <Text style={{color:'#3B82F6', fontSize:12}}>+ {t('common.add' as any) || 'Add'}</Text>
-                        </TouchableOpacity>
-                    </View>
-                    {task.assignedTo?.map((a:any, idx) => (
-                        <View key={idx} style={styles.assigneeRow}>
-                            <View style={{flexDirection:'row', alignItems:'center', gap:8}}>
-                                <View style={[styles.avatarSmall, {backgroundColor:'#E5E7EB'}]}>
-                                    <Text style={{fontSize:10, fontWeight:'bold'}}>{(typeof a.userId==='object' ? a.userId.name : 'U').charAt(0).toUpperCase()}</Text>
-                                </View>
-                                <Text style={[styles.assigneeName, isDark && styles.darkSubText]}>{typeof a.userId === 'object' ? a.userId.name : 'User'}</Text>
-                            </View>
-                            <TouchableOpacity onPress={() => handleToggleAssignee(typeof a.userId==='object'?a.userId._id:a.userId)}>
-                                <X size={14} color="#EF4444" />
-                            </TouchableOpacity>
-                        </View>
-                    ))}
-
-                    {/* Priority */}
-                    <View style={styles.propRow}>
-                        <View style={styles.propLabelContainer}>
-                            <Flag size={16} color="#666" />
-                            <Text style={[styles.propLabel, isDark && styles.darkText]}>{t('tasks.priority' as any) || 'Priority'}</Text>
-                        </View>
-                        <TouchableOpacity style={[styles.priorityBadge, {backgroundColor: getPriorityColor(task.priority)+'20'}]} onPress={() => setShowPriorityPicker(true)}>
-                            <Text style={{color: getPriorityColor(task.priority), fontSize:12, fontWeight:'bold'}}>{task.priority.toUpperCase()}</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -484,7 +592,7 @@ export default function TaskDetailModal({
                         </TouchableOpacity>
                     )}
                 </View>
-
+                
                 {/* --- QUICK ACTIONS --- */}
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.actionScroll}>
                     <TouchableOpacity style={[styles.actionBtn, isTimerRunning && {borderColor:'#EF4444'}]} onPress={toggleTimer}>
@@ -550,7 +658,7 @@ export default function TaskDetailModal({
                     ))}
                 </View>
 
-                {/* --- SCHEDULED WORK (Fix: Dropdown Status) --- */}
+                {/* --- SCHEDULED WORK --- */}
                 <View style={styles.section}>
                     <View style={{flexDirection:'row', justifyContent:'space-between'}}>
                         <Text style={[styles.sectionTitle, isDark && styles.darkText]}>Lên lịch</Text>
@@ -572,7 +680,6 @@ export default function TaskDetailModal({
                             <TouchableOpacity style={styles.primaryBtn} onPress={submitSchedule}><Text style={{color:'#fff'}}>Lưu</Text></TouchableOpacity>
                         </View>
                     )}
-                    {/* List Schedule */}
                     {((task as any).scheduledWork || []).map((work:any, idx:number) => (
                         <View key={idx} style={styles.listItem}>
                             <View>
@@ -584,23 +691,33 @@ export default function TaskDetailModal({
                     ))}
                 </View>
 
-                {/* --- ATTACHMENTS --- */}
+                {/* --- ATTACHMENTS (FIXED LAYOUT) --- */}
                 <View style={styles.section}>
                     <Text style={[styles.sectionTitle, isDark && styles.darkText]}>Tệp đính kèm ({task.attachments?.length||0})</Text>
                     {task.attachments?.map((file:any, idx:number) => (
                         <View key={idx} style={styles.fileCard}>
-                            <View style={{flexDirection:'row', gap:10, alignItems:'center'}}>
+                            {/* Left Side: Icon + Name */}
+                            <View style={{flexDirection:'row', gap:10, alignItems:'center', flex: 1, marginRight: 10}}>
                                 <View style={styles.fileIcon}><File size={20} color="#3B82F6"/></View>
-                                <View>
-                                    <Text style={[styles.fileName, isDark && styles.darkText]}>{file.filename}</Text>
+                                <View style={{flex: 1}}>
+                                    <Text 
+                                        style={[styles.fileName, isDark && styles.darkText]} 
+                                        numberOfLines={1} 
+                                        ellipsizeMode="middle"
+                                    >
+                                        {file.filename}
+                                    </Text>
                                     <Text style={{fontSize:10, color:'#999'}}>{Math.round(file.size/1024)} KB</Text>
                                 </View>
                             </View>
-                            <View style={{flexDirection:'row', gap:15}}>
-                                <TouchableOpacity onPress={() => handleDownloadFile(file.url)}>
+                            {/* Right Side: Actions */}
+                            <View style={{flexDirection:'row', gap:15, alignItems:'center'}}>
+                                <TouchableOpacity onPress={() => handleDownloadFile(getValidUrl(file.url) || '')}>
                                     <Download size={18} color="#3B82F6" />
                                 </TouchableOpacity>
-                                <TouchableOpacity><Trash2 size={18} color="#EF4444"/></TouchableOpacity>
+                                <TouchableOpacity onPress={() => handleDeleteAttachment(file._id)}>
+                                    <Trash2 size={18} color="#EF4444"/>
+                                </TouchableOpacity>
                             </View>
                         </View>
                     ))}
@@ -613,20 +730,29 @@ export default function TaskDetailModal({
                 {/* --- COMMENTS --- */}
                 <View style={styles.section}>
                     <Text style={[styles.sectionTitle, isDark && styles.darkText]}>Bình luận ({comments.length})</Text>
-                    {comments.map((comment, index) => (
+                    {comments.map((comment, index) => {
+                        const avatarUrl = comment.user?.avatar ? getValidUrl(comment.user.avatar) : null;
+                        return (
                         <View key={index} style={{marginBottom:15, flexDirection:'row', gap:10}}>
-                            <View style={[styles.avatarSmall, {backgroundColor:'#ddd'}]}><Text>{(comment.user?.name||'U').charAt(0)}</Text></View>
+                            {avatarUrl ? (
+                                <Image source={{uri: avatarUrl}} style={styles.avatarImgSmall} />
+                            ) : (
+                                <View style={[styles.avatarSmall, {backgroundColor:'#ddd'}]}><Text>{(comment.user?.name||'U').charAt(0)}</Text></View>
+                            )}
                             <View style={{flex:1}}>
                                 <View style={{backgroundColor: isDark ? '#374151' : '#F3F4F6', padding:10, borderRadius:10}}>
                                     <Text style={[{fontWeight:'bold', fontSize:12}, isDark && styles.darkText]}>{comment.user?.name}</Text>
                                     <Text style={{color: isDark ? '#D1D5DB' : '#333'}}>{comment.content}</Text>
                                 </View>
                                 {comment.files && comment.files.length > 0 && (
-                                    <Image source={{uri: comment.files[0].url}} style={{width: 150, height: 150, borderRadius:10, marginTop:5, resizeMode:'cover'}} />
+                                    <Image 
+                                        source={{uri: getValidUrl(comment.files[0].url) || ''}} 
+                                        style={{width: 200, height: 200, borderRadius:10, marginTop:8, resizeMode:'cover'}} 
+                                    />
                                 )}
                             </View>
                         </View>
-                    ))}
+                    )})}
                 </View>
                 
                 <View style={{height: 100}} />
@@ -634,85 +760,121 @@ export default function TaskDetailModal({
             
             {/* COMMENT INPUT */}
             <View style={[styles.footer, isDark && styles.darkFooter]}>
-                {commentAttachment && (
+               {commentAttachment && (
                     <View style={styles.attachmentPreview}>
                         <Image source={{uri: commentAttachment.uri}} style={{width:50, height:50, borderRadius:5}} />
                         <TouchableOpacity onPress={() => setCommentAttachment(null)} style={styles.removeAttach}><X size={12} color="#fff"/></TouchableOpacity>
                     </View>
                 )}
-                <TouchableOpacity onPress={handlePickImageForComment}><ImageIcon size={24} color="#666"/></TouchableOpacity>
-                <TextInput 
-                    style={[styles.commentInput, isDark && styles.darkInput]} 
-                    placeholder="Viết bình luận..." 
-                    placeholderTextColor="#999"
-                    value={newComment} onChangeText={setNewComment}
-                />
-                <TouchableOpacity onPress={handleSendComment} disabled={sendingComment}>
-                    {sendingComment ? <ActivityIndicator size="small" color="#3B82F6"/> : <Send size={20} color="#3B82F6"/>}
-                </TouchableOpacity>
+               <TouchableOpacity onPress={handlePickImageForComment}><ImageIcon size={24} color="#666"/></TouchableOpacity>
+               <TextInput 
+                  style={[styles.commentInput, isDark && styles.darkInput]} 
+                  placeholder="Viết bình luận..." 
+                  placeholderTextColor="#999"
+                  value={newComment} onChangeText={setNewComment}
+               />
+               <TouchableOpacity onPress={handleSendComment} disabled={sendingComment}>
+                  <Send size={20} color="#3B82F6"/>
+               </TouchableOpacity>
             </View>
 
             </KeyboardAvoidingView>
         ) : null}
 
-        {/* --- ASSIGNEE MODAL (Fix: Display List) --- */}
+        {/* --- ASSIGNEE MODAL --- */}
         <Modal visible={showAssignModal} transparent onRequestClose={() => setShowAssignModal(false)}>
             <View style={styles.modalOverlay}>
                 <View style={[styles.assignModalContent, isDark && styles.darkContainer]}>
-                    <Text style={[styles.sectionTitle, isDark && styles.darkText, {marginBottom:15}]}>{t('tasks.assignee' as any) || 'Assignees'}</Text>
+                    <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:15}}>
+                        <Text style={[styles.modalTitle, isDark && styles.darkText]}>{t('tasks.assignee' as any) || 'Assignees'}</Text>
+                        <TouchableOpacity onPress={() => setShowAssignModal(false)}>
+                            <X size={24} color={isDark ? '#FFF' : '#333'} />
+                        </TouchableOpacity>
+                    </View>
                     <View style={{flex:1}}>
-                        {groupMembers && groupMembers.length > 0 ? (
+                        {membersList.length > 0 ? (
                             <FlatList
-                                data={groupMembers}
+                                data={membersList}
                                 keyExtractor={(item) => (typeof item.userId === 'object' ? item.userId._id : item.userId)}
                                 renderItem={({item}) => {
-                                    const uid = typeof item.userId === 'object' ? item.userId._id : item.userId;
-                                    const uname = typeof item.userId === 'object' ? item.userId.name : item.name;
-                                    const isSelected = task?.assignedTo?.some((a:any) => (typeof a.userId==='object'?a.userId._id:a.userId)===uid);
+                                    let uid, uname, uavatar;
+                                    if (item.userId && typeof item.userId === 'object') {
+                                        uid = item.userId._id;
+                                        uname = item.userId.name;
+                                        uavatar = item.userId.avatar;
+                                    } else {
+                                        uid = item.userId as string; 
+                                        uname = item.name;
+                                        uavatar = item.avatar;
+                                    }
+                                    const isSelected = task?.assignedTo?.some((a:any) => {
+                                        const aId = (a.userId && typeof a.userId === 'object') ? a.userId._id : a.userId;
+                                        return aId === uid;
+                                    });
+                                    const avatarUrl = getValidUrl(uavatar);
                                     return (
-                                        <TouchableOpacity style={styles.assignItem} onPress={() => handleToggleAssignee(uid)}>
-                                            <View style={{flexDirection:'row', gap:10, alignItems:'center'}}>
-                                                <View style={[styles.avatarSmall, {backgroundColor: isSelected?'#3B82F6':'#ddd'}]}>
-                                                    <Text style={{color:isSelected?'#fff':'#333', fontSize:10}}>{(uname||'U').charAt(0).toUpperCase()}</Text>
+                                        <TouchableOpacity 
+                                            style={[styles.assignItem, isDark && styles.darkBorder]} 
+                                            onPress={() => handleToggleAssignee(uid)}
+                                        >
+                                            <View style={{flexDirection:'row', gap:12, alignItems:'center'}}>
+                                                {avatarUrl ? (
+                                                    <Image source={{uri: avatarUrl}} style={styles.avatarImg} />
+                                                ) : (
+                                                    <View style={[styles.avatarPlaceholder, {backgroundColor: isSelected?'#3B82F6':'#E5E7EB'}]}>
+                                                        <Text style={{color:isSelected?'#fff':'#374151', fontWeight:'bold'}}>
+                                                            {(uname || '?').charAt(0).toUpperCase()}
+                                                        </Text>
+                                                    </View>
+                                                )}
+                                                <View>
+                                                    <Text style={[styles.assignText, isDark && styles.darkText]}>{uname || 'Unknown'}</Text>
+                                                    <Text style={{fontSize:12, color:'#6B7280'}}>{item.role || 'Member'}</Text>
                                                 </View>
-                                                <Text style={[styles.assignText, isDark && styles.darkText]}>{uname}</Text>
                                             </View>
-                                            {isSelected && <Check size={18} color="#3B82F6" />}
+                                            {isSelected && <Check size={20} color="#3B82F6" />}
                                         </TouchableOpacity>
                                     )
                                 }}
                             />
                         ) : (
-                            <Text style={{textAlign:'center', marginTop:20, color:'#999'}}>{t('common.noResults' as any) || 'No results'}</Text>
+                            <View style={styles.emptyContainer}>
+                                <Users size={48} color="#9CA3AF" />
+                                <Text style={{textAlign:'center', marginTop:10, color:'#6B7280'}}>
+                                    {t('common.noResults' as any) || 'No members found in this group.'}
+                                </Text>
+                            </View>
                         )}
                     </View>
-                    <TouchableOpacity onPress={() => setShowAssignModal(false)} style={styles.closeBtnText}><Text style={{color:'blue', fontWeight:'bold'}}>{t('common.done' as any) || 'Done'}</Text></TouchableOpacity>
+                    <TouchableOpacity onPress={() => setShowAssignModal(false)} style={styles.doneBtn}>
+                        <Text style={styles.doneBtnText}>{t('common.done' as any) || 'Done'}</Text>
+                    </TouchableOpacity>
                 </View>
             </View>
         </Modal>
 
         {/* Selection Modals */}
-        <SelectionModal visible={showStatusPicker} title="Chọn Trạng Thái" options={STATUS_OPTIONS} onClose={() => setShowStatusPicker(false)} onSelect={(val:string) => handleUpdateField('status', val)} t={t} />
-        <SelectionModal visible={showPriorityPicker} title="Chọn Độ Ưu Tiên" options={PRIORITY_OPTIONS} onClose={() => setShowPriorityPicker(false)} onSelect={(val:string) => handleUpdateField('priority', val)} t={t} />
-        <SelectionModal visible={showCategoryPicker} title="Chọn Loại" options={CATEGORY_OPTIONS} onClose={() => setShowCategoryPicker(false)} onSelect={(val:string) => handleUpdateField('category', val)} t={t} />
-        <SelectionModal visible={showScheduleStatusPicker} title="Trạng Thái Lịch" options={SCHEDULE_STATUS_OPTIONS} onClose={() => setShowScheduleStatusPicker(false)} onSelect={(val:string) => {setNewSchedule({...newSchedule, status: val}); setShowScheduleStatusPicker(false)}} t={t} />
+        <SelectionModal visible={showStatusPicker} title="Chọn Trạng Thái" options={STATUS_OPTIONS} onClose={() => setShowStatusPicker(false)} onSelect={(val:string) => handleUpdateField('status', val)} t={t} isDark={isDark} />
+        <SelectionModal visible={showPriorityPicker} title="Chọn Độ Ưu Tiên" options={PRIORITY_OPTIONS} onClose={() => setShowPriorityPicker(false)} onSelect={(val:string) => handleUpdateField('priority', val)} t={t} isDark={isDark} />
+        <SelectionModal visible={showCategoryPicker} title="Chọn Loại" options={CATEGORY_OPTIONS} onClose={() => setShowCategoryPicker(false)} onSelect={(val:string) => handleUpdateField('category', val)} t={t} isDark={isDark} />
+        <SelectionModal visible={showScheduleStatusPicker} title="Trạng Thái Lịch" options={SCHEDULE_STATUS_OPTIONS} onClose={() => setShowScheduleStatusPicker(false)} onSelect={(val:string) => {setNewSchedule({...newSchedule, status: val}); setShowScheduleStatusPicker(false)}} t={t} isDark={isDark} />
 
       </SafeAreaView>
     </Modal>
   );
 }
 
-// Reusable Selection Modal (Fix: Key Translation)
-const SelectionModal = ({ visible, onClose, title, options, onSelect, t }: any) => (
+// Reusable Selection Modal
+const SelectionModal = ({ visible, onClose, title, options, onSelect, t, isDark }: any) => (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
         <TouchableOpacity style={styles.modalOverlay} onPress={onClose} activeOpacity={1}>
-            <View style={styles.selectionContent}>
-                <Text style={styles.modalTitle}>{title}</Text>
+            <View style={[styles.selectionContent, isDark && styles.darkContainer]}>
+                <Text style={[styles.modalTitle, isDark && styles.darkText]}>{title}</Text>
                 <FlatList data={options} keyExtractor={(item:any) => item.value} renderItem={({item}) => (
-                    <TouchableOpacity style={styles.optionItem} onPress={() => onSelect(item.value)}>
+                    <TouchableOpacity style={[styles.optionItem, isDark && styles.darkBorder]} onPress={() => onSelect(item.value)}>
                         <View style={{flexDirection:'row', alignItems:'center', gap:10}}>
                             {item.color && <View style={[styles.dot, {backgroundColor: item.color}]} />}
-                            <Text style={styles.optionText}>{t ? (t(item.label as any) || item.label.split('.').pop()) : item.label}</Text>
+                            <Text style={[styles.optionText, isDark && styles.darkText]}>{t ? (t(item.label as any) || item.label.split('.').pop()) : item.label}</Text>
                         </View>
                     </TouchableOpacity>
                 )}/>
@@ -740,10 +902,12 @@ const styles = StyleSheet.create({
   miniInput: { borderBottomWidth:1, borderColor:'#ddd', width: 100, textAlign:'right', padding:0 },
   priorityBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
 
-  assigneeRow: { flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:8, borderBottomWidth:1, borderBottomColor:'#f9f9f9', paddingBottom:5, marginLeft: 30 },
-  assigneeName: { fontSize:13, color:'#555' },
-  avatarSmall: { width:24, height:24, borderRadius:12, alignItems:'center', justifyContent:'center', marginRight:5 },
-
+  assigneeChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB' },
+  darkChip: { backgroundColor: '#374151', borderColor: '#4B5563' },
+  assigneeName: { fontSize: 12, marginLeft: 6, color: '#374151', fontWeight: '500' },
+  avatarSmall: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight:5 },
+  avatarImgSmall: { width: 24, height: 24, borderRadius: 12 },
+  
   actionScroll: { marginBottom: 20, maxHeight: 50 },
   actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 8, paddingHorizontal: 12, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, marginRight: 10 },
   actionText: { fontSize: 13, color: '#333' },
@@ -762,10 +926,10 @@ const styles = StyleSheet.create({
   descBox: { backgroundColor: '#F9FAFB', padding: 12, borderRadius: 8, minHeight: 60 },
   descText: { color: '#374151', fontSize: 14 },
   descInput: { fontSize: 14, textAlignVertical:'top', minHeight: 60 },
-
+  
   fileCard: { flexDirection:'row', justifyContent:'space-between', alignItems:'center', borderWidth:1, borderColor:'#eee', borderRadius:8, padding:10, marginBottom:10 },
-  fileIcon: { width:32, height:32, backgroundColor:'#EFF6FF', borderRadius:16, alignItems:'center', justifyContent:'center' },
-  fileName: { fontSize: 14, fontWeight:'500' },
+  fileIcon: { width:32, height:32, backgroundColor:'#EFF6FF', borderRadius:16, alignItems:'center', justifyContent:'center', flexShrink: 0 },
+  fileName: { fontSize: 14, fontWeight:'500', flexShrink: 1 },
   addFileBtn: { flexDirection:'row', alignItems:'center', gap:5, marginTop:5 },
 
   footer: { padding: 10, borderTopWidth: 1, borderTopColor: '#eee', flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor:'#fff' },
@@ -775,14 +939,20 @@ const styles = StyleSheet.create({
   removeAttach: { position: 'absolute', top: -5, right: -5, backgroundColor: 'red', borderRadius: 10, padding: 2 },
 
   modalOverlay: { flex:1, backgroundColor:'rgba(0,0,0,0.5)', justifyContent:'center', padding:20 },
-  assignModalContent: { backgroundColor:'#fff', padding:20, borderRadius:10, maxHeight:'60%', width: '100%' }, // Fix height for list
-  assignItem: { flexDirection:'row', justifyContent:'space-between', padding:15, borderBottomWidth:1, borderColor:'#eee' },
+  assignModalContent: { backgroundColor:'#fff', padding:20, borderRadius:16, height:'70%', width: '100%' },
+  assignItem: { flexDirection:'row', justifyContent:'space-between', padding:16, borderBottomWidth:1, borderColor:'#F3F4F6', alignItems:'center' },
+  assignText: { fontSize: 16, fontWeight: '500', color: '#111827' },
+  avatarPlaceholder: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  avatarImg: { width: 40, height: 40, borderRadius: 20 },
+  doneBtn: { marginTop: 16, backgroundColor: '#3B82F6', padding: 14, borderRadius: 12, alignItems: 'center' },
+  doneBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
+  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  closeBtnText: { marginTop: 15, alignItems: 'center', padding: 10 },
+
   selectionContent: { backgroundColor:'#fff', padding:20, borderRadius:10, width:'80%', alignSelf:'center' },
   optionItem: { paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
   optionText: { fontSize: 16 },
   modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
-  assignText: { fontSize: 16 },
-  closeBtnText: { marginTop: 15, alignItems: 'center', padding: 10 },
 
   darkText: { color: '#F9FAFB' },
   darkSubText: { color: '#D1D5DB' },

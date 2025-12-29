@@ -7,7 +7,7 @@ const API_PORT: string = '8080'; // Cổng API Backend (bạn xác nhận là 80
 
 // ⚠️ QUAN TRỌNG: Thay số này bằng IP LAN máy tính của bạn (VD: 192.168.1.6)
 // Cách lấy: Mở CMD trên máy tính -> gõ "ipconfig" -> xem dòng IPv4 Address
-const YOUR_LAN_IP: string = '192.168.1.19'; 
+const YOUR_LAN_IP: string = '192.168.1.8'; 
 
 const getBaseUrl = (): string => {
   if (__DEV__) {

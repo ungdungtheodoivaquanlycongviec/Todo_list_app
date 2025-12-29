@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,21 +14,21 @@ import {
   ActivityIndicator,
   Switch,
   Platform,
-  Dimensions,
+  FlatList
 } from 'react-native';
-import Ionicons from 'react-native-vector-icons/Ionicons';
+// ✅ Sử dụng Lucide Icons
+import { 
+  ArrowLeft, User as UserIcon, Settings, Shield, 
+  Camera, Upload, Eye, EyeOff, Check, Trash2, 
+  Globe, Bell, Palette, ChevronDown, X, Calendar
+} from 'lucide-react-native';
 import { launchImageLibrary, Asset } from 'react-native-image-picker';
 
-// Import Contexts & Services
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { userService } from '../services/user.service';
-import { User, Language } from '../types/auth.types';
 import { useTheme } from '../context/ThemeContext';
 import apiClient from '../api/apiClient';
-
-// Nếu bạn chưa có notification.service cho mobile, hãy tạo tạm hoặc comment lại logic gọi nó
-// import { notificationService } from '../services/notification.service';
 
 interface ProfileSettingsProps {
   visible: boolean;
@@ -37,100 +37,138 @@ interface ProfileSettingsProps {
 
 type ThemeType = 'light' | 'dark' | 'auto';
 
+// --- CUSTOM DROPDOWN MODAL ---
+const CustomDropdown = ({ 
+  visible, 
+  onClose, 
+  options, 
+  value, 
+  onSelect, 
+  title,
+  theme 
+}: any) => {
+  const isDark = theme === 'dark';
+  const colors = getColors(isDark);
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <View style={[styles.dropdownContainer, isDark && styles.darkDropdownContainer]}>
+          <View style={styles.dropdownHeader}>
+            <Text style={[styles.dropdownTitle, isDark && styles.darkText]}>{title}</Text>
+            <TouchableOpacity onPress={onClose}>
+              <X size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+          <FlatList
+            data={options}
+            keyExtractor={(item) => item.value}
+            contentContainerStyle={{paddingBottom: 20}}
+            renderItem={({ item }) => (
+              <TouchableOpacity 
+                style={[styles.dropdownItem, item.value === value && styles.dropdownItemActive]}
+                onPress={() => { onSelect(item.value); onClose(); }}
+              >
+                <Text style={[
+                  styles.dropdownItemText, 
+                  isDark && styles.darkText,
+                  item.value === value && styles.dropdownItemTextActive
+                ]}>
+                  {item.label}
+                </Text>
+                {item.value === value && <Check size={18} color={colors.bluePrimary} />}
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 // --- MAIN COMPONENT ---
 export default function ProfileSettings({ visible, onClose }: ProfileSettingsProps) {
   const { user, updateUserTheme } = useAuth();
   const { isDark } = useTheme();
   const { t } = useLanguage();
+  const colors = getColors(isDark);
   
-  // State quản lý Tab
   const [activeTab, setActiveTab] = useState<'profile' | 'preferences' | 'security'>('profile');
 
   if (!user) return null;
 
-  // Danh sách Tabs (Khớp Web)
   const tabs = [
-    { id: 'profile', label: t('settings.profile') || 'My Profile', icon: 'person' },
-    { id: 'preferences', label: t('settings.preferences') || 'Preferences', icon: 'settings' },
-    { id: 'security', label: t('settings.security') || 'Security', icon: 'shield-checkmark' },
+    { id: 'profile', label: t('settings.profile') || 'Profile', icon: UserIcon },
+    { id: 'preferences', label: t('settings.preferences') || 'Preferences', icon: Settings },
+    { id: 'security', label: t('settings.security') || 'Security', icon: Shield },
   ];
 
   return (
     <Modal
       visible={visible}
       animationType="slide"
-      presentationStyle="pageSheet" // Style kéo lên giống iOS chuẩn
+      presentationStyle="pageSheet" 
       onRequestClose={onClose}
     >
       <SafeAreaView style={[styles.container, isDark && styles.darkContainer]}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
         
-        {/* HEADER: Nút Back + Title + Description */}
+        {/* HEADER */}
         <View style={[styles.header, isDark && styles.darkHeader]}>
           <View style={styles.headerTopRow}>
             <TouchableOpacity onPress={onClose} style={styles.backButton}>
-              <Ionicons name="arrow-back" size={24} color={isDark ? '#d1d5db' : '#374151'} />
+              <ArrowLeft size={24} color={colors.textPrimary} />
             </TouchableOpacity>
             <View style={styles.headerTitles}>
               <Text style={[styles.headerTitle, isDark && styles.darkText]}>
                 {t('accountSettings.title') || 'Account Settings'}
               </Text>
-              <Text style={[styles.headerSubtitle, isDark && styles.darkSubtext]}>
-                {t('accountSettings.description') || 'Manage your profile, preferences, and security'}
-              </Text>
             </View>
           </View>
 
-          {/* TAB NAVIGATION: Scroll ngang nếu màn hình nhỏ */}
+          {/* ✅ TABS (Sửa lại layout Flex để đều nhau và không bị đè) */}
           <View style={styles.tabContainer}>
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.tabContentContainer}
-            >
-              <View style={[styles.tabsWrapper, isDark && styles.darkTabsWrapper]}>
-                {tabs.map((tab) => {
-                  const isActive = activeTab === tab.id;
-                  return (
-                    <TouchableOpacity
-                      key={tab.id}
-                      onPress={() => setActiveTab(tab.id as any)}
+            <View style={[styles.tabsWrapper, isDark && styles.darkTabsWrapper]}>
+              {tabs.map((tab) => {
+                const isActive = activeTab === tab.id;
+                const Icon = tab.icon;
+                return (
+                  <TouchableOpacity
+                    key={tab.id}
+                    onPress={() => setActiveTab(tab.id as any)}
+                    style={[
+                      styles.tabItem,
+                      isActive && styles.activeTabItem,
+                      isActive && isDark && styles.activeDarkTabItem
+                    ]}
+                  >
+                    <Icon 
+                      size={16} 
+                      color={isActive ? (isDark ? '#FFF' : '#111827') : (isDark ? '#9CA3AF' : '#6B7280')} 
+                    />
+                    <Text 
                       style={[
-                        styles.tabItem,
-                        isActive && styles.activeTabItem,
-                        isActive && isDark && styles.activeDarkTabItem
-                      ]}
-                    >
-                      <Ionicons 
-                        name={tab.icon as any} 
-                        size={16} 
-                        color={
-                          isActive 
-                            ? (isDark ? '#ffffff' : '#111827') // Active Text Color
-                            : (isDark ? '#9ca3af' : '#6b7280') // Inactive Text Color
-                        } 
-                      />
-                      <Text style={[
                         styles.tabText,
                         isActive && styles.activeTabText,
                         isDark && styles.darkTabText,
                         isActive && isDark && styles.activeDarkTabText,
-                      ]}>
-                        {tab.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </ScrollView>
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {tab.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
         </View>
 
-        {/* CONTENT AREA: Render Tab tương ứng */}
+        {/* CONTENT */}
         <View style={[styles.contentArea, isDark && styles.darkContentArea]}>
           <ScrollView contentContainerStyle={styles.scrollContent}>
             {activeTab === 'profile' && (
-              <MyProfileTab user={user} isDark={isDark} t={t} />
+              <MyProfileTab user={user} isDark={isDark} t={t} colors={colors} />
             )}
             {activeTab === 'preferences' && (
               <PreferencesTab 
@@ -138,10 +176,11 @@ export default function ProfileSettings({ visible, onClose }: ProfileSettingsPro
                 updateUserTheme={updateUserTheme} 
                 isDark={isDark} 
                 t={t} 
+                colors={colors}
               />
             )}
             {activeTab === 'security' && (
-              <SecurityTab isDark={isDark} t={t} />
+              <SecurityTab isDark={isDark} t={t} colors={colors} />
             )}
           </ScrollView>
         </View>
@@ -150,45 +189,33 @@ export default function ProfileSettings({ visible, onClose }: ProfileSettingsPro
   );
 }
 
-// ============================================================================
-// 1. TAB PROFILE: Avatar Upload, Edit Info, Delete Account
-// ============================================================================
-function MyProfileTab({ user, isDark, t }: any) {
+// ------------------------------------------------------------------
+// 1. TAB PROFILE
+// ------------------------------------------------------------------
+function MyProfileTab({ user, isDark, t, colors }: any) {
   const { updateUser } = useAuth();
   
-  // States
   const [name, setName] = useState(user.name);
-  const [email] = useState(user.email); // Email thường không cho sửa trực tiếp
+  const [email] = useState(user.email);
   const [avatar, setAvatar] = useState(user.avatar || '');
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState<'success' | 'error'>('success');
 
-  // Helper hiển thị thông báo tự tắt
   const showMsg = (msg: string, type: 'success' | 'error' = 'success') => {
     setMessage(msg);
     setMessageType(type);
-    setTimeout(() => setMessage(''), 3000); // Tự tắt sau 3s giống Web
+    setTimeout(() => setMessage(''), 3000);
   };
 
-  // --- LOGIC CHỌN & UPLOAD ẢNH (react-native-image-picker) ---
   const pickImage = async () => {
     try {
-      const result = await launchImageLibrary({
-        mediaType: 'photo',
-        quality: 0.8, // Chất lượng tốt hơn chút
-        selectionLimit: 1,
-      });
-
-      if (result.didCancel || result.errorCode) return;
-
-      if (result.assets && result.assets.length > 0) {
+      const result = await launchImageLibrary({ mediaType: 'photo', quality: 0.8, selectionLimit: 1 });
+      if (!result.didCancel && result.assets && result.assets.length > 0) {
         handleUploadAvatar(result.assets[0]);
       }
-    } catch (error) {
-      Alert.alert('Error', 'Cannot access gallery');
-    }
+    } catch (error) { Alert.alert('Error', 'Cannot access gallery'); }
   };
 
   const handleUploadAvatar = async (asset: Asset) => {
@@ -200,68 +227,46 @@ function MyProfileTab({ user, isDark, t }: any) {
         type: asset.type || 'image/jpeg',
         name: asset.fileName || `avatar_${Date.now()}.jpg`,
       };
-      
       // @ts-ignore
       formData.append('file', filePayload);
-
-      // Gọi API Upload
       const response = await apiClient.post('/users/me/avatar/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      
-      // Lấy URL từ response (cần khớp với backend thực tế)
       const newAvatarUrl = response.data?.data?.user?.avatar || response.data?.user?.avatar;
-      
       if (newAvatarUrl) {
         setAvatar(newAvatarUrl);
-        // Cập nhật cả DB và Context
         await userService.updateAvatar(newAvatarUrl);
         await updateUser({ avatar: newAvatarUrl });
-        showMsg(t('profile.updated') || 'Profile picture updated successfully', 'success');
+        showMsg(t('profile.updated') || 'Profile picture updated', 'success');
       }
     } catch (error: any) {
-      console.error("Upload error:", error);
       showMsg(error.message || 'Failed to upload avatar', 'error');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
-  // --- LOGIC LƯU THÔNG TIN ---
   const handleSave = async () => {
     setLoading(true);
     try {
       await userService.updateProfile({ name });
-      await updateUser({ name }); // Sync Context
+      await updateUser({ name });
       setIsEditing(false);
       showMsg(t('profile.updated') || 'Profile updated successfully', 'success');
     } catch (error: any) {
       showMsg(error.message || 'Error updating profile', 'error');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
-  // --- LOGIC XÓA TÀI KHOẢN ---
   const handleDeleteAccount = () => {
     Alert.alert(
       t('profile.deleteAccount') || 'Delete Account',
-      t('profile.deleteConfirmMessage') || 'Are you sure you want to delete your account? This action cannot be undone.',
+      t('profile.deleteConfirmMessage') || 'Are you sure?',
       [
         { text: t('common.cancel') || 'Cancel', style: 'cancel' },
-        { 
-          text: t('profile.deleteConfirmButton') || 'Delete Account', 
-          style: 'destructive',
-          onPress: async () => {
+        { text: t('profile.deleteConfirmButton') || 'Delete', style: 'destructive', onPress: async () => {
             setLoading(true);
-            try {
-              await userService.deactivateAccount();
-              // AuthContext sẽ tự lo việc logout/redirect
-            } catch (error: any) {
-              showMsg(error.message || 'Error deleting account', 'error');
-              setLoading(false);
-            }
-          }
+            try { await userService.deactivateAccount(); } 
+            catch (error: any) { showMsg(error.message, 'error'); setLoading(false); }
+          } 
         }
       ]
     );
@@ -271,85 +276,51 @@ function MyProfileTab({ user, isDark, t }: any) {
 
   return (
     <View style={styles.tabContent}>
-      {/* SECTION HEADER */}
-      <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, isDark && styles.darkText]}>
-          {t('profile.personalInfo') || 'Personal Information'}
-        </Text>
-        <Text style={[styles.sectionDesc, isDark && styles.darkSubtext]}>
-          {t('profile.personalInfoDesc') || 'Update your photo and personal details here.'}
-        </Text>
-      </View>
-
-      {/* AVATAR SECTION */}
-      <View style={[styles.card, isDark && styles.darkCard]}>
-        <Text style={[styles.cardTitle, isDark && styles.darkText]}>
-          {t('profile.profilePicture') || 'Profile Picture'}
-        </Text>
-        
-        <View style={styles.avatarRow}>
-          <View style={styles.avatarWrapper}>
-            {avatar ? (
-              <Image source={{ uri: avatar }} style={styles.avatarImage} />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Text style={styles.avatarInitials}>{getInitials(user.name)}</Text>
-              </View>
-            )}
-            {/* Camera Button Badge */}
-            {isEditing && (
-              <TouchableOpacity style={styles.cameraBadge} onPress={pickImage}>
-                <Ionicons name="camera" size={14} color="#FFF" />
-              </TouchableOpacity>
-            )}
-          </View>
-          
+      <View style={[styles.card, isDark && styles.darkCard, {alignItems:'center', paddingTop: 24}]}>
+        <View style={styles.avatarWrapper}>
+          {avatar ? (
+            <Image source={{ uri: avatar }} style={styles.avatarImage} />
+          ) : (
+            <View style={styles.avatarPlaceholder}>
+              <Text style={styles.avatarInitials}>{getInitials(user.name)}</Text>
+            </View>
+          )}
           {isEditing && (
-             <View style={styles.avatarActions}>
-               <TouchableOpacity onPress={pickImage} style={styles.uploadBtn}>
-                 <Ionicons name="cloud-upload-outline" size={16} color="#3b82f6" />
-                 <Text style={styles.uploadBtnText}>{t('profile.uploadPhoto') || 'Upload Photo'}</Text>
-               </TouchableOpacity>
-               <Text style={[styles.helperText, isDark && styles.darkSubtext]}>
-                 {t('profile.photoRequirements') || 'JPG, GIF or PNG. Max size of 800K'}
-               </Text>
-             </View>
+            <TouchableOpacity style={styles.cameraBadge} onPress={pickImage}>
+              <Camera size={14} color="#FFF" />
+            </TouchableOpacity>
           )}
         </View>
+        
+        {isEditing && (
+           <TouchableOpacity onPress={pickImage} style={styles.uploadTextBtn}>
+             <Upload size={16} color={colors.bluePrimary} />
+             <Text style={[styles.uploadBtnText, {color: colors.bluePrimary}]}>{t('profile.uploadPhoto') || 'Change Photo'}</Text>
+           </TouchableOpacity>
+        )}
       </View>
 
-      {/* FORM SECTION */}
       <View style={[styles.card, isDark && styles.darkCard]}>
-        {/* Name Input */}
         <View style={styles.inputContainer}>
           <Text style={[styles.label, isDark && styles.darkText]}>{t('profile.fullName') || 'Full Name'}</Text>
           <TextInput
-            style={[
-              styles.input, 
-              isDark && styles.darkInput, 
-              !isEditing && styles.disabledInput
-            ]}
+            style={[styles.input, isDark && styles.darkInput, !isEditing && styles.disabledInput]}
             value={name}
             onChangeText={setName}
             editable={isEditing}
-            placeholderTextColor={isDark ? '#6b7280' : '#9ca3af'}
+            placeholderTextColor={colors.textSecondary}
           />
         </View>
 
-        {/* Email Input (Read-only) */}
         <View style={styles.inputContainer}>
-          <Text style={[styles.label, isDark && styles.darkText]}>{t('profile.email') || 'Email Address'}</Text>
+          <Text style={[styles.label, isDark && styles.darkText]}>{t('profile.email') || 'Email'}</Text>
           <TextInput
             style={[styles.input, isDark && styles.darkInput, styles.disabledInput]}
             value={email}
             editable={false}
           />
-          <Text style={[styles.helperText, isDark && styles.darkSubtext, {marginTop: 4}]}>
-            {t('profile.emailChangeNote') || 'Contact support to change email.'}
-          </Text>
         </View>
 
-        {/* Action Buttons */}
         <View style={styles.buttonRow}>
           {!isEditing ? (
             <TouchableOpacity onPress={() => setIsEditing(true)} style={styles.primaryBtn}>
@@ -357,54 +328,29 @@ function MyProfileTab({ user, isDark, t }: any) {
             </TouchableOpacity>
           ) : (
             <View style={styles.editBtnGroup}>
-              <TouchableOpacity 
-                onPress={handleSave} 
-                disabled={loading} 
-                style={[styles.primaryBtn, styles.flexBtn, loading && styles.disabledBtn]}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#FFF" size="small" />
-                ) : (
+              <TouchableOpacity onPress={() => { setIsEditing(false); setName(user.name); }} style={[styles.secondaryBtn, styles.flexBtn]}>
+                <Text style={[styles.secondaryBtnText, isDark && styles.darkText]}>{t('common.cancel') || 'Cancel'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleSave} disabled={loading} style={[styles.primaryBtn, styles.flexBtn, loading && styles.disabledBtn]}>
+                {loading ? <ActivityIndicator color="#FFF" size="small" /> : (
                   <>
-                    <Ionicons name="checkmark" size={16} color="#FFF" style={{marginRight: 4}} />
-                    <Text style={styles.primaryBtnText}>{t('profile.saveChanges') || 'Save Changes'}</Text>
+                    <Check size={16} color="#FFF" style={{marginRight: 6}} />
+                    <Text style={styles.primaryBtnText}>{t('common.save') || 'Save'}</Text>
                   </>
                 )}
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                onPress={() => { setIsEditing(false); setName(user.name); }} 
-                style={[styles.secondaryBtn, styles.flexBtn]}
-              >
-                <Text style={[styles.secondaryBtnText, isDark && styles.darkText]}>
-                  {t('common.cancel') || 'Cancel'}
-                </Text>
               </TouchableOpacity>
             </View>
           )}
         </View>
 
-        {/* Delete Account */}
-        <View style={styles.deleteSection}>
-           <TouchableOpacity onPress={handleDeleteAccount} style={styles.deleteBtn}>
-             <Ionicons name="trash-outline" size={16} color="#ef4444" />
-             <Text style={styles.deleteBtnText}>{t('profile.deleteAccount') || 'Delete Account'}</Text>
-           </TouchableOpacity>
-        </View>
+        <TouchableOpacity onPress={handleDeleteAccount} style={styles.deleteLink}>
+           <Trash2 size={16} color={colors.red} />
+           <Text style={[styles.deleteLinkText, {color: colors.red}]}>{t('profile.deleteAccount') || 'Delete Account'}</Text>
+        </TouchableOpacity>
 
-        {/* Message Alert */}
         {message !== '' && (
-          <View style={[
-            styles.alertBox, 
-            messageType === 'error' ? styles.errorBox : styles.successBox,
-            isDark && (messageType === 'error' ? styles.darkErrorBox : styles.darkSuccessBox)
-          ]}>
-            <Text style={[
-              styles.alertText, 
-              messageType === 'error' ? styles.errorText : styles.successText
-            ]}>
-              {message}
-            </Text>
+          <View style={[styles.alertBox, messageType === 'error' ? styles.errorBox : styles.successBox]}>
+            <Text style={[styles.alertText, messageType === 'error' ? styles.errorText : styles.successText]}>{message}</Text>
           </View>
         )}
       </View>
@@ -412,158 +358,85 @@ function MyProfileTab({ user, isDark, t }: any) {
   );
 }
 
-// ============================================================================
-// 2. TAB PREFERENCES: Full Options (Language, Theme, Regional, Notifications)
-// ============================================================================
-function PreferencesTab({ user, updateUserTheme, isDark, t }: any) {
+// ------------------------------------------------------------------
+// 2. TAB PREFERENCES
+// ------------------------------------------------------------------
+function PreferencesTab({ user, updateUserTheme, isDark, t, colors }: any) {
   const { language, setLanguage } = useLanguage();
   const { updateUser } = useAuth();
   
-  // Local States for UI
   const [theme, setTheme] = useState<ThemeType>((user.theme as ThemeType) || 'light');
-  
-  // Regional Prefs (Defaults khớp với Web)
   const [timeZone, setTimeZone] = useState((user as any).regionalPreferences?.timeZone || 'UTC+00:00');
   const [dateFormat, setDateFormat] = useState((user as any).regionalPreferences?.dateFormat || 'DD/MM/YYYY');
   const [timeFormat, setTimeFormat] = useState((user as any).regionalPreferences?.timeFormat || '24h');
   const [weekStart, setWeekStart] = useState((user as any).regionalPreferences?.weekStart || 'monday');
-
-  // Notifications
   const [notifications, setNotifications] = useState({
     email: (user as any).notificationSettings?.email ?? true,
     push: (user as any).notificationSettings?.push ?? true,
-    // Desktop bỏ qua trên mobile
   });
 
+  const [modalVisible, setModalVisible] = useState(false);
+  const [currentModalConfig, setCurrentModalConfig] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
 
-  const showMsg = (msg: string) => {
-    setMessage(msg);
-    setTimeout(() => setMessage(''), 3000);
+  const openDropdown = (config: any) => {
+    setCurrentModalConfig(config);
+    setModalVisible(true);
   };
 
-  // --- HANDLERS ---
-  const handleThemeChange = async (val: string) => {
+  const handleUpdate = async (key: string, val: any, type: 'theme' | 'lang' | 'regional' | 'notif') => {
     setLoading(true);
     try {
-      await updateUserTheme(val);
-      setTheme(val as ThemeType);
-      showMsg(t('theme.updated') || 'Theme updated');
-    } catch(e) { showMsg('Error updating theme'); } 
+        if (type === 'theme') {
+            await updateUserTheme(val);
+            setTheme(val);
+        } else if (type === 'lang') {
+            await setLanguage(val);
+        } else if (type === 'regional') {
+            if(key === 'timeZone') setTimeZone(val);
+            if(key === 'dateFormat') setDateFormat(val);
+            if(key === 'timeFormat') setTimeFormat(val);
+            if(key === 'weekStart') setWeekStart(val);
+            const updated = await userService.updateRegionalPreferences({ [key]: val });
+            await updateUser(updated);
+        } else if (type === 'notif') {
+            setNotifications(prev => ({...prev, [key]: val}));
+        }
+    } catch(e) { console.error(e); } 
     finally { setLoading(false); }
   };
 
-  const handleLanguageChange = async (val: string) => {
-    setLoading(true);
-    try {
-      await setLanguage(val as Language);
-      showMsg(t('language.updated') || 'Language updated');
-    } catch(e) { showMsg('Error updating language'); }
-    finally { setLoading(false); }
-  };
-
-  const handleRegionalChange = async (key: string, val: string) => {
-    // Optimistic Update
-    if(key === 'timeZone') setTimeZone(val);
-    if(key === 'dateFormat') setDateFormat(val);
-    if(key === 'timeFormat') setTimeFormat(val);
-    if(key === 'weekStart') setWeekStart(val);
-
-    setLoading(true);
-    try {
-      const updatedUser = await userService.updateRegionalPreferences({ [key]: val });
-      await updateUser(updatedUser);
-      showMsg(t('regional.updated') || 'Settings updated');
-    } catch(e) { showMsg('Error updating regional settings'); }
-    finally { setLoading(false); }
-  };
-
-  const handleNotificationChange = async (key: 'email' | 'push', val: boolean) => {
-    setNotifications(prev => ({ ...prev, [key]: val }));
-    setLoading(true);
-    try {
-      // Nếu có service notification thì gọi, không thì gọi user service cập nhật preferences
-      // Giả sử dùng import dynamic hoặc mock
-      const { notificationService } = await import('../services/notification.service').catch(() => ({ notificationService: null }));
-      
-      if (notificationService) {
-        await notificationService.updatePreferences({ [key]: val });
-      } else {
-        // Fallback: update vào user meta nếu backend hỗ trợ
-        // await userService.updateProfile({ notificationSettings: { ...notifications, [key]: val } });
-      }
-      showMsg(t('notifications.updated') || 'Notifications updated');
-    } catch(e) { showMsg('Error updating notifications'); }
-    finally { setLoading(false); }
-  };
-
-  // --- DATA SECTIONS (Đầy đủ như Web) ---
   const sections = [
     {
-      title: t('settings.language') || "Language",
-      icon: "language" as const,
-      fields: [
-        {
-          label: t('settings.language') || "Display Language",
-          desc: t('language.description') || "Select your preferred language",
-          type: "radio",
-          val: language,
-          options: [
-            { value: 'en', label: 'English' },
-            { value: 'vi', label: 'Tiếng Việt' }
-          ],
-          onChange: handleLanguageChange
-        }
-      ]
-    },
-    {
       title: t('settings.appearance') || "Appearance",
-      icon: "color-palette" as const,
-      fields: [
-        {
-          label: t('settings.appearance') || "Theme",
-          desc: t('theme.description') || "Choose how the app looks",
-          type: "radio",
-          val: theme,
-          options: [
-            { value: 'light', label: t('theme.light') || 'Light' },
-            { value: 'dark', label: t('theme.dark') || 'Dark' },
-            { value: 'auto', label: t('theme.auto') || 'Auto (System)' }
-          ],
-          onChange: handleThemeChange
-        }
+      icon: Palette,
+      items: [
+        { label: t('settings.language'), value: language === 'en' ? 'English' : 'Tiếng Việt', type: 'dropdown', 
+          options: [{label: 'English', value: 'en'}, {label: 'Tiếng Việt', value: 'vi'}], 
+          onSelect: (v: string) => handleUpdate('language', v, 'lang') },
+        { label: t('settings.appearance'), value: theme.charAt(0).toUpperCase() + theme.slice(1), type: 'dropdown', 
+          options: [{label: 'Light', value: 'light'}, {label: 'Dark', value: 'dark'}, {label: 'Auto', value: 'auto'}], 
+          onSelect: (v: string) => handleUpdate('theme', v, 'theme') },
       ]
     },
     {
       title: t('settings.regional') || "Regional",
-      icon: "globe" as const,
-      fields: [
-        {
-          label: t('regional.timezone') || "Time Zone",
-          desc: t('regional.timezoneDesc') || "Your local time zone",
-          type: "radio", // Mobile dùng Radio/Modal list thay vì Select box dropdown
-          val: timeZone,
-          // FULL LIST TỪ BẢN WEB
+      icon: Globe,
+      items: [
+        { label: t('regional.timezone'), value: timeZone, type: 'dropdown', 
           options: [
             { value: 'UTC-12:00', label: 'UTC-12:00' },
-            { value: 'UTC-07:00', label: 'UTC-07:00 (Pacific Time)' },
-            { value: 'UTC-06:00', label: 'UTC-06:00 (Central Time)' },
-            { value: 'UTC-05:00', label: 'UTC-05:00 (Eastern Time)' },
+            { value: 'UTC-07:00', label: 'UTC-07:00 (Pacific)' },
+            { value: 'UTC-06:00', label: 'UTC-06:00 (Central)' },
+            { value: 'UTC-05:00', label: 'UTC-05:00 (Eastern)' },
             { value: 'UTC+00:00', label: 'UTC+00:00 (GMT)' },
             { value: 'UTC+01:00', label: 'UTC+01:00 (Central European)' },
             { value: 'UTC+07:00', label: 'UTC+07:00 (Vietnam)' },
-            { value: 'UTC+08:00', label: 'UTC+08:00 (China Standard)' },
-            { value: 'UTC+09:00', label: 'UTC+09:00 (Japan Standard)' }
-          ],
-          onChange: (v: string) => handleRegionalChange('timeZone', v)
-        },
-        {
-          label: t('regional.dateFormat') || "Date Format",
-          desc: t('regional.dateFormatDesc') || "How dates are displayed",
-          type: "radio",
-          val: dateFormat,
-          // FULL LIST TỪ BẢN WEB
+            { value: 'UTC+08:00', label: 'UTC+08:00 (China)' },
+            { value: 'UTC+09:00', label: 'UTC+09:00 (Japan)' }
+          ], 
+          onSelect: (v: string) => handleUpdate('timeZone', v, 'regional') },
+        { label: t('regional.dateFormat'), value: dateFormat, type: 'dropdown',
           options: [
             { value: 'DD MMM YYYY', label: '31 Dec 2025' },
             { value: 'MMM DD, YYYY', label: 'Dec 31, 2025' },
@@ -571,300 +444,195 @@ function PreferencesTab({ user, updateUserTheme, isDark, t }: any) {
             { value: 'MM/DD/YYYY', label: '12/31/2025' },
             { value: 'YYYY-MM-DD', label: '2025-12-31' }
           ],
-          onChange: (v: string) => handleRegionalChange('dateFormat', v)
-        },
-        {
-          label: t('regional.timeFormat') || "Time Format",
-          desc: t('regional.timeFormatDesc') || "12h or 24h clock",
-          type: "radio",
-          val: timeFormat,
+          onSelect: (v: string) => handleUpdate('dateFormat', v, 'regional') },
+        { label: t('regional.timeFormat'), value: timeFormat, type: 'dropdown',
+          options: [{ value: '12h', label: '12h (8:00 PM)' }, { value: '24h', label: '24h (20:00)' }],
+          onSelect: (v: string) => handleUpdate('timeFormat', v, 'regional') },
+        { label: t('regional.weekStart'), value: weekStart === 'monday' ? 'Monday' : 'Sunday', type: 'dropdown',
           options: [
-            { value: '12h', label: t('regional.12hour') + ' (8:00 PM)' },
-            { value: '24h', label: t('regional.24hour') + ' (20:00)' }
-          ],
-          onChange: (v: string) => handleRegionalChange('timeFormat', v)
-        },
-        {
-          label: t('regional.weekStart') || "Week Start",
-          desc: t('regional.weekStartDesc') || "First day of the week",
-          type: "radio",
-          val: weekStart,
-          options: [
-            { value: 'monday', label: t('regional.monday') || 'Monday' },
+            { value: 'monday', label: t('regional.monday') || 'Monday' }, 
             { value: 'sunday', label: t('regional.sunday') || 'Sunday' }
           ],
-          onChange: (v: string) => handleRegionalChange('weekStart', v)
-        }
+          onSelect: (v: string) => handleUpdate('weekStart', v, 'regional') },
       ]
     },
     {
-      title: t('notifications.title') || "Notifications",
-      icon: "notifications" as const,
-      fields: [
-        {
-          label: t('notifications.email') || "Email Notifications",
-          desc: t('notifications.emailDesc') || "Receive updates via email",
-          type: "toggle",
-          val: notifications.email,
-          onChange: (v: boolean) => handleNotificationChange('email', v)
-        },
-        {
-          label: t('notifications.push') || "Push Notifications",
-          desc: t('notifications.pushDesc') || "Receive app notifications",
-          type: "toggle",
-          val: notifications.push,
-          onChange: (v: boolean) => handleNotificationChange('push', v)
-        }
-      ]
+        title: t('notifications.title') || "Notifications",
+        icon: Bell,
+        items: [
+            { label: t('notifications.email'), value: notifications.email, type: 'switch', 
+              onChange: (v: boolean) => handleUpdate('email', v, 'notif') },
+            { label: t('notifications.push'), value: notifications.push, type: 'switch', 
+              onChange: (v: boolean) => handleUpdate('push', v, 'notif') },
+        ]
     }
   ];
 
   return (
     <View style={styles.tabContent}>
-      <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, isDark && styles.darkText]}>
-          {t('preferences.title') || 'Preferences'}
-        </Text>
-        <Text style={[styles.sectionDesc, isDark && styles.darkSubtext]}>
-          {t('preferences.description') || 'Customize your app experience.'}
-        </Text>
-      </View>
-
-      {/* Render Sections */}
-      {sections.map((section, sIndex) => (
-        <View key={sIndex} style={[styles.card, isDark && styles.darkCard]}>
-          <View style={styles.cardHeader}>
-             <View style={styles.iconBox}>
-                <Ionicons name={section.icon} size={18} color="#3b82f6" />
-             </View>
-             <Text style={[styles.cardTitle, isDark && styles.darkText]}>{section.title}</Text>
-          </View>
-
-          {section.fields.map((field: any, fIndex) => (
-            <View key={fIndex} style={[
-              styles.fieldRow, 
-              fIndex !== 0 && styles.borderTop,
-              isDark && styles.darkBorderTop
-            ]}>
-              {/* Label & Desc */}
-              <View style={styles.fieldInfo}>
-                <Text style={[styles.fieldLabel, isDark && styles.darkText]}>{field.label}</Text>
-                <Text style={[styles.fieldDesc, isDark && styles.darkSubtext]}>{field.desc}</Text>
-              </View>
-
-              {/* Controls */}
-              <View style={styles.fieldControl}>
-                {field.type === 'toggle' && (
-                  <Switch 
-                    value={field.val} 
-                    onValueChange={field.onChange}
-                    trackColor={{ false: '#d1d5db', true: '#3b82f6' }}
-                    thumbColor="#FFF"
-                  />
-                )}
-                
-                {field.type === 'radio' && (
-                   <View style={styles.radioGroup}>
-                      {field.options.map((opt: any) => {
-                         const isSelected = field.val === opt.value;
-                         return (
-                           <TouchableOpacity 
-                              key={opt.value} 
-                              style={styles.radioItem} 
-                              onPress={() => field.onChange(opt.value)}
-                           >
-                              <View style={[styles.radioCircle, isSelected && styles.radioCircleActive]}>
-                                 {isSelected && <View style={styles.radioDot} />}
-                              </View>
-                              <Text style={[
-                                styles.radioText, 
-                                isDark && styles.darkText,
-                                isSelected && styles.radioTextActive
-                              ]}>
-                                {opt.label}
-                              </Text>
-                           </TouchableOpacity>
-                         )
-                      })}
-                   </View>
-                )}
-              </View>
+      {sections.map((section, idx) => (
+        <View key={idx} style={[styles.card, isDark && styles.darkCard]}>
+            <View style={styles.cardHeader}>
+                <View style={[styles.iconBox, {backgroundColor: isDark ? 'rgba(59,130,246,0.2)' : '#EFF6FF'}]}>
+                    <section.icon size={18} color={colors.bluePrimary} />
+                </View>
+                <Text style={[styles.cardTitle, isDark && styles.darkText]}>{section.title}</Text>
             </View>
-          ))}
+            
+            {section.items.map((item: any, i) => (
+                <View key={i} style={[styles.settingRow, i !== 0 && styles.borderTop, isDark && styles.darkBorderTop]}>
+                    <Text style={[styles.settingLabel, isDark && styles.darkText]}>{item.label}</Text>
+                    
+                    {item.type === 'switch' ? (
+                        <Switch 
+                            value={item.value} 
+                            onValueChange={item.onChange}
+                            trackColor={{ false: '#d1d5db', true: colors.bluePrimary }}
+                            thumbColor="#FFF"
+                        />
+                    ) : (
+                        <TouchableOpacity 
+                            style={styles.dropdownTrigger}
+                            onPress={() => openDropdown({ title: item.label, options: item.options, value: item.value, onSelect: item.onSelect })}
+                        >
+                            <Text style={[styles.dropdownValue, isDark && styles.darkSubtext]}>{item.value}</Text>
+                            <ChevronDown size={16} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                    )}
+                </View>
+            ))}
         </View>
       ))}
 
-      {/* Message Toast */}
-      {message !== '' && (
-        <View style={[styles.toast, styles.successBox]}>
-          <Text style={styles.successText}>{message}</Text>
-        </View>
+      {currentModalConfig && (
+          <CustomDropdown 
+            visible={modalVisible}
+            onClose={() => setModalVisible(false)}
+            {...currentModalConfig}
+            theme={isDark ? 'dark' : 'light'}
+          />
       )}
     </View>
   );
 }
 
-// ============================================================================
-// 3. TAB SECURITY: Change Password, Validation, Tips
-// ============================================================================
-function SecurityTab({ isDark, t }: any) {
+// ------------------------------------------------------------------
+// 3. TAB SECURITY
+// ------------------------------------------------------------------
+function SecurityTab({ isDark, t, colors }: any) {
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  
   const [showOld, setShowOld] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
-  const [msgType, setMsgType] = useState<'success' | 'error'>('success');
+  const [msgType, setMsgType] = useState('success');
 
-  const handleChangePassword = async () => {
-    setMessage('');
-    // Validation Logic giống Web
+  const handleChange = async () => {
     if (newPassword !== confirmPassword) {
-      setMessage(t('security.passwordMismatch') || 'Passwords do not match');
-      setMsgType('error');
-      return;
+        setMessage(t('security.passwordMismatch') || 'Passwords do not match');
+        setMsgType('error');
+        return;
     }
     if (newPassword.length < 8) {
-      setMessage(t('security.passwordMinLength') || 'Password must be at least 8 characters');
-      setMsgType('error');
-      return;
+        setMessage(t('security.passwordMinLength') || 'Password must be at least 8 characters');
+        setMsgType('error');
+        return;
     }
-
     setLoading(true);
     try {
-      await userService.changePassword(oldPassword, newPassword);
-      setMessage(t('security.passwordChanged') || 'Password changed successfully');
-      setMsgType('success');
-      // Reset form
-      setOldPassword(''); setNewPassword(''); setConfirmPassword('');
-    } catch (e: any) {
-      setMessage(e.response?.data?.message || e.message || 'Error changing password');
-      setMsgType('error');
-    } finally {
-      setLoading(false);
-    }
+        await userService.changePassword(oldPassword, newPassword);
+        setMessage(t('security.passwordChanged') || 'Password changed');
+        setMsgType('success');
+        setOldPassword(''); setNewPassword(''); setConfirmPassword('');
+    } catch(e: any) {
+        setMessage(e.message || 'Error');
+        setMsgType('error');
+    } finally { setLoading(false); }
   };
 
-  // Reusable Password Input
-  const PasswordField = ({ label, val, setVal, show, setShow, placeholder }: any) => (
+  const PassInput = ({label, val, setVal, show, setShow, ph}: any) => (
     <View style={styles.inputContainer}>
-      <Text style={[styles.label, isDark && styles.darkText]}>{label}</Text>
-      <View style={styles.passInputWrapper}>
-        <TextInput
-          style={[styles.input, styles.passInput, isDark && styles.darkInput]}
-          value={val}
-          onChangeText={setVal}
-          placeholder={placeholder}
-          placeholderTextColor={isDark ? '#6b7280' : '#9ca3af'}
-          secureTextEntry={!show}
-        />
-        <TouchableOpacity onPress={() => setShow(!show)} style={styles.eyeBtn}>
-           <Ionicons name={show ? "eye-off" : "eye"} size={20} color={isDark ? '#9ca3af' : '#6b7280'} />
-        </TouchableOpacity>
-      </View>
+        <Text style={[styles.label, isDark && styles.darkText]}>{label}</Text>
+        <View style={styles.passInputWrapper}>
+            <TextInput 
+                style={[styles.input, styles.passInput, isDark && styles.darkInput]}
+                value={val} onChangeText={setVal} secureTextEntry={!show} placeholder={ph} placeholderTextColor={colors.textSecondary}
+            />
+            <TouchableOpacity onPress={() => setShow(!show)} style={styles.eyeBtn}>
+                {show ? <EyeOff size={20} color={colors.textSecondary} /> : <Eye size={20} color={colors.textSecondary} />}
+            </TouchableOpacity>
+        </View>
     </View>
   );
 
   return (
     <View style={styles.tabContent}>
-      <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, isDark && styles.darkText]}>
-          {t('security.title') || 'Security'}
-        </Text>
-        <Text style={[styles.sectionDesc, isDark && styles.darkSubtext]}>
-          {t('security.description') || 'Manage your password and security settings.'}
-        </Text>
-      </View>
-
-      {/* FORM CARD */}
-      <View style={[styles.card, isDark && styles.darkCard]}>
-        <Text style={[styles.cardTitle, isDark && styles.darkText, {marginBottom: 16}]}>
-          {t('security.changePassword') || 'Change Password'}
-        </Text>
-
-        <PasswordField 
-          label={t('security.currentPassword') || "Current Password"} 
-          val={oldPassword} setVal={setOldPassword} show={showOld} setShow={setShowOld}
-          placeholder={t('security.enterCurrentPassword') || "Enter current password"}
-        />
-
-        <PasswordField 
-          label={t('security.newPassword') || "New Password"} 
-          val={newPassword} setVal={setNewPassword} show={showNew} setShow={setShowNew}
-          placeholder={t('security.enterNewPassword') || "Enter new password"}
-        />
-        <Text style={[styles.helperText, isDark && styles.darkSubtext, {marginTop: -12, marginBottom: 12}]}>
-           {t('security.passwordMinLength') || 'Must be at least 8 characters long.'}
-        </Text>
-
-        <PasswordField 
-          label={t('security.confirmPassword') || "Confirm Password"} 
-          val={confirmPassword} setVal={setConfirmPassword} show={showConfirm} setShow={setShowConfirm}
-          placeholder={t('security.confirmNewPassword') || "Confirm new password"}
-        />
-
-        <View style={{marginTop: 8}}>
-          <TouchableOpacity 
-            onPress={handleChangePassword} 
-            disabled={loading} 
-            style={[styles.primaryBtn, loading && styles.disabledBtn]}
-          >
-             {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.primaryBtnText}>{t('security.updatePassword') || 'Update Password'}</Text>}
-          </TouchableOpacity>
+        <View style={[styles.card, isDark && styles.darkCard]}>
+            <Text style={[styles.cardTitle, isDark && styles.darkText, {marginBottom: 16}]}>{t('security.changePassword') || 'Change Password'}</Text>
+            <PassInput label={t('security.currentPassword')} val={oldPassword} setVal={setOldPassword} show={showOld} setShow={setShowOld} ph="Current password" />
+            <PassInput label={t('security.newPassword')} val={newPassword} setVal={setNewPassword} show={showNew} setShow={setShowNew} ph="New password" />
+            <Text style={[styles.helperText, isDark && styles.darkSubtext, {marginTop: -12, marginBottom: 12}]}>
+               {t('security.passwordMinLength') || 'Must be at least 8 characters long.'}
+            </Text>
+            <PassInput label={t('security.confirmPassword')} val={confirmPassword} setVal={setConfirmPassword} show={showConfirm} setShow={setShowConfirm} ph="Confirm password" />
+            
+            <TouchableOpacity onPress={handleChange} disabled={loading} style={[styles.primaryBtn, {marginTop: 8}]}>
+                {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.primaryBtnText}>{t('security.updatePassword') || 'Update'}</Text>}
+            </TouchableOpacity>
+            
+            {message !== '' && (
+                <View style={[styles.alertBox, msgType === 'error' ? styles.errorBox : styles.successBox, {marginTop: 16}]}>
+                    <Text style={[styles.alertText, msgType === 'error' ? styles.errorText : styles.successText]}>{message}</Text>
+                </View>
+            )}
         </View>
 
-        {message !== '' && (
-          <View style={[styles.alertBox, msgType === 'error' ? styles.errorBox : styles.successBox, {marginTop: 16}]}>
-             <Text style={[styles.alertText, msgType === 'error' ? styles.errorText : styles.successText]}>
-               {message}
-             </Text>
-          </View>
-        )}
-      </View>
+        <View style={[styles.infoCard, { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.1)' : '#eff6ff' }]}>
+             <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 8}}>
+                <Shield size={20} color="#3b82f6" />
+                <Text style={[styles.infoTitle, {color: isDark ? '#60a5fa' : '#1e40af', marginLeft: 8}]}>
+                   {t('security.passwordTips') || 'Password Tips'}
+                </Text>
+             </View>
+             <View style={{paddingLeft: 4}}>
+                <Text style={[styles.infoText, {color: isDark ? '#93c5fd' : '#1d4ed8'}]}>• {t('security.tipMinChars') || 'Use at least 8 characters'}</Text>
+                <Text style={[styles.infoText, {color: isDark ? '#93c5fd' : '#1d4ed8'}]}>• {t('security.tipNumbers') || 'Include numbers and symbols'}</Text>
+                <Text style={[styles.infoText, {color: isDark ? '#93c5fd' : '#1d4ed8'}]}>• {t('security.tipCommon') || 'Avoid common words'}</Text>
+                <Text style={[styles.infoText, {color: isDark ? '#93c5fd' : '#1d4ed8'}]}>• {t('security.tipReuse') || "Don't reuse passwords"}</Text>
+             </View>
+        </View>
 
-      {/* SECURITY TIPS & INFO (Khớp Web) */}
-      <View style={[styles.infoCard, { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.1)' : '#eff6ff' }]}>
-         <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 8}}>
-            <Ionicons name="shield-checkmark" size={20} color="#3b82f6" />
-            <Text style={[styles.infoTitle, {color: isDark ? '#60a5fa' : '#1e40af', marginLeft: 8}]}>
-               {t('security.passwordTips') || 'Password Tips'}
-            </Text>
-         </View>
-         <View style={{paddingLeft: 4}}>
-            <Text style={[styles.infoText, {color: isDark ? '#93c5fd' : '#1d4ed8'}]}>• {t('security.tipMinChars') || 'Use at least 8 characters'}</Text>
-            <Text style={[styles.infoText, {color: isDark ? '#93c5fd' : '#1d4ed8'}]}>• {t('security.tipNumbers') || 'Include numbers and symbols'}</Text>
-            <Text style={[styles.infoText, {color: isDark ? '#93c5fd' : '#1d4ed8'}]}>• {t('security.tipCommon') || 'Avoid common words'}</Text>
-            <Text style={[styles.infoText, {color: isDark ? '#93c5fd' : '#1d4ed8'}]}>• {t('security.tipReuse') || "Don't reuse passwords"}</Text>
-         </View>
-      </View>
-
-      {/* LAST CHANGED INFO */}
-      <View style={[styles.card, isDark && styles.darkCard, {marginTop: 16}]}>
-         <View style={{flexDirection: 'row', alignItems: 'center'}}>
-            <Ionicons name="time-outline" size={20} color={isDark ? '#9ca3af' : '#6b7280'} />
-            <View style={{marginLeft: 12}}>
-               <Text style={[styles.cardTitle, isDark && styles.darkText, {fontSize: 14, marginBottom: 2}]}>
-                 {t('security.lastChanged') || 'Last Changed'}
-               </Text>
-               <Text style={[styles.helperText, isDark && styles.darkSubtext]}>
-                 {t('security.lastChangedInfo', { time: '2 months' }) || '2 months ago'}
-               </Text>
-            </View>
-         </View>
-      </View>
+        <View style={[styles.card, isDark && styles.darkCard, {marginTop: 16}]}>
+             <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                <Calendar size={20} color={isDark ? '#9ca3af' : '#6b7280'} />
+                <View style={{marginLeft: 12}}>
+                   <Text style={[styles.cardTitle, isDark && styles.darkText, {fontSize: 14, marginBottom: 2}]}>
+                     {t('security.lastChanged') || 'Last Changed'}
+                   </Text>
+                   <Text style={[styles.helperText, isDark && styles.darkSubtext]}>
+                     {t('security.lastChangedInfo', { time: '2 months' }) || '2 months ago'}
+                   </Text>
+                </View>
+             </View>
+        </View>
     </View>
   );
 }
 
-// ============================================================================
-// STYLES (Chi tiết, hỗ trợ Dark Mode đầy đủ)
-// ============================================================================
+// ------------------------------------------------------------------
+// STYLES (Fixed Tab Layout)
+// ------------------------------------------------------------------
+const getColors = (isDark: boolean) => ({
+    textPrimary: isDark ? '#F9FAFB' : '#111827',
+    textSecondary: isDark ? '#9CA3AF' : '#6B7280',
+    bluePrimary: isDark ? '#60A5FA' : '#3B82F6',
+    red: isDark ? '#F87171' : '#EF4444',
+});
+
 const styles = StyleSheet.create({
-  // LAYOUT
   container: { flex: 1, backgroundColor: '#f3f4f6' },
   darkContainer: { backgroundColor: '#111827' },
   contentArea: { flex: 1 },
@@ -872,52 +640,39 @@ const styles = StyleSheet.create({
   scrollContent: { paddingBottom: 40 },
   tabContent: { padding: 16 },
 
-  // HEADER
   header: { backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
   darkHeader: { backgroundColor: '#1f2937', borderBottomColor: '#374151' },
   headerTopRow: { flexDirection: 'row', alignItems: 'center', padding: 16 },
-  backButton: { padding: 8, marginRight: 8, borderRadius: 8 },
+  backButton: { padding: 8, marginRight: 8 },
   headerTitles: { flex: 1 },
   headerTitle: { fontSize: 20, fontWeight: '700', color: '#111827' },
-  headerSubtitle: { fontSize: 13, color: '#6b7280', marginTop: 2 },
 
-  // TABS
+  // ✅ FIX: Tab Styles giống bản trước
   tabContainer: { paddingHorizontal: 16, paddingBottom: 12 },
-  tabContentContainer: { flexGrow: 1 },
-  tabsWrapper: { flexDirection: 'row', backgroundColor: '#f9fafb', padding: 4, borderRadius: 12, width: '100%' },
+  tabsWrapper: { flexDirection: 'row', backgroundColor: '#f3f4f6', padding: 4, borderRadius: 12, width: '100%' },
   darkTabsWrapper: { backgroundColor: '#374151' },
-  tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 8, marginHorizontal: 2 },
-  activeTabItem: { backgroundColor: '#FFF', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 },
+  tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 8 },
+  activeTabItem: { backgroundColor: '#FFF', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 },
   activeDarkTabItem: { backgroundColor: '#111827' },
   tabText: { fontSize: 13, fontWeight: '600', color: '#6b7280', marginLeft: 6 },
   activeTabText: { color: '#111827' },
   darkTabText: { color: '#9ca3af' },
   activeDarkTabText: { color: '#FFF' },
 
-  // SECTIONS
-  sectionHeader: { marginBottom: 20 },
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: '#111827' },
-  sectionDesc: { fontSize: 14, color: '#6b7280', marginTop: 4 },
-
-  // CARDS
   card: { backgroundColor: '#FFF', borderRadius: 16, padding: 16, marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 4, elevation: 1 },
   darkCard: { backgroundColor: '#1f2937' },
   cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  iconBox: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#eff6ff', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  iconBox: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
   cardTitle: { fontSize: 16, fontWeight: '600', color: '#111827' },
 
-  // AVATAR
-  avatarRow: { flexDirection: 'row', alignItems: 'center' },
-  avatarWrapper: { position: 'relative' },
-  avatarImage: { width: 80, height: 80, borderRadius: 40, borderWidth: 3, borderColor: '#FFF' },
-  avatarPlaceholder: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#3b82f6', justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: '#FFF' },
-  avatarInitials: { fontSize: 28, fontWeight: 'bold', color: '#FFF' },
-  cameraBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#3b82f6', width: 26, height: 26, borderRadius: 13, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#FFF' },
-  avatarActions: { marginLeft: 20, flex: 1 },
-  uploadBtn: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  uploadBtnText: { color: '#3b82f6', fontWeight: '600', marginLeft: 6 },
+  avatarWrapper: { position: 'relative', marginBottom: 12 },
+  avatarImage: { width: 100, height: 100, borderRadius: 50 },
+  avatarPlaceholder: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#3b82f6', justifyContent: 'center', alignItems: 'center' },
+  avatarInitials: { fontSize: 36, fontWeight: 'bold', color: '#FFF' },
+  cameraBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#3b82f6', padding: 6, borderRadius: 20, borderWidth: 2, borderColor: '#FFF' },
+  uploadTextBtn: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+  uploadBtnText: { fontWeight: '600', marginLeft: 6 },
 
-  // FORMS & INPUTS
   inputContainer: { marginBottom: 16 },
   label: { fontSize: 14, fontWeight: '500', color: '#374151', marginBottom: 6 },
   input: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 10, padding: 12, fontSize: 15, color: '#111827' },
@@ -928,55 +683,46 @@ const styles = StyleSheet.create({
   disabledInput: { backgroundColor: '#f9fafb', color: '#9ca3af' },
   helperText: { fontSize: 12, color: '#6b7280', marginTop: 4 },
 
-  // BUTTONS
-  buttonRow: { marginTop: 8, marginBottom: 24 },
-  primaryBtn: { backgroundColor: '#3b82f6', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
+  buttonRow: { flexDirection: 'row', marginTop: 8, marginBottom: 16 },
+  primaryBtn: { flex: 1, backgroundColor: '#3b82f6', paddingVertical: 12, borderRadius: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
   primaryBtnText: { color: '#FFF', fontWeight: '600', fontSize: 15 },
-  secondaryBtn: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#d1d5db', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 10, alignItems: 'center' },
+  secondaryBtn: { flex: 1, backgroundColor: 'transparent', borderWidth: 1, borderColor: '#d1d5db', paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
   secondaryBtnText: { color: '#374151', fontWeight: '600', fontSize: 15 },
-  flexBtn: { flex: 1, marginHorizontal: 4 },
-  editBtnGroup: { flexDirection: 'row' },
+  editBtnGroup: { flexDirection: 'row', flex: 1, gap: 10 },
+  flexBtn: { flex: 1 },
   disabledBtn: { opacity: 0.6 },
-  
-  deleteSection: { borderTopWidth: 1, borderTopColor: '#e5e7eb', paddingTop: 16 },
-  deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  deleteBtnText: { color: '#ef4444', fontWeight: '600', marginLeft: 6 },
 
-  // ALERTS & TOASTS
-  alertBox: { padding: 12, borderRadius: 8, flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+  deleteLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12 },
+  deleteLinkText: { fontWeight: '600', marginLeft: 6 },
+
+  alertBox: { padding: 12, borderRadius: 8 },
   successBox: { backgroundColor: '#ecfdf5' },
   errorBox: { backgroundColor: '#fef2f2' },
-  darkSuccessBox: { backgroundColor: 'rgba(6, 78, 59, 0.5)' },
-  darkErrorBox: { backgroundColor: 'rgba(127, 29, 29, 0.5)' },
-  alertText: { fontSize: 14, fontWeight: '500' },
+  alertText: { fontSize: 14, fontWeight: '500', textAlign: 'center' },
   successText: { color: '#047857' },
   errorText: { color: '#b91c1c' },
-  toast: { position: 'absolute', bottom: 20, left: 16, right: 16, padding: 12, borderRadius: 8, alignItems: 'center', zIndex: 100 },
 
-  // PREFERENCE FIELDS
-  fieldRow: { flexDirection: 'row', paddingVertical: 16 },
+  settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14 },
   borderTop: { borderTopWidth: 1, borderTopColor: '#f3f4f6' },
   darkBorderTop: { borderTopColor: '#374151' },
-  fieldInfo: { flex: 1, paddingRight: 12 },
-  fieldLabel: { fontSize: 15, fontWeight: '500', color: '#111827' },
-  fieldDesc: { fontSize: 13, color: '#6b7280', marginTop: 2 },
-  fieldControl: { justifyContent: 'center', alignItems: 'flex-end', minWidth: 60 },
-  
-  // RADIO LIST
-  radioGroup: { width: '100%', alignItems: 'flex-end' },
-  radioItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  radioText: { fontSize: 14, color: '#4b5563', marginRight: 10 },
-  radioTextActive: { color: '#3b82f6', fontWeight: '600' },
-  radioCircle: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: '#d1d5db', alignItems: 'center', justifyContent: 'center' },
-  radioCircleActive: { borderColor: '#3b82f6', backgroundColor: '#3b82f6' },
-  radioDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFF' },
+  settingLabel: { fontSize: 15, color: '#111827', flex: 1 },
+  dropdownTrigger: { flexDirection: 'row', alignItems: 'center' },
+  dropdownValue: { fontSize: 14, color: '#6b7280', marginRight: 4 },
 
-  // INFO CARD
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  dropdownContainer: { backgroundColor: '#FFF', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, maxHeight: '50%' },
+  darkDropdownContainer: { backgroundColor: '#1f2937' },
+  dropdownHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  dropdownTitle: { fontSize: 18, fontWeight: '700', color: '#111827' },
+  dropdownItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
+  dropdownItemActive: { backgroundColor: '#eff6ff' },
+  dropdownItemText: { fontSize: 16, color: '#374151' },
+  dropdownItemTextActive: { color: '#3b82f6', fontWeight: '600' },
+
   infoCard: { borderRadius: 12, padding: 16 },
   infoTitle: { fontSize: 14, fontWeight: '600' },
   infoText: { fontSize: 13, marginTop: 4, lineHeight: 18 },
-  
-  // DARK MODE TEXT UTILS
+
   darkText: { color: '#f3f4f6' },
   darkSubtext: { color: '#9ca3af' },
 });

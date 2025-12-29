@@ -1,4 +1,4 @@
-// File: src/utils/groupRoleUtils.ts (Mobile - Updated)
+// File: mobile/utils/groupRoleUtils.ts (Updated)
 
 import {
   FOLDER_SCOPED_ROLES,
@@ -24,7 +24,6 @@ export const getMemberRole = (group: Group | null | undefined, userId?: string |
     return null;
   }
   const member = group.members?.find(item => getMemberId(item) === userId);
-  // 🟢 Đã sửa: Dùng nullish coalescing giống Web để chuẩn hóa type
   return member?.role ?? null;
 };
 
@@ -34,21 +33,35 @@ export const isReadOnlyRole = (role?: GroupRoleKey | null) =>
 export const requiresFolderAssignment = (role?: GroupRoleKey | null) =>
   role ? FOLDER_SCOPED_ROLES.includes(role) : false;
 
-// 🟢 Đã sửa: Roles are assigned by system admin only (account-level)
-// Mobile không được phép hiển thị UI sửa role nữa.
+// Roles are assigned by system admin only
 export const canManageRoles = () => false;
 
-// 🟢 Đã sửa: Bổ sung tham số isLeader
-export const canAddMembers = (role?: GroupRoleKey | null, isLeader?: boolean) =>
-  role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM || Boolean(isLeader);
+// ✅ MỚI: Helper check chủ sở hữu Personal Workspace (Copy từ Web)
+export const isPersonalWorkspaceOwner = (group: Group | null | undefined, userId?: string | null): boolean => {
+  if (!group || !userId) {
+    return false;
+  }
+  // Check if it's a personal workspace
+  if (!(group as any).isPersonalWorkspace) {
+    return false;
+  }
+  // Get creator ID - handle both string and object types for createdBy
+  const createdBy = (group as any).createdBy;
+  const creatorId = typeof createdBy === 'string' ? createdBy : createdBy?._id;
+  return creatorId === userId;
+};
 
-// 🟢 Đã sửa: Bổ sung tham số isLeader
-export const canManageFolders = (role?: GroupRoleKey | null, isLeader?: boolean) =>
-  role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM || Boolean(isLeader);
+// ✅ CẬP NHẬT: Thêm tham số isPersonalOwner và logic check || isPersonalOwner
+export const canAddMembers = (role?: GroupRoleKey | null, isLeader?: boolean, isPersonalOwner?: boolean) =>
+  isPersonalOwner || role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM || Boolean(isLeader);
 
-// 🟢 Đã sửa: Viết tường minh và bổ sung tham số isLeader
-export const canAssignFolderMembers = (role?: GroupRoleKey | null, isLeader?: boolean) =>
-  role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM || Boolean(isLeader);
+// ✅ CẬP NHẬT: Thêm tham số isPersonalOwner
+export const canManageFolders = (role?: GroupRoleKey | null, isLeader?: boolean, isPersonalOwner?: boolean) =>
+  isPersonalOwner || role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM || Boolean(isLeader);
+
+// ✅ CẬP NHẬT: Thêm tham số isPersonalOwner
+export const canAssignFolderMembers = (role?: GroupRoleKey | null, isLeader?: boolean, isPersonalOwner?: boolean) =>
+  isPersonalOwner || role === GROUP_ROLE_KEYS.PRODUCT_OWNER || role === GROUP_ROLE_KEYS.PM || Boolean(isLeader);
 
 export const getRoleSummary = (role?: GroupRoleKey | null) =>
   (role && ROLE_SUMMARIES[role]) || null;

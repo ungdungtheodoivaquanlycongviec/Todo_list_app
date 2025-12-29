@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,31 +10,37 @@ import {
   ScrollView,
   TextInput,
   Dimensions,
+  Image,
+  KeyboardAvoidingView,
+  Platform
 } from 'react-native';
-// Yêu cầu thư viện icon: npm install react-native-vector-icons
-import Ionicons from 'react-native-vector-icons/Ionicons';
+import { X, Users, AlertTriangle, Search, Check, Crown } from 'lucide-react-native'; // Thêm Crown icon cho Owner
 
-// ⚠️ ĐIỀU CHỈNH ĐƯỜNG DẪN IMPORT TƯƠNG ỨNG VỚI VỊ TRÍ FILE NÀY
-// Giả định các types và utils cần thiết
 import { Folder } from '../../types/folder.types';
 import { GroupMember } from '../../types/group.types';
-import { getMemberId, requiresFolderAssignment } from '../../utils/groupRoleUtils';
-import { getRoleLabel } from '../constants/groupRoles';
+import { getMemberId } from '../../utils/groupRoleUtils'; // Bỏ requiresFolderAssignment nếu muốn hiện tất cả
+import { getRoleLabel, GROUP_ROLE_KEYS } from '../constants/groupRoles';
+import { useLanguage } from '../../context/LanguageContext';
 
-// --- Types cho component ---
+interface BlockedUser {
+  userId: string;
+  userName: string;
+  userEmail: string;
+  tasks: Array<{ taskId: string; taskTitle: string; taskStatus: string }>;
+}
+
 interface FolderAccessModalProps {
-  visible: boolean; // Thêm prop 'visible' cho Modal
+  visible: boolean;
   folder: Folder;
   members: GroupMember[];
   onClose: () => void;
-  // Giữ chữ ký hàm đơn giản như phiên bản web
-  onSave: (memberIds: string[]) => Promise<void>; 
+  onSave: (memberIds: string[]) => Promise<void>;
   saving: boolean;
-  error?: string | null; // Cập nhật để phù hợp với state lỗi
-  theme: string; // Thêm prop theme để hỗ trợ Dark Mode
+  error?: string | null;
+  theme?: 'light' | 'dark';
+  blockedUsers?: BlockedUser[];
 }
 
-// --- Component Chính: FolderAccessModal ---
 export const FolderAccessModal: React.FC<FolderAccessModalProps> = ({
   visible,
   folder,
@@ -43,65 +49,62 @@ export const FolderAccessModal: React.FC<FolderAccessModalProps> = ({
   onSave,
   saving,
   error,
-  theme,
+  theme = 'light',
+  blockedUsers = []
 }) => {
+  const { t } = useLanguage();
   const isDark = theme === 'dark';
   const styles = getStyles(isDark);
+  const colors = getColors(isDark);
 
-  // 1. Lọc Thành viên đủ điều kiện
+  // ✅ FIX: Hiển thị tất cả thành viên trong nhóm để có thể gán quyền
+  // (Bỏ requiresFolderAssignment để giống Web hiển thị full list)
   const eligibleMembers = useMemo(
-    () =>
-      members.filter(member => {
-        const memberId = getMemberId(member);
-        // KHẮC PHỤC LỖI 2: Đảm bảo memberId tồn tại trước khi dùng
-        if (!memberId) return false; 
-        return requiresFolderAssignment(member.role);
-      }),
+    () => members.filter(member => {
+      const memberId = getMemberId(member);
+      return Boolean(memberId);
+    }),
     [members]
   );
 
-  // 2. Load trạng thái ban đầu
   const initialSelected = useMemo(() => {
-    // KHẮC PHỤC LỖI 2: Đảm bảo memberAccess là mảng
-    if (!Array.isArray(folder.memberAccess)) {
-      return [];
-    }
-    // Giả định memberAccess trong Folder có cấu trúc { userId: string, ... }
-    return folder.memberAccess.map(access => access.userId);
+    if (!Array.isArray(folder.memberAccess)) return [];
+    return folder.memberAccess.map((access: any) => {
+        const u = access.userId;
+        return (typeof u === 'string' ? u : u?._id) as string;
+    }).filter(Boolean);
   }, [folder.memberAccess]);
 
   const [selectedMembers, setSelectedMembers] = useState<string[]>(initialSelected);
   const [search, setSearch] = useState('');
 
-  // Cập nhật state khi Modal mở/folder thay đổi
   useEffect(() => {
-    setSelectedMembers(initialSelected);
-    setSearch('');
+    if (visible) {
+      setSelectedMembers(initialSelected);
+      setSearch('');
+    }
   }, [visible, initialSelected]);
 
-
-  // 3. Lọc thành viên theo từ khóa tìm kiếm
   const filteredMembers = eligibleMembers.filter(member => {
-    const name = member.name || (typeof member.userId === 'object' ? member.userId?.name : '');
-    const email = member.email || (typeof member.userId === 'object' ? member.userId?.email : '');
+    const userObj = member.userId as any;
+    const name = member.name || userObj?.name || '';
+    const email = member.email || userObj?.email || '';
     const keyword = search.toLowerCase();
-    
-    // KHẮC PHỤC LỖI 2: Đảm bảo chuỗi không phải undefined trước khi gọi toLowerCase()
     return (name?.toLowerCase().includes(keyword) || email?.toLowerCase().includes(keyword));
   });
 
-  // 4. Toggle thành viên
   const toggleMember = useCallback((memberId: string) => {
     setSelectedMembers(prev =>
       prev.includes(memberId) ? prev.filter(id => id !== memberId) : [...prev, memberId]
     );
   }, []);
 
-  // 5. Xử lý lưu
   const handleSave = async () => {
     if (saving) return;
     await onSave(selectedMembers);
   };
+
+  if (!visible) return null;
 
   return (
     <Modal
@@ -110,314 +113,258 @@ export const FolderAccessModal: React.FC<FolderAccessModalProps> = ({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <TouchableWithoutFeedback onPress={onClose}>
-        <View style={styles.modalOverlay}>
-          <TouchableWithoutFeedback>
-            <View style={styles.modalContent}>
-              
-              {/* Header */}
-              <View style={styles.header}>
-                <View style={styles.titleContainer}>
-                  <Ionicons name="people-circle-outline" size={24} color="#3b82f6" style={{ marginRight: 8 }} />
-                  <Text style={styles.title}>Quản lý truy cập folder</Text>
-                  <Text style={styles.subtitle}>Folder: <Text style={styles.folderName}>{folder.name}</Text></Text>
-                </View>
-                <TouchableOpacity
-                  onPress={onClose}
-                  style={styles.closeButton}
-                  disabled={saving}
-                >
-                  <Ionicons name="close" size={24} color={isDark ? "#d1d5db" : "#6b7280"} />
-                </TouchableOpacity>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.modalOverlay}
+      >
+        <TouchableWithoutFeedback onPress={onClose}>
+          <View style={styles.overlayClickArea} />
+        </TouchableWithoutFeedback>
+
+        <View style={styles.modalContent}>
+          {/* Header */}
+          <View style={styles.header}>
+            <View style={styles.titleContainer}>
+              <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                <Users size={20} color={colors.bluePrimary} style={{ marginRight: 8 }} />
+                <Text style={styles.title}>{t('folderAccess.title' as any) || 'Quản lý truy cập folder'}</Text>
               </View>
+              <Text style={styles.subtitle} numberOfLines={1}>
+                {t('folderAccess.folderLabel' as any) || 'Folder'}: <Text style={styles.folderName}>{folder.name}</Text>
+              </Text>
+            </View>
+            <TouchableOpacity onPress={onClose} style={styles.closeButton} disabled={saving}>
+              <X size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
 
-              <View style={styles.body}>
-                <Text style={styles.infoText}>
-                  Chỉ những vai trò cần được gán folder (BA, Tech, Team sản phẩm...) mới xuất hiện trong danh sách này.
-                </Text>
-                
-                {/* Search Input */}
-                <View style={styles.searchContainer}>
-                  <Ionicons name="search" size={18} color={isDark ? "#9ca3af" : "#9ca3af"} style={styles.searchIcon} />
-                  <TextInput
-                    placeholder="Tìm kiếm theo tên hoặc email"
-                    placeholderTextColor={isDark ? "#9ca3af" : "#9ca3af"}
-                    value={search}
-                    onChangeText={setSearch}
-                    style={styles.searchInput}
-                    autoCapitalize="none"
-                  />
+          {/* Body */}
+          <View style={styles.body}>
+            <View style={styles.searchContainer}>
+              <Search size={18} color={colors.textSecondary} style={styles.searchIcon} />
+              <TextInput
+                placeholder={t('folderAccess.searchPlaceholder' as any) || "Tìm kiếm thành viên"}
+                placeholderTextColor={colors.textSecondary}
+                value={search}
+                onChangeText={setSearch}
+                style={styles.searchInput}
+                autoCapitalize="none"
+              />
+            </View>
+
+            {(error || (blockedUsers && blockedUsers.length > 0)) && (
+              <View style={styles.errorContainer}>
+                <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 4}}>
+                    <AlertTriangle size={18} color={colors.red} />
+                    <Text style={styles.errorTitle}>{error || t('folderAccess.cannotRemoveWithActiveTasks' as any) || 'Hành động bị chặn'}</Text>
                 </View>
-
-                {/* Members List */}
-                <ScrollView style={styles.scrollArea}>
-                  {filteredMembers.length === 0 ? (
-                    <View style={styles.emptyContainer}>
-                      <Text style={styles.emptyText}>
-                        {eligibleMembers.length === 0 ? 'Không có thành viên nào cần gán quyền.' : 'Không có thành viên phù hợp.'}
-                      </Text>
+                {blockedUsers && blockedUsers.length > 0 && (
+                    <View style={{marginTop: 4}}>
+                        <Text style={styles.blockedDesc}>Người dùng sau có task chưa hoàn thành:</Text>
+                        {blockedUsers.map(u => (
+                            <View key={u.userId} style={{marginTop: 4, paddingLeft: 8}}>
+                                <Text style={styles.blockedUserName}>• {u.userName}</Text>
+                            </View>
+                        ))}
                     </View>
-                  ) : (
-                    filteredMembers.map(member => {
-                      const memberId = getMemberId(member);
-                      if (!memberId) return null;
-                      const isSelected = selectedMembers.includes(memberId);
-                      
-                      const displayName =
-                        member.name ||
-                        (typeof member.userId === 'object' ? member.userId?.name : '') ||
-                        'Thành viên';
-                      const email =
-                        member.email || (typeof member.userId === 'object' ? member.userId?.email : '');
-
-                      return (
-                        <TouchableOpacity
-                          key={memberId}
-                          onPress={() => toggleMember(memberId)}
-                          style={[
-                            styles.memberRow,
-                            isSelected && styles.memberRowSelected,
-                          ]}
-                          disabled={saving}
-                        >
-                          <View>
-                            <Text style={styles.memberName}>{displayName}</Text>
-                            <Text style={styles.memberEmail}>{email}</Text>
-                            <Text style={styles.memberRoleLabel}>
-                              {getRoleLabel(member.role)}
-                            </Text>
-                          </View>
-                          <Ionicons
-                            name={isSelected ? "checkbox" : "square-outline"}
-                            size={22}
-                            color={isSelected ? "#3b82f6" : (isDark ? "#9ca3af" : "#6b7280")}
-                          />
-                        </TouchableOpacity>
-                      );
-                    })
-                  )}
-                </ScrollView>
-                
-                {/* Error Display */}
-                {error && (
-                  <View style={styles.errorContainer}>
-                    <Ionicons name="alert-circle" size={18} color="#dc2626" />
-                    <Text style={styles.errorText}>{error}</Text>
-                  </View>
                 )}
               </View>
+            )}
 
-              {/* Footer Actions */}
-              <View style={styles.footer}>
-                <TouchableOpacity
-                  onPress={onClose}
-                  style={[styles.button, styles.cancelButton]}
-                  disabled={saving}
-                >
-                  <Text style={styles.cancelButtonText}>Hủy</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleSave}
-                  style={[
-                    styles.button,
-                    styles.saveButton,
-                    saving && styles.saveButtonDisabled,
-                  ]}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator size="small" color="#ffffff" />
-                  ) : (
-                    <Text style={styles.saveButtonText}>Lưu phân quyền</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-          </TouchableWithoutFeedback>
+            <ScrollView style={styles.scrollArea} contentContainerStyle={{flexGrow: 1}}>
+              {filteredMembers.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyText}>
+                    {eligibleMembers.length === 0 
+                        ? (t('folderAccess.noEligibleMembers' as any) || 'Không có thành viên trong nhóm.') 
+                        : (t('folderAccess.noMatchingMembers' as any) || 'Không tìm thấy thành viên.')}
+                  </Text>
+                </View>
+              ) : (
+                filteredMembers.map(member => {
+                  const memberId = getMemberId(member);
+                  if (!memberId) return null;
+                  const isSelected = selectedMembers.includes(memberId);
+                  
+                  const userObj = member.userId as any;
+                  const displayName = member.name || userObj?.name || 'Member';
+                  const email = member.email || userObj?.email || '';
+                  const avatar = userObj?.avatar;
+                  const isOwner = member.role === GROUP_ROLE_KEYS.PRODUCT_OWNER; // Check Owner
+
+                  return (
+                    <TouchableOpacity
+                      key={memberId}
+                      onPress={() => toggleMember(memberId)}
+                      style={[styles.memberRow, isSelected && styles.memberRowSelected]}
+                      disabled={saving}
+                    >
+                      <View style={styles.memberInfo}>
+                         <View style={styles.avatar}>
+                            {avatar ? (
+                                <Image source={{ uri: avatar }} style={styles.avatarImg} />
+                            ) : (
+                                <Text style={styles.avatarText}>{displayName.charAt(0).toUpperCase()}</Text>
+                            )}
+                         </View>
+                         <View style={{flex: 1}}>
+                            <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                                <Text style={styles.memberName}>{displayName}</Text>
+                                {/* ✅ Thêm icon Crown cho Owner */}
+                                {isOwner && <Crown size={14} color="#EAB308" style={{marginLeft: 6}} fill="#EAB308" />}
+                            </View>
+                            <Text style={styles.memberEmail}>{email}</Text>
+                            <Text style={styles.memberRoleLabel}>{getRoleLabel(member.role)}</Text>
+                         </View>
+                      </View>
+                      <View style={[styles.checkbox, isSelected && styles.checkboxChecked]}>
+                          {isSelected && <Check size={14} color="#FFF" />}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+
+          {/* Footer */}
+          <View style={styles.footer}>
+            <TouchableOpacity onPress={onClose} style={[styles.button, styles.cancelButton]} disabled={saving}>
+              <Text style={styles.cancelButtonText}>{t('common.cancel' as any) || 'Hủy'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleSave} style={[styles.button, styles.saveButton]} disabled={saving}>
+              {saving ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.saveButtonText}>{t('folderAccess.savePermissions' as any) || 'Lưu phân quyền'}</Text>}
+            </TouchableOpacity>
+          </View>
         </View>
-      </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
 
-// --- Styles cho React Native (Hỗ trợ Dark Mode) ---
-
-const getStyles = (isDark: boolean) => StyleSheet.create({
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: isDark ? '#1F1F1F' : '#ffffff',
-    borderRadius: 16,
-    width: '95%',
-    maxWidth: 500,
-    maxHeight: Dimensions.get('window').height * 0.85, // Giới hạn chiều cao
-    elevation: 10,
-    shadowColor: isDark ? '#000' : '#4b5563',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    borderWidth: 1,
-    borderColor: isDark ? '#374151' : '#e5e7eb',
-    overflow: 'hidden',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: isDark ? '#374151' : '#e5e7eb',
-  },
-  titleContainer: {
-    flex: 1,
-    flexDirection: 'column',
-    marginRight: 10,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: isDark ? '#f3f4f6' : '#1f2937',
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 13,
-    color: isDark ? '#9ca3af' : '#6b7280',
-    marginTop: 4,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  folderName: {
-    fontWeight: '600',
-    color: isDark ? '#d1d5db' : '#374151',
-  },
-  closeButton: {
-    padding: 5,
-  },
-  body: {
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    flex: 1,
-  },
-  infoText: {
-    fontSize: 13,
-    color: isDark ? '#a1a1aa' : '#52525b',
-    marginBottom: 15,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: isDark ? '#2E2E2E' : '#f9fafb',
-    borderWidth: 1,
-    borderColor: isDark ? '#374151' : '#d1d5db',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    marginBottom: 15,
-    height: 44,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: isDark ? '#f3f4f6' : '#1f2937',
-    height: '100%',
-  },
-  scrollArea: {
-    maxHeight: 256,
-    borderWidth: 1,
-    borderColor: isDark ? '#374151' : '#e5e7eb',
-    borderRadius: 12,
-    marginBottom: 15,
-  },
-  emptyContainer: {
-    padding: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyText: {
-    fontSize: 14,
-    color: isDark ? '#9ca3af' : '#6b7280',
-  },
-  memberRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: isDark ? '#2E2E2E' : '#f3f4f6',
-    backgroundColor: isDark ? '#1F1F1F' : '#ffffff',
-  },
-  memberRowSelected: {
-    backgroundColor: isDark ? '#334155' : '#f0f9ff',
-  },
-  memberName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: isDark ? '#f3f4f6' : '#1f2937',
-  },
-  memberEmail: {
-    fontSize: 12,
-    color: isDark ? '#9ca3af' : '#6b7280',
-  },
-  memberRoleLabel: {
-    fontSize: 12,
-    color: isDark ? '#60a5fa' : '#3b82f6',
-    marginTop: 2,
-    fontWeight: '500',
-  },
-  errorContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: isDark ? '#450a0a' : '#fef2f2',
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: isDark ? '#7f1d1d' : '#fecaca',
-    marginBottom: 15,
-  },
-  errorText: {
-    color: '#dc2626',
-    marginLeft: 8,
-    fontSize: 13,
-    flexShrink: 1,
-  },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: isDark ? '#374151' : '#e5e7eb',
-    gap: 12,
-  },
-  button: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelButton: {
-    backgroundColor: isDark ? '#374151' : '#e5e7eb',
-  },
-  cancelButtonText: {
-    color: isDark ? '#d1d5db' : '#374151',
-    fontWeight: '600',
-    fontSize: 15,
-  },
-  saveButton: {
-    backgroundColor: '#3b82f6',
-  },
-  saveButtonDisabled: {
-    opacity: 0.6,
-  },
-  saveButtonText: {
-    color: '#ffffff',
-    fontWeight: '600',
-    fontSize: 15,
-  },
+const getColors = (isDark: boolean) => ({
+    bg: isDark ? '#1F1F1F' : '#ffffff',
+    textPrimary: isDark ? '#f3f4f6' : '#1f2937',
+    textSecondary: isDark ? '#9ca3af' : '#6b7280',
+    border: isDark ? '#374151' : '#e5e7eb',
+    bluePrimary: isDark ? '#60A5FA' : '#3B82F6',
+    blueBg: isDark ? 'rgba(37, 99, 235, 0.2)' : '#eff6ff',
+    red: isDark ? '#F87171' : '#EF4444',
+    redBg: isDark ? 'rgba(239, 68, 68, 0.1)' : '#fef2f2',
+    hover: isDark ? '#2E2E2E' : '#f9fafb',
 });
+
+// --- Styles ---
+const getStyles = (isDark: boolean) => {
+    const colors = getColors(isDark);
+    return StyleSheet.create({
+        modalOverlay: {
+            flex: 1,
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: 16,
+        },
+        overlayClickArea: {
+            position: 'absolute', top:0, left:0, right:0, bottom:0
+        },
+        modalContent: {
+            backgroundColor: colors.bg,
+            borderRadius: 16,
+            width: '100%',
+            maxWidth: 500,
+            minHeight: 450, 
+            maxHeight: '90%',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+        },
+        header: {
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            padding: 16,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+            backgroundColor: colors.bg,
+        },
+        titleContainer: { flex: 1 },
+        title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary },
+        subtitle: { fontSize: 13, color: colors.textSecondary, marginTop: 4 },
+        folderName: { fontWeight: '600', color: colors.textPrimary },
+        closeButton: { padding: 4 },
+        
+        body: {
+            flex: 1,
+            padding: 16,
+            display: 'flex',
+            flexDirection: 'column',
+        },
+        searchContainer: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: colors.hover,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 12,
+            paddingHorizontal: 12,
+            height: 44,
+            marginBottom: 12,
+        },
+        searchIcon: { marginRight: 8 },
+        searchInput: { flex: 1, fontSize: 14, color: colors.textPrimary, height: '100%' },
+        
+        // ✅ ĐÃ THÊM: scrollArea bị thiếu
+        scrollArea: {
+            flex: 1,
+            minHeight: 100, // Đảm bảo có chiều cao tối thiểu
+        },
+
+        errorContainer: {
+            backgroundColor: colors.redBg,
+            padding: 12,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: isDark ? '#7f1d1d' : '#fecaca',
+            marginBottom: 12,
+        },
+        errorTitle: { color: colors.red, fontSize: 13, fontWeight: '600', marginLeft: 8 },
+        blockedDesc: { fontSize: 12, color: colors.textPrimary, marginBottom: 4 },
+        blockedUserName: { fontSize: 12, fontWeight: '600', color: colors.textPrimary },
+        
+        footer: {
+            flexDirection: 'row',
+            justifyContent: 'flex-end',
+            padding: 16,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+            gap: 12,
+            backgroundColor: colors.bg,
+        },
+        button: {
+            flex: 1,
+            paddingVertical: 12,
+            borderRadius: 10,
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        cancelButton: { backgroundColor: colors.hover },
+        cancelButtonText: { color: colors.textPrimary, fontWeight: '600' },
+        saveButton: { backgroundColor: colors.bluePrimary },
+        saveButtonText: { color: '#ffffff', fontWeight: '600' },
+        
+        emptyContainer: { padding: 24, alignItems: 'center' },
+        emptyText: { fontSize: 14, color: colors.textSecondary, textAlign: 'center' },
+        memberRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
+        memberRowSelected: { backgroundColor: colors.blueBg },
+        memberInfo: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 12 },
+        avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+        avatarImg: { width: 40, height: 40, borderRadius: 20 },
+        avatarText: { fontSize: 16, fontWeight: '600', color: colors.textSecondary },
+        memberName: { fontSize: 15, fontWeight: '600', color: colors.textPrimary },
+        memberEmail: { fontSize: 12, color: colors.textSecondary },
+        memberRoleLabel: { fontSize: 11, color: colors.bluePrimary, fontWeight: '500', marginTop: 2 },
+        checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: colors.textSecondary, alignItems: 'center', justifyContent: 'center' },
+        checkboxChecked: { backgroundColor: colors.bluePrimary, borderColor: colors.bluePrimary },
+    });
+};
