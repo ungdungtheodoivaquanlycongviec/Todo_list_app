@@ -127,6 +127,21 @@ const groupMessageSchema = new mongoose.Schema(
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
       }]
+    },
+    // Pin message data
+    isPinned: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    pinnedAt: {
+      type: Date,
+      default: null
+    },
+    pinnedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
     }
   },
   {

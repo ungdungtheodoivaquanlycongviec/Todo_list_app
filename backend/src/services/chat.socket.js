@@ -11,8 +11,9 @@ const User = require('../models/User.model');
 const parseMentionsFromContent = (content) => {
   const userIds = [];
   const roleNames = [];
+  let everyone = false;
 
-  if (!content) return { userIds, roleNames };
+  if (!content) return { userIds, roleNames, everyone };
 
   // Match @[display name](id) pattern
   const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
@@ -21,27 +22,37 @@ const parseMentionsFromContent = (content) => {
   while ((match = mentionRegex.exec(content)) !== null) {
     const id = match[2];
     if (id.startsWith('role:')) {
-      roleNames.push(id.replace('role:', ''));
+      const roleName = id.replace('role:', '');
+      // Handle @everyone as a special case
+      if (roleName === 'everyone') {
+        everyone = true;
+      } else {
+        roleNames.push(roleName);
+      }
+    } else if (id === 'everyone') {
+      // Handle legacy @[everyone](everyone) format
+      everyone = true;
     } else {
       userIds.push(id);
     }
   }
 
-  return { userIds, roleNames };
+  return { userIds, roleNames, everyone };
 };
 
 // Helper to parse @name mentions by matching against members list
 const parseMentionsFromContentWithMembers = (content, members, roles = []) => {
   if (!content) return { userIds: [], roleNames: [], everyone: false };
 
-  // Check for @everyone
+  // Check for @everyone in plain text format
   const everyoneRegex = /@everyone(?:\s|$|,|\.|!|\?)/gi;
-  const hasEveryone = everyoneRegex.test(content);
+  const hasEveryonePlainText = everyoneRegex.test(content);
 
   // First try legacy @[name](id) format
   const legacyResult = parseMentionsFromContent(content);
-  if (legacyResult.userIds.length > 0 || legacyResult.roleNames.length > 0) {
-    return { ...legacyResult, everyone: hasEveryone };
+  if (legacyResult.userIds.length > 0 || legacyResult.roleNames.length > 0 || legacyResult.everyone) {
+    // Combine everyone from both legacy format and plain text
+    return { ...legacyResult, everyone: legacyResult.everyone || hasEveryonePlainText };
   }
 
   const userIds = [];
@@ -72,7 +83,7 @@ const parseMentionsFromContentWithMembers = (content, members, roles = []) => {
     }
   }
 
-  return { userIds, roleNames, everyone: hasEveryone };
+  return { userIds, roleNames, everyone: hasEveryonePlainText };
 };
 
 
@@ -651,6 +662,151 @@ const setupChatHandlers = (namespace) => {
           groupId,
           isTyping
         });
+      }
+    });
+
+    // Pin/Unpin group message
+    socket.on('chat:pin', async (data, callback) => {
+      try {
+        const { messageId, isPinned } = data;
+
+        if (!messageId) {
+          if (callback) callback({ success: false, error: 'Message ID is required' });
+          return;
+        }
+
+        const message = await GroupMessage.findById(messageId);
+        if (!message) {
+          if (callback) callback({ success: false, error: 'Message not found' });
+          return;
+        }
+
+        // Update pin status
+        message.isPinned = isPinned;
+        message.pinnedAt = isPinned ? new Date() : null;
+        message.pinnedBy = isPinned ? userId : null;
+        await message.save();
+
+        // Populate sender info
+        await message.populate('senderId', 'name email avatar');
+        if (isPinned) {
+          await message.populate('pinnedBy', 'name');
+        }
+
+        const normalizedGroupId = normalizeId(message.groupId);
+        const roomName = `${GROUP_ROOM_PREFIX}${normalizedGroupId}`;
+        const messageData = message.toObject ? message.toObject({ virtuals: true }) : message;
+
+        namespace.in(roomName).emit('chat:pinned', {
+          type: isPinned ? 'pinned' : 'unpinned',
+          messageId,
+          message: messageData
+        });
+
+        if (callback) callback({ success: true, message: messageData });
+      } catch (error) {
+        console.error('[Chat] Error pinning message:', error);
+        if (callback) callback({ success: false, error: error.message });
+      }
+    });
+
+    // Get pinned group messages
+    socket.on('chat:getPinned', async (data, callback) => {
+      try {
+        const { groupId } = data;
+
+        if (!groupId) {
+          if (callback) callback({ success: false, error: 'Group ID is required' });
+          return;
+        }
+
+        const messages = await GroupMessage.find({
+          groupId,
+          isPinned: true,
+          deletedAt: null
+        })
+          .sort({ pinnedAt: -1 })
+          .populate('senderId', 'name email avatar')
+          .populate('pinnedBy', 'name')
+          .lean();
+
+        if (callback) callback({ success: true, messages });
+      } catch (error) {
+        console.error('[Chat] Error getting pinned messages:', error);
+        if (callback) callback({ success: false, error: error.message });
+      }
+    });
+
+    // Pin/Unpin direct message
+    socket.on('direct:pin', async (data, callback) => {
+      try {
+        const { messageId, isPinned } = data;
+
+        if (!messageId) {
+          if (callback) callback({ success: false, error: 'Message ID is required' });
+          return;
+        }
+
+        const message = await DirectMessage.findById(messageId);
+        if (!message) {
+          if (callback) callback({ success: false, error: 'Message not found' });
+          return;
+        }
+
+        // Update pin status
+        message.isPinned = isPinned;
+        message.pinnedAt = isPinned ? new Date() : null;
+        message.pinnedBy = isPinned ? userId : null;
+        await message.save();
+
+        // Populate sender info
+        await message.populate('senderId', 'name email avatar');
+        if (isPinned) {
+          await message.populate('pinnedBy', 'name');
+        }
+
+        const normalizedConversationId = normalizeId(message.conversationId);
+        const roomName = `${DIRECT_ROOM_PREFIX}${normalizedConversationId}`;
+        const messageData = message.toObject ? message.toObject({ virtuals: true }) : message;
+
+        namespace.in(roomName).emit('direct:pinned', {
+          type: isPinned ? 'pinned' : 'unpinned',
+          conversationId: normalizedConversationId,
+          messageId,
+          message: messageData
+        });
+
+        if (callback) callback({ success: true, message: messageData });
+      } catch (error) {
+        console.error('[Chat] Error pinning direct message:', error);
+        if (callback) callback({ success: false, error: error.message });
+      }
+    });
+
+    // Get pinned direct messages
+    socket.on('direct:getPinned', async (data, callback) => {
+      try {
+        const { conversationId } = data;
+
+        if (!conversationId) {
+          if (callback) callback({ success: false, error: 'Conversation ID is required' });
+          return;
+        }
+
+        const messages = await DirectMessage.find({
+          conversationId,
+          isPinned: true,
+          deletedAt: null
+        })
+          .sort({ pinnedAt: -1 })
+          .populate('senderId', 'name email avatar')
+          .populate('pinnedBy', 'name')
+          .lean();
+
+        if (callback) callback({ success: true, messages });
+      } catch (error) {
+        console.error('[Chat] Error getting pinned direct messages:', error);
+        if (callback) callback({ success: false, error: error.message });
       }
     });
 
