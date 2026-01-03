@@ -30,6 +30,8 @@ export const translations = {
     'common.no': 'No',
     'common.clear': 'Clear',
     'common.done': 'Done',
+    'common.ok': 'OK',
+    'common.permissionDenied': 'Permission Denied',
 
     // Tasks
     'tasks.title': 'Tasks',
@@ -83,10 +85,12 @@ export const translations = {
     // Status
     'status.todo': 'To Do',
     'status.inProgress': 'In Progress',
+    'status.in_progress': 'In Progress',
     'status.completed': 'Completed',
     'status.incomplete': 'Incomplete',
     'status.pending': 'Pending',
     'status.cancelled': 'Cancelled',
+    'status.archived': 'Archived',
 
     // Custom Status Modal
     'customStatus.title': 'Add Custom Status',
@@ -109,6 +113,10 @@ export const translations = {
     'timeline.title': 'Timeline',
     'timeline.zoomIn': 'Zoom In',
     'timeline.zoomOut': 'Zoom Out',
+    'timeline.zoomDays': 'Days',
+    'timeline.zoomWeeks': 'Weeks',
+    'timeline.zoomMonths': 'Months',
+    'timeline.zoomQuarters': 'Quarters',
     'timeline.days': 'Days',
     'timeline.weeks': 'Weeks',
     'timeline.months': 'Months',
@@ -255,6 +263,8 @@ export const translations = {
     'folders.enterFolderName': 'Enter folder name',
     'folders.enterFolderDescription': 'Enter folder description (optional)',
     'folders.creating': 'Creating...',
+    'folders.permissionDeniedDelete': 'You do not have permission to delete this folder.',
+    'folders.permissionDeniedAssign': 'You do not have permission to assign members to this folder.',
 
     // Notifications
     'notifications.title': 'Notifications',
@@ -344,6 +354,24 @@ export const translations = {
     'chat.openInNewTab': 'Open in new tab',
     'chat.loadingMore': 'Loading more...',
     'chat.noMoreMessages': 'No more messages',
+    'chat.dropFilesHere': 'Drop files here to send',
+    'chat.dropFilesDescription': 'Images and documents are supported',
+    'chat.recording': 'Recording',
+    'chat.stop': 'Stop',
+    'chat.stopRecording': 'Stop recording',
+    'chat.recordVoice': 'Record voice message',
+    'chat.microphoneAccessDenied': 'Microphone access denied',
+    'chat.voiceMessage': 'Voice message',
+    'chat.pin': 'Pin',
+    'chat.unpin': 'Unpin',
+    'chat.pinnedMessages': 'Pinned Messages',
+    'chat.noPinnedMessages': 'No pinned messages yet',
+    'chat.pinMessagesHint': 'Pin important messages to find them quickly',
+    'chat.pinnedBy': 'Pinned by',
+    'chat.jumpToMessage': 'Jump to message',
+    'chat.viewPinnedMessages': 'View pinned messages',
+    'chat.viewingOlderMessages': "You're Viewing Older Messages",
+    'chat.jumpToPresent': 'Jump to Present',
 
     // Mentions
     'mention.typeToMention': 'Type @ to mention someone',
@@ -364,9 +392,6 @@ export const translations = {
     'taskContextMenu.repeat': 'Repeat task',
     'taskContextMenu.moveTo': 'Move to',
     'taskContextMenu.delete': 'Delete task',
-    'taskContextMenu.duplicate': 'Duplicate task',
-    'taskContextMenu.confirmDelete': 'Are you sure you want to delete this task? This action cannot be undone.',
-    'taskContextMenu.editTypes': 'Edit types',
 
     // Time
     'time.today': 'Today',
@@ -636,7 +661,7 @@ export const translations = {
     'roles.summary.sale': 'View progress only',
     'roles.capabilities.sale': 'View all tasks/notes/folders, cannot edit',
     'roles.summary.qa': 'Quality monitoring',
-    'roles.capabilities.qa': 'View all content, cannot edit',
+    'roles.capabilities.qa': 'View all folders in group, CRUD tasks in folders assigned by PM/PO/Leader',
     'roles.summary.devManager': 'Track development team',
     'roles.capabilities.devManager': 'View all access, cannot create/edit',
     'roles.summary.ba': 'Work in assigned folders',
@@ -789,6 +814,8 @@ export const translations = {
     'common.no': 'Không',
     'common.clear': 'Xóa',
     'common.done': 'Xong',
+    'common.ok': 'OK',
+    'common.permissionDenied': 'Từ chối truy cập',
 
     // Tasks
     'tasks.title': 'Công việc',
@@ -842,10 +869,12 @@ export const translations = {
     // Status
     'status.todo': 'Cần làm',
     'status.inProgress': 'Đang thực hiện',
+    'status.in_progress': 'Đang thực hiện',
     'status.completed': 'Hoàn thành',
     'status.incomplete': 'Chưa hoàn thành',
     'status.pending': 'Đang chờ',
     'status.cancelled': 'Đã hủy',
+    'status.archived': 'Đã lưu trữ',
 
     // Custom Status Modal
     'customStatus.title': 'Thêm Trạng Thái Tùy Chỉnh',
@@ -868,6 +897,10 @@ export const translations = {
     'timeline.title': 'Dòng thời gian',
     'timeline.zoomIn': 'Phóng to',
     'timeline.zoomOut': 'Thu nhỏ',
+    'timeline.zoomDays': 'Ngày',
+    'timeline.zoomWeeks': 'Tuần',
+    'timeline.zoomMonths': 'Tháng',
+    'timeline.zoomQuarters': 'Quý',
     'timeline.days': 'Ngày',
     'timeline.weeks': 'Tuần',
     'timeline.months': 'Tháng',
@@ -1014,6 +1047,8 @@ export const translations = {
     'folders.enterFolderName': 'Nhập tên thư mục',
     'folders.enterFolderDescription': 'Nhập mô tả thư mục (tùy chọn)',
     'folders.creating': 'Đang tạo...',
+    'folders.permissionDeniedDelete': 'Bạn không có quyền xóa thư mục này.',
+    'folders.permissionDeniedAssign': 'Bạn không có quyền phân quyền thành viên cho thư mục này.',
 
     // Notifications
     'notifications.title': 'Thông báo',
@@ -1103,6 +1138,24 @@ export const translations = {
     'chat.openInNewTab': 'Mở trong tab mới',
     'chat.loadingMore': 'Đang tải thêm...',
     'chat.noMoreMessages': 'Không còn tin nhắn nào',
+    'chat.dropFilesHere': 'Thả tệp vào đây để gửi',
+    'chat.dropFilesDescription': 'Hỗ trợ hình ảnh và tài liệu',
+    'chat.recording': 'Đang ghi âm',
+    'chat.stop': 'Dừng',
+    'chat.stopRecording': 'Dừng ghi âm',
+    'chat.recordVoice': 'Ghi tin nhắn thoại',
+    'chat.microphoneAccessDenied': 'Quyền truy cập micro bị từ chối',
+    'chat.voiceMessage': 'Tin nhắn thoại',
+    'chat.pin': 'Ghim',
+    'chat.unpin': 'Bỏ ghim',
+    'chat.pinnedMessages': 'Tin nhắn đã ghim',
+    'chat.noPinnedMessages': 'Chưa có tin nhắn nào được ghim',
+    'chat.pinMessagesHint': 'Ghim tin nhắn quan trọng để tìm nhanh hơn',
+    'chat.pinnedBy': 'Ghim bởi',
+    'chat.jumpToMessage': 'Đi đến tin nhắn',
+    'chat.viewPinnedMessages': 'Xem tin nhắn đã ghim',
+    'chat.viewingOlderMessages': 'Bạn đang xem tin nhắn cũ',
+    'chat.jumpToPresent': 'Về tin mới nhất',
 
     // Mentions
     'mention.typeToMention': 'Gõ @ để đề cập ai đó',
@@ -1123,9 +1176,6 @@ export const translations = {
     'taskContextMenu.repeat': 'Lặp lại',
     'taskContextMenu.moveTo': 'Di chuyển đến',
     'taskContextMenu.delete': 'Xóa nhiệm vụ',
-    'taskContextMenu.duplicate': 'Sao chép công việc',
-    'taskContextMenu.confirmDelete': 'Bạn có chắc chắn muốn xóa công việc này? Hành động này không thể hoàn tác.',
-    'taskContextMenu.editTypes': 'Chỉnh sửa loại',
 
     // Time
     'time.today': 'Hôm nay',
@@ -1394,7 +1444,7 @@ export const translations = {
     'roles.summary.sale': 'Chỉ xem tiến độ',
     'roles.capabilities.sale': 'Xem tất cả task/note/folder, không thể chỉnh sửa',
     'roles.summary.qa': 'Giám sát chất lượng',
-    'roles.capabilities.qa': 'Xem toàn bộ nội dung, không được chỉnh sửa',
+    'roles.capabilities.qa': 'Xem tất cả folder trong group, CRUD task trong folder được PM/PO/Leader gán',
     'roles.summary.devManager': 'Theo dõi đội phát triển',
     'roles.capabilities.devManager': 'Quyền xem toàn bộ, không tạo/chỉnh sửa',
     'roles.summary.ba': 'Làm việc trong folder được gán',

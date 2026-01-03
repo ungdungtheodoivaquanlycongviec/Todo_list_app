@@ -1,4 +1,3 @@
-// src/navigation/AppNavigator.tsx
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -12,10 +11,13 @@ import { ThemeProvider } from '../context/ThemeContext';
 import { RegionalProvider } from '../context/RegionalContext'; 
 import { TimerProvider } from '../context/TimerContext';
 
-// --- 2. IMPORT CÁC CONTEXT MỚI (VỪA TẠO) ---
+// --- 2. IMPORT CÁC CONTEXT MỚI ---
 import { ToastProvider } from '../context/ToastContext';
 import { ConfirmProvider } from '../context/ConfirmContext';
 import { UIStateProvider } from '../context/UIStateContext';
+
+// --- 3. IMPORT CHATBOT (QUAN TRỌNG) ---
+import ChatbotWidget from '../components/common/ChatbotWidget'; // Đảm bảo đường dẫn đúng
 
 import AppInterface from '../screens/AppInterface';
 import AuthPage from '../screens/AuthPage';
@@ -46,27 +48,27 @@ function RootNavigator() {
 
 export default function AppNavigator() {
   return (
-    // THỨ TỰ BỌC PROVIDER (Rất quan trọng)
-    // AuthProvider thường ở ngoài cùng để quản lý session
+    // THỨ TỰ BỌC PROVIDER
     <AuthProvider>
       <LanguageProvider>
         <RegionalProvider>
           <ThemeProvider>
-            {/* UIStateProvider quản lý trạng thái mở modal/noti toàn cục */}
             <UIStateProvider>
               <FolderProvider>
                 <TimerProvider>
                   
-                  {/* ConfirmProvider và ToastProvider chứa các UI Overlay (Modal, Popup)
-                      Nên đặt chúng bao bọc NavigationContainer để chúng có thể 
-                      hiển thị đè lên mọi màn hình. */}
-                  
                   <ConfirmProvider>
                     <ToastProvider>
                       
+                      {/* --- PHẦN MÀN HÌNH CHÍNH --- */}
                       <NavigationContainer>
                         <RootNavigator />
                       </NavigationContainer>
+
+                      {/* --- PHẦN OVERLAY (NỔI LÊN TRÊN) --- */}
+                      {/* Đặt Chatbot ở đây! Nó nằm SAU NavigationContainer nên sẽ nổi đè lên trên */}
+                      {/* Nó nằm TRONG các Provider nên sẽ dùng được useAuth, useUIState... */}
+                      <ChatbotWidget />
 
                     </ToastProvider>
                   </ConfirmProvider>
