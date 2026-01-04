@@ -9,12 +9,14 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@types/recordrtc": "^5.6.15",
     "firebase": "^12.4.0",
     "firebase-admin": "^13.5.0",
     "lucide-react": "^0.544.0",
     "next": "15.5.4",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "recordrtc": "^5.6.2",
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {

@@ -85,8 +85,8 @@ export default function ChatView() {
   // Voice recording state
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+  const recorderRef = useRef<any>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Pinned messages state
@@ -1042,30 +1042,25 @@ export default function ChatView() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Start voice recording
+  // Start voice recording using RecordRTC for cross-browser compatibility
   const startRecording = async () => {
     try {
+      // Dynamic import to avoid SSR issues (RecordRTC accesses navigator on import)
+      const RecordRTC = (await import('recordrtc')).default;
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
+      streamRef.current = stream;
 
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          audioChunksRef.current.push(e.data);
-        }
-      };
+      const recorder = new RecordRTC(stream, {
+        type: 'audio',
+        mimeType: 'audio/wav',
+        recorderType: RecordRTC.StereoAudioRecorder,
+        numberOfAudioChannels: 1,
+        desiredSampRate: 10000,
+      });
 
-      mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const audioFile = new File([audioBlob], `voice-message-${Date.now()}.webm`, { type: 'audio/webm' });
-        handleAttachmentSelect(audioFile);
-
-        // Stop all tracks
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorder.start();
+      recorderRef.current = recorder;
+      recorder.startRecording();
       setIsRecording(true);
       setRecordingDuration(0);
 
@@ -1081,8 +1076,20 @@ export default function ChatView() {
 
   // Stop voice recording
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
+    if (recorderRef.current && isRecording) {
+      recorderRef.current.stopRecording(() => {
+        const blob = recorderRef.current?.getBlob();
+        if (blob) {
+          const audioFile = new File([blob], `voice-message-${Date.now()}.wav`, { type: 'audio/wav' });
+          handleAttachmentSelect(audioFile);
+        }
+
+        // Stop all tracks
+        streamRef.current?.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+        recorderRef.current = null;
+      });
+
       setIsRecording(false);
 
       // Clear duration timer
@@ -1095,12 +1102,15 @@ export default function ChatView() {
 
   // Cancel recording
   const cancelRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      // Stop without triggering onstop handler by stopping tracks first
-      const tracks = mediaRecorderRef.current.stream?.getTracks();
-      tracks?.forEach(track => track.stop());
-      mediaRecorderRef.current = null;
-      audioChunksRef.current = [];
+    if (recorderRef.current && isRecording) {
+      // Stop recording without saving
+      recorderRef.current.stopRecording(() => {
+        // Discard the blob, just cleanup
+        streamRef.current?.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+        recorderRef.current = null;
+      });
+
       setIsRecording(false);
       setRecordingDuration(0);
 
@@ -1117,9 +1127,10 @@ export default function ChatView() {
       if (recordingIntervalRef.current) {
         clearInterval(recordingIntervalRef.current);
       }
-      if (mediaRecorderRef.current) {
-        mediaRecorderRef.current.stream?.getTracks().forEach(track => track.stop());
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
       }
+      recorderRef.current = null;
     };
   }, []);
 
@@ -2149,7 +2160,7 @@ export default function ChatView() {
               if (newMessages.length > 0) {
                 // Set flag BEFORE updating messages to prevent auto-scroll
                 justJumpedToMessageRef.current = true;
-                
+
                 // REPLACE messages instead of merging (Discord-like behavior)
                 setMessages(newMessages);
                 setHasMoreMessages(hasMoreOlder);
