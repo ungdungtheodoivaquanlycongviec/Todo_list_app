@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import {
   X,
   Calendar,
@@ -703,8 +703,36 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
   }
 
   // Save field changes
-  const saveField = (field: string) => {
+  const saveField = async (field: string) => {
     if (tempValue !== taskProperties[field as keyof typeof taskProperties]) {
+      // Check for soft blocking when changing status to 'completed'
+      if (field === 'status' && tempValue === 'completed' && task) {
+        const blockedByLinks = (task as any).linkedTasks?.filter(
+          (link: any) => link.linkType === 'blocked_by' &&
+            typeof link.taskId === 'object' &&
+            link.taskId?.status !== 'completed'
+        ) || [];
+
+        if (blockedByLinks.length > 0) {
+          const blockingTaskNames = blockedByLinks
+            .map((link: any) => link.taskId?.title || 'Unknown Task')
+            .join(', ');
+          const proceed = await confirmDialog.confirm({
+            title: t('linkedTasks.blockedWarningTitle') || 'Task is Blocked',
+            message: `${t('linkedTasks.blockedWarningMessage') || 'This task is blocked by'} ${blockedByLinks.length} ${t('linkedTasks.incompleteTasks') || 'incomplete task(s)'}: ${blockingTaskNames}. ${t('linkedTasks.completeAnyway') || 'Complete anyway?'}`,
+            confirmText: t('linkedTasks.completeAnyway') || 'Complete Anyway',
+            cancelText: t('common.cancel') || 'Cancel',
+            variant: 'warning',
+            icon: 'warning'
+          });
+          if (!proceed) {
+            setEditingField(null)
+            setTempValue("")
+            return
+          }
+        }
+      }
+
       saveFieldToDatabase(field, tempValue)
     }
     setEditingField(null)
@@ -1864,7 +1892,35 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
             </button>
           </div>
 
-          {/* Main Content - Responsive: stack on mobile, side-by-side on larger screens */}
+          {/* Duplicate Banner - shows when this task is a duplicate of another */}
+          {(() => {
+            const duplicateLink = (task as any).linkedTasks?.find(
+              (link: any) => link.linkType === 'duplicates' && typeof link.taskId === 'object' && link.taskId
+            );
+            const primaryTask = duplicateLink?.taskId;
+
+            if (!primaryTask) return null;
+
+            return (
+              <div className="bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 px-6 py-3 flex items-center gap-2">
+                <span className="text-amber-600 dark:text-amber-400">📋</span>
+                <span className="text-sm text-black-700 dark:text-black-300">
+                  {t('linkedTasks.duplicateOf') || 'This is a duplicate of'}{" "}
+                  <button
+                    onClick={() => {
+                      onClose();
+                      // Emit event to open the primary task
+                      window.dispatchEvent(new CustomEvent('openTask', { detail: { taskId: primaryTask._id } }));
+                    }}
+                    className="font-medium underline hover:text-amber-900 dark:hover:text-amber-100 transition-colors"
+                  >
+                    {primaryTask.title}
+                  </button>
+                </span>
+              </div>
+            );
+          })()}
+
           <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
             {/* Task Details - Full width on mobile, 60% on larger screens */}
             <div className="flex-1 md:w-3/5 md:flex-none border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-700 overflow-auto scrollbar-minimal">

@@ -18,7 +18,8 @@ import {
   Tag,
   ZoomIn,
   ZoomOut,
-  GripVertical
+  GripVertical,
+  Link2
 } from 'lucide-react';
 import { taskService } from '../../services/task.service';
 import { Task } from '../../services/types/task.types';
@@ -67,6 +68,7 @@ export default function TimelineView() {
   const [resizingTask, setResizingTask] = useState<string | null>(null);
   const [resizeType, setResizeType] = useState<'start' | 'end' | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [hoveredTaskId, setHoveredTaskId] = useState<string | null>(null);
 
   const timelineRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -1242,6 +1244,8 @@ export default function TimelineView() {
                               setShowTaskDetail(true);
                             }
                           }}
+                          onMouseEnter={() => setHoveredTaskId(task._id)}
+                          onMouseLeave={() => setHoveredTaskId(null)}
                         >
                           {/* Task Bar */}
                           <div
@@ -1258,13 +1262,113 @@ export default function TimelineView() {
                               <span className="text-white text-sm font-medium truncate">
                                 {task.title}
                               </span>
+
+                              {/* Tags */}
+                              {task.tags && task.tags.length > 0 && (
+                                <div className="flex items-center gap-1 flex-shrink-0">
+                                  {task.tags.slice(0, 2).map((tag, index) => (
+                                    <span
+                                      key={index}
+                                      className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-white/20 text-white truncate max-w-[60px]"
+                                      title={tag}
+                                    >
+                                      {tag}
+                                    </span>
+                                  ))}
+                                  {task.tags.length > 2 && (
+                                    <span className="text-[10px] text-white/70">
+                                      +{task.tags.length - 2}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
+
+                            {/* User Avatars */}
+                            {task.assignedTo && task.assignedTo.length > 0 && (
+                              <div className="flex items-center -space-x-2 ml-2 flex-shrink-0">
+                                {task.assignedTo.slice(0, 3).map((assignee, index) => {
+                                  const user = typeof assignee.userId === 'object' ? assignee.userId : null;
+                                  const name = user?.name || 'User';
+                                  const avatar = user?.avatar;
+                                  const initials = name
+                                    .split(' ')
+                                    .map((n: string) => n[0])
+                                    .join('')
+                                    .toUpperCase()
+                                    .slice(0, 2);
+
+                                  return (
+                                    <div
+                                      key={index}
+                                      className="w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold overflow-hidden"
+                                      style={{
+                                        backgroundColor: avatar ? 'transparent' : `hsl(${(name.charCodeAt(0) * 47) % 360}, 60%, 45%)`,
+                                        zIndex: 3 - index
+                                      }}
+                                      title={name}
+                                    >
+                                      {avatar ? (
+                                        <img src={avatar} alt={name} className="w-full h-full object-cover" />
+                                      ) : (
+                                        <span className="text-white">{initials}</span>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                                {task.assignedTo.length > 3 && (
+                                  <div
+                                    className="w-6 h-6 rounded-full border-2 border-white bg-gray-600 flex items-center justify-center text-[10px] font-bold text-white"
+                                    title={`${task.assignedTo.length - 3} more assignees`}
+                                  >
+                                    +{task.assignedTo.length - 3}
+                                  </div>
+                                )}
+                              </div>
+                            )}
 
                             {remainingLabel && (
                               <span className="ml-3 text-sm font-medium text-white whitespace-nowrap">
                                 {remainingLabel}
                               </span>
                             )}
+
+                            {/* Link Icon - Shows for tasks with links, highlights when hovered or linked task is hovered */}
+                            {(() => {
+                              const taskLinkedTasks = (task as any).linkedTasks || [];
+                              const hasLinks = taskLinkedTasks.length > 0;
+
+                              // Check if this task should be highlighted (either it's being hovered, or a linked task is being hovered)
+                              const isHighlighted = hoveredTaskId === task._id || (
+                                hoveredTaskId && taskLinkedTasks.some((link: any) => {
+                                  const linkedId = typeof link.taskId === 'object' ? link.taskId?._id : link.taskId;
+                                  return linkedId === hoveredTaskId;
+                                })
+                              ) || (
+                                  hoveredTaskId && tasksWithPositions.some(t => {
+                                    if (t._id !== hoveredTaskId) return false;
+                                    const tLinkedTasks = (t as any).linkedTasks || [];
+                                    return tLinkedTasks.some((link: any) => {
+                                      const linkedId = typeof link.taskId === 'object' ? link.taskId?._id : link.taskId;
+                                      return linkedId === task._id;
+                                    });
+                                  })
+                                );
+
+                              if (!hasLinks) return null;
+
+                              return (
+                                <div
+                                  className={`ml-2 flex-shrink-0 transition-all duration-200 ${isHighlighted
+                                      ? 'scale-125 drop-shadow-[0_0_6px_rgba(255,255,255,0.8)]'
+                                      : 'opacity-60'
+                                    }`}
+                                  title={`${taskLinkedTasks.length} linked task(s)`}
+                                >
+                                  <Link2 className="w-4 h-4 text-white" />
+                                </div>
+                              );
+                            })()}
 
                             {/* Resize Handle - Only for end date (right side) */}
                             {/* Left resize handle removed to prevent changing start/createdAt date */}
