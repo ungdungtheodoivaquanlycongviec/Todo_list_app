@@ -1132,7 +1132,54 @@ export default function TasksView() {
     console.log("=== HANDLE TASK UPDATE ===");
     console.log("Updated task:", updatedTask);
 
+    // Helper to update linked task references within a task array
+    // This updates the status of linkedTasks that reference the updatedTask
+    const updateLinkedTaskRefs = (tasks: Task[]): Task[] => {
+      return tasks.map(task => {
+        if (!(task as any).linkedTasks || (task as any).linkedTasks.length === 0) {
+          return task;
+        }
+
+        // Check if this task has a link to the updated task
+        const hasLinkToUpdatedTask = (task as any).linkedTasks.some((link: any) => {
+          const linkedId = typeof link.taskId === 'object' ? link.taskId?._id : link.taskId;
+          return linkedId === updatedTask._id;
+        });
+
+        if (!hasLinkToUpdatedTask) {
+          return task;
+        }
+
+        // Update the linked task reference with new status
+        const updatedLinkedTasks = (task as any).linkedTasks.map((link: any) => {
+          const linkedId = typeof link.taskId === 'object' ? link.taskId?._id : link.taskId;
+          if (linkedId === updatedTask._id && typeof link.taskId === 'object') {
+            return {
+              ...link,
+              taskId: {
+                ...link.taskId,
+                status: updatedTask.status,
+                title: updatedTask.title
+              }
+            };
+          }
+          return link;
+        });
+
+        return {
+          ...task,
+          linkedTasks: updatedLinkedTasks
+        } as Task;
+      });
+    };
+
     if (viewMode === "list") {
+      // Update linked task references in all sections
+      setTodoTasks(prev => updateLinkedTaskRefs(prev));
+      setInProgressTasks(prev => updateLinkedTaskRefs(prev));
+      setIncompleteTasks(prev => updateLinkedTaskRefs(prev));
+      setCompletedTasks(prev => updateLinkedTaskRefs(prev));
+
       // Helper to update task in-place if it exists in the array
       const updateInPlace = (
         prevTasks: Task[],
@@ -1272,6 +1319,28 @@ export default function TasksView() {
     try {
       switch (action) {
         case "complete":
+          // Check if task is blocked by incomplete tasks (soft blocking)
+          const blockedByLinks = (task as any).linkedTasks?.filter(
+            (link: any) => link.linkType === 'blocked_by' &&
+              typeof link.taskId === 'object' &&
+              link.taskId?.status !== 'completed'
+          ) || [];
+
+          if (blockedByLinks.length > 0) {
+            const blockingTaskNames = blockedByLinks
+              .map((link: any) => link.taskId?.title || 'Unknown Task')
+              .join(', ');
+            const proceed = await confirmDialog.confirm({
+              title: t('linkedTasks.blockedWarningTitle') || 'Task is Blocked',
+              message: `${t('linkedTasks.blockedWarningMessage') || 'This task is blocked by'} ${blockedByLinks.length} ${t('linkedTasks.incompleteTasks') || 'incomplete task(s)'}: ${blockingTaskNames}. ${t('linkedTasks.completeAnyway') || 'Complete anyway?'}`,
+              confirmText: t('linkedTasks.completeAnyway') || 'Complete Anyway',
+              cancelText: t('common.cancel') || 'Cancel',
+              variant: 'warning',
+              icon: 'warning'
+            });
+            if (!proceed) break;
+          }
+
           const completedTask = await taskService.updateTask(task._id, {
             status: "completed",
           });
@@ -1346,14 +1415,25 @@ export default function TasksView() {
             groupId: originalGroupId || undefined,
           };
           const duplicatedTask = await taskService.createTask(duplicateData);
-          // Add the new task to todo list (check for duplicates to avoid race condition with realtime)
-          setTodoTasks(prev => {
-            // Don't add if already exists (added by realtime listener)
-            if (prev.some(t => t._id === duplicatedTask._id)) {
-              return prev;
-            }
-            return [duplicatedTask, ...prev];
-          });
+
+          // Auto-link the duplicate to the original task with 'duplicates' relationship
+          try {
+            const linkedDuplicateTask = await taskService.linkTask(duplicatedTask._id, task._id, 'duplicates');
+            // Add the linked task to todo list
+            setTodoTasks(prev => {
+              if (prev.some(t => t._id === linkedDuplicateTask._id)) {
+                return prev.map(t => t._id === linkedDuplicateTask._id ? linkedDuplicateTask : t);
+              }
+              return [linkedDuplicateTask, ...prev];
+            });
+          } catch (linkError) {
+            console.error("Error auto-linking duplicate:", linkError);
+            // Still add the task even if linking fails
+            setTodoTasks(prev => {
+              if (prev.some(t => t._id === duplicatedTask._id)) return prev;
+              return [duplicatedTask, ...prev];
+            });
+          }
           break;
 
         case "move_to_folder":
@@ -1513,6 +1593,35 @@ export default function TasksView() {
         setEditingField(null);
         setTempValue("");
         return;
+      }
+    }
+
+    // Check for soft blocking when changing status to 'completed'
+    if (field === "status" && tempValue === "completed") {
+      const blockedByLinks = (task as any).linkedTasks?.filter(
+        (link: any) => link.linkType === 'blocked_by' &&
+          typeof link.taskId === 'object' &&
+          link.taskId?.status !== 'completed'
+      ) || [];
+
+      if (blockedByLinks.length > 0) {
+        const blockingTaskNames = blockedByLinks
+          .map((link: any) => link.taskId?.title || 'Unknown Task')
+          .join(', ');
+        const proceed = await confirmDialog.confirm({
+          title: t('linkedTasks.blockedWarningTitle') || 'Task is Blocked',
+          message: `${t('linkedTasks.blockedWarningMessage') || 'This task is blocked by'} ${blockedByLinks.length} ${t('linkedTasks.incompleteTasks') || 'incomplete task(s)'}: ${blockingTaskNames}. ${t('linkedTasks.completeAnyway') || 'Complete anyway?'}`,
+          confirmText: t('linkedTasks.completeAnyway') || 'Complete Anyway',
+          cancelText: t('common.cancel') || 'Cancel',
+          variant: 'warning',
+          icon: 'warning'
+        });
+        if (!proceed) {
+          setEditingTaskId(null);
+          setEditingField(null);
+          setTempValue("");
+          return;
+        }
       }
     }
 
@@ -1892,48 +2001,64 @@ export default function TasksView() {
                 )}
 
                 {/* Linked Tasks Icon with Popup */}
-                {(task as any).linkedTasks && (task as any).linkedTasks.length > 0 && (
-                  <div className="relative group/links">
-                    <button
-                      className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 transition-colors"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                      }}
-                    >
-                      <Link2 className="w-3.5 h-3.5" />
-                      <span className="font-medium">{(task as any).linkedTasks.length}</span>
-                    </button>
+                {(task as any).linkedTasks && (task as any).linkedTasks.length > 0 && (() => {
+                  // Check if task has active blockers
+                  const hasActiveBlockers = (task as any).linkedTasks?.some(
+                    (link: any) => link.linkType === 'blocked_by' &&
+                      typeof link.taskId === 'object' &&
+                      link.taskId?.status !== 'completed'
+                  );
 
-                    {/* Popup on hover - displays upward */}
-                    <div className="absolute left-0 bottom-full mb-1 z-[100] hidden group-hover/links:block">
-                      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl p-3 min-w-[200px] max-w-[300px]">
-                        <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
-                          <Link2 className="w-3 h-3" />
-                          Linked Tasks
-                        </div>
-                        <div className="space-y-1.5 max-h-[150px] overflow-y-auto">
-                          {(task as any).linkedTasks.map((link: any, idx: number) => {
-                            const linkedTask = typeof link.taskId === 'object' ? link.taskId : null;
-                            const linkType = link.linkType || 'relates_to';
-                            const linkTypeLabel = linkType === 'blocks' ? '🚫 Blocks'
-                              : linkType === 'blocked_by' ? '⏸️ Blocked by'
-                                : linkType === 'duplicates' ? '📋 Duplicates'
-                                  : '🔗 Related to';
+                  return (
+                    <div className="relative group/links flex items-center gap-1">
+                      {/* Blocked indicator badge */}
+                      {hasActiveBlockers && (
+                        <span className="flex items-center gap-0.5 text-xs text-red-600 bg-red-50 dark:bg-red-900/30 dark:text-red-400 px-1.5 py-0.5 rounded-full border border-red-200 dark:border-red-800">
+                          ⏸️ Blocked
+                        </span>
+                      )}
 
-                            return (
-                              <div key={idx} className="text-xs">
-                                <span className="text-gray-500 dark:text-gray-400">{linkTypeLabel}:</span>
-                                <span className="ml-1 text-gray-700 dark:text-gray-300 truncate">
-                                  {linkedTask?.title || 'Unknown Task'}
-                                </span>
-                              </div>
-                            );
-                          })}
+                      <button
+                        className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                        }}
+                      >
+                        <Link2 className="w-3.5 h-3.5" />
+                        <span className="font-medium">{(task as any).linkedTasks.length}</span>
+                      </button>
+
+                      {/* Popup on hover - displays upward */}
+                      <div className="absolute left-0 bottom-full mb-1 z-[100] hidden group-hover/links:block">
+                        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl p-3 min-w-[200px] max-w-[300px]">
+                          <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
+                            <Link2 className="w-3 h-3" />
+                            Linked Tasks
+                          </div>
+                          <div className="space-y-1.5 max-h-[150px] overflow-y-auto">
+                            {(task as any).linkedTasks.map((link: any, idx: number) => {
+                              const linkedTask = typeof link.taskId === 'object' ? link.taskId : null;
+                              const linkType = link.linkType || 'relates_to';
+                              const linkTypeLabel = linkType === 'blocks' ? '🚫 Blocks'
+                                : linkType === 'blocked_by' ? '⏸️ Blocked by'
+                                  : linkType === 'duplicates' ? '📋 Duplicates'
+                                    : '🔗 Related to';
+
+                              return (
+                                <div key={idx} className="text-xs">
+                                  <span className="text-gray-500 dark:text-gray-400">{linkTypeLabel}:</span>
+                                  <span className="ml-1 text-gray-700 dark:text-gray-300 truncate">
+                                    {linkedTask?.title || 'Unknown Task'}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             )}
             {/* Task name row */}

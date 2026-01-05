@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useMemo } from "react"
 import { Link2, X, ChevronDown, ExternalLink, AlertTriangle, ArrowRight, Copy, Trash2 } from "lucide-react"
 import { taskService } from "../../../services/task.service"
 import { useLanguage } from "../../../contexts/LanguageContext"
@@ -43,8 +43,19 @@ export default function LinkedTasksSection({
     // Ensure linkedTasks is always an array
     const safeLinkedTasks = Array.isArray(linkedTasks) ? linkedTasks : []
 
+    // Filter out deleted/null linked tasks (when a linked task is deleted, taskId becomes null)
+    // Memoize to prevent infinite loop in useCallback dependencies
+    const validLinkedTasks = useMemo(() => safeLinkedTasks.filter(link => {
+        // If taskId is a string (not populated), consider it valid
+        if (typeof link.taskId === 'string') return true
+        // If taskId is null/undefined, the linked task was deleted
+        if (!link.taskId) return false
+        // If taskId is an object, it should have an _id
+        return link.taskId._id != null
+    }), [safeLinkedTasks])
+
     // Group linked tasks by type
-    const groupedLinks = safeLinkedTasks.reduce((acc, link) => {
+    const groupedLinks = validLinkedTasks.reduce((acc, link) => {
         if (!acc[link.linkType]) {
             acc[link.linkType] = []
         }
@@ -68,8 +79,8 @@ export default function LinkedTasksSection({
             }
             const response = await taskService.getAllTasks(filters)
             // Filter out the current task and already linked tasks
-            const linkedTaskIds = safeLinkedTasks.map(lt =>
-                typeof lt.taskId === 'object' ? lt.taskId._id : lt.taskId
+            const linkedTaskIds = validLinkedTasks.map(lt =>
+                typeof lt.taskId === 'object' && lt.taskId ? lt.taskId._id : lt.taskId
             )
             const filtered = response.tasks.filter(t =>
                 t._id !== taskId && !linkedTaskIds.includes(t._id)
@@ -80,7 +91,7 @@ export default function LinkedTasksSection({
         } finally {
             setSearching(false)
         }
-    }, [taskId, safeLinkedTasks, folderId])
+    }, [taskId, validLinkedTasks, folderId])
 
     // Debounced search
     useEffect(() => {
@@ -128,14 +139,17 @@ export default function LinkedTasksSection({
     }, [taskId, loading, onTaskUpdate, toast, t])
 
     const getLinkedTaskId = (link: LinkedTask): string => {
+        if (!link.taskId) return ''
         return typeof link.taskId === 'object' ? link.taskId._id : link.taskId
     }
 
     const getLinkedTaskTitle = (link: LinkedTask): string => {
+        if (!link.taskId) return 'Deleted Task'
         return typeof link.taskId === 'object' ? link.taskId.title : 'Unknown Task'
     }
 
     const getLinkedTaskStatus = (link: LinkedTask): string => {
+        if (!link.taskId) return 'unknown'
         return typeof link.taskId === 'object' ? link.taskId.status : 'unknown'
     }
 
@@ -163,9 +177,9 @@ export default function LinkedTasksSection({
                     <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
                         {t('linkedTasks.title') || 'Linked Tasks'}
                     </h3>
-                    {safeLinkedTasks.length > 0 && (
+                    {validLinkedTasks.length > 0 && (
                         <span className="text-xs text-gray-500 dark:text-gray-400">
-                            ({safeLinkedTasks.length})
+                            ({validLinkedTasks.length})
                         </span>
                     )}
                 </div>
@@ -179,7 +193,7 @@ export default function LinkedTasksSection({
             </div>
 
             {/* Linked tasks list grouped by type */}
-            {safeLinkedTasks.length > 0 ? (
+            {validLinkedTasks.length > 0 ? (
                 <div className="space-y-3">
                     {Object.entries(groupedLinks).map(([type, links]) => (
                         <div key={type} className="space-y-1">
