@@ -192,7 +192,7 @@ export default function ChecklistSection({ taskId, checklist = [], onTaskUpdate,
                     return (
                         <div
                             key={item._id || item.text}
-                            className={`group flex items-start gap-2 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${item.isCompleted ? 'bg-gray-50/50 dark:bg-gray-800/50' : ''
+                            className={`group flex items-start gap-2 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${item.isCompleted ? 'bg-gray-50/30 dark:bg-gray-800/30' : ''
                                 }`}
                         >
                             {/* Checkbox */}

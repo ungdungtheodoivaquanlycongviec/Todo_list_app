@@ -909,6 +909,8 @@ class TaskService {
         .populate('assignedTo.userId', 'name email avatar')
         .populate('comments.user', 'name email avatar')
         .populate('activeTimers.userId', 'name email avatar')
+        .populate('linkedTasks.taskId', 'title status priority')
+        .populate('linkedTasks.linkedBy', 'name email avatar')
         .populate('groupId', 'name description')
         .sort(sortOption)
         .skip(skip)
