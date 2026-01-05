@@ -3530,6 +3530,268 @@ class TaskService {
       task
     };
   }
+
+  // ==================== LINKED TASKS METHODS ====================
+
+  /**
+   * Get the inverse link type for bidirectional linking
+   * @param {String} linkType - Original link type
+   * @returns {String} Inverse link type
+   */
+  getInverseLinkType(linkType) {
+    const inverseMap = {
+      'blocks': 'blocked_by',
+      'blocked_by': 'blocks',
+      'relates_to': 'relates_to',
+      'duplicates': 'duplicates'
+    };
+    return inverseMap[linkType] || linkType;
+  }
+
+  /**
+   * Link two tasks together (bidirectional)
+   * @param {String} taskId - ID of the source task
+   * @param {String} linkedTaskId - ID of the task to link to
+   * @param {String} linkType - Type of link (blocks, blocked_by, relates_to, duplicates)
+   * @param {String} userId - ID of the user creating the link
+   * @returns {Promise<Object>} { success, task, message, statusCode }
+   */
+  async linkTask(taskId, linkedTaskId, linkType, userId) {
+    // Validate IDs
+    if (!isValidObjectId(taskId) || !isValidObjectId(linkedTaskId)) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.INVALID_ID,
+        statusCode: 400
+      };
+    }
+
+    // Cannot link to itself
+    if (taskId === linkedTaskId) {
+      return {
+        success: false,
+        message: 'Cannot link a task to itself',
+        statusCode: 400
+      };
+    }
+
+    // Validate link type
+    const validLinkTypes = ['blocks', 'blocked_by', 'relates_to', 'duplicates'];
+    if (!validLinkTypes.includes(linkType)) {
+      return {
+        success: false,
+        message: 'Invalid link type. Must be: blocks, blocked_by, relates_to, or duplicates',
+        statusCode: 400
+      };
+    }
+
+    // Find both tasks
+    const sourceTask = await Task.findById(taskId);
+    if (!sourceTask) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.TASK_NOT_FOUND,
+        statusCode: 404
+      };
+    }
+
+    const linkedTask = await Task.findById(linkedTaskId);
+    if (!linkedTask) {
+      return {
+        success: false,
+        message: 'Linked task not found',
+        statusCode: 404
+      };
+    }
+
+    // Validate same group
+    if (sourceTask.groupId?.toString() !== linkedTask.groupId?.toString()) {
+      return {
+        success: false,
+        message: 'Tasks must be in the same group to be linked',
+        statusCode: 400
+      };
+    }
+
+    // Validate same folder (optional - only if both have folders)
+    if (sourceTask.folderId && linkedTask.folderId &&
+      sourceTask.folderId.toString() !== linkedTask.folderId.toString()) {
+      return {
+        success: false,
+        message: 'Tasks must be in the same folder to be linked',
+        statusCode: 400
+      };
+    }
+
+    // Permission check on source task
+    try {
+      await ensureTaskEditAccess(sourceTask, userId);
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'You do not have permission to modify this task',
+        statusCode: error.statusCode || 403
+      };
+    }
+
+    // Check if already linked
+    const existingLink = sourceTask.linkedTasks?.find(
+      link => link.taskId.toString() === linkedTaskId
+    );
+    if (existingLink) {
+      return {
+        success: false,
+        message: 'Tasks are already linked',
+        statusCode: 400
+      };
+    }
+
+    // Check linked tasks limit
+    if (sourceTask.linkedTasks && sourceTask.linkedTasks.length >= LIMITS.MAX_LINKED_TASKS_PER_TASK) {
+      return {
+        success: false,
+        message: `Cannot add more than ${LIMITS.MAX_LINKED_TASKS_PER_TASK} linked tasks`,
+        statusCode: 400
+      };
+    }
+
+    // Initialize arrays if needed
+    if (!sourceTask.linkedTasks) sourceTask.linkedTasks = [];
+    if (!linkedTask.linkedTasks) linkedTask.linkedTasks = [];
+
+    // Add link to source task
+    sourceTask.linkedTasks.push({
+      taskId: linkedTaskId,
+      linkType: linkType,
+      linkedAt: new Date(),
+      linkedBy: userId
+    });
+
+    // Add inverse link to target task (bidirectional)
+    const inverseLinkType = this.getInverseLinkType(linkType);
+    const existingInverseLink = linkedTask.linkedTasks?.find(
+      link => link.taskId.toString() === taskId
+    );
+
+    if (!existingInverseLink) {
+      linkedTask.linkedTasks.push({
+        taskId: taskId,
+        linkType: inverseLinkType,
+        linkedAt: new Date(),
+        linkedBy: userId
+      });
+      await linkedTask.save();
+    }
+
+    await sourceTask.save();
+
+    // Populate user info
+    await sourceTask.populateUserInfo();
+
+    await emitTaskRealtime({
+      taskDoc: sourceTask,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'link:add',
+        linkedTaskId: linkedTaskId.toString(),
+        linkType: linkType,
+        source: 'task:link:add'
+      }
+    });
+
+    return {
+      success: true,
+      task: sourceTask
+    };
+  }
+
+  /**
+   * Unlink two tasks (removes link from both)
+   * @param {String} taskId - ID of the source task
+   * @param {String} linkedTaskId - ID of the task to unlink
+   * @param {String} userId - ID of the user removing the link
+   * @returns {Promise<Object>} { success, task, message, statusCode }
+   */
+  async unlinkTask(taskId, linkedTaskId, userId) {
+    // Validate IDs
+    if (!isValidObjectId(taskId) || !isValidObjectId(linkedTaskId)) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.INVALID_ID,
+        statusCode: 400
+      };
+    }
+
+    // Find source task
+    const sourceTask = await Task.findById(taskId);
+    if (!sourceTask) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.TASK_NOT_FOUND,
+        statusCode: 404
+      };
+    }
+
+    // Permission check
+    try {
+      await ensureTaskEditAccess(sourceTask, userId);
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'You do not have permission to modify this task',
+        statusCode: error.statusCode || 403
+      };
+    }
+
+    // Find the link
+    const linkIndex = sourceTask.linkedTasks?.findIndex(
+      link => link.taskId.toString() === linkedTaskId
+    );
+
+    if (linkIndex === -1 || linkIndex === undefined) {
+      return {
+        success: false,
+        message: 'Link not found',
+        statusCode: 404
+      };
+    }
+
+    // Remove link from source task
+    sourceTask.linkedTasks.splice(linkIndex, 1);
+    await sourceTask.save();
+
+    // Also remove inverse link from target task
+    const linkedTask = await Task.findById(linkedTaskId);
+    if (linkedTask && linkedTask.linkedTasks) {
+      const inverseLinkIndex = linkedTask.linkedTasks.findIndex(
+        link => link.taskId.toString() === taskId
+      );
+      if (inverseLinkIndex !== -1) {
+        linkedTask.linkedTasks.splice(inverseLinkIndex, 1);
+        await linkedTask.save();
+      }
+    }
+
+    // Populate user info
+    await sourceTask.populateUserInfo();
+
+    await emitTaskRealtime({
+      taskDoc: sourceTask,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'link:remove',
+        linkedTaskId: linkedTaskId.toString(),
+        source: 'task:link:remove'
+      }
+    });
+
+    return {
+      success: true,
+      task: sourceTask
+    };
+  }
 }
 
 // Export singleton instance

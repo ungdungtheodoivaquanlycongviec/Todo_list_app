@@ -590,6 +590,47 @@ const deleteChecklistItem = asyncHandler(async (req, res) => {
   sendSuccess(res, result.task, 'Checklist item deleted successfully');
 });
 
+/**
+ * @desc    Link a task to another task
+ * @route   POST /api/tasks/:id/link
+ * @access  Private
+ */
+const linkTask = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { linkedTaskId, linkType } = req.body;
+  const userId = req.user._id;
+
+  if (!linkedTaskId || !linkType) {
+    return sendError(res, 'linkedTaskId and linkType are required', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  const result = await taskService.linkTask(id, linkedTaskId, linkType, userId);
+
+  if (!result.success) {
+    return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);
+  }
+
+  sendSuccess(res, result.task, 'Task linked successfully');
+});
+
+/**
+ * @desc    Unlink a task from another task
+ * @route   DELETE /api/tasks/:id/link/:linkedTaskId
+ * @access  Private
+ */
+const unlinkTask = asyncHandler(async (req, res) => {
+  const { id, linkedTaskId } = req.params;
+  const userId = req.user._id;
+
+  const result = await taskService.unlinkTask(id, linkedTaskId, userId);
+
+  if (!result.success) {
+    return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);
+  }
+
+  sendSuccess(res, result.task, 'Task unlinked successfully');
+});
+
 module.exports = {
   createTask,
   getTaskById,
@@ -616,5 +657,7 @@ module.exports = {
   addChecklistItem,
   updateChecklistItem,
   toggleChecklistItem,
-  deleteChecklistItem
+  deleteChecklistItem,
+  linkTask,
+  unlinkTask
 };

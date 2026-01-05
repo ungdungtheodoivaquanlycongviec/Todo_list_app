@@ -794,6 +794,23 @@ export const translations = {
     'checklist.addItem': 'Add an item...',
     'checklist.add': 'Add',
     'checklist.completedBy': 'Completed by',
+
+    // Linked Tasks
+    'linkedTasks.title': 'Linked Tasks',
+    'linkedTasks.blocks': 'Blocks',
+    'linkedTasks.blocked_by': 'Blocked by',
+    'linkedTasks.relates_to': 'Related to',
+    'linkedTasks.duplicates': 'Duplicates',
+    'linkedTasks.addLink': 'Link task',
+    'linkedTasks.noLinks': 'No linked tasks',
+    'linkedTasks.selectTask': 'Search and select a task',
+    'linkedTasks.selectType': 'Link type',
+    'linkedTasks.linked': 'Task linked',
+    'linkedTasks.unlinked': 'Task unlinked',
+    'linkedTasks.unlink': 'Unlink',
+    'linkedTasks.viewTask': 'View task',
+    'linkedTasks.searchPlaceholder': 'Type to search tasks...',
+    'linkedTasks.typeToSearch': 'Type to search for tasks',
   },
 
   vi: {
@@ -1588,5 +1605,22 @@ export const translations = {
     'checklist.addItem': 'Thêm mục...',
     'checklist.add': 'Thêm',
     'checklist.completedBy': 'Hoàn thành bởi',
+
+    // Linked Tasks
+    'linkedTasks.title': 'Công việc liên kết',
+    'linkedTasks.blocks': 'Chặn',
+    'linkedTasks.blocked_by': 'Bị chặn bởi',
+    'linkedTasks.relates_to': 'Liên quan đến',
+    'linkedTasks.duplicates': 'Trùng lặp',
+    'linkedTasks.addLink': 'Liên kết',
+    'linkedTasks.noLinks': 'Chưa có liên kết',
+    'linkedTasks.selectTask': 'Tìm và chọn công việc',
+    'linkedTasks.selectType': 'Loại liên kết',
+    'linkedTasks.linked': 'Đã liên kết',
+    'linkedTasks.unlinked': 'Đã bỏ liên kết',
+    'linkedTasks.unlink': 'Bỏ liên kết',
+    'linkedTasks.viewTask': 'Xem công việc',
+    'linkedTasks.searchPlaceholder': 'Nhập để tìm công việc...',
+    'linkedTasks.typeToSearch': 'Nhập để tìm kiếm',
   }
 } as const;

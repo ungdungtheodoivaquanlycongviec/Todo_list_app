@@ -1113,5 +1113,72 @@ export const taskService = {
 
     const data = await response.json();
     return normalizeTaskResponse(data);
+  },
+
+  // ==================== LINKED TASKS METHODS ====================
+
+  // Link a task to another task
+  linkTask: async (taskId: string, linkedTaskId: string, linkType: string): Promise<Task> => {
+    const token = authService.getAuthToken();
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/link`, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify({ linkedTaskId, linkType }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Failed to link task: ${response.status}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    return normalizeTaskResponse(data);
+  },
+
+  // Unlink a task from another task
+  unlinkTask: async (taskId: string, linkedTaskId: string): Promise<Task> => {
+    const token = authService.getAuthToken();
+    const headers: HeadersInit = {};
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/link/${linkedTaskId}`, {
+      method: 'DELETE',
+      headers,
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Failed to unlink task: ${response.status}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    return normalizeTaskResponse(data);
   }
 };

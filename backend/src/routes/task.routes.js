@@ -26,7 +26,9 @@ const {
   addChecklistItem,
   updateChecklistItem,
   toggleChecklistItem,
-  deleteChecklistItem
+  deleteChecklistItem,
+  linkTask,
+  unlinkTask
 } = require('../controllers/task.controller');
 const {
   validateCreateTask,
@@ -102,4 +104,9 @@ router.put('/:id/checklist/:itemId', updateChecklistItem);
 router.patch('/:id/checklist/:itemId/toggle', toggleChecklistItem);
 router.delete('/:id/checklist/:itemId', deleteChecklistItem);
 
+// NEW: Linked Tasks routes
+router.post('/:id/link', linkTask);
+router.delete('/:id/link/:linkedTaskId', unlinkTask);
+
 module.exports = router;
+
