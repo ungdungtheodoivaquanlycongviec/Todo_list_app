@@ -783,6 +783,17 @@ export const translations = {
     'timePicker.day': 'd',
     'timePicker.month': 'mo',
     'timePicker.dragToChange': 'Drag or click to change',
+
+    // Checklist
+    'checklist.title': 'Checklist',
+    'checklist.itemAdded': 'Item added',
+    'checklist.itemDeleted': 'Item deleted',
+    'checklist.editItem': 'Edit item',
+    'checklist.deleteItem': 'Delete item',
+    'checklist.noItems': 'No checklist items yet',
+    'checklist.addItem': 'Add an item...',
+    'checklist.add': 'Add',
+    'checklist.completedBy': 'Completed by',
   },
 
   vi: {
@@ -1566,5 +1577,16 @@ export const translations = {
     'timePicker.day': 'ngày',
     'timePicker.month': 'tháng',
     'timePicker.dragToChange': 'Kéo hoặc nhấn để thay đổi',
+
+    // Checklist
+    'checklist.title': 'Danh sách kiểm tra',
+    'checklist.itemAdded': 'Đã thêm mục',
+    'checklist.itemDeleted': 'Đã xóa mục',
+    'checklist.editItem': 'Chỉnh sửa mục',
+    'checklist.deleteItem': 'Xóa mục',
+    'checklist.noItems': 'Chưa có mục nào',
+    'checklist.addItem': 'Thêm mục...',
+    'checklist.add': 'Thêm',
+    'checklist.completedBy': 'Hoàn thành bởi',
   }
 } as const;

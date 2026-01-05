@@ -22,10 +22,14 @@ const {
   startTimer,
   stopTimer,
   setCustomStatus,
-  setTaskRepetition
+  setTaskRepetition,
+  addChecklistItem,
+  updateChecklistItem,
+  toggleChecklistItem,
+  deleteChecklistItem
 } = require('../controllers/task.controller');
-const { 
-  validateCreateTask, 
+const {
+  validateCreateTask,
   validateUpdateTask,
   validateAddComment,
   validateUpdateComment,
@@ -91,5 +95,11 @@ router.post('/:id/custom-status', setCustomStatus);
 
 // NEW: Task repetition routes
 router.post('/:id/repeat', setTaskRepetition);
+
+// NEW: Checklist routes
+router.post('/:id/checklist', addChecklistItem);
+router.put('/:id/checklist/:itemId', updateChecklistItem);
+router.patch('/:id/checklist/:itemId/toggle', toggleChecklistItem);
+router.delete('/:id/checklist/:itemId', deleteChecklistItem);
 
 module.exports = router;

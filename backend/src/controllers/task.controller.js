@@ -514,6 +514,82 @@ const setTaskRepetition = asyncHandler(async (req, res) => {
   sendSuccess(res, task, 'Task repetition settings updated successfully');
 });
 
+// ==================== CHECKLIST CONTROLLERS ====================
+
+/**
+ * @desc    Add a checklist item to a task
+ * @route   POST /api/tasks/:id/checklist
+ * @access  Private
+ */
+const addChecklistItem = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { text } = req.body;
+  const userId = req.user._id;
+
+  const result = await taskService.addChecklistItem(id, text, userId);
+
+  if (!result.success) {
+    return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);
+  }
+
+  sendSuccess(res, result.task, 'Checklist item added successfully', HTTP_STATUS.CREATED);
+});
+
+/**
+ * @desc    Update a checklist item's text
+ * @route   PUT /api/tasks/:id/checklist/:itemId
+ * @access  Private
+ */
+const updateChecklistItem = asyncHandler(async (req, res) => {
+  const { id, itemId } = req.params;
+  const { text } = req.body;
+  const userId = req.user._id;
+
+  const result = await taskService.updateChecklistItem(id, itemId, text, userId);
+
+  if (!result.success) {
+    return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);
+  }
+
+  sendSuccess(res, result.task, 'Checklist item updated successfully');
+});
+
+/**
+ * @desc    Toggle a checklist item's completion status
+ * @route   PATCH /api/tasks/:id/checklist/:itemId/toggle
+ * @access  Private
+ */
+const toggleChecklistItem = asyncHandler(async (req, res) => {
+  const { id, itemId } = req.params;
+  const userId = req.user._id;
+
+  const result = await taskService.toggleChecklistItem(id, itemId, userId);
+
+  if (!result.success) {
+    return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);
+  }
+
+  sendSuccess(res, result.task, 'Checklist item toggled successfully');
+});
+
+/**
+ * @desc    Delete a checklist item
+ * @route   DELETE /api/tasks/:id/checklist/:itemId
+ * @access  Private
+ */
+const deleteChecklistItem = asyncHandler(async (req, res) => {
+  const { id, itemId } = req.params;
+  const userId = req.user._id;
+
+  const result = await taskService.deleteChecklistItem(id, itemId, userId);
+
+  if (!result.success) {
+    return sendError(res, result.message, result.statusCode || HTTP_STATUS.BAD_REQUEST);
+  }
+
+  sendSuccess(res, result.task, 'Checklist item deleted successfully');
+});
+
 module.exports = {
   createTask,
   getTaskById,
@@ -536,5 +612,9 @@ module.exports = {
   startTimer,
   stopTimer,
   setCustomStatus,
-  setTaskRepetition
+  setTaskRepetition,
+  addChecklistItem,
+  updateChecklistItem,
+  toggleChecklistItem,
+  deleteChecklistItem
 };

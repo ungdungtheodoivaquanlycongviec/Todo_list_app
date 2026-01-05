@@ -55,6 +55,17 @@ export interface ActiveTimer {
   startTime: string;
 }
 
+// NEW: Checklist item for subtasks
+export interface ChecklistItem {
+  _id?: string;
+  text: string;
+  isCompleted: boolean;
+  completedBy?: string | MinimalUser;
+  completedAt?: string;
+  createdBy?: string | MinimalUser;
+  createdAt?: string;
+}
+
 export interface Task {
   _id: string;
   title: string;
@@ -90,6 +101,7 @@ export interface Task {
   scheduledWork?: ScheduledWork[];
   repetition?: RepetitionSettings;
   activeTimers?: ActiveTimer[];  // Array of per-user timers (replaces startTime)
+  checklist?: ChecklistItem[];   // NEW: Checklist/subtask items
 
   createdAt: string;
   updatedAt: string;

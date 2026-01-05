@@ -3189,6 +3189,347 @@ class TaskService {
 
     return task;
   }
+
+  // ==================== CHECKLIST METHODS ====================
+
+  /**
+   * Add a checklist item to a task
+   * @param {String} taskId - ID of the task
+   * @param {String} text - Checklist item text
+   * @param {String} userId - ID of the user adding the item
+   * @returns {Promise<Object>} { success, task, item, message, statusCode }
+   */
+  async addChecklistItem(taskId, text, userId) {
+    if (!isValidObjectId(taskId)) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.INVALID_TASK_ID,
+        statusCode: 400
+      };
+    }
+
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      return {
+        success: false,
+        message: 'Checklist item text is required',
+        statusCode: 400
+      };
+    }
+
+    if (text.trim().length > LIMITS.MAX_CHECKLIST_ITEM_LENGTH) {
+      return {
+        success: false,
+        message: `Checklist item cannot exceed ${LIMITS.MAX_CHECKLIST_ITEM_LENGTH} characters`,
+        statusCode: 400
+      };
+    }
+
+    const task = await Task.findById(taskId);
+    if (!task) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.TASK_NOT_FOUND,
+        statusCode: 404
+      };
+    }
+
+    // Permission check
+    try {
+      await ensureTaskEditAccess(task, userId);
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'You do not have permission to modify this task',
+        statusCode: error.statusCode || 403
+      };
+    }
+
+    // Check checklist limit
+    if (task.checklist && task.checklist.length >= LIMITS.MAX_CHECKLIST_ITEMS_PER_TASK) {
+      return {
+        success: false,
+        message: `Cannot add more than ${LIMITS.MAX_CHECKLIST_ITEMS_PER_TASK} checklist items`,
+        statusCode: 400
+      };
+    }
+
+    // Initialize checklist array if not exists
+    if (!task.checklist) {
+      task.checklist = [];
+    }
+
+    // Add new item
+    const newItem = {
+      text: text.trim(),
+      isCompleted: false,
+      completedBy: null,
+      completedAt: null,
+      createdBy: userId,
+      createdAt: new Date()
+    };
+
+    task.checklist.push(newItem);
+    await task.save();
+
+    // Populate user info
+    await task.populateUserInfo();
+
+    const addedItem = task.checklist[task.checklist.length - 1];
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'checklist:add',
+        checklistItemId: normalizeId(addedItem?._id),
+        source: 'task:checklist:add'
+      }
+    });
+
+    return {
+      success: true,
+      task,
+      item: addedItem
+    };
+  }
+
+  /**
+   * Update a checklist item's text
+   * @param {String} taskId - ID of the task
+   * @param {String} itemId - ID of the checklist item
+   * @param {String} text - New text
+   * @param {String} userId - ID of the user updating
+   * @returns {Promise<Object>} { success, task, message, statusCode }
+   */
+  async updateChecklistItem(taskId, itemId, text, userId) {
+    if (!isValidObjectId(taskId) || !isValidObjectId(itemId)) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.INVALID_ID,
+        statusCode: 400
+      };
+    }
+
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      return {
+        success: false,
+        message: 'Checklist item text is required',
+        statusCode: 400
+      };
+    }
+
+    if (text.trim().length > LIMITS.MAX_CHECKLIST_ITEM_LENGTH) {
+      return {
+        success: false,
+        message: `Checklist item cannot exceed ${LIMITS.MAX_CHECKLIST_ITEM_LENGTH} characters`,
+        statusCode: 400
+      };
+    }
+
+    const task = await Task.findById(taskId);
+    if (!task) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.TASK_NOT_FOUND,
+        statusCode: 404
+      };
+    }
+
+    // Permission check
+    try {
+      await ensureTaskEditAccess(task, userId);
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'You do not have permission to modify this task',
+        statusCode: error.statusCode || 403
+      };
+    }
+
+    // Find the checklist item
+    const item = task.checklist?.id(itemId);
+    if (!item) {
+      return {
+        success: false,
+        message: 'Checklist item not found',
+        statusCode: 404
+      };
+    }
+
+    // Update text
+    item.text = text.trim();
+    await task.save();
+
+    // Populate user info
+    await task.populateUserInfo();
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'checklist:update',
+        checklistItemId: normalizeId(itemId),
+        source: 'task:checklist:update'
+      }
+    });
+
+    return {
+      success: true,
+      task
+    };
+  }
+
+  /**
+   * Toggle a checklist item's completion status
+   * @param {String} taskId - ID of the task
+   * @param {String} itemId - ID of the checklist item
+   * @param {String} userId - ID of the user toggling
+   * @returns {Promise<Object>} { success, task, item, message, statusCode }
+   */
+  async toggleChecklistItem(taskId, itemId, userId) {
+    if (!isValidObjectId(taskId) || !isValidObjectId(itemId)) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.INVALID_ID,
+        statusCode: 400
+      };
+    }
+
+    const task = await Task.findById(taskId);
+    if (!task) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.TASK_NOT_FOUND,
+        statusCode: 404
+      };
+    }
+
+    // Permission check
+    try {
+      await ensureTaskEditAccess(task, userId);
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'You do not have permission to modify this task',
+        statusCode: error.statusCode || 403
+      };
+    }
+
+    // Find the checklist item
+    const item = task.checklist?.id(itemId);
+    if (!item) {
+      return {
+        success: false,
+        message: 'Checklist item not found',
+        statusCode: 404
+      };
+    }
+
+    // Toggle completion status
+    item.isCompleted = !item.isCompleted;
+    if (item.isCompleted) {
+      item.completedBy = userId;
+      item.completedAt = new Date();
+    } else {
+      item.completedBy = null;
+      item.completedAt = null;
+    }
+
+    await task.save();
+
+    // Populate user info
+    await task.populateUserInfo();
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'checklist:toggle',
+        checklistItemId: normalizeId(itemId),
+        isCompleted: item.isCompleted,
+        source: 'task:checklist:toggle'
+      }
+    });
+
+    return {
+      success: true,
+      task,
+      item
+    };
+  }
+
+  /**
+   * Delete a checklist item
+   * @param {String} taskId - ID of the task
+   * @param {String} itemId - ID of the checklist item
+   * @param {String} userId - ID of the user deleting
+   * @returns {Promise<Object>} { success, task, message, statusCode }
+   */
+  async deleteChecklistItem(taskId, itemId, userId) {
+    if (!isValidObjectId(taskId) || !isValidObjectId(itemId)) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.INVALID_ID,
+        statusCode: 400
+      };
+    }
+
+    const task = await Task.findById(taskId);
+    if (!task) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.TASK_NOT_FOUND,
+        statusCode: 404
+      };
+    }
+
+    // Permission check
+    try {
+      await ensureTaskEditAccess(task, userId);
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'You do not have permission to modify this task',
+        statusCode: error.statusCode || 403
+      };
+    }
+
+    // Find the checklist item
+    const item = task.checklist?.id(itemId);
+    if (!item) {
+      return {
+        success: false,
+        message: 'Checklist item not found',
+        statusCode: 404
+      };
+    }
+
+    // Remove item
+    task.checklist.pull(itemId);
+    await task.save();
+
+    // Populate user info
+    await task.populateUserInfo();
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'checklist:delete',
+        checklistItemId: normalizeId(itemId),
+        source: 'task:checklist:delete'
+      }
+    });
+
+    return {
+      success: true,
+      task
+    };
+  }
 }
 
 // Export singleton instance

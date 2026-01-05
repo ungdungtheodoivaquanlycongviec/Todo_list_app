@@ -981,5 +981,137 @@ export const taskService = {
         hasPrevPage: false
       }
     };
+  },
+
+  // ==================== CHECKLIST METHODS ====================
+
+  // Add a checklist item to a task
+  addChecklistItem: async (taskId: string, text: string): Promise<Task> => {
+    const token = authService.getAuthToken();
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/checklist`, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify({ text }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Failed to add checklist item: ${response.status}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    return normalizeTaskResponse(data);
+  },
+
+  // Update a checklist item's text
+  updateChecklistItem: async (taskId: string, itemId: string, text: string): Promise<Task> => {
+    const token = authService.getAuthToken();
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/checklist/${itemId}`, {
+      method: 'PUT',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify({ text }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Failed to update checklist item: ${response.status}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    return normalizeTaskResponse(data);
+  },
+
+  // Toggle a checklist item's completion status
+  toggleChecklistItem: async (taskId: string, itemId: string): Promise<Task> => {
+    const token = authService.getAuthToken();
+    const headers: HeadersInit = {};
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/checklist/${itemId}/toggle`, {
+      method: 'PATCH',
+      headers,
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Failed to toggle checklist item: ${response.status}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    return normalizeTaskResponse(data);
+  },
+
+  // Delete a checklist item
+  deleteChecklistItem: async (taskId: string, itemId: string): Promise<Task> => {
+    const token = authService.getAuthToken();
+    const headers: HeadersInit = {};
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/checklist/${itemId}`, {
+      method: 'DELETE',
+      headers,
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Failed to delete checklist item: ${response.status}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    return normalizeTaskResponse(data);
   }
 };
