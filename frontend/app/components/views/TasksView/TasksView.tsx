@@ -17,6 +17,8 @@ import {
   X,
   Filter,
   MoreVertical,
+  Tag,
+  Link2,
 } from "lucide-react";
 import { taskService } from "../../../services/task.service";
 import { Task } from "../../../services/types/task.types";
@@ -1854,7 +1856,7 @@ export default function TasksView() {
 
     return (
       <div
-        className={`grid grid-cols-12 gap-4 p-4 border-b hover:bg-gray-50 transition-colors ${isCompleted
+        className={`grid grid-cols-12 gap-4 p-4 border-b hover:bg-gray-50 transition-colors items-center ${isCompleted
           ? "bg-gray-50 border-gray-100"
           : isOverdue
             ? "bg-red-50 border-red-100"
@@ -1867,27 +1869,96 @@ export default function TasksView() {
           className="col-span-3 cursor-pointer"
           onClick={() => handleTaskClick(task._id)}
         >
-          <div className="flex items-center gap-3">
-            <div
-              className={`w-2 h-2 rounded-full ${task.priority === "urgent" || task.priority === "critical"
-                ? "bg-red-500"
-                : task.priority === "high"
-                  ? "bg-orange-500"
-                  : task.priority === "medium"
-                    ? "bg-yellow-500"
-                    : "bg-gray-400"
-                }`}
-            />
-            <span
-              className={`text-sm font-medium ${isCompleted
-                ? "text-gray-500 line-through"
-                : isOverdue
-                  ? "text-red-700"
-                  : "text-gray-900"
-                } hover:text-blue-600 transition-colors`}
-            >
-              {task.title || "Untitled Task"}
-            </span>
+          <div className="flex flex-col gap-1">
+            {/* Tags and Linked Tasks display */}
+            {((task.tags && task.tags.length > 0) || ((task as any).linkedTasks && (task as any).linkedTasks.length > 0)) && (
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Tags */}
+                {task.tags && task.tags.length > 0 && (
+                  <div className="flex items-center gap-1">
+                    <Tag className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                    {task.tags.slice(0, 3).map((tag, index) => (
+                      <span
+                        key={index}
+                        className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                    {task.tags.length > 3 && (
+                      <span className="text-xs text-gray-400">+{task.tags.length - 3}</span>
+                    )}
+                  </div>
+                )}
+
+                {/* Linked Tasks Icon with Popup */}
+                {(task as any).linkedTasks && (task as any).linkedTasks.length > 0 && (
+                  <div className="relative group/links">
+                    <button
+                      className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                      }}
+                    >
+                      <Link2 className="w-3.5 h-3.5" />
+                      <span className="font-medium">{(task as any).linkedTasks.length}</span>
+                    </button>
+
+                    {/* Popup on hover - displays upward */}
+                    <div className="absolute left-0 bottom-full mb-1 z-[100] hidden group-hover/links:block">
+                      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl p-3 min-w-[200px] max-w-[300px]">
+                        <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
+                          <Link2 className="w-3 h-3" />
+                          Linked Tasks
+                        </div>
+                        <div className="space-y-1.5 max-h-[150px] overflow-y-auto">
+                          {(task as any).linkedTasks.map((link: any, idx: number) => {
+                            const linkedTask = typeof link.taskId === 'object' ? link.taskId : null;
+                            const linkType = link.linkType || 'relates_to';
+                            const linkTypeLabel = linkType === 'blocks' ? '🚫 Blocks'
+                              : linkType === 'blocked_by' ? '⏸️ Blocked by'
+                                : linkType === 'duplicates' ? '📋 Duplicates'
+                                  : '🔗 Related to';
+
+                            return (
+                              <div key={idx} className="text-xs">
+                                <span className="text-gray-500 dark:text-gray-400">{linkTypeLabel}:</span>
+                                <span className="ml-1 text-gray-700 dark:text-gray-300 truncate">
+                                  {linkedTask?.title || 'Unknown Task'}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {/* Task name row */}
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-2 h-2 rounded-full ${task.priority === "urgent" || task.priority === "critical"
+                  ? "bg-red-500"
+                  : task.priority === "high"
+                    ? "bg-orange-500"
+                    : task.priority === "medium"
+                      ? "bg-yellow-500"
+                      : "bg-gray-400"
+                  }`}
+              />
+              <span
+                className={`text-sm font-medium ${isCompleted
+                  ? "text-gray-500 line-through"
+                  : isOverdue
+                    ? "text-red-700"
+                    : "text-gray-900"
+                  } hover:text-blue-600 transition-colors`}
+              >
+                {task.title || "Untitled Task"}
+              </span>
+            </div>
           </div>
         </div>
 

@@ -203,6 +203,79 @@ const taskSchema = new mongoose.Schema(
         message: 'Số lượng comments không được vượt quá 200'
       },
       default: []
+    },
+    // NEW: Checklist/Subtasks field
+    checklist: {
+      type: [
+        {
+          text: {
+            type: String,
+            required: true,
+            trim: true,
+            maxlength: [500, 'Checklist item không được vượt quá 500 ký tự']
+          },
+          isCompleted: {
+            type: Boolean,
+            default: false
+          },
+          completedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+            default: null
+          },
+          completedAt: {
+            type: Date,
+            default: null
+          },
+          createdBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User'
+          },
+          createdAt: {
+            type: Date,
+            default: Date.now
+          }
+        }
+      ],
+      validate: {
+        validator: function (checklist) {
+          return checklist.length <= 50;
+        },
+        message: 'Số lượng checklist items không được vượt quá 50'
+      },
+      default: []
+    },
+    // NEW: Linked Tasks for task relationships
+    linkedTasks: {
+      type: [
+        {
+          taskId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Task',
+            required: true
+          },
+          linkType: {
+            type: String,
+            enum: ['blocks', 'blocked_by', 'relates_to', 'duplicates'],
+            required: true
+          },
+          linkedAt: {
+            type: Date,
+            default: Date.now
+          },
+          linkedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User'
+          }
+        }
+      ],
+      validate: {
+        validator: function (linkedTasks) {
+          return linkedTasks.length <= 20;
+        },
+        message: 'Số lượng linked tasks không được vượt quá 20'
+      },
+      default: []
     }
   },
   {
@@ -213,6 +286,9 @@ const taskSchema = new mongoose.Schema(
 
 // Virtual for total logged time
 taskSchema.virtual('totalLoggedTime').get(function () {
+  if (!this.timeEntries || !Array.isArray(this.timeEntries)) {
+    return 0;
+  }
   return this.timeEntries.reduce((total, entry) => {
     return total + (entry.hours || 0) + (entry.minutes || 0) / 60;
   }, 0);
@@ -270,6 +346,10 @@ taskSchema.methods.populateUserInfo = function () {
     { path: 'timeEntries.user', select: 'name email avatar' },
     { path: 'scheduledWork.user', select: 'name email avatar' },
     { path: 'activeTimers.userId', select: 'name email avatar' },
+    { path: 'checklist.completedBy', select: 'name email avatar' },
+    { path: 'checklist.createdBy', select: 'name email avatar' },
+    { path: 'linkedTasks.taskId', select: 'title status priority' },
+    { path: 'linkedTasks.linkedBy', select: 'name email avatar' },
     { path: 'groupId', select: 'name description members metadata' }
   ]);
 };

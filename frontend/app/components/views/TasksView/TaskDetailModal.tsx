@@ -38,6 +38,8 @@ import { useConfirm } from "../../../contexts/ConfirmContext"
 import EstimatedTimePicker from "./EstimatedTimePicker"
 import MentionInput, { MentionableUser, parseMentions } from "../../common/MentionInput"
 import MentionHighlight from "../../common/MentionHighlight"
+import ChecklistSection from "./ChecklistSection"
+import LinkedTasksSection from "./LinkedTasksSection"
 
 interface MinimalUser {
   _id: string;
@@ -2156,6 +2158,31 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, onTaskUpdate,
                     </p>
                   )}
                 </div>
+
+                {/* Checklist Section */}
+                {task && (
+                  <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                    <ChecklistSection
+                      taskId={taskId}
+                      checklist={(task as any).checklist || []}
+                      onTaskUpdate={onTaskUpdate}
+                      disabled={saving}
+                    />
+                  </div>
+                )}
+
+                {/* Linked Tasks Section */}
+                {task && (
+                  <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                    <LinkedTasksSection
+                      taskId={taskId}
+                      linkedTasks={(task as any).linkedTasks || []}
+                      folderId={typeof task.folderId === 'object' ? task.folderId?._id : task.folderId || undefined}
+                      onTaskUpdate={onTaskUpdate}
+                      disabled={saving}
+                    />
+                  </div>
+                )}
 
                 {/* Scheduled Work - Available for all tasks regardless of due date */}
                 <div>
