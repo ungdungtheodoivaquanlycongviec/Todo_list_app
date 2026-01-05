@@ -768,6 +768,8 @@ class TaskService {
       .populate('timeEntries.user', 'name email avatar')
       .populate('scheduledWork.user', 'name email avatar')
       .populate('activeTimers.userId', 'name email avatar')
+      .populate('linkedTasks.taskId', 'title status priority')
+      .populate('linkedTasks.linkedBy', 'name email avatar')
       .populate('groupId', 'name description');
     return task;
   }
@@ -907,6 +909,8 @@ class TaskService {
         .populate('assignedTo.userId', 'name email avatar')
         .populate('comments.user', 'name email avatar')
         .populate('activeTimers.userId', 'name email avatar')
+        .populate('linkedTasks.taskId', 'title status priority')
+        .populate('linkedTasks.linkedBy', 'name email avatar')
         .populate('groupId', 'name description')
         .sort(sortOption)
         .skip(skip)
@@ -3188,6 +3192,609 @@ class TaskService {
     });
 
     return task;
+  }
+
+  // ==================== CHECKLIST METHODS ====================
+
+  /**
+   * Add a checklist item to a task
+   * @param {String} taskId - ID of the task
+   * @param {String} text - Checklist item text
+   * @param {String} userId - ID of the user adding the item
+   * @returns {Promise<Object>} { success, task, item, message, statusCode }
+   */
+  async addChecklistItem(taskId, text, userId) {
+    if (!isValidObjectId(taskId)) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.INVALID_TASK_ID,
+        statusCode: 400
+      };
+    }
+
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      return {
+        success: false,
+        message: 'Checklist item text is required',
+        statusCode: 400
+      };
+    }
+
+    if (text.trim().length > LIMITS.MAX_CHECKLIST_ITEM_LENGTH) {
+      return {
+        success: false,
+        message: `Checklist item cannot exceed ${LIMITS.MAX_CHECKLIST_ITEM_LENGTH} characters`,
+        statusCode: 400
+      };
+    }
+
+    const task = await Task.findById(taskId);
+    if (!task) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.TASK_NOT_FOUND,
+        statusCode: 404
+      };
+    }
+
+    // Permission check
+    try {
+      await ensureTaskEditAccess(task, userId);
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'You do not have permission to modify this task',
+        statusCode: error.statusCode || 403
+      };
+    }
+
+    // Check checklist limit
+    if (task.checklist && task.checklist.length >= LIMITS.MAX_CHECKLIST_ITEMS_PER_TASK) {
+      return {
+        success: false,
+        message: `Cannot add more than ${LIMITS.MAX_CHECKLIST_ITEMS_PER_TASK} checklist items`,
+        statusCode: 400
+      };
+    }
+
+    // Initialize checklist array if not exists
+    if (!task.checklist) {
+      task.checklist = [];
+    }
+
+    // Add new item
+    const newItem = {
+      text: text.trim(),
+      isCompleted: false,
+      completedBy: null,
+      completedAt: null,
+      createdBy: userId,
+      createdAt: new Date()
+    };
+
+    task.checklist.push(newItem);
+    await task.save();
+
+    // Populate user info
+    await task.populateUserInfo();
+
+    const addedItem = task.checklist[task.checklist.length - 1];
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'checklist:add',
+        checklistItemId: normalizeId(addedItem?._id),
+        source: 'task:checklist:add'
+      }
+    });
+
+    return {
+      success: true,
+      task,
+      item: addedItem
+    };
+  }
+
+  /**
+   * Update a checklist item's text
+   * @param {String} taskId - ID of the task
+   * @param {String} itemId - ID of the checklist item
+   * @param {String} text - New text
+   * @param {String} userId - ID of the user updating
+   * @returns {Promise<Object>} { success, task, message, statusCode }
+   */
+  async updateChecklistItem(taskId, itemId, text, userId) {
+    if (!isValidObjectId(taskId) || !isValidObjectId(itemId)) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.INVALID_ID,
+        statusCode: 400
+      };
+    }
+
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      return {
+        success: false,
+        message: 'Checklist item text is required',
+        statusCode: 400
+      };
+    }
+
+    if (text.trim().length > LIMITS.MAX_CHECKLIST_ITEM_LENGTH) {
+      return {
+        success: false,
+        message: `Checklist item cannot exceed ${LIMITS.MAX_CHECKLIST_ITEM_LENGTH} characters`,
+        statusCode: 400
+      };
+    }
+
+    const task = await Task.findById(taskId);
+    if (!task) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.TASK_NOT_FOUND,
+        statusCode: 404
+      };
+    }
+
+    // Permission check
+    try {
+      await ensureTaskEditAccess(task, userId);
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'You do not have permission to modify this task',
+        statusCode: error.statusCode || 403
+      };
+    }
+
+    // Find the checklist item
+    const item = task.checklist?.id(itemId);
+    if (!item) {
+      return {
+        success: false,
+        message: 'Checklist item not found',
+        statusCode: 404
+      };
+    }
+
+    // Update text
+    item.text = text.trim();
+    await task.save();
+
+    // Populate user info
+    await task.populateUserInfo();
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'checklist:update',
+        checklistItemId: normalizeId(itemId),
+        source: 'task:checklist:update'
+      }
+    });
+
+    return {
+      success: true,
+      task
+    };
+  }
+
+  /**
+   * Toggle a checklist item's completion status
+   * @param {String} taskId - ID of the task
+   * @param {String} itemId - ID of the checklist item
+   * @param {String} userId - ID of the user toggling
+   * @returns {Promise<Object>} { success, task, item, message, statusCode }
+   */
+  async toggleChecklistItem(taskId, itemId, userId) {
+    if (!isValidObjectId(taskId) || !isValidObjectId(itemId)) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.INVALID_ID,
+        statusCode: 400
+      };
+    }
+
+    const task = await Task.findById(taskId);
+    if (!task) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.TASK_NOT_FOUND,
+        statusCode: 404
+      };
+    }
+
+    // Permission check
+    try {
+      await ensureTaskEditAccess(task, userId);
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'You do not have permission to modify this task',
+        statusCode: error.statusCode || 403
+      };
+    }
+
+    // Find the checklist item
+    const item = task.checklist?.id(itemId);
+    if (!item) {
+      return {
+        success: false,
+        message: 'Checklist item not found',
+        statusCode: 404
+      };
+    }
+
+    // Toggle completion status
+    item.isCompleted = !item.isCompleted;
+    if (item.isCompleted) {
+      item.completedBy = userId;
+      item.completedAt = new Date();
+    } else {
+      item.completedBy = null;
+      item.completedAt = null;
+    }
+
+    await task.save();
+
+    // Populate user info
+    await task.populateUserInfo();
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'checklist:toggle',
+        checklistItemId: normalizeId(itemId),
+        isCompleted: item.isCompleted,
+        source: 'task:checklist:toggle'
+      }
+    });
+
+    return {
+      success: true,
+      task,
+      item
+    };
+  }
+
+  /**
+   * Delete a checklist item
+   * @param {String} taskId - ID of the task
+   * @param {String} itemId - ID of the checklist item
+   * @param {String} userId - ID of the user deleting
+   * @returns {Promise<Object>} { success, task, message, statusCode }
+   */
+  async deleteChecklistItem(taskId, itemId, userId) {
+    if (!isValidObjectId(taskId) || !isValidObjectId(itemId)) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.INVALID_ID,
+        statusCode: 400
+      };
+    }
+
+    const task = await Task.findById(taskId);
+    if (!task) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.TASK_NOT_FOUND,
+        statusCode: 404
+      };
+    }
+
+    // Permission check
+    try {
+      await ensureTaskEditAccess(task, userId);
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'You do not have permission to modify this task',
+        statusCode: error.statusCode || 403
+      };
+    }
+
+    // Find the checklist item
+    const item = task.checklist?.id(itemId);
+    if (!item) {
+      return {
+        success: false,
+        message: 'Checklist item not found',
+        statusCode: 404
+      };
+    }
+
+    // Remove item
+    task.checklist.pull(itemId);
+    await task.save();
+
+    // Populate user info
+    await task.populateUserInfo();
+
+    await emitTaskRealtime({
+      taskDoc: task,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'checklist:delete',
+        checklistItemId: normalizeId(itemId),
+        source: 'task:checklist:delete'
+      }
+    });
+
+    return {
+      success: true,
+      task
+    };
+  }
+
+  // ==================== LINKED TASKS METHODS ====================
+
+  /**
+   * Get the inverse link type for bidirectional linking
+   * @param {String} linkType - Original link type
+   * @returns {String} Inverse link type
+   */
+  getInverseLinkType(linkType) {
+    const inverseMap = {
+      'blocks': 'blocked_by',
+      'blocked_by': 'blocks',
+      'relates_to': 'relates_to',
+      'duplicates': 'duplicates'
+    };
+    return inverseMap[linkType] || linkType;
+  }
+
+  /**
+   * Link two tasks together (bidirectional)
+   * @param {String} taskId - ID of the source task
+   * @param {String} linkedTaskId - ID of the task to link to
+   * @param {String} linkType - Type of link (blocks, blocked_by, relates_to, duplicates)
+   * @param {String} userId - ID of the user creating the link
+   * @returns {Promise<Object>} { success, task, message, statusCode }
+   */
+  async linkTask(taskId, linkedTaskId, linkType, userId) {
+    // Validate IDs
+    if (!isValidObjectId(taskId) || !isValidObjectId(linkedTaskId)) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.INVALID_ID,
+        statusCode: 400
+      };
+    }
+
+    // Cannot link to itself
+    if (taskId === linkedTaskId) {
+      return {
+        success: false,
+        message: 'Cannot link a task to itself',
+        statusCode: 400
+      };
+    }
+
+    // Validate link type
+    const validLinkTypes = ['blocks', 'blocked_by', 'relates_to', 'duplicates'];
+    if (!validLinkTypes.includes(linkType)) {
+      return {
+        success: false,
+        message: 'Invalid link type. Must be: blocks, blocked_by, relates_to, or duplicates',
+        statusCode: 400
+      };
+    }
+
+    // Find both tasks
+    const sourceTask = await Task.findById(taskId);
+    if (!sourceTask) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.TASK_NOT_FOUND,
+        statusCode: 404
+      };
+    }
+
+    const linkedTask = await Task.findById(linkedTaskId);
+    if (!linkedTask) {
+      return {
+        success: false,
+        message: 'Linked task not found',
+        statusCode: 404
+      };
+    }
+
+    // Validate same group
+    if (sourceTask.groupId?.toString() !== linkedTask.groupId?.toString()) {
+      return {
+        success: false,
+        message: 'Tasks must be in the same group to be linked',
+        statusCode: 400
+      };
+    }
+
+    // Validate same folder (optional - only if both have folders)
+    if (sourceTask.folderId && linkedTask.folderId &&
+      sourceTask.folderId.toString() !== linkedTask.folderId.toString()) {
+      return {
+        success: false,
+        message: 'Tasks must be in the same folder to be linked',
+        statusCode: 400
+      };
+    }
+
+    // Permission check on source task
+    try {
+      await ensureTaskEditAccess(sourceTask, userId);
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'You do not have permission to modify this task',
+        statusCode: error.statusCode || 403
+      };
+    }
+
+    // Check if already linked
+    const existingLink = sourceTask.linkedTasks?.find(
+      link => link.taskId.toString() === linkedTaskId
+    );
+    if (existingLink) {
+      return {
+        success: false,
+        message: 'Tasks are already linked',
+        statusCode: 400
+      };
+    }
+
+    // Check linked tasks limit
+    if (sourceTask.linkedTasks && sourceTask.linkedTasks.length >= LIMITS.MAX_LINKED_TASKS_PER_TASK) {
+      return {
+        success: false,
+        message: `Cannot add more than ${LIMITS.MAX_LINKED_TASKS_PER_TASK} linked tasks`,
+        statusCode: 400
+      };
+    }
+
+    // Initialize arrays if needed
+    if (!sourceTask.linkedTasks) sourceTask.linkedTasks = [];
+    if (!linkedTask.linkedTasks) linkedTask.linkedTasks = [];
+
+    // Add link to source task
+    sourceTask.linkedTasks.push({
+      taskId: linkedTaskId,
+      linkType: linkType,
+      linkedAt: new Date(),
+      linkedBy: userId
+    });
+
+    // Add inverse link to target task (bidirectional)
+    const inverseLinkType = this.getInverseLinkType(linkType);
+    const existingInverseLink = linkedTask.linkedTasks?.find(
+      link => link.taskId.toString() === taskId
+    );
+
+    if (!existingInverseLink) {
+      linkedTask.linkedTasks.push({
+        taskId: taskId,
+        linkType: inverseLinkType,
+        linkedAt: new Date(),
+        linkedBy: userId
+      });
+      await linkedTask.save();
+    }
+
+    await sourceTask.save();
+
+    // Populate user info
+    await sourceTask.populateUserInfo();
+
+    await emitTaskRealtime({
+      taskDoc: sourceTask,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'link:add',
+        linkedTaskId: linkedTaskId.toString(),
+        linkType: linkType,
+        source: 'task:link:add'
+      }
+    });
+
+    return {
+      success: true,
+      task: sourceTask
+    };
+  }
+
+  /**
+   * Unlink two tasks (removes link from both)
+   * @param {String} taskId - ID of the source task
+   * @param {String} linkedTaskId - ID of the task to unlink
+   * @param {String} userId - ID of the user removing the link
+   * @returns {Promise<Object>} { success, task, message, statusCode }
+   */
+  async unlinkTask(taskId, linkedTaskId, userId) {
+    // Validate IDs
+    if (!isValidObjectId(taskId) || !isValidObjectId(linkedTaskId)) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.INVALID_ID,
+        statusCode: 400
+      };
+    }
+
+    // Find source task
+    const sourceTask = await Task.findById(taskId);
+    if (!sourceTask) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.TASK_NOT_FOUND,
+        statusCode: 404
+      };
+    }
+
+    // Permission check
+    try {
+      await ensureTaskEditAccess(sourceTask, userId);
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'You do not have permission to modify this task',
+        statusCode: error.statusCode || 403
+      };
+    }
+
+    // Find the link
+    const linkIndex = sourceTask.linkedTasks?.findIndex(
+      link => link.taskId.toString() === linkedTaskId
+    );
+
+    if (linkIndex === -1 || linkIndex === undefined) {
+      return {
+        success: false,
+        message: 'Link not found',
+        statusCode: 404
+      };
+    }
+
+    // Remove link from source task
+    sourceTask.linkedTasks.splice(linkIndex, 1);
+    await sourceTask.save();
+
+    // Also remove inverse link from target task
+    const linkedTask = await Task.findById(linkedTaskId);
+    if (linkedTask && linkedTask.linkedTasks) {
+      const inverseLinkIndex = linkedTask.linkedTasks.findIndex(
+        link => link.taskId.toString() === taskId
+      );
+      if (inverseLinkIndex !== -1) {
+        linkedTask.linkedTasks.splice(inverseLinkIndex, 1);
+        await linkedTask.save();
+      }
+    }
+
+    // Populate user info
+    await sourceTask.populateUserInfo();
+
+    await emitTaskRealtime({
+      taskDoc: sourceTask,
+      eventKey: TASK_EVENTS.updated,
+      meta: {
+        mutationType: 'update',
+        changeType: 'link:remove',
+        linkedTaskId: linkedTaskId.toString(),
+        source: 'task:link:remove'
+      }
+    });
+
+    return {
+      success: true,
+      task: sourceTask
+    };
   }
 }
 

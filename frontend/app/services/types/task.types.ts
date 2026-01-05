@@ -55,6 +55,17 @@ export interface ActiveTimer {
   startTime: string;
 }
 
+// NEW: Checklist item for subtasks
+export interface ChecklistItem {
+  _id?: string;
+  text: string;
+  isCompleted: boolean;
+  completedBy?: string | MinimalUser;
+  completedAt?: string;
+  createdBy?: string | MinimalUser;
+  createdAt?: string;
+}
+
 export interface Task {
   _id: string;
   title: string;
@@ -90,9 +101,27 @@ export interface Task {
   scheduledWork?: ScheduledWork[];
   repetition?: RepetitionSettings;
   activeTimers?: ActiveTimer[];  // Array of per-user timers (replaces startTime)
+  checklist?: ChecklistItem[];   // NEW: Checklist/subtask items
+  linkedTasks?: LinkedTask[];    // NEW: Linked/related tasks
 
   createdAt: string;
   updatedAt: string;
+}
+
+// NEW: Link type for task relationships
+export type LinkType = 'blocks' | 'blocked_by' | 'relates_to' | 'duplicates';
+
+// NEW: Linked task for task relationships
+export interface LinkedTask {
+  taskId: string | {
+    _id: string;
+    title: string;
+    status: string;
+    priority?: string;
+  };
+  linkType: LinkType;
+  linkedAt?: string;
+  linkedBy?: string | MinimalUser;
 }
 
 // For creating new tasks
