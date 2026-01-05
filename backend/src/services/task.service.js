@@ -768,6 +768,8 @@ class TaskService {
       .populate('timeEntries.user', 'name email avatar')
       .populate('scheduledWork.user', 'name email avatar')
       .populate('activeTimers.userId', 'name email avatar')
+      .populate('linkedTasks.taskId', 'title status priority')
+      .populate('linkedTasks.linkedBy', 'name email avatar')
       .populate('groupId', 'name description');
     return task;
   }
