@@ -1143,7 +1143,8 @@ class TaskService {
       .populate('comments.user', 'name email avatar')
       .populate('timeEntries.user', 'name email avatar')
       .populate('scheduledWork.user', 'name email avatar')
-      .populate('groupId', 'name description');
+      .populate('groupId', 'name description')
+      .populate('linkedTasks.taskId', 'title status');
 
     // Send notifications for changes
     if (updatedTask && targetGroup) {
@@ -1213,6 +1214,18 @@ class TaskService {
     }
 
     await ensureTaskDeleteAccess(task, requesterId);
+
+    // Clean up linked task references in other tasks
+    // This removes this task's ID from the linkedTasks array of all tasks that link to it
+    try {
+      await Task.updateMany(
+        { 'linkedTasks.taskId': taskId },
+        { $pull: { linkedTasks: { taskId: taskId } } }
+      );
+    } catch (error) {
+      console.error('Error cleaning up linked task references during deletion:', error);
+      // Continue with task deletion even if cleanup fails
+    }
 
     // Clean up all Cloudinary files before deleting task
     try {

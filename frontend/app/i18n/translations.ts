@@ -811,6 +811,11 @@ export const translations = {
     'linkedTasks.viewTask': 'View task',
     'linkedTasks.searchPlaceholder': 'Type to search tasks...',
     'linkedTasks.typeToSearch': 'Type to search for tasks',
+    'linkedTasks.blockedWarningTitle': 'Task is Blocked',
+    'linkedTasks.blockedWarningMessage': 'This task is blocked by',
+    'linkedTasks.incompleteTasks': 'incomplete task(s)',
+    'linkedTasks.completeAnyway': 'Complete Anyway',
+    'linkedTasks.duplicateOf': 'This is a duplicate of',
   },
 
   vi: {
@@ -1622,5 +1627,10 @@ export const translations = {
     'linkedTasks.viewTask': 'Xem công việc',
     'linkedTasks.searchPlaceholder': 'Nhập để tìm công việc...',
     'linkedTasks.typeToSearch': 'Nhập để tìm kiếm',
+    'linkedTasks.blockedWarningTitle': 'Công việc bị chặn',
+    'linkedTasks.blockedWarningMessage': 'Công việc này đang bị chặn bởi',
+    'linkedTasks.incompleteTasks': 'công việc chưa hoàn thành',
+    'linkedTasks.completeAnyway': 'Vẫn hoàn thành',
+    'linkedTasks.duplicateOf': 'Đây là bản sao của',
   }
 } as const;
