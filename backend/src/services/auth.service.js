@@ -188,19 +188,25 @@ class AuthService {
     user.refreshToken = refreshToken;
     await user.save();
 
-    // 8. Log successful login
+    // 8. Reload user from database to ensure we have the latest data (including avatar)
+    const updatedUser = await User.findById(user._id);
+    if (!updatedUser) {
+      throw new Error('User not found after save');
+    }
+
+    // 9. Log successful login
     await LoginHistory.create({
-      user: user._id,
-      email: user.email,
+      user: updatedUser._id,
+      email: updatedUser.email,
       status: 'success',
       ipAddress: clientInfo.ipAddress,
       userAgent: clientInfo.userAgent,
       loginAt: new Date()
     }).catch(err => console.error('Error logging successful login:', err));
 
-    // 9. Return user + tokens
+    // 10. Return user + tokens
     return {
-      user: user.toSafeObject(),
+      user: updatedUser.toSafeObject(),
       accessToken,
       refreshToken
     };
@@ -298,8 +304,9 @@ class AuthService {
       throw new Error('Account has been deactivated');
     }
 
-    // Update profile picture if changed
-    if (picture && user.avatar !== picture) {
+    // Update profile picture from Google ONLY if user doesn't have a custom avatar yet
+    // Điều này giúp avatar bạn đổi trong hệ thống không bị Google ghi đè lại mỗi lần đăng nhập
+    if (picture && !user.avatar) {
       user.avatar = picture;
     }
 
@@ -310,10 +317,16 @@ class AuthService {
     user.lastLogin = new Date();
     await user.save();
 
+    // Reload user from database to ensure we have the latest data (including avatar)
+    const updatedUser = await User.findById(user._id);
+    if (!updatedUser) {
+      throw new Error('User not found after save');
+    }
+
     // Log successful login
     await LoginHistory.create({
-      user: user._id,
-      email: user.email,
+      user: updatedUser._id,
+      email: updatedUser.email,
       status: 'success',
       ipAddress: clientInfo.ipAddress,
       userAgent: clientInfo.userAgent,
@@ -321,7 +334,7 @@ class AuthService {
     }).catch(err => console.error('Error logging successful login:', err));
 
     return {
-      user: user.toSafeObject(),
+      user: updatedUser.toSafeObject(),
       accessToken,
       refreshToken
     };
