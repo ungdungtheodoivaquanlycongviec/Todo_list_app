@@ -111,7 +111,7 @@ export default function RepeatTaskModal({ task, isOpen, onClose, onSave }: Repea
     // Calculate scheduled repeat dates for calendar preview
     const scheduledDates = useMemo(() => {
         const dates: Date[] = [];
-        let currentDate = new Date(startingFrom);
+        const currentDate = new Date(startingFrom);
         const maxDates = 50; // Limit for performance
 
         for (let i = 0; i < maxDates; i++) {
