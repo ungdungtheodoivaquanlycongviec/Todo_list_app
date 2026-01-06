@@ -123,18 +123,14 @@ class UserService {
    * @returns {Object} - Updated user
    */
   async updateAvatar(userId, avatarUrl) {
-    const user = await User.findByIdAndUpdate(
-      userId,
-      {
-        avatar: avatarUrl,
-        updatedAt: new Date()
-      },
-      { new: true }
-    );
+    const user = await User.findById(userId);
 
     if (!user) {
       throw new Error('User not found');
     }
+
+    user.avatar = avatarUrl;
+    await user.save();
 
     return user.toSafeObject();
   }
@@ -154,19 +150,15 @@ class UserService {
         size: file.size
       }, 'avatars');
 
-      // Update user avatar
-      const user = await User.findByIdAndUpdate(
-        userId,
-        {
-          avatar: uploadedFile.url,
-          updatedAt: new Date()
-        },
-        { new: true }
-      );
+      // Get user and update avatar
+      const user = await User.findById(userId);
 
       if (!user) {
         throw new Error('User not found');
       }
+
+      user.avatar = uploadedFile.url;
+      await user.save();
 
       return user.toSafeObject();
     } catch (error) {

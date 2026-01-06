@@ -1116,6 +1116,56 @@ class TaskService {
       }
     }
 
+    // Check folder access for assignees when moving task to a different folder
+    if (folderResolution && folderResolution.folder && finalAssignedIds.length > 0 && targetGroup) {
+      const newFolder = folderResolution.folder;
+      const currentFolderId = normalizeId(taskDoc.folderId);
+      const newFolderId = normalizeId(newFolder._id);
+      
+      // Only check if moving to a different folder (not default folder)
+      if (currentFolderId !== newFolderId && !newFolder.isDefault) {
+        const isPersonalOwner =
+          Boolean(targetGroup.isPersonalWorkspace) &&
+          normalizeId(targetGroup.createdBy) === normalizeId(requesterId);
+        
+        // Personal workspace owners can freely move tasks
+        if (!isPersonalOwner) {
+          const requesterContext = await getRequesterContext(requesterId);
+          const canAssignToOthers = canAssignFolderMembers(requesterContext);
+          
+          const folderMemberAccess = new Set(
+            (newFolder.memberAccess || []).map(access => normalizeId(access.userId)).filter(Boolean)
+          );
+          
+          // Find assignees who don't have access to the new folder
+          const assigneesWithoutAccess = finalAssignedIds.filter(id => !folderMemberAccess.has(id));
+          
+          if (assigneesWithoutAccess.length > 0) {
+            if (canAssignToOthers) {
+              // PM/Product Owner/Leader can auto-grant folder access to assigned users
+              console.log(`[TaskService] Auto-granting folder access to ${assigneesWithoutAccess.length} users when moving task`);
+              
+              // Add these users to folder's memberAccess
+              const newMemberAccess = assigneesWithoutAccess.map(userId => ({
+                userId: new mongoose.Types.ObjectId(userId),
+                addedBy: new mongoose.Types.ObjectId(requesterId),
+                addedAt: new Date()
+              }));
+              
+              newFolder.memberAccess = newFolder.memberAccess || [];
+              newFolder.memberAccess.push(...newMemberAccess);
+              await newFolder.save();
+              
+              console.log(`[TaskService] Granted folder access to users: ${assigneesWithoutAccess.join(', ')}`);
+            } else {
+              // Regular users cannot move task to folder where assignees don't have access
+              raiseError('Không thể di chuyển task sang folder này vì một số thành viên được gán không có quyền truy cập vào folder này.', HTTP_STATUS.FORBIDDEN);
+            }
+          }
+        }
+      }
+    }
+
     const updatePayload = { ...updateData };
     delete updatePayload.assignedTo;
     delete updatePayload.groupId;

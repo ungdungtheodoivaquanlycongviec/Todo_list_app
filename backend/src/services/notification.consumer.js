@@ -623,17 +623,14 @@ const acceptGroupInvitation = async (notificationId, userId) => {
   // Fetch user's account-level groupRole assigned by admin
   const acceptingUser = await User.findById(userId).select('groupRole').lean();
   // Priority: user's account-level groupRole > notification role > fallback to BA
-  let invitationRole = acceptingUser?.groupRole || notification.data?.role || notification.metadata?.get?.('role') || GROUP_ROLE_KEYS.BA;
+  let invitationRole =
+    acceptingUser?.groupRole ||
+    notification.data?.role ||
+    notification.metadata?.get?.('role') ||
+    GROUP_ROLE_KEYS.BA;
+
   if (!GROUP_ROLES.includes(invitationRole)) {
     invitationRole = GROUP_ROLE_KEYS.BA;
-  }
-
-  if (invitationRole === GROUP_ROLE_KEYS.PRODUCT_OWNER) {
-    return {
-      success: false,
-      statusCode: HTTP_STATUS.BAD_REQUEST,
-      message: 'Product Owner role cannot be assigned through invitations'
-    };
   }
   const group = await Group.findById(groupId);
 
