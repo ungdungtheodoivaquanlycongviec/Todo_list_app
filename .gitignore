@@ -30,3 +30,11 @@ __pycache__/
 *.pyc
 DATABASE_SCHEMA_SIMPLE.puml
 .agent/workflows/deploy-and-load-test.md
+deployEnv.txt
+load-testing/README.md
+load-testing/k6-websocket-test.js
+load-testing/k6-stress-test.js
+load-testing/k6-readonly-test.js
+load-testing/k6-load-test.js
+load-testing/k6-cold-start-test.js
+load-testing/k6.exe

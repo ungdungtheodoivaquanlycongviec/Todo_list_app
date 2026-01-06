@@ -12,6 +12,12 @@ const env = require('./config/environment');
 // Create Express app
 const app = express();
 
+// Trust proxy - required for Render, Heroku, and other cloud platforms
+// This allows express-rate-limit to correctly identify users behind the proxy
+if (env.nodeEnv === 'production') {
+  app.set('trust proxy', 1);
+}
+
 // Security middleware
 app.use(helmet());
 
