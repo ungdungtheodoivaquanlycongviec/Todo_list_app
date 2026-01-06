@@ -2,7 +2,7 @@ Flask
 flask-cors
 requests
 gunicorn
-torch --extra-index-url https://download.pytorch.org/whl/cpu
+numpy
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
 nltk
-
-
