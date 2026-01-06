@@ -1,6 +1,12 @@
 import numpy as np
 import nltk
-# nltk.download('punkt')
+
+# Download required NLTK data if not present (needed for Render deployment)
+try:
+    nltk.data.find('tokenizers/punkt_tab')
+except LookupError:
+    nltk.download('punkt_tab', quiet=True)
+
 from nltk.stem.porter import PorterStemmer
 stemmer = PorterStemmer()
 
