@@ -16,10 +16,31 @@ const app = express();
 app.use(helmet());
 
 // ==================== SIMPLE CORS FIX ====================
+// Get allowed origins from environment variable
+const getAllowedOrigins = () => {
+  if (env.nodeEnv !== 'production') {
+    return true; // Allow all origins in development
+  }
+
+  // In production, parse SOCKET_ALLOWED_ORIGINS or allow all if not set
+  const originsEnv = process.env.SOCKET_ALLOWED_ORIGINS;
+  if (originsEnv) {
+    // Split by comma and trim, ensure https:// prefix
+    return originsEnv.split(',').map(origin => {
+      origin = origin.trim();
+      if (!origin.startsWith('http://') && !origin.startsWith('https://')) {
+        return `https://${origin}`;
+      }
+      return origin;
+    });
+  }
+
+  // Allow all if no origins specified
+  return true;
+};
+
 const corsOptions = {
-  origin: env.nodeEnv === 'production' 
-    ? ['https://your-production-domain.com']
-    : true, // Allow all origins in development to enable testing from other devices
+  origin: getAllowedOrigins(),
   credentials: true
 };
 
