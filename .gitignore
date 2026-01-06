@@ -38,3 +38,6 @@ load-testing/k6-readonly-test.js
 load-testing/k6-load-test.js
 load-testing/k6-cold-start-test.js
 load-testing/k6.exe
+ACTIVITY_DIAGRAM.md
+DOCKER_SETUP.md
+KET_LUAN_VA_HUONG_PHAT_TRIEN.md
