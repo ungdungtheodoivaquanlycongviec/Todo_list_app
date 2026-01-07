@@ -1,11 +1,22 @@
 "use client"
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  Plus, 
-  Search, 
-  Trash2, 
-  Save, 
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Underline from '@tiptap/extension-underline';
+import TextAlign from '@tiptap/extension-text-align';
+import Highlight from '@tiptap/extension-highlight';
+import Placeholder from '@tiptap/extension-placeholder';
+import Typography from '@tiptap/extension-typography';
+import FontFamily from '@tiptap/extension-font-family';
+import { TextStyle } from '@tiptap/extension-text-style';
+import Color from '@tiptap/extension-color';
+import { Indent } from '../../extensions/IndentExtension';
+import {
+  Plus,
+  Search,
+  Trash2,
+  Save,
   MoreVertical,
   Clock,
   FileText,
@@ -30,6 +41,8 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useRegional } from '../../contexts/RegionalContext';
 import NoGroupState from '../common/NoGroupState';
 import NoFolderState from '../common/NoFolderState';
+import { FormattingToolbar, EditorRuler } from '../common/FormattingToolbar';
+import '../common/editor.css';
 
 export default function NotesView() {
   const { currentGroup } = useAuth();
@@ -45,10 +58,82 @@ export default function NotesView() {
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
+  // Ref to track the current selected note ID (avoids stale closure issues)
+  const selectedNoteIdRef = React.useRef<string | null>(null);
+  // Ref to prevent onUpdate from firing during note switch
+  const isSwitchingNoteRef = React.useRef(false);
+
+  // Container ref and width for ruler
+  const editorPaperRef = React.useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(600);
+
+  // Tiptap editor instance
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({
+        heading: { levels: [1, 2, 3, 4, 5, 6] },
+      }),
+      Underline,
+      TextAlign.configure({ types: ['heading', 'paragraph'] }),
+      Highlight.configure({ multicolor: true }),
+      Placeholder.configure({ placeholder: t('notes.noteContentPlaceholder') }),
+      Typography,
+      TextStyle,
+      FontFamily,
+      Color,
+      Indent,
+    ],
+    content: selectedNote?.content || '',
+    editable: !isPreviewMode,
+    immediatelyRender: false, // Required for SSR/Next.js compatibility
+    onUpdate: ({ editor }) => {
+      // Don't update if we're in the middle of switching notes
+      if (isSwitchingNoteRef.current) return;
+      // Use the ref to get current note ID
+      if (selectedNoteIdRef.current) {
+        handleContentChange(editor.getHTML());
+      }
+    },
+    editorProps: {
+      attributes: {
+        class: 'rich-text-editor prose prose-lg max-w-none focus:outline-none min-h-[400px]',
+      },
+    },
+  });
+
+  // Track editor container width for ruler
+  useEffect(() => {
+    const updateWidth = () => {
+      if (editorPaperRef.current) {
+        setContainerWidth(editorPaperRef.current.offsetWidth);
+      }
+    };
+    updateWidth();
+    window.addEventListener('resize', updateWidth);
+    return () => window.removeEventListener('resize', updateWidth);
+  }, [selectedNote]);
+
   // Load notes on component mount
   useEffect(() => {
     loadNotes();
   }, []);
+
+  // Sync editor content when selectedNote changes
+  useEffect(() => {
+    if (editor && selectedNote) {
+      // Update the ref
+      selectedNoteIdRef.current = selectedNote._id || null;
+      // Set switching flag before content update
+      isSwitchingNoteRef.current = true;
+      editor.commands.setContent(selectedNote.content || '');
+      // Clear flag after a short delay to allow the update to complete
+      setTimeout(() => {
+        isSwitchingNoteRef.current = false;
+      }, 50);
+    } else {
+      selectedNoteIdRef.current = null;
+    }
+  }, [selectedNote?._id, editor]);
 
   // Listen for global group change events
   useGroupChange(() => {
@@ -62,7 +147,7 @@ export default function NotesView() {
       setLoading(true);
       const fetchedNotes = await notesService.getAllNotes(searchQuery, 1, 50, currentFolder?._id);
       setNotes(fetchedNotes);
-      
+
       // Select first note if current selection is not available
       if (fetchedNotes.length === 0) {
         setSelectedNote(null);
@@ -71,7 +156,7 @@ export default function NotesView() {
       }
     } catch (error) {
       console.error('Error loading notes:', error);
-      
+
       // Handle group requirement error gracefully
       const errorMessage = error instanceof Error ? error.message : String(error);
       if (errorMessage.includes("You must join or create a group")) {
@@ -79,7 +164,7 @@ export default function NotesView() {
         setNotes([]);
         return;
       }
-      
+
       // For other errors, show empty state
       setNotes([]);
     } finally {
@@ -117,13 +202,15 @@ export default function NotesView() {
     if (hasUnsavedChanges && selectedNote) {
       saveNote(selectedNote);
     }
+    // Set flag to prevent onUpdate from firing during switch
+    isSwitchingNoteRef.current = true;
     setSelectedNote(note);
     setHasUnsavedChanges(false);
   };
 
   const handleTitleChange = (newTitle: string) => {
     if (!selectedNote) return;
-    
+
     setSelectedNote({
       ...selectedNote,
       title: newTitle
@@ -133,7 +220,7 @@ export default function NotesView() {
 
   const handleContentChange = (newContent: string) => {
     if (!selectedNote) return;
-    
+
     setSelectedNote({
       ...selectedNote,
       content: newContent
@@ -143,14 +230,15 @@ export default function NotesView() {
 
   const saveNote = async (note: Note) => {
     if (!note._id) return;
-    
+
     try {
       setSaving(true);
+      // Content includes per-paragraph indent styling in HTML
       const updatedNote = await notesService.updateNote(note._id, {
         title: note.title,
-        content: note.content
+        content: note.content,
       });
-      
+
       setNotes(notes.map(n => n._id === note._id ? updatedNote : n));
       setSelectedNote(updatedNote);
       setHasUnsavedChanges(false);
@@ -163,11 +251,11 @@ export default function NotesView() {
 
   const handleDeleteNote = async (noteId: string) => {
     if (!noteId) return;
-    
+
     try {
       await notesService.deleteNote(noteId);
       setNotes(notes.filter(note => note._id !== noteId));
-      
+
       if (selectedNote?._id === noteId) {
         setSelectedNote(notes.length > 1 ? notes.find(n => n._id !== noteId) || null : null);
       }
@@ -180,12 +268,12 @@ export default function NotesView() {
     if (note.formattedLastEdited) {
       return note.formattedLastEdited;
     }
-    
+
     const date = new Date(note.lastEdited);
     const now = new Date();
     const diffTime = Math.abs(now.getTime() - date.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
+
     if (diffDays === 1) {
       return t('time.today');
     } else if (diffDays === 2) {
@@ -198,7 +286,22 @@ export default function NotesView() {
   };
 
   const getWordCount = (content: string) => {
-    return content.trim() ? content.trim().split(/\s+/).length : 0;
+    // Strip HTML tags for accurate word count
+    const textContent = content.replace(/<[^>]*>/g, ' ').trim();
+    return textContent ? textContent.split(/\s+/).filter(word => word.length > 0).length : 0;
+  };
+
+  // Helper to strip HTML tags for preview text
+  const stripHtmlTags = (html: string) => {
+    if (!html) return '';
+    return html
+      .replace(/<[^>]*>/g, ' ')  // Replace tags with space
+      .replace(/&nbsp;/g, ' ')   // Replace &nbsp;
+      .replace(/&amp;/g, '&')    // Replace &amp;
+      .replace(/&lt;/g, '<')     // Replace &lt;
+      .replace(/&gt;/g, '>')     // Replace &gt;
+      .replace(/\s+/g, ' ')      // Collapse multiple spaces
+      .trim();
   };
 
   const getReadingTime = (content: string) => {
@@ -210,7 +313,7 @@ export default function NotesView() {
   // Check if user has a current group
   if (!currentGroup) {
     return (
-      <NoGroupState 
+      <NoGroupState
         title={t('groups.joinOrCreate')}
         description={t('groups.joinOrCreateDesc')}
       />
@@ -251,9 +354,8 @@ export default function NotesView() {
           </div>
 
           {/* Search and New Note - Animate out when collapsed */}
-          <div className={`transition-all duration-700 ease-in-out overflow-hidden ${
-            sidebarCollapsed ? 'max-h-0 opacity-0' : 'max-h-40 opacity-100'
-          }`}>
+          <div className={`transition-all duration-700 ease-in-out overflow-hidden ${sidebarCollapsed ? 'max-h-0 opacity-0' : 'max-h-40 opacity-100'
+            }`}>
             {/* Search Bar */}
             <div className="relative mb-4">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -281,9 +383,8 @@ export default function NotesView() {
         </div>
 
         {/* Notes List - Animate out when collapsed */}
-        <div className={`flex-1 transition-all duration-700 ease-in-out overflow-hidden ${
-          sidebarCollapsed ? 'max-h-0 opacity-0' : 'max-h-full opacity-100'
-        }`}>
+        <div className={`flex-1 transition-all duration-700 ease-in-out overflow-hidden ${sidebarCollapsed ? 'max-h-0 opacity-0' : 'max-h-full opacity-100'
+          }`}>
           {loading ? (
             <div className="flex flex-col items-center justify-center h-32 text-gray-500">
               <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
@@ -309,11 +410,10 @@ export default function NotesView() {
               {notes.map((note) => (
                 <div
                   key={note._id}
-                  className={`p-4 border-b border-gray-100 cursor-pointer transition-all duration-300 group relative ${
-                    selectedNote?._id === note._id 
-                      ? 'bg-blue-50 border-l-4 border-blue-500' 
-                      : 'hover:bg-gray-50 border-l-4 border-transparent'
-                  }`}
+                  className={`p-4 border-b border-gray-100 cursor-pointer transition-all duration-300 group relative ${selectedNote?._id === note._id
+                    ? 'bg-blue-50 border-l-4 border-blue-500'
+                    : 'hover:bg-gray-50 border-l-4 border-transparent'
+                    }`}
                   onClick={() => handleNoteClick(note)}
                 >
                   <div className="flex items-start justify-between mb-2">
@@ -334,10 +434,10 @@ export default function NotesView() {
                       </button>
                     </div>
                   </div>
-                  
+
                   {note.content && (
                     <p className="text-sm text-gray-600 mb-2 line-clamp-2 leading-relaxed">
-                      {note.content.replace(/#[^\s]+/g, '').trim() || t('notes.noContent')}
+                      {stripHtmlTags(note.content) || t('notes.noContent')}
                     </p>
                   )}
 
@@ -400,7 +500,7 @@ export default function NotesView() {
                       {t('notes.unsavedChanges')}
                     </div>
                   )}
-                  
+
                   <button
                     onClick={() => saveNote(selectedNote)}
                     disabled={saving || !hasUnsavedChanges}
@@ -443,29 +543,46 @@ export default function NotesView() {
               </div>
             </div>
 
+            {/* Formatting Toolbar - only show in edit mode */}
+            {!isPreviewMode && editor && (
+              <div className="bg-gray-50 border-b border-gray-200 px-4 py-2">
+                <FormattingToolbar editor={editor} />
+              </div>
+            )}
+
             {/* Note Content */}
-            <div className="flex-1 overflow-auto transition-all duration-300">
+            <div className="flex-1 overflow-auto transition-all duration-300 bg-gray-100">
               {isPreviewMode ? (
                 <div className="max-w-4xl mx-auto p-8 prose prose-lg transition-all duration-500">
                   <div className="bg-white rounded-xl p-8 border border-gray-200 transition-all duration-300 hover:shadow-sm">
                     <h1 className="text-4xl font-bold text-gray-900 mb-6 transition-colors duration-300">
                       {selectedNote.title || t('notes.untitled')}
                     </h1>
-                    <div className="text-gray-700 leading-relaxed text-lg whitespace-pre-wrap transition-colors duration-300">
-                      {selectedNote.content || (
-                        <div className="text-gray-400 italic">{t('notes.noContentPreview')}</div>
-                      )}
-                    </div>
+                    <div
+                      className="rich-text-editor text-gray-700 leading-relaxed text-lg transition-colors duration-300"
+                      dangerouslySetInnerHTML={{ __html: selectedNote.content || `<p class="text-gray-400 italic">${t('notes.noContentPreview')}</p>` }}
+                    />
                   </div>
                 </div>
               ) : (
-                <div className="max-w-4xl mx-auto p-8 transition-all duration-300">
-                  <textarea
-                    placeholder={t('notes.noteContentPlaceholder')}
-                    className="w-full h-full min-h-[500px] text-gray-700 border-none focus:outline-none resize-none text-lg leading-relaxed bg-transparent placeholder-gray-400 transition-all duration-300"
-                    value={selectedNote.content}
-                    onChange={(e) => handleContentChange(e.target.value)}
-                  />
+                <div
+                  ref={editorPaperRef}
+                  className="max-w-4xl mx-auto px-8 py-6 transition-all duration-300"
+                >
+                  {/* Editor paper area with visible border */}
+                  <div className="bg-white border border-gray-200 rounded-lg shadow-md overflow-hidden">
+                    {/* Word-style ruler with per-paragraph indent control */}
+                    <EditorRuler
+                      editor={editor}
+                      containerWidth={containerWidth}
+                    />
+                    {/* Editor content - indent styling is per-paragraph via Tiptap */}
+                    <div className="min-h-[500px] p-6">
+                      <div className="rich-text-editor-container">
+                        <EditorContent editor={editor} />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -487,7 +604,7 @@ export default function NotesView() {
                     <Download className="w-4 h-4" />
                   </button>
                 </div>
-                
+
                 <div className="flex items-center gap-2 text-sm text-gray-500 transition-opacity duration-300">
                   <span>{getWordCount(selectedNote.content)} {t('notes.words')}</span>
                   <span>•</span>
@@ -504,7 +621,7 @@ export default function NotesView() {
               {t('notes.noNoteSelected')}
             </h2>
             <p className="text-gray-500 mb-6 text-center max-w-md transition-colors duration-300">
-              {notes.length === 0 
+              {notes.length === 0
                 ? t('notes.getStarted')
                 : t('notes.selectOrCreate')
               }
