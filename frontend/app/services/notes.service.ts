@@ -83,7 +83,7 @@ class NotesService {
   // Toggle bookmark status
   async toggleBookmark(noteId: string): Promise<Note> {
     try {
-      const response = await apiClient.patch<ApiResponse<{ note: Note }>>(`/notes/${noteId}/bookmark`);
+      const response = await apiClient.patch<ApiResponse<{ note: Note }>>(`/notes/${noteId}/bookmark`, {});
       return response.data.note;
     } catch (error) {
       console.error('Error toggling bookmark:', error);
@@ -108,9 +108,7 @@ class NotesService {
   // Remove a tag
   async removeTag(noteId: string, tag: string): Promise<Note> {
     try {
-      const response = await apiClient.delete<ApiResponse<{ note: Note }>>(`/notes/${noteId}/tags`, {
-        data: { tag }
-      });
+      const response = await apiClient.post<ApiResponse<{ note: Note }>>(`/notes/${noteId}/tags/remove`, { tag });
       return response.data.note;
     } catch (error) {
       console.error('Error removing tag:', error);

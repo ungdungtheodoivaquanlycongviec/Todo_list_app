@@ -38,7 +38,7 @@ router.patch('/:id/bookmark', authenticate, toggleBookmark);
 // PATCH /api/notes/:id/sharing - Update sharing settings
 router.patch('/:id/sharing', authenticate, updateSharing);
 
-// DELETE /api/notes/:id/tags - Remove a tag
-router.delete('/:id/tags', authenticate, removeTag);
+// POST /api/notes/:id/tags/remove - Remove a tag
+router.post('/:id/tags/remove', authenticate, removeTag);
 
 module.exports = router;
