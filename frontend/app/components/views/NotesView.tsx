@@ -23,6 +23,7 @@ import {
   FileText,
   Edit3,
   Bookmark,
+  BookmarkCheck,
   Tag,
   MoreHorizontal,
   FolderOpen,
@@ -43,6 +44,7 @@ import { useRegional } from '../../contexts/RegionalContext';
 import NoGroupState from '../common/NoGroupState';
 import NoFolderState from '../common/NoFolderState';
 import { FormattingToolbar, EditorRuler } from '../common/FormattingToolbar';
+import { ShareNoteModal } from '../notes/ShareNoteModal';
 import '../common/editor.css';
 
 export default function NotesView() {
@@ -58,6 +60,10 @@ export default function NotesView() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // State for share modal
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [sharingNote, setSharingNote] = useState(false);
 
   // Ref to track the current selected note ID (avoids stale closure issues)
   const selectedNoteIdRef = React.useRef<string | null>(null);
@@ -280,6 +286,72 @@ export default function NotesView() {
     }
   };
 
+  // Toggle bookmark status
+  const handleToggleBookmark = async () => {
+    if (!selectedNote?._id) return;
+    try {
+      const updatedNote = await notesService.toggleBookmark(selectedNote._id);
+      setNotes(notes.map(n => n._id === updatedNote._id ? updatedNote : n));
+      setSelectedNote(updatedNote);
+    } catch (error) {
+      console.error('Error toggling bookmark:', error);
+    }
+  };
+
+  // Update sharing settings
+  const handleUpdateSharing = async (visibility: 'private' | 'folder' | 'specific', sharedWith: string[]) => {
+    if (!selectedNote?._id) return;
+    try {
+      setSharingNote(true);
+      const updatedNote = await notesService.updateSharing(selectedNote._id, visibility, sharedWith);
+      setNotes(notes.map(n => n._id === updatedNote._id ? updatedNote : n));
+      setSelectedNote(updatedNote);
+      setShowShareModal(false);
+    } catch (error) {
+      console.error('Error updating sharing:', error);
+    } finally {
+      setSharingNote(false);
+    }
+  };
+
+  // Download note as DOCX (Word-compatible HTML)
+  const handleDownloadDocx = () => {
+    if (!selectedNote) return;
+
+    // Create a Word-compatible HTML document
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head>
+        <meta charset="utf-8">
+        <title>${selectedNote.title || 'Untitled Note'}</title>
+        <style>
+          body { font-family: 'Calibri', sans-serif; font-size: 11pt; line-height: 1.5; }
+          h1 { font-size: 24pt; margin-bottom: 12pt; }
+          h2 { font-size: 18pt; margin-bottom: 10pt; }
+          h3 { font-size: 14pt; margin-bottom: 8pt; }
+          p { margin-bottom: 8pt; }
+        </style>
+      </head>
+      <body>
+        <h1>${selectedNote.title || 'Untitled Note'}</h1>
+        ${selectedNote.content || '<p>No content</p>'}
+      </body>
+      </html>
+    `;
+
+    // Create blob and download
+    const blob = new Blob([htmlContent], { type: 'application/vnd.ms-word' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${selectedNote.title || 'note'}.doc`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const formatLastEdited = (note: Note) => {
     if (note.formattedLastEdited) {
       return note.formattedLastEdited;
@@ -433,7 +505,10 @@ export default function NotesView() {
                   onClick={() => handleNoteClick(note)}
                 >
                   <div className="flex items-start justify-between mb-2">
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 flex items-center gap-2">
+                      {note.isBookmarked && (
+                        <BookmarkCheck className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                      )}
                       <h3 className="font-semibold text-gray-900 truncate">
                         {note.title || "Untitled Note"}
                       </h3>
@@ -633,16 +708,50 @@ export default function NotesView() {
             <div className="bg-white border-t border-gray-200 p-4 transition-all duration-300">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <button tabIndex={-1} className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-300 hover:scale-110">
-                    <Bookmark className="w-4 h-4" />
+                  {/* Bookmark Button */}
+                  <button
+                    tabIndex={-1}
+                    onClick={handleToggleBookmark}
+                    className={`p-2 hover:bg-gray-100 rounded-lg transition-all duration-300 hover:scale-110 ${selectedNote?.isBookmarked ? 'text-blue-500' : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    title={selectedNote?.isBookmarked ? t('notes.removeBookmark') : t('notes.addBookmark')}
+                  >
+                    {selectedNote?.isBookmarked ? (
+                      <BookmarkCheck className="w-4 h-4" />
+                    ) : (
+                      <Bookmark className="w-4 h-4" />
+                    )}
                   </button>
-                  <button tabIndex={-1} className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-300 hover:scale-110">
-                    <Tag className="w-4 h-4" />
-                  </button>
-                  <button tabIndex={-1} className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-300 hover:scale-110">
+
+                  {/* Tag Button - only show if note has tags */}
+                  {selectedNote?.tags && selectedNote.tags.length > 0 && (
+                    <button
+                      tabIndex={-1}
+                      className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-300 hover:scale-110"
+                      title={t('notes.manageTags')}
+                    >
+                      <Tag className="w-4 h-4" />
+                    </button>
+                  )}
+
+                  {/* Share Button */}
+                  <button
+                    tabIndex={-1}
+                    onClick={() => setShowShareModal(true)}
+                    className={`p-2 hover:bg-gray-100 rounded-lg transition-all duration-300 hover:scale-110 ${selectedNote?.visibility !== 'private' ? 'text-green-500' : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    title={t('notes.shareNote')}
+                  >
                     <Share2 className="w-4 h-4" />
                   </button>
-                  <button tabIndex={-1} className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-300 hover:scale-110">
+
+                  {/* Download Button */}
+                  <button
+                    tabIndex={-1}
+                    onClick={handleDownloadDocx}
+                    className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-300 hover:scale-110"
+                    title={t('notes.downloadDocx')}
+                  >
                     <Download className="w-4 h-4" />
                   </button>
                 </div>
@@ -679,6 +788,18 @@ export default function NotesView() {
           </div>
         )}
       </div>
+
+      {/* Share Modal */}
+      {showShareModal && selectedNote && (
+        <ShareNoteModal
+          note={selectedNote}
+          folder={currentFolder}
+          members={currentGroup?.members || []}
+          onClose={() => setShowShareModal(false)}
+          onSave={handleUpdateSharing}
+          saving={sharingNote}
+        />
+      )}
     </div>
   );
 }

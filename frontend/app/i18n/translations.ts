@@ -32,6 +32,7 @@ export const translations = {
     'common.done': 'Done',
     'common.ok': 'OK',
     'common.permissionDenied': 'Permission Denied',
+    'common.saving': 'Saving...',
 
     // Tasks
     'tasks.title': 'Tasks',
@@ -319,6 +320,22 @@ export const translations = {
     'notes.createNewNote': 'Create New Note',
     'notes.folder': 'Folder',
     'notes.noContentPreview': 'No content yet. Switch to edit mode to start writing.',
+    'notes.addBookmark': 'Add bookmark',
+    'notes.removeBookmark': 'Remove bookmark',
+    'notes.manageTags': 'Manage tags',
+    'notes.shareNote': 'Share note',
+    'notes.downloadDocx': 'Download as Word document',
+    'notes.member': 'Member',
+    'notes.sharingFor': 'Sharing settings for',
+    'notes.visibilityPrivate': 'Private',
+    'notes.visibilityPrivateDesc': 'Only you can view this note',
+    'notes.visibilityFolder': 'Folder members',
+    'notes.visibilityFolderDesc': 'All members with access to this folder can view',
+    'notes.visibilitySpecific': 'Specific people',
+    'notes.visibilitySpecificDesc': 'Choose who can view this note',
+    'notes.searchMembers': 'Search members...',
+    'notes.noMembersFound': 'No members found',
+    'notes.selectedCount': '{{count}} person(s) selected',
 
     // Chat
     'chat.title': 'Chat',
@@ -849,6 +866,7 @@ export const translations = {
     'common.done': 'Xong',
     'common.ok': 'OK',
     'common.permissionDenied': 'Từ chối truy cập',
+    'common.saving': 'Đang lưu...',
 
     // Tasks
     'tasks.title': 'Công việc',
@@ -1136,6 +1154,22 @@ export const translations = {
     'notes.createNewNote': 'Tạo ghi chú mới',
     'notes.folder': 'Thư mục',
     'notes.noContentPreview': 'Chưa có nội dung. Chuyển sang chế độ chỉnh sửa để bắt đầu viết.',
+    'notes.addBookmark': 'Đánh dấu',
+    'notes.removeBookmark': 'Bỏ đánh dấu',
+    'notes.manageTags': 'Quản lý nhãn',
+    'notes.shareNote': 'Chia sẻ ghi chú',
+    'notes.downloadDocx': 'Tải xuống dạng Word',
+    'notes.member': 'Thành viên',
+    'notes.sharingFor': 'Cài đặt chia sẻ cho',
+    'notes.visibilityPrivate': 'Riêng tư',
+    'notes.visibilityPrivateDesc': 'Chỉ bạn có thể xem ghi chú này',
+    'notes.visibilityFolder': 'Thành viên thư mục',
+    'notes.visibilityFolderDesc': 'Tất cả thành viên có quyền truy cập thư mục này có thể xem',
+    'notes.visibilitySpecific': 'Người cụ thể',
+    'notes.visibilitySpecificDesc': 'Chọn ai có thể xem ghi chú này',
+    'notes.searchMembers': 'Tìm kiếm thành viên...',
+    'notes.noMembersFound': 'Không tìm thấy thành viên',
+    'notes.selectedCount': 'Đã chọn {{count}} người',
 
     // Chat
     'chat.title': 'Trò chuyện',

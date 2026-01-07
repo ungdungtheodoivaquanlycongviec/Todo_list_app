@@ -28,6 +28,23 @@ const noteSchema = new mongoose.Schema({
     default: null,
     index: true
   },
+  isBookmarked: {
+    type: Boolean,
+    default: false
+  },
+  visibility: {
+    type: String,
+    enum: ['private', 'folder', 'specific'],
+    default: 'private'
+  },
+  sharedWith: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
+  tags: [{
+    type: String,
+    trim: true
+  }],
   lastEdited: {
     type: Date,
     default: Date.now
@@ -44,7 +61,7 @@ noteSchema.index({ userId: 1, title: 'text', content: 'text' });
 noteSchema.index({ groupId: 1, folderId: 1, lastEdited: -1 });
 
 // Virtual for formatted lastEdited
-noteSchema.virtual('formattedLastEdited').get(function() {
+noteSchema.virtual('formattedLastEdited').get(function () {
   if (!this.lastEdited) {
     return 'Today';
   }
@@ -75,7 +92,7 @@ noteSchema.virtual('formattedLastEdited').get(function() {
 });
 
 // Update lastEdited before saving
-noteSchema.pre('save', function(next) {
+noteSchema.pre('save', function (next) {
   if (this.isModified('title') || this.isModified('content')) {
     this.lastEdited = new Date();
   }

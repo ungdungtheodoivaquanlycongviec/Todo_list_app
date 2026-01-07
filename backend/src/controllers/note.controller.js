@@ -126,10 +126,84 @@ const deleteNote = asyncHandler(async (req, res) => {
   sendSuccess(res, null, SUCCESS_MESSAGES.NOTE_DELETED);
 });
 
+/**
+ * @desc    Toggle note bookmark status
+ * @route   PATCH /api/notes/:id/bookmark
+ * @access  Private
+ */
+const toggleBookmark = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user._id;
+  const currentGroupId = req.user.currentGroupId;
+
+  if (!currentGroupId) {
+    return sendError(res, 'You must join or create a group', HTTP_STATUS.FORBIDDEN);
+  }
+
+  const note = await noteService.toggleBookmark(id, userId, currentGroupId);
+
+  if (!note) {
+    return sendError(res, ERROR_MESSAGES.NOTE_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  sendSuccess(res, { note }, 'Bookmark toggled successfully');
+});
+
+/**
+ * @desc    Update note sharing/visibility settings
+ * @route   PATCH /api/notes/:id/sharing
+ * @access  Private
+ */
+const updateSharing = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user._id;
+  const currentGroupId = req.user.currentGroupId;
+  const { visibility, sharedWith } = req.body;
+
+  if (!currentGroupId) {
+    return sendError(res, 'You must join or create a group', HTTP_STATUS.FORBIDDEN);
+  }
+
+  const note = await noteService.updateNoteSharing(id, userId, currentGroupId, { visibility, sharedWith });
+
+  if (!note) {
+    return sendError(res, ERROR_MESSAGES.NOTE_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  sendSuccess(res, { note }, 'Note sharing updated successfully');
+});
+
+/**
+ * @desc    Remove a tag from note
+ * @route   DELETE /api/notes/:id/tags
+ * @access  Private
+ */
+const removeTag = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { tag } = req.body;
+  const userId = req.user._id;
+  const currentGroupId = req.user.currentGroupId;
+
+  if (!currentGroupId) {
+    return sendError(res, 'You must join or create a group', HTTP_STATUS.FORBIDDEN);
+  }
+
+  const note = await noteService.removeTag(id, userId, currentGroupId, tag);
+
+  if (!note) {
+    return sendError(res, ERROR_MESSAGES.NOTE_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+
+  sendSuccess(res, { note }, 'Tag removed successfully');
+});
+
 module.exports = {
   getAllNotes,
   getNoteById,
   createNote,
   updateNote,
-  deleteNote
+  deleteNote,
+  toggleBookmark,
+  updateSharing,
+  removeTag
 };
