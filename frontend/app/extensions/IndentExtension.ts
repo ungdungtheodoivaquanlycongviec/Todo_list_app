@@ -35,7 +35,7 @@ export const Indent = Extension.create<IndentOptions>({
 
     addOptions() {
         return {
-            types: ['paragraph', 'heading'],
+            types: ['paragraph', 'heading', 'listItem'],
             minIndent: 0,
             maxIndent: 600, // pixels - allow almost full editor width
             step: 24, // pixels per indent level
@@ -142,8 +142,24 @@ export const Indent = Extension.create<IndentOptions>({
 
     addKeyboardShortcuts() {
         return {
-            Tab: () => this.editor.commands.increaseIndent(),
-            'Shift-Tab': () => this.editor.commands.decreaseIndent(),
+            Tab: () => {
+                // If in a list, use native list indentation (creates nested lists)
+                if (this.editor.isActive('listItem')) {
+                    return this.editor.commands.sinkListItem('listItem');
+                }
+                // Otherwise use custom indent for paragraphs/headings
+                this.editor.commands.increaseIndent();
+                return true;
+            },
+            'Shift-Tab': () => {
+                // If in a list, use native list outdentation
+                if (this.editor.isActive('listItem')) {
+                    return this.editor.commands.liftListItem('listItem');
+                }
+                // Otherwise use custom indent for paragraphs/headings
+                this.editor.commands.decreaseIndent();
+                return true;
+            },
         };
     },
 });

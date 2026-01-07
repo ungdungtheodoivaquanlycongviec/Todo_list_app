@@ -50,8 +50,8 @@ function ToolbarButton({ onClick, isActive, disabled, title, children }: Toolbar
             disabled={disabled}
             title={title}
             className={`p-2 rounded-lg transition-all duration-200 ${isActive
-                    ? 'bg-blue-100 text-blue-600'
-                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                ? 'bg-blue-100 text-blue-600'
+                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                 } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
         >
             {children}
@@ -100,10 +100,14 @@ const HEADINGS = [
     { level: 6, label: 'Heading 6', icon: Heading6 },
 ];
 
+// Text size options - common font sizes in pt
+const TEXT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 32, 36, 40, 44, 48, 54, 60, 66, 72];
+
 export function FormattingToolbar({ editor }: FormattingToolbarProps) {
     const [showFontDropdown, setShowFontDropdown] = useState(false);
     const [showColorDropdown, setShowColorDropdown] = useState(false);
     const [showHeadingDropdown, setShowHeadingDropdown] = useState(false);
+    const [showSizeDropdown, setShowSizeDropdown] = useState(false);
 
     if (!editor) {
         return null;
@@ -113,11 +117,20 @@ export function FormattingToolbar({ editor }: FormattingToolbarProps) {
         setShowFontDropdown(false);
         setShowColorDropdown(false);
         setShowHeadingDropdown(false);
+        setShowSizeDropdown(false);
     };
 
     const getCurrentFont = () => {
         const font = editor.getAttributes('textStyle').fontFamily;
         return font || 'Default';
+    };
+
+    const getCurrentSize = (): number => {
+        const size = editor.getAttributes('textStyle').fontSize;
+        if (!size) return 16; // Default size
+        // Parse px value to number
+        const num = parseInt(size.replace('px', ''), 10);
+        return isNaN(num) ? 16 : num;
     };
 
     const getCurrentHeadingLevel = () => {
@@ -163,6 +176,38 @@ export function FormattingToolbar({ editor }: FormattingToolbarProps) {
                                 style={{ fontFamily: font.value || 'inherit' }}
                             >
                                 {font.name}
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Text Size Dropdown */}
+            <div className="relative">
+                <button
+                    onClick={() => {
+                        closeAllDropdowns();
+                        setShowSizeDropdown(!showSizeDropdown);
+                    }}
+                    className="flex items-center gap-1 px-2 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors min-w-[50px]"
+                    title="Text Size"
+                >
+                    <span>{getCurrentSize()}</span>
+                    <ChevronDown className="w-3 h-3" />
+                </button>
+                {showSizeDropdown && (
+                    <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[60px] py-1 max-h-64 overflow-y-auto">
+                        {TEXT_SIZES.map((size) => (
+                            <button
+                                key={size}
+                                onClick={() => {
+                                    editor.chain().focus().setFontSize(`${size}px`).run();
+                                    setShowSizeDropdown(false);
+                                }}
+                                className={`w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 ${getCurrentSize() === size ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-700'
+                                    }`}
+                            >
+                                {size}
                             </button>
                         ))}
                     </div>
@@ -284,8 +329,8 @@ export function FormattingToolbar({ editor }: FormattingToolbarProps) {
                                         setShowColorDropdown(false);
                                     }}
                                     className={`w-7 h-7 rounded border-2 transition-all hover:scale-110 ${editor.getAttributes('textStyle').color === color.value
-                                            ? 'border-blue-500'
-                                            : 'border-gray-200'
+                                        ? 'border-blue-500'
+                                        : 'border-gray-200'
                                         }`}
                                     style={{ backgroundColor: color.value || '#ffffff' }}
                                     title={color.name}
@@ -513,7 +558,7 @@ export function EditorRuler({ editor, containerWidth }: EditorRulerProps) {
     return (
         <div
             ref={rulerRef}
-            className="relative h-5 bg-white border-b border-gray-200 select-none"
+            className="relative h-7 bg-white border-b border-gray-200 select-none"
             style={{ width: '100%' }}
         >
             {/* Tick marks and numbers */}

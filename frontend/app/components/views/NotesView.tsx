@@ -12,6 +12,7 @@ import FontFamily from '@tiptap/extension-font-family';
 import { TextStyle } from '@tiptap/extension-text-style';
 import Color from '@tiptap/extension-color';
 import { Indent } from '../../extensions/IndentExtension';
+import { FontSize } from '../../extensions/FontSizeExtension';
 import {
   Plus,
   Search,
@@ -80,6 +81,7 @@ export default function NotesView() {
       Typography,
       TextStyle,
       FontFamily,
+      FontSize,
       Color,
       Indent,
     ],
@@ -199,10 +201,24 @@ export default function NotesView() {
   };
 
   const handleNoteClick = (note: Note) => {
+    // Don't do anything if clicking the same note
+    if (selectedNote?._id === note._id) return;
+
+    // Save current note in background (don't await)
     if (hasUnsavedChanges && selectedNote) {
-      saveNote(selectedNote);
+      // Fire and forget - save runs in background
+      notesService.updateNote(selectedNote._id!, {
+        title: selectedNote.title,
+        content: selectedNote.content,
+      }).then(updatedNote => {
+        // Update the notes list with saved version
+        setNotes(prev => prev.map(n => n._id === updatedNote._id ? updatedNote : n));
+      }).catch(err => {
+        console.error('Error auto-saving note:', err);
+      });
     }
-    // Set flag to prevent onUpdate from firing during switch
+
+    // Switch immediately
     isSwitchingNoteRef.current = true;
     setSelectedNote(note);
     setHasUnsavedChanges(false);
@@ -577,7 +593,33 @@ export default function NotesView() {
                       containerWidth={containerWidth}
                     />
                     {/* Editor content - indent styling is per-paragraph via Tiptap */}
-                    <div className="min-h-[500px] p-6">
+                    <div
+                      className="min-h-[500px] p-6"
+                      onKeyDown={(e) => {
+                        // Prevent Tab from moving focus outside editor
+                        if (e.key === 'Tab') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (editor) {
+                            // If in a list, use native list sink/lift for nested lists
+                            if (editor.isActive('listItem')) {
+                              if (e.shiftKey) {
+                                editor.commands.liftListItem('listItem');
+                              } else {
+                                editor.commands.sinkListItem('listItem');
+                              }
+                            } else {
+                              // Non-list content uses custom indent
+                              if (e.shiftKey) {
+                                editor.commands.decreaseIndent();
+                              } else {
+                                editor.commands.increaseIndent();
+                              }
+                            }
+                          }
+                        }
+                      }}
+                    >
                       <div className="rich-text-editor-container">
                         <EditorContent editor={editor} />
                       </div>
@@ -591,16 +633,16 @@ export default function NotesView() {
             <div className="bg-white border-t border-gray-200 p-4 transition-all duration-300">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-300 hover:scale-110">
+                  <button tabIndex={-1} className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-300 hover:scale-110">
                     <Bookmark className="w-4 h-4" />
                   </button>
-                  <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-300 hover:scale-110">
+                  <button tabIndex={-1} className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-300 hover:scale-110">
                     <Tag className="w-4 h-4" />
                   </button>
-                  <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-300 hover:scale-110">
+                  <button tabIndex={-1} className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-300 hover:scale-110">
                     <Share2 className="w-4 h-4" />
                   </button>
-                  <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-300 hover:scale-110">
+                  <button tabIndex={-1} className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-300 hover:scale-110">
                     <Download className="w-4 h-4" />
                   </button>
                 </div>
