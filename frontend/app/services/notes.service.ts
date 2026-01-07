@@ -11,6 +11,11 @@ export interface Note {
   updatedAt?: string;
   formattedLastEdited?: string;
   folderId?: string | null;
+  // New fields
+  isBookmarked?: boolean;
+  visibility?: 'private' | 'folder' | 'specific';
+  sharedWith?: string[];
+  tags?: string[];
 }
 
 class NotesService {
@@ -22,7 +27,7 @@ class NotesService {
       params.append('page', page.toString());
       params.append('limit', limit.toString());
       if (folderId) params.append('folderId', folderId);
-      
+
       const response = await apiClient.get<ApiResponse<{ notes: Note[] }>>(`/notes?${params.toString()}`);
       return response.data?.notes || [];
     } catch (error) {
@@ -71,6 +76,44 @@ class NotesService {
       await apiClient.delete(`/notes/${noteId}`);
     } catch (error) {
       console.error('Error deleting note:', error);
+      throw error;
+    }
+  }
+
+  // Toggle bookmark status
+  async toggleBookmark(noteId: string): Promise<Note> {
+    try {
+      const response = await apiClient.patch<ApiResponse<{ note: Note }>>(`/notes/${noteId}/bookmark`);
+      return response.data.note;
+    } catch (error) {
+      console.error('Error toggling bookmark:', error);
+      throw error;
+    }
+  }
+
+  // Update sharing settings
+  async updateSharing(noteId: string, visibility: 'private' | 'folder' | 'specific', sharedWith?: string[]): Promise<Note> {
+    try {
+      const response = await apiClient.patch<ApiResponse<{ note: Note }>>(`/notes/${noteId}/sharing`, {
+        visibility,
+        sharedWith
+      });
+      return response.data.note;
+    } catch (error) {
+      console.error('Error updating sharing:', error);
+      throw error;
+    }
+  }
+
+  // Remove a tag
+  async removeTag(noteId: string, tag: string): Promise<Note> {
+    try {
+      const response = await apiClient.delete<ApiResponse<{ note: Note }>>(`/notes/${noteId}/tags`, {
+        data: { tag }
+      });
+      return response.data.note;
+    } catch (error) {
+      console.error('Error removing tag:', error);
       throw error;
     }
   }

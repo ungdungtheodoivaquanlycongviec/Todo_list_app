@@ -22,7 +22,23 @@ const getAllNotes = async (userId, groupId, options = {}) => {
     requesterId: userId
   });
 
-  const filters = [{ userId }, { groupId }];
+  // Build the ownership/visibility filter
+  // User can see notes if:
+  // 1. They own the note (userId matches)
+  // 2. Note visibility is 'folder' and they have access to the folder
+  // 3. Note visibility is 'specific' and they are in sharedWith array
+  const ownershipOrVisibilityFilter = {
+    $or: [
+      // Own notes (any visibility)
+      { userId: userId },
+      // Notes shared with folder members (user must have folder access)
+      { visibility: 'folder' },
+      // Notes shared with specific users
+      { visibility: 'specific', sharedWith: userId }
+    ]
+  };
+
+  const filters = [ownershipOrVisibilityFilter, { groupId }];
 
   if (folder) {
     if (folder.isDefault) {
@@ -137,10 +153,70 @@ const deleteNote = async (noteId, userId, groupId) => {
   return !!result;
 };
 
+/**
+ * Toggle bookmark status for a note
+ * @param {string} noteId - ID of the note
+ * @param {string} userId - ID of the user
+ * @param {string} groupId - ID of the group
+ * @returns {Promise<Object|null>} Updated note or null
+ */
+const toggleBookmark = async (noteId, userId, groupId) => {
+  const note = await Note.findOne({ _id: noteId, userId, groupId });
+  if (!note) return null;
+
+  note.isBookmarked = !note.isBookmarked;
+  await note.save();
+  return note;
+};
+
+/**
+ * Update note visibility and sharing settings
+ * @param {string} noteId - ID of the note
+ * @param {string} userId - ID of the user
+ * @param {string} groupId - ID of the group
+ * @param {Object} sharingData - Visibility and sharedWith data
+ * @returns {Promise<Object|null>} Updated note or null
+ */
+const updateNoteSharing = async (noteId, userId, groupId, { visibility, sharedWith }) => {
+  const updateData = { visibility };
+  if (visibility === 'specific') {
+    updateData.sharedWith = sharedWith || [];
+  } else {
+    updateData.sharedWith = [];
+  }
+
+  const note = await Note.findOneAndUpdate(
+    { _id: noteId, userId, groupId },
+    updateData,
+    { new: true, runValidators: true }
+  );
+  return note;
+};
+
+/**
+ * Remove a tag from a note
+ * @param {string} noteId - ID of the note
+ * @param {string} userId - ID of the user
+ * @param {string} groupId - ID of the group
+ * @param {string} tagToRemove - Tag to remove
+ * @returns {Promise<Object|null>} Updated note or null
+ */
+const removeTag = async (noteId, userId, groupId, tagToRemove) => {
+  const note = await Note.findOneAndUpdate(
+    { _id: noteId, userId, groupId },
+    { $pull: { tags: tagToRemove } },
+    { new: true }
+  );
+  return note;
+};
+
 module.exports = {
   getAllNotes,
   getNoteById,
   createNote,
   updateNote,
-  deleteNote
+  deleteNote,
+  toggleBookmark,
+  updateNoteSharing,
+  removeTag
 };

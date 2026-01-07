@@ -5,7 +5,10 @@ const {
   getNoteById,
   createNote,
   updateNote,
-  deleteNote
+  deleteNote,
+  toggleBookmark,
+  updateSharing,
+  removeTag
 } = require('../controllers/note.controller');
 const { authenticate } = require('../middlewares/auth');
 
@@ -28,5 +31,14 @@ router.put('/:id', authenticate, updateNote);
 
 // DELETE /api/notes/:id - Xóa note
 router.delete('/:id', authenticate, deleteNote);
+
+// PATCH /api/notes/:id/bookmark - Toggle bookmark status
+router.patch('/:id/bookmark', authenticate, toggleBookmark);
+
+// PATCH /api/notes/:id/sharing - Update sharing settings
+router.patch('/:id/sharing', authenticate, updateSharing);
+
+// DELETE /api/notes/:id/tags - Remove a tag
+router.delete('/:id/tags', authenticate, removeTag);
 
 module.exports = router;
